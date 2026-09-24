@@ -4,6 +4,7 @@ use super::super::{AgentRun, AgentRunStep};
 use super::*;
 use rig_core::completion::Usage;
 use rig_core::message::{Text, ToolResultContent, UserContent};
+use rig_core::non_empty::NonEmpty;
 use rig_core::streaming::{ToolCallEnd, UnparseableToolInput};
 use rig_core::test_utils::mock_final;
 use serde_json::json;
@@ -834,7 +835,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     run.tool_results(vec![UserContent::tool_result(
         "tc_1",
         "add",
-        vec![ToolResultContent::text("2")],
+        NonEmpty::new(ToolResultContent::text("2")),
     )])
     .expect("tool_results should succeed");
 
@@ -1239,7 +1240,7 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
         .tool_results(vec![UserContent::tool_result(
             "tc_1",
             "add",
-            vec![ToolResultContent::text("2")],
+            NonEmpty::new(ToolResultContent::text("2")),
         )])
         .expect("tool_results should succeed");
     assert!(matches!(
@@ -1303,7 +1304,7 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                             call.id.clone(),
                             call.provider.clone(),
                             "add",
-                            vec![ToolResultContent::text("2")],
+                            NonEmpty::new(ToolResultContent::text("2")),
                         )
                     })
                     .collect::<Vec<_>>();
@@ -1469,10 +1470,10 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
                     run.messages()[1],
                     Message::Assistant {
                         id: Some("assistant-id".into()),
-                        content: vec![
+                        content: NonEmpty::of(
                             AssistantContent::ToolCall(peer.clone()),
-                            AssistantContent::ToolCall(invalid_call.clone())
-                        ],
+                            [AssistantContent::ToolCall(invalid_call.clone())]
+                        ),
                     }
                 );
                 let Message::User { content } = &run.messages()[2] else {
@@ -1493,16 +1494,16 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
                 assert_eq!(results[0].name, "add");
                 assert_eq!(
                     results[0].content,
-                    vec![ToolResultContent::text(
+                    NonEmpty::new(ToolResultContent::text(
                         TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
-                    )]
+                    ))
                 );
                 assert_eq!(results[1].call, invalid_call.id);
                 assert_eq!(results[1].provider, invalid_call.provider);
                 assert_eq!(results[1].name, "multiply");
                 assert_eq!(
                     results[1].content,
-                    vec![ToolResultContent::text("use add instead")]
+                    NonEmpty::new(ToolResultContent::text("use add instead"))
                 );
                 run.record_streamed_completion_call(&attempt_end(
                     Usage::default(),

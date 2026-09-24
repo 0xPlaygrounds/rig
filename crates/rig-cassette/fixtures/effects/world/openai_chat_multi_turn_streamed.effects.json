@@ -481,11 +481,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
-            },
+          "system": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -734,11 +731,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
-            },
+          "system": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1058,11 +1052,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
-            },
+          "system": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1429,11 +1420,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
-            },
+          "system": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1847,11 +1835,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
-            },
+          "system": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+          "messages": [
             {
               "role": "user",
               "content": [

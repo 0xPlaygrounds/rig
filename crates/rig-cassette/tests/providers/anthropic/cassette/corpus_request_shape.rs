@@ -538,14 +538,15 @@ async fn prior_history_effect_log_is_the_golden_fixture() {
                 other => panic!("a completion, not {other:?}"),
             };
             let turns = request
-                .chat_history
+                .history()
                 .iter()
                 .filter(|message| !matches!(message, rig::message::Message::System { .. }))
                 .count();
             assert_eq!(
-                turns, 3,
+                turns,
+                3,
                 "two prior turns and the prompt: {:?}",
-                request.chat_history
+                request.history()
             );
             crate::goldens::golden_effects("anthropic_request_shape_prior_history", &log);
         },

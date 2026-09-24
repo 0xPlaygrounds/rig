@@ -1,3 +1,4 @@
+use rig_core::non_empty::NonEmpty;
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -83,7 +84,8 @@ impl EmbeddingModel for Tiny {
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("hi")],
+        system: None,
+        messages: NonEmpty::new(Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,

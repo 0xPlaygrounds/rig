@@ -12,6 +12,7 @@
 //! - Model listing dropped `description` and `max_context_length`, both of
 //!   which `Model` has slots for.
 
+use rig::non_empty::NonEmpty;
 use rig::streaming::Delta;
 
 use anyhow::Result;
@@ -261,18 +262,18 @@ fn turn_one_history() -> Vec<rig::completion::Message> {
     vec![
         rig::completion::Message::Assistant {
             id: None,
-            content: vec![rig::message::AssistantContent::tool_call(
+            content: NonEmpty::new(rig::message::AssistantContent::tool_call(
                 "call_REDACTED_1",
                 "add",
                 serde_json::json!({"x": 2, "y": 3}),
-            )],
+            )),
         },
         rig::completion::Message::User {
-            content: vec![rig::message::UserContent::tool_result(
+            content: NonEmpty::new(rig::message::UserContent::tool_result(
                 "call_REDACTED_1",
                 "add",
-                vec![rig::message::ToolResultContent::text("5")],
-            )],
+                NonEmpty::new(rig::message::ToolResultContent::text("5")),
+            )),
         },
     ]
 }

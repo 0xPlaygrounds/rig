@@ -174,7 +174,7 @@ pub fn tick_until(app: &mut App, what: &str, mut done: impl FnMut(&mut World) ->
 /// The text parts of a request's user messages, in order.
 pub fn texts(request: &CompletionRequest) -> Vec<String> {
     request
-        .chat_history
+        .history()
         .iter()
         .map(|message| match message {
             rig_core::message::Message::System { content } => format!("system:{content}"),
@@ -452,7 +452,7 @@ pub fn utterances_of(world: &mut World, run: Entity) -> Vec<Entity> {
 pub fn graph_messages(world: &mut World, run: Entity) -> Vec<Message> {
     utterances_of(world, run)
         .into_iter()
-        .map(|entity| read_message(world, entity).unwrap().to_message())
+        .filter_map(|entity| read_message(world, entity).unwrap().to_message())
         .collect()
 }
 

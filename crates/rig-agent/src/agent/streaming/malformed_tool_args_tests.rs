@@ -152,7 +152,7 @@ async fn malformed_arguments_retry_reissues_the_model_request() {
     )));
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2, "retry must re-issue the model request");
-    let feedback_present = requests[1].chat_history.iter().any(|message| {
+    let feedback_present = requests[1].history().iter().any(|message| {
         matches!(message, Message::User { content } if content.iter().any(|item| matches!(
             item,
             UserContent::ToolResult(result)
@@ -166,7 +166,7 @@ async fn malformed_arguments_retry_reissues_the_model_request() {
     assert!(
         feedback_present,
         "the retry request must carry the feedback as a tool result for the call: {:?}",
-        requests[1].chat_history
+        requests[1].history()
     );
 }
 
@@ -198,7 +198,7 @@ async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    assert!(requests[1].chat_history.iter().any(|message| {
+    assert!(requests[1].history().iter().any(|message| {
         matches!(message, Message::User { content } if content.iter().any(|item| matches!(
             item,
             UserContent::ToolResult(result) if result.call.explicit() == Some("tool_call_1")

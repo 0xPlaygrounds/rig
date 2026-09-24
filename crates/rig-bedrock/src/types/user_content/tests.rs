@@ -2,6 +2,7 @@ use crate::types::{converse_output::ContentBlock, user_content::RigUserContent};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::error::ProviderError;
 use rig_core::message::{ToolResultContent, UserContent};
+use rig_core::non_empty::NonEmpty;
 
 /// The inbound path reads the mirror, but what Bedrock sends is the SDK
 /// block, so the tests still start there and mirror it first.
@@ -49,7 +50,7 @@ fn aws_content_block_tool_to_user_content() {
     assert_eq!(content.name, "");
     assert_eq!(
         content.content,
-        vec![ToolResultContent::Text("content".into())]
+        NonEmpty::new(ToolResultContent::Text("content".into()))
     );
 }
 

@@ -43,11 +43,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a terse assistant. End every reply with the exact token ZULU-99 on its own, verbatim."
-            },
+          "system": "You are a terse assistant. End every reply with the exact token ZULU-99 on its own, verbatim.",
+          "messages": [
             {
               "role": "user",
               "content": [

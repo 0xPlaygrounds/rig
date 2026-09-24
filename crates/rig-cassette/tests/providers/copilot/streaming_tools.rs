@@ -1,6 +1,7 @@
 //! Copilot streaming tools coverage, including the migrated example path.
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
@@ -166,16 +167,16 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             .expect("raw stream should yield lookup_harbor_label");
         let assistant_message = Message::Assistant {
             id: None,
-            content: vec![AssistantContent::ToolCall(tool_call.clone())],
+            content: NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
         };
         let tool_result_message =
             Message::User {
-        content: vec![UserContent::tool_result_for(
+        content: NonEmpty::new(UserContent::tool_result_for(
             tool_call.id.clone(),
             tool_call.provider.clone(),
             tool_call.function.name.clone(),
-            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-        )],
+            NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+        )),
     };
         let followup_request = model
             .completion_request(

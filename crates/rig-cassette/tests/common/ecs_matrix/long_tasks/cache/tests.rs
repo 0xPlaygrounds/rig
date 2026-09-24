@@ -1,4 +1,5 @@
 use super::*;
+use rig_core::non_empty::NonEmpty;
 
 #[test]
 fn anthropic_cache_oracle_checks_actual_encoded_modes() {
@@ -35,7 +36,8 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
             }
             let request = CompletionRequest {
                 model: None,
-                chat_history: history,
+                system: None,
+                messages: NonEmpty::from_vec(history).expect("a conversation"),
                 documents: vec![],
                 tools: vec![ToolDefinition {
                     name: "probe".into(),

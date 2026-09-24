@@ -359,9 +359,6 @@ impl ResponsesWebSocketSession {
             ));
         }
 
-        // Direct session requests bypass builder validation.
-        completion_request.validate_message_content()?;
-
         let payload = ResponsesWebSocketClientEvent {
             kind: ResponsesWebSocketClientEventKind::ResponseCreate,
             request: self.prepare_request(completion_request)?,

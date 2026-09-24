@@ -13,9 +13,9 @@
 pub mod checkpoint;
 pub mod content;
 pub mod reflect;
-
 use bevy_ecs::prelude::*;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
+use rig_core::non_empty::NonEmpty;
 use rig_core::{
     completion::{
         Usage as WireUsage,
@@ -448,17 +448,18 @@ pub enum MessageParts {
 }
 
 impl MessageParts {
-    /// The message, verbatim.
-    pub fn to_message(&self) -> Message {
-        match self {
+    /// The message, verbatim, or `None` while it has no parts: a message
+    /// carries at least one.
+    pub fn to_message(&self) -> Option<Message> {
+        Some(match self {
             Self::User { content } => Message::User {
-                content: content.clone(),
+                content: NonEmpty::from_vec(content.clone())?,
             },
             Self::Assistant { id, content } => Message::Assistant {
                 id: id.clone(),
-                content: content.clone(),
+                content: NonEmpty::from_vec(content.clone())?,
             },
-        }
+        })
     }
 
     /// From a message; a system message is not an utterance (it is the
@@ -467,11 +468,11 @@ impl MessageParts {
         match message {
             Message::System { .. } => None,
             Message::User { content } => Some(Self::User {
-                content: content.clone(),
+                content: content.clone().into_vec(),
             }),
             Message::Assistant { id, content } => Some(Self::Assistant {
                 id: id.clone(),
-                content: content.clone(),
+                content: content.clone().into_vec(),
             }),
         }
     }

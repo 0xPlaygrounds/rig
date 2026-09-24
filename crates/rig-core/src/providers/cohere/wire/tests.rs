@@ -3,6 +3,7 @@ use crate::completion::CompletionModel as _;
 use crate::driver::Bound;
 use crate::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use crate::message::AssistantContent;
+use crate::non_empty::NonEmpty;
 use crate::test_utils::{
     MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient,
 };
@@ -54,9 +55,10 @@ fn cohere() -> Cohere {
 fn recorded_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(
+        system: None,
+        messages: NonEmpty::new(crate::message::Message::user(
             "Write a detailed fifty-word description of the ocean.",
-        )],
+        )),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

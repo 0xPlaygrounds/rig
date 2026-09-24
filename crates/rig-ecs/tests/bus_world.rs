@@ -221,9 +221,9 @@ fn a_held_effect_is_denied_or_approved_from_a_system_next_tick() {
 fn patch_greeting(mut fresh: Query<&mut PendingEffect, (Without<Issued>, Without<EffectOutcome>)>) {
     for mut effect in &mut fresh {
         if let EffectKind::Completion { request, .. } = &mut effect.kind
-            && request.chat_history.len() == 1
+            && request.history().len() == 1
         {
-            request.chat_history.push(Message::user("patched"));
+            request.messages.push(Message::user("patched"));
         }
     }
 }
@@ -262,7 +262,7 @@ fn gate_patches_and_judge_replaces_but_the_record_keeps_the_answer() {
         panic!("a completion");
     };
     assert_eq!(
-        request.chat_history.len(),
+        request.history().len(),
         2,
         "the record's request is what the handler served: the patched one"
     );
@@ -613,9 +613,7 @@ impl rig_core::serve::Intercept for Deciding {
                 else {
                     return Decision::Proceed;
                 };
-                request
-                    .chat_history
-                    .push(Message::user("patched by the layer"));
+                request.messages.push(Message::user("patched by the layer"));
                 Decision::Patch(EffectKind::Completion { request, stream })
             }
             _ => Decision::Proceed,
@@ -688,7 +686,7 @@ fn a_layers_decisions_reach_the_record_through_the_sinks_observer() {
         panic!("a completion");
     };
     assert_eq!(
-        request.chat_history.len(),
+        request.history().len(),
         2,
         "the record's request is what the innermost handler served: the patched one"
     );

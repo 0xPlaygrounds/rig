@@ -23,6 +23,7 @@ use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::completion::{CompletionModel as _, CompletionRequest, ToolDefinition};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, Text, ToolChoice, UserContent};
+use rig_core::non_empty::NonEmpty;
 use rig_vertexai::Client;
 use rig_vertexai::client::VertexAiClientError;
 use rig_vertexai::completion::CompletionModel;
@@ -57,9 +58,10 @@ async fn hosted_model(
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new(prompt.to_string()))],
-        }],
+        system: None,
+        messages: NonEmpty::new(Message::User {
+            content: NonEmpty::new(UserContent::Text(Text::new(prompt.to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -85,12 +87,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     let model = hosted_model(&endpoint, &credentials).await;
 
     let mut request = request("weather in Lisbon?");
-    request.chat_history.insert(
-        0,
-        Message::System {
-            content: "you are terse".into(),
-        },
-    );
+    request.system = Some("you are terse".into());
     request.temperature = Some(0.25);
     request.max_tokens = Some(64);
     request.tool_choice = Some(ToolChoice::Required);

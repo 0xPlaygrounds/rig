@@ -462,7 +462,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
 
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut partial_history = vec![];
-        partial_history.extend(req.chat_history);
+        partial_history.extend(req.history());
 
         let mut full_history: Vec<Message> = Vec::new();
 

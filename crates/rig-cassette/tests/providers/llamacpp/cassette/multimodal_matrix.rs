@@ -42,6 +42,7 @@
 
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ImageMediaType, Message, UserContent, VideoMediaType};
+use rig::non_empty::NonEmpty;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
@@ -94,7 +95,10 @@ async fn two_images_in_one_turn_keep_their_order() {
                     let response = model
                         .completion(
                             model
-                                .completion_request(Message::User { content })
+                                .completion_request(Message::User {
+                                    content: NonEmpty::from_vec(content)
+                                        .expect("non-empty content"),
+                                })
                                 .max_tokens(64)
                                 .temperature(0.0)
                                 .build(),
@@ -169,12 +173,12 @@ async fn an_image_and_a_tool_reach_the_model_together() {
             .completion(
                 model
                     .completion_request(Message::User {
-                        content: vec![
+                        content: NonEmpty::of(
                             UserContent::text(
                                 "Look at the image and call record_subject with what it shows.",
                             ),
-                            ant_photo(),
-                        ],
+                            [ant_photo()],
+                        ),
                     })
                     .tool(rig::completion::ToolDefinition {
                         name: "record_subject".to_string(),
@@ -240,14 +244,14 @@ async fn a_malformed_data_uri_is_a_400() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![
+                            content: NonEmpty::of(
                                 UserContent::text("What colour is this?"),
-                                UserContent::image_base64(
+                                [UserContent::image_base64(
                                     "!!!!not-base64!!!!",
                                     Some(ImageMediaType::PNG),
                                     None,
-                                ),
-                            ],
+                                )],
+                            ),
                         })
                         .max_tokens(32)
                         .build(),
@@ -301,16 +305,18 @@ async fn a_url_the_server_cannot_fetch_is_a_500() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![
+                            content: NonEmpty::of(
                                 UserContent::text("What colour is this?"),
-                                // Port 1 on the loopback interface: reserved,
-                                // and nothing binds it.
-                                UserContent::image_url(
-                                    "http://127.0.0.1:1/nope.png",
-                                    Some(ImageMediaType::PNG),
-                                    None,
-                                ),
-                            ],
+                                [
+                                    // Port 1 on the loopback interface: reserved,
+                                    // and nothing binds it.
+                                    UserContent::image_url(
+                                        "http://127.0.0.1:1/nope.png",
+                                        Some(ImageMediaType::PNG),
+                                        None,
+                                    ),
+                                ],
+                            ),
                         })
                         .max_tokens(32)
                         .build(),
@@ -349,10 +355,10 @@ async fn an_image_to_a_text_only_server_names_the_missing_mmproj() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![
+                            content: NonEmpty::of(
                                 UserContent::text("What colour is this?"),
-                                magenta_square(),
-                            ],
+                                [magenta_square()],
+                            ),
                         })
                         .max_tokens(32)
                         .build(),
@@ -393,13 +399,13 @@ async fn a_video_part_is_refused_even_though_props_advertises_video() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![
+                            content: NonEmpty::of(
                                 UserContent::text("Describe this video in one sentence."),
-                                UserContent::video(
+                                [UserContent::video(
                                     base64_encode(&bytes),
                                     Some(VideoMediaType::MP4),
-                                ),
-                            ],
+                                )],
+                            ),
                         })
                         .max_tokens(64)
                         .build(),

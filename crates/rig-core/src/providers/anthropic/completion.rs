@@ -1019,7 +1019,7 @@ impl TryFrom<message::Message> for Message {
                             "Assistant message did not contain Anthropic-compatible content"
                                 .to_owned(),
                         )
-                    })?,
+                    })?.into_vec(),
                     role: Role::Assistant,
                 }
             }
@@ -2020,7 +2020,7 @@ impl AnthropicCompletionRequest {
             automatic_caching_ttl,
             static_prefix_cache_ttl,
         } = params;
-        let chat_history = req.chat_history_with_documents();
+        let chat_history = req.history_with_documents();
 
         let Some(max_tokens) = req.max_tokens else {
             return Err(EncodeError::request(

@@ -18,6 +18,7 @@
 
 use rig::completion::CompletionModel as _;
 use rig::message::{ImageMediaType, ProviderCallId, ToolCallId, ToolResult, ToolResultContent};
+use rig::non_empty::NonEmpty;
 
 use super::super::cassette_support::*;
 
@@ -34,22 +35,22 @@ fn image_tool_result() -> ToolResult {
         call: ToolCallId::new_or_minted("call_1", 0),
         provider: ProviderCallId::new("call_1"),
         name: "view_file".to_string(),
-        content: vec![ToolResultContent::image_base64(
+        content: NonEmpty::new(ToolResultContent::image_base64(
             MAGENTA_PNG_BASE64,
             Some(ImageMediaType::PNG),
             None,
-        )],
+        )),
     }
 }
 
 fn tool_call_turn() -> rig::message::Message {
     rig::message::Message::Assistant {
         id: None,
-        content: vec![rig::message::AssistantContent::tool_call(
+        content: NonEmpty::new(rig::message::AssistantContent::tool_call(
             "call_1",
             "view_file",
             serde_json::json!({}),
-        )],
+        )),
     }
 }
 
@@ -87,7 +88,9 @@ async fn a_tool_result_image_is_read_by_the_model() {
                 .messages(vec![
                     tool_call_turn(),
                     rig::message::Message::User {
-                        content: vec![rig::message::UserContent::ToolResult(image_tool_result())],
+                        content: NonEmpty::new(rig::message::UserContent::ToolResult(
+                            image_tool_result(),
+                        )),
                     },
                 ])
                 .build();
@@ -120,16 +123,16 @@ async fn the_same_image_in_a_user_message_is_read_too() {
             let model = client.completion(VISION_MODEL);
             let request = model
                 .completion_request(rig::message::Message::User {
-                    content: vec![
+                    content: NonEmpty::of(
                         rig::message::UserContent::text(
                             "Reply with ONLY the dominant colour name.",
                         ),
-                        rig::message::UserContent::image_base64(
+                        [rig::message::UserContent::image_base64(
                             MAGENTA_PNG_BASE64,
                             Some(ImageMediaType::PNG),
                             None,
-                        ),
-                    ],
+                        )],
+                    ),
                 })
                 .max_tokens(30)
                 .temperature(0.0)

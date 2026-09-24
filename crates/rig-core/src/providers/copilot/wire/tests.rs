@@ -10,6 +10,7 @@ use crate::driver::Bound;
 use crate::embeddings::EmbeddingModel as _;
 use crate::message::Message;
 use crate::model::ModelLister as _;
+use crate::non_empty::NonEmpty;
 use crate::test_utils::RecordingHttpClient;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
@@ -51,7 +52,8 @@ fn copilot() -> Copilot {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("say hi")],
+        system: None,
+        messages: NonEmpty::new(Message::user("say hi")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -309,7 +311,7 @@ async fn registry_request(
             BoxedHttpClient::new(transport.clone()),
         );
     let mut request = prompt();
-    request.chat_history.insert(0, Message::system("be brief"));
+    request.system = Some("be brief".to_owned());
     handler
         .handle(
             EffectKind::Completion {
@@ -802,15 +804,16 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
 fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
     use crate::message::{DocumentSourceKind, Image, UserContent};
     let mut request = prompt();
-    request.chat_history = vec![
+    request.messages = NonEmpty::from_vec(vec![
         Message::assistant("send an image"),
         Message::User {
-            content: vec![UserContent::Image(Image {
+            content: NonEmpty::new(UserContent::Image(Image {
                 data: DocumentSourceKind::Url("https://image.invalid/example.png".into()),
                 ..Image::default()
-            })],
+            })),
         },
-    ];
+    ])
+    .expect("a conversation");
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         let direct = copilot().completion(model).with_edits_intent();
         let generic = copilot().openai().completion(model);

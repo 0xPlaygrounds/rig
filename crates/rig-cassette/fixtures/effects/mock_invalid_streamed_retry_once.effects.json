@@ -61,11 +61,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Use the add tool."
-            },
+          "system": "Use the add tool.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -207,11 +204,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Use the add tool."
-            },
+          "system": "Use the add tool.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -421,11 +415,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Use the add tool."
-            },
+          "system": "Use the add tool.",
+          "messages": [
             {
               "role": "user",
               "content": [

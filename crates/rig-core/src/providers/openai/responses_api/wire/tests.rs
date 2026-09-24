@@ -8,6 +8,7 @@ use super::*;
 use crate::completion::{CompletionModel, CompletionRequest};
 use crate::driver::Bound;
 use crate::message::{self, Message};
+use crate::non_empty::NonEmpty;
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::xai::DIALECT as XAI;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
@@ -88,7 +89,8 @@ fn terminal_response_body(sse: &str) -> String {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("say hi")],
+        system: None,
+        messages: NonEmpty::new(Message::user("say hi")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -241,7 +243,8 @@ fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> 
 /// The bare [`prompt`] with a history of its own.
 fn turn(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
-        chat_history,
+        system: None,
+        messages: NonEmpty::from_vec(chat_history).expect("a conversation"),
         ..prompt()
     }
 }
@@ -495,18 +498,20 @@ fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
     let body = encoded_body_of(
         &xai(),
         turn(vec![Message::User {
-            content: vec![
+            content: NonEmpty::of(
                 message::UserContent::text("before"),
-                message::UserContent::tool_result_with_call_id(
-                    "result-id",
-                    "call-id".to_owned(),
-                    "tool",
-                    vec![message::ToolResultContent::json(
-                        serde_json::json!({ "ok": true }),
-                    )],
-                ),
-                message::UserContent::text("after"),
-            ],
+                [
+                    message::UserContent::tool_result_with_call_id(
+                        "result-id",
+                        "call-id".to_owned(),
+                        "tool",
+                        NonEmpty::new(message::ToolResultContent::json(
+                            serde_json::json!({ "ok": true }),
+                        )),
+                    ),
+                    message::UserContent::text("after"),
+                ],
+            ),
         }]),
         Mode::Unary,
     );
@@ -534,7 +539,7 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
             Message::user("Use the tool."),
             Message::Assistant {
                 id: Some("msg_1".to_owned()),
-                content: vec![
+                content: NonEmpty::of(
                     message::AssistantContent::Reasoning(message::Reasoning {
                         provider: None,
                         id: Some("rs_1".to_owned()),
@@ -545,12 +550,12 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
                             },
                         ],
                     }),
-                    message::AssistantContent::tool_call(
+                    [message::AssistantContent::tool_call(
                         "call_1",
                         "my_tool",
                         serde_json::json!({"arg": "value"}),
-                    ),
-                ],
+                    )],
+                ),
             },
         ]),
         Mode::Unary,

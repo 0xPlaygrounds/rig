@@ -12,6 +12,7 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel, CompletionResponse};
 use rig::driver::Bound;
 use rig::message::{AssistantContent, Message, Reasoning};
+use rig::non_empty::NonEmpty;
 use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::streaming::{BlockKind, Delta, StreamEvent};
@@ -273,7 +274,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: response.end.message_id.map(String::from),
-                        content: response.choice,
+                        content: NonEmpty::from_vec(response.choice).expect("non-empty content"),
                     },
                     raw_response,
                 });
@@ -433,7 +434,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: message_id,
-                        content: reasoning_blocks,
+                        content: NonEmpty::from_vec(reasoning_blocks).expect("non-empty content"),
                     },
                     final_response,
                 });

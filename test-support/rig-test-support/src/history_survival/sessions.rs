@@ -10,6 +10,7 @@
 //! first reply delivered reaches the continuation in the slot that must carry
 //! it.
 
+use rig_core::non_empty::NonEmpty;
 use serde_json::Value;
 
 use rig_agent::completion::CompletionModel;
@@ -52,7 +53,8 @@ fn tool() -> ToolDefinition {
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        system: None,
+        messages: NonEmpty::from_vec(history).expect("a conversation"),
         documents: vec![],
         tools: vec![tool()],
         temperature: None,
@@ -233,17 +235,17 @@ async fn turn_one<A: CompletionModel>(first: &A, cell: Cell) -> Vec<Message> {
         prompt,
         Message::Assistant {
             id: reply.end.message_id.clone().map(String::from),
-            content: reply.choice.clone(),
+            content: NonEmpty::from_vec(reply.choice.clone()).expect("non-empty content"),
         },
         Message::User {
-            content: vec![UserContent::tool_result_for(
+            content: NonEmpty::new(UserContent::tool_result_for(
                 call.id.clone(),
                 call.provider.clone(),
                 call.function.name.clone(),
-                vec![ToolResultContent::text(format!(
+                NonEmpty::new(ToolResultContent::text(format!(
                     "record alpha: code {CODE}"
-                ))],
-            )],
+                ))),
+            )),
         },
     ];
     let persisted = serde_json::to_string(&history).expect("history serializes");

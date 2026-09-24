@@ -47,7 +47,7 @@ pub(crate) fn record_summary(log: &rig_cassette::effect_log::EffectLog) -> Vec<S
         .map(|record| match &record.kind {
             rig_core::effect::EffectKind::ToolCall { name, args } => format!("tool {name}({args})"),
             rig_core::effect::EffectKind::Completion { request, .. } => {
-                format!("completion({} messages)", request.chat_history.len())
+                format!("completion({} messages)", request.history().len())
             }
             other => format!("{:?}", other.family()),
         })

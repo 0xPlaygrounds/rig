@@ -23,7 +23,7 @@ use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
 use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionRequestBuilder, CompletionResponse, ModelRef, Usage};
 use rig_core::effect::HandlerKey;
-use rig_core::message::{Message, ToolCall, ToolFunction};
+use rig_core::message::{ToolCall, ToolFunction};
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{PortableDynamicTool, ToolContext, ToolOutput};
@@ -74,12 +74,10 @@ impl CompletionModel for ScriptedModel {
                 request.tools.iter().any(|tool| tool.name == "add"),
                 "prepared request advertises the catalog's tools"
             );
-            assert!(
-                matches!(
-                    request.chat_history.first(),
-                    Some(Message::System { content }) if content == "be brief"
-                ),
-                "the spec's preamble leads the prepared history"
+            assert_eq!(
+                request.system.as_deref(),
+                Some("be brief"),
+                "the spec's preamble is the prepared request's system prompt"
             );
             vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 "call-1",

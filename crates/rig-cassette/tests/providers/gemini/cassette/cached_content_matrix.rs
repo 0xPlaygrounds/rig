@@ -50,6 +50,7 @@
 //! ```
 
 use rig::error::ProviderError;
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, Gemini};
@@ -970,11 +971,12 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
 
                 let request = rig::completion::CompletionRequest {
-                    chat_history: vec![rig::message::Message::User {
-                        content: vec![rig::message::UserContent::text(
+                    system: None,
+                    messages: NonEmpty::new(rig::message::Message::User {
+                        content: NonEmpty::new(rig::message::UserContent::text(
                             "Reply with exactly: streamed",
-                        )],
-                    }],
+                        )),
+                    }),
                     documents: vec![],
                     tools: vec![],
                     temperature: Some(0.0),

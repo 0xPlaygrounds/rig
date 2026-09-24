@@ -8,6 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::non_empty::NonEmpty;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -347,18 +348,18 @@ async fn long_history_replay_nonstreaming() {
                 .message(Message::user("Now look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::tool_call_with_call_id(
+                    content: NonEmpty::new(AssistantContent::tool_call_with_call_id(
                         "history_tool_1",
                         call_id.clone(),
                         AlphaSignal::NAME,
                         serde_json::json!({}),
-                    )],
+                    )),
                 })
                 .message(Message::from(UserContent::tool_result_with_call_id(
                     "history_tool_1",
                     call_id,
                     AlphaSignal::NAME,
-                    vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                    NonEmpty::new(rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
                 )))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))

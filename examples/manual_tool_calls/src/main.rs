@@ -8,10 +8,10 @@
 //! 3. executes them locally with a `ToolSet`,
 //! 4. feeds the tool results back to the model, and
 //! 5. repeats until the model returns a final text answer.
-
 use anyhow::{Result, bail};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolOutput, ToolSet};
@@ -124,7 +124,7 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
         content,
     );
     Message::User {
-        content: vec![result],
+        content: NonEmpty::new(result),
     }
 }
 
@@ -164,10 +164,13 @@ async fn main() -> Result<()> {
         let tool_calls = collect_tool_calls(&response.choice);
 
         history.push(current_prompt.clone());
-        history.push(Message::Assistant {
-            id: response.end.message_id.clone().map(String::from),
-            content: response.choice.clone(),
-        });
+        // An empty answer has no assistant turn to keep.
+        if let Some(content) = NonEmpty::from_vec(response.choice.clone()) {
+            history.push(Message::Assistant {
+                id: response.end.message_id.clone().map(String::from),
+                content,
+            });
+        }
 
         if tool_calls.is_empty() {
             let final_text = extract_text(&response.choice);

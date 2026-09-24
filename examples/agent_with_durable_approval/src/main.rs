@@ -32,6 +32,7 @@ use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::completion::CompletionModel;
 use rig::message::{ToolResultContent, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
@@ -266,9 +267,9 @@ async fn main() -> Result<()> {
                                         id,
                                         provider,
                                         name,
-                                        vec![ToolResultContent::text(
+                                        NonEmpty::new(ToolResultContent::text(
                                             "denied: the reviewer supplied no valid JSON to edit with",
-                                        )],
+                                        )),
                                     ));
                                 }
                             }
@@ -292,7 +293,7 @@ async fn main() -> Result<()> {
                                 id,
                                 provider,
                                 name,
-                                vec![ToolResultContent::text(reason)],
+                                NonEmpty::new(ToolResultContent::text(reason)),
                             ));
                         }
                     }

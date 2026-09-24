@@ -7,6 +7,7 @@
 #![allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig_core::non_empty::NonEmpty;
 
 use rig_core::effect::EffectKind;
 
@@ -135,7 +136,7 @@ pub(crate) fn user_content(image: ImageCell, prompt: &str) -> Vec<UserContent> {
 /// The cell's first prompt as the message both interpreters send.
 pub(crate) fn prompt_message(image: ImageCell, prompt: &str) -> Message {
     Message::User {
-        content: user_content(image, prompt),
+        content: NonEmpty::from_vec(user_content(image, prompt)).expect("non-empty content"),
     }
 }
 
@@ -254,7 +255,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
         assert_messages(
             cell,
             image,
-            &request.chat_history,
+            &request.history(),
             &format!("{}: request {n}", cell.name),
         );
     }
@@ -284,7 +285,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
             );
             assert_eq!(result.output().render(), "42", "{}: the sum", cell.name);
             assert_eq!(requests.len(), 2, "{}: two completions", cell.name);
-            let second = &requests[1].chat_history;
+            let second = &requests[1].history();
             let call_id = second
                 .iter()
                 .find_map(|message| match message {
@@ -314,7 +315,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
         ImageCase::Followup => {
             assert!(tools.is_empty());
             assert_eq!(requests.len(), 2, "{}: two completions", cell.name);
-            let second = &requests[1].chat_history;
+            let second = &requests[1].history();
             let last_user = second
                 .iter()
                 .rev()

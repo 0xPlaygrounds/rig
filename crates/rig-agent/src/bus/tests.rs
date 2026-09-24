@@ -1,4 +1,5 @@
 use rig_core::error::ProviderError;
+use rig_core::non_empty::NonEmpty;
 use rig_core::serve::Dispatch;
 use std::{
     sync::{
@@ -55,7 +56,8 @@ fn completion_kind(stream: bool) -> EffectKind {
     EffectKind::Completion {
         request: CompletionRequest {
             model: None,
-            chat_history: vec![Message::user("hi")],
+            system: None,
+            messages: NonEmpty::new(Message::user("hi")),
             documents: vec![],
             tools: vec![],
             temperature: None,

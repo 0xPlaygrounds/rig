@@ -5,7 +5,7 @@
 //! let mode = resolve_output(OutputKind::Auto, true, 0, true, false);
 //! assert_eq!(mode, OutputKind::Native);
 //! ```
-
+use rig_core::non_empty::NonEmpty;
 use rig_core::{
     completion::{
         CompletionRequest, Document, ToolDefinition,
@@ -216,13 +216,15 @@ pub struct RequestGraph<'a> {
 
 /// Construct a completion request from ordered graph inputs and resolved output
 /// policy. Non-tool descriptors are omitted; an invalid native schema is omitted.
-pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
-    let mut chat_history: Vec<Message> = Vec::with_capacity(graph.utterances.len() + 2);
-    let system = system_message(graph);
-    if let Some(content) = system {
-        chat_history.push(Message::System { content });
-    }
-    chat_history.extend(graph.utterances.iter().map(|parts| parts.to_message()));
+/// `None` when no utterance has content: there is no conversation to send.
+pub fn fold_request(graph: &RequestGraph<'_>) -> Option<CompletionRequest> {
+    let messages = NonEmpty::from_vec(
+        graph
+            .utterances
+            .iter()
+            .filter_map(|parts| parts.to_message())
+            .collect(),
+    )?;
 
     let mut tools: Vec<ToolDefinition> = graph
         .tools
@@ -251,9 +253,10 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
         | (OutputKind::Auto | OutputKind::Tool | OutputKind::Prompted, _) => None,
     };
 
-    CompletionRequest {
+    Some(CompletionRequest {
         model: None,
-        chat_history,
+        system: system_message(graph),
+        messages,
         documents: graph.documents.clone(),
         tools,
         temperature: graph.temperature,
@@ -262,7 +265,7 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
         additional_params: graph.additional_params.cloned(),
         output_schema,
         record_telemetry_content: false,
-    }
+    })
 }
 
 /// The system message: the preamble with the output mode's augmentation,
@@ -591,7 +594,7 @@ pub fn retrieval_query(utterances: &[MessageParts]) -> String {
     utterances
         .iter()
         .rev()
-        .find_map(|parts| parts.to_message().rag_text())
+        .find_map(|parts| parts.to_message()?.rag_text())
         .unwrap_or_default()
 }
 
@@ -611,7 +614,7 @@ pub fn answer_text(content: &[AssistantContent]) -> String {
 /// A user message of one text part.
 pub fn user_text(text: &str) -> Message {
     Message::User {
-        content: vec![UserContent::text(text)],
+        content: NonEmpty::new(UserContent::text(text)),
     }
 }
 

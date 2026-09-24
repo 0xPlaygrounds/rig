@@ -125,11 +125,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text."
-            },
+          "system": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -297,11 +294,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text."
-            },
+          "system": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -508,11 +502,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text."
-            },
+          "system": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text.",
+          "messages": [
             {
               "role": "user",
               "content": [

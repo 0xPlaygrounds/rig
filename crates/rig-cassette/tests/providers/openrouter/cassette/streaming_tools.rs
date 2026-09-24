@@ -6,6 +6,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig --all-features --test openrouter stream_encrypted_reasoning -- --test-threads=1`
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
@@ -248,15 +249,15 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // replays as history.
             let assistant_message = Message::Assistant {
                 id: stream.message_id.clone().map(String::from),
-                content: stream.snapshot(),
+                content: NonEmpty::from_vec(stream.snapshot()).expect("non-empty content"),
             };
             let tool_result_message = Message::User {
-        content: vec![UserContent::tool_result_for(
+        content: NonEmpty::new(UserContent::tool_result_for(
             tool_call.id.clone(),
             tool_call.provider.clone(),
             tool_call.function.name.clone(),
-            vec![ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")],
-        )],
+            NonEmpty::new(ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")),
+        )),
     };
 
             let followup = model
@@ -349,15 +350,15 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .expect("raw stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
+                content: NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
             };
             let tool_result_message = Message::User {
-        content: vec![UserContent::tool_result_for(
+        content: NonEmpty::new(UserContent::tool_result_for(
             tool_call.id.clone(),
             tool_call.provider.clone(),
             tool_call.function.name.clone(),
-            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-        )],
+            NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+        )),
     };
             let followup_request = model
                 .completion_request(

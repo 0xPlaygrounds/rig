@@ -1,4 +1,5 @@
 use super::*;
+use rig_core::non_empty::NonEmpty;
 
 // ============================================================
 // rpc_error — pins the from_provider_body usage on the RPC error path
@@ -239,37 +240,39 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
 
     let call = |wire_id: &str, name: &str| message::Message::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+        content: NonEmpty::new(AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
             ToolFunction {
                 name: name.to_owned(),
                 arguments: serde_json::json!({}),
             },
-        ))],
+        ))),
     };
     let result = |wire_id: &str, name: &str| message::Message::User {
-        content: vec![message::UserContent::ToolResult(ToolResult {
+        content: NonEmpty::new(message::UserContent::ToolResult(ToolResult {
             call: ToolCallId::new_or_minted(wire_id, 0),
             provider: ProviderCallId::new(wire_id),
             name: name.to_owned(),
-            content: vec![ToolResultContent::text("out")],
-        })],
+            content: NonEmpty::new(ToolResultContent::text("out")),
+        })),
     };
 
     let req = create_grpc_request(
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: vec![
+            system: None,
+            messages: NonEmpty::of(
                 // Driver-built: the executed name travels as data (a
                 // repair hook renamed the call: `sum` ran, not `add`).
                 call("call_1", "add"),
-                result("call_1", "sum"),
-                // Cross-provider history with an OpenAI-shaped id —
-                // `call_abc` must never travel as the name.
-                call("call_abc", "get_weather"),
-                result("call_abc", "get_weather"),
-            ],
+                [
+                    result("call_1", "sum"), // Cross-provider history with an OpenAI-shaped id —
+                    // `call_abc` must never travel as the name.
+                    call("call_abc", "get_weather"),
+                    result("call_abc", "get_weather"),
+                ],
+            ),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -321,7 +324,8 @@ fn create_grpc_request_populates_tool_parameters() {
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: vec![message::Message::user("forecast in Berlin?")],
+            system: None,
+            messages: NonEmpty::new(message::Message::user("forecast in Berlin?")),
             documents: Vec::new(),
             tools: vec![tool],
             temperature: None,
@@ -439,14 +443,18 @@ fn a_signature_on_answer_text_stays_on_that_text() {
         "gemini-3-flash-preview",
         CompletionRequest {
             model: None,
-            chat_history: vec![
+            system: None,
+            messages: NonEmpty::of(
                 message::Message::user("q"),
-                message::Message::Assistant {
-                    id: None,
-                    content: normalized.choice.clone(),
-                },
-                message::Message::user("again"),
-            ],
+                [
+                    message::Message::Assistant {
+                        id: None,
+                        content: NonEmpty::from_vec(normalized.choice.clone())
+                            .expect("non-empty content"),
+                    },
+                    message::Message::user("again"),
+                ],
+            ),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -678,23 +686,28 @@ fn only_gemini_reasoning_is_replayed() {
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: vec![
+            system: None,
+            messages: NonEmpty::of(
                 message::Message::user("What is 2 + 2?"),
-                message::Message::Assistant {
-                    id: None,
-                    content: vec![
-                        reasoning("grpc thought", b"grpc", REASONING_ISSUER),
-                        reasoning(
-                            "rest thought",
-                            b"rest",
-                            rig_core::providers::gemini::completion::PROVIDER_NAME,
+                [
+                    message::Message::Assistant {
+                        id: None,
+                        content: NonEmpty::of(
+                            reasoning("grpc thought", b"grpc", REASONING_ISSUER),
+                            [
+                                reasoning(
+                                    "rest thought",
+                                    b"rest",
+                                    rig_core::providers::gemini::completion::PROVIDER_NAME,
+                                ),
+                                reasoning("anthropic thought", b"anthropic", "anthropic"),
+                                AssistantContent::text("4"),
+                            ],
                         ),
-                        reasoning("anthropic thought", b"anthropic", "anthropic"),
-                        AssistantContent::text("4"),
-                    ],
-                },
-                message::Message::user("And 3 + 3?"),
-            ],
+                    },
+                    message::Message::user("And 3 + 3?"),
+                ],
+            ),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,

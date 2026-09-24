@@ -1,27 +1,28 @@
 use crate::message::{
     AssistantContent, Message, ToolCall, ToolFunction, ToolResultContent, UserContent,
 };
+use crate::non_empty::NonEmpty;
 
 fn call(wire_id: &str, name: &str) -> Message {
     Message::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+        content: NonEmpty::new(AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
             ToolFunction {
                 name: name.to_owned(),
                 arguments: serde_json::json!({}),
             },
-        ))],
+        ))),
     }
 }
 
 fn nameless_result(wire_id: &str) -> Message {
     Message::User {
-        content: vec![UserContent::tool_result_from_wire(
+        content: NonEmpty::new(UserContent::tool_result_from_wire(
             wire_id,
             "",
-            vec![ToolResultContent::text("out")],
-        )],
+            NonEmpty::new(ToolResultContent::text("out")),
+        )),
     }
 }
 
@@ -70,11 +71,11 @@ fn an_established_name_is_never_overwritten() {
     let mut history = vec![
         call("toolu_1", "add"),
         Message::User {
-            content: vec![UserContent::tool_result_from_wire(
+            content: NonEmpty::new(UserContent::tool_result_from_wire(
                 "toolu_1",
                 "sum",
-                vec![ToolResultContent::text("3")],
-            )],
+                NonEmpty::new(ToolResultContent::text("3")),
+            )),
         },
     ];
     super::resolve_empty_tool_result_names(&mut history);
@@ -97,15 +98,15 @@ fn a_handle_only_result_resolves_from_an_id_less_call() {
     let mut history = vec![
         Message::Assistant {
             id: None,
-            content: vec![AssistantContent::ToolCall(id_less)],
+            content: NonEmpty::new(AssistantContent::ToolCall(id_less)),
         },
         Message::User {
-            content: vec![UserContent::ToolResult(crate::message::ToolResult {
+            content: NonEmpty::new(UserContent::ToolResult(crate::message::ToolResult {
                 call: handle,
                 provider: None,
                 name: String::new(),
-                content: vec![ToolResultContent::text("out")],
-            })],
+                content: NonEmpty::new(ToolResultContent::text("out")),
+            })),
         },
     ];
     super::resolve_empty_tool_result_names(&mut history);
@@ -127,7 +128,7 @@ fn local_result(id: crate::message::ToolCallId, name: &str) -> UserContent {
         call: id,
         provider: None,
         name: name.into(),
-        content: vec![ToolResultContent::text("out")],
+        content: NonEmpty::new(ToolResultContent::text("out")),
     })
 }
 
@@ -138,16 +139,16 @@ fn a_named_duplicate_result_consumes_only_its_matching_call() {
     let mut history = vec![
         Message::Assistant {
             id: None,
-            content: vec![
+            content: NonEmpty::of(
                 local_call(id.clone(), "alpha"),
-                local_call(id.clone(), "beta"),
-            ],
+                [local_call(id.clone(), "beta")],
+            ),
         },
         Message::User {
-            content: vec![local_result(id.clone(), "beta")],
+            content: NonEmpty::new(local_result(id.clone(), "beta")),
         },
         Message::User {
-            content: vec![local_result(id, "")],
+            content: NonEmpty::new(local_result(id, "")),
         },
     ];
     super::resolve_empty_tool_result_names(&mut history);
@@ -163,23 +164,23 @@ fn name_resolution_preserves_identity_namespaces_and_turn_scope() {
     let mut history = vec![
         Message::Assistant {
             id: None,
-            content: vec![
+            content: NonEmpty::of(
                 local_call(generated.clone(), "alpha"),
-                local_call(explicit.clone(), "beta"),
-            ],
+                [local_call(explicit.clone(), "beta")],
+            ),
         },
         Message::User {
-            content: vec![local_result(explicit, "")],
+            content: NonEmpty::new(local_result(explicit, "")),
         },
         Message::User {
-            content: vec![local_result(generated.clone(), "")],
+            content: NonEmpty::new(local_result(generated.clone(), "")),
         },
         Message::Assistant {
             id: None,
-            content: vec![local_call(generated.clone(), "gamma")],
+            content: NonEmpty::new(local_call(generated.clone(), "gamma")),
         },
         Message::User {
-            content: vec![local_result(generated, "")],
+            content: NonEmpty::new(local_result(generated, "")),
         },
     ];
     super::resolve_empty_tool_result_names(&mut history);
@@ -192,11 +193,11 @@ fn name_resolution_does_not_consult_future_calls() {
     let id = crate::message::ToolCallId::minted(0);
     let mut history = vec![
         Message::User {
-            content: vec![local_result(id.clone(), "")],
+            content: NonEmpty::new(local_result(id.clone(), "")),
         },
         Message::Assistant {
             id: None,
-            content: vec![local_call(id, "future")],
+            content: NonEmpty::new(local_call(id, "future")),
         },
     ];
     super::resolve_empty_tool_result_names(&mut history);
@@ -210,14 +211,14 @@ fn name_resolution_retains_outstanding_calls_across_assistant_text() {
     let mut history = vec![
         Message::Assistant {
             id: None,
-            content: vec![local_call(id.clone(), "lookup")],
+            content: NonEmpty::new(local_call(id.clone(), "lookup")),
         },
         Message::Assistant {
             id: None,
-            content: vec![AssistantContent::text("waiting")],
+            content: NonEmpty::new(AssistantContent::text("waiting")),
         },
         Message::User {
-            content: vec![local_result(id, "")],
+            content: NonEmpty::new(local_result(id, "")),
         },
     ];
     super::resolve_empty_tool_result_names(&mut history);

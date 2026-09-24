@@ -8,18 +8,23 @@
 use super::gemini_api_types::GenerateContentRequest;
 use crate::completion::{CompletionRequest, ToolDefinition};
 use crate::message::{Message, ToolChoice, UserContent};
+use crate::non_empty::NonEmpty;
 
 const HANDLE: &str = "cachedContents/matrix";
 
 fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest {
     super::create_request_body(CompletionRequest {
-        chat_history: system
-            .then(|| Message::system("you are terse"))
-            .into_iter()
-            .chain([Message::User {
-                content: vec![UserContent::text("hi")],
-            }])
-            .collect(),
+        system: None,
+        messages: NonEmpty::from_vec(
+            system
+                .then(|| Message::system("you are terse"))
+                .into_iter()
+                .chain([Message::User {
+                    content: NonEmpty::new(UserContent::text("hi")),
+                }])
+                .collect(),
+        )
+        .expect("a conversation"),
         documents: vec![],
         tools: if tools {
             vec![ToolDefinition {

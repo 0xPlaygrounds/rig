@@ -154,6 +154,9 @@ fn effect_log(mut log: Value) -> Result<(Value, Migration), MigrateError> {
                     source: serde::de::Error::missing_field("tool_output"),
                 });
             }
+            if let Some(kind) = record.get_mut("kind") {
+                kind_to_current(kind);
+            }
             if let Some(outcome) = record.get_mut("outcome") {
                 answer_to_current(outcome);
             }
@@ -270,6 +273,9 @@ fn components_to_current(
         let path = format!("{entity}/{component}");
         match component.as_str() {
             "rig_ecs::bus::effect::PendingEffect" => {
+                if let Some(kind) = value.get_mut("kind") {
+                    kind_to_current(kind);
+                }
                 retype::<EffectKind>(value, "kind", &path)?;
             }
             "rig_ecs::bus::handlers::Bound" => {
@@ -316,6 +322,33 @@ fn components_to_current(
         }
     }
     Ok(())
+}
+
+/// A format-0 effect kind in the current shape: a completion request's
+/// conversation is `messages`, and a leading system message that is not the
+/// conversation's only message is its `system` prompt, as the request
+/// builder places a preamble.
+fn kind_to_current(kind: &mut Value) {
+    if kind.get("effect").and_then(Value::as_str) != Some("completion") {
+        return;
+    }
+    let Some(request) = kind.get_mut("request").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let Some(Value::Array(mut messages)) = request.remove("chat_history") else {
+        return;
+    };
+    let leading_system = messages
+        .first()
+        .filter(|_| messages.len() > 1)
+        .filter(|first| first.get("role").and_then(Value::as_str) == Some("system"))
+        .and_then(|first| first.get("content"))
+        .cloned();
+    if let Some(system) = leading_system {
+        messages.remove(0);
+        request.insert("system".to_owned(), system);
+    }
+    request.insert("messages".to_owned(), Value::Array(messages));
 }
 
 /// A format-0 answer, `{"Ok": outcome}` or `{"Err": report}`, in the

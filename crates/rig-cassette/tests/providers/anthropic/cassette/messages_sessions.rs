@@ -13,6 +13,7 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::{CompletionModel, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -312,16 +313,16 @@ async fn long_history_replay_nonstreaming() {
                 .message(Message::user("Now look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: vec![
+                    content: NonEmpty::of(
                         AssistantContent::text("Checking the harbor label now."),
-                        AssistantContent::ToolCall(tool_call.clone()),
-                    ],
+                        [AssistantContent::ToolCall(tool_call.clone())],
+                    ),
                 })
                 .message(Message::from(UserContent::tool_result_for(
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                    NonEmpty::new(rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
                 )))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))

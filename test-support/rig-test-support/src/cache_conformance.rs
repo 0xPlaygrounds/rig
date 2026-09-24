@@ -52,6 +52,7 @@
 #![allow(dead_code)]
 
 use rig_agent::completion::CompletionModel;
+use rig_core::non_empty::NonEmpty;
 
 use rig_agent::completion::CompletionRequest;
 
@@ -306,9 +307,13 @@ impl CacheProbe {
     /// harness exists to catch.
     fn request(&self, chat_history: Vec<Message>) -> CompletionRequest {
         CompletionRequest {
-            chat_history: std::iter::once(Message::system(self.preamble.clone()))
-                .chain(chat_history)
-                .collect(),
+            system: None,
+            messages: NonEmpty::from_vec(
+                std::iter::once(Message::system(self.preamble.clone()))
+                    .chain(chat_history)
+                    .collect(),
+            )
+            .expect("a conversation"),
             documents: vec![],
             tools: self.tools.clone(),
             temperature: Some(0.0),
@@ -435,7 +440,7 @@ where
     M: CompletionModel,
 {
     let opening = Message::User {
-        content: vec![UserContent::text(probe.prompt)],
+        content: NonEmpty::new(UserContent::text(probe.prompt)),
     };
 
     let first = send(model, probe, vec![opening.clone()], "turn 1 (warm)").await;
@@ -443,10 +448,10 @@ where
 
     let assistant = Message::Assistant {
         id: second.end.message_id.clone().map(String::from),
-        content: second.choice.clone(),
+        content: NonEmpty::from_vec(second.choice.clone()).expect("non-empty content"),
     };
     let follow_up = Message::User {
-        content: vec![UserContent::text(probe.follow_up)],
+        content: NonEmpty::new(UserContent::text(probe.follow_up)),
     };
     let third = send(
         model,
@@ -495,7 +500,7 @@ where
     M: CompletionModel,
 {
     let opening = Message::User {
-        content: vec![UserContent::text(probe.prompt)],
+        content: NonEmpty::new(UserContent::text(probe.prompt)),
     };
 
     let (first_usage, _, _) =
@@ -516,10 +521,10 @@ where
     };
     let assistant = Message::Assistant {
         id: message_id,
-        content: vec![rig_core::message::AssistantContent::text(&assistant_text)],
+        content: NonEmpty::new(rig_core::message::AssistantContent::text(&assistant_text)),
     };
     let follow_up = Message::User {
-        content: vec![UserContent::text(probe.follow_up)],
+        content: NonEmpty::new(UserContent::text(probe.follow_up)),
     };
     let (third_usage, _, _) = stream_turn(
         model,

@@ -15,6 +15,7 @@ pub mod output;
 pub mod patch;
 pub mod prepare;
 pub mod spec;
+use rig_core::non_empty::NonEmpty;
 pub use spec::UnhandledInvalidToolCall;
 pub mod transcript;
 
@@ -31,11 +32,10 @@ use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 use rig_core::streaming::BlockId;
 
+use rig_core::completion::{CompletionEnd, Message, Usage};
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
-
-use rig_core::completion::{CompletionEnd, Message, Usage};
 pub mod policy;
 pub mod response;
 pub mod streamed;
@@ -761,7 +761,9 @@ impl AgentRun {
                 // Feedback may retry an empty answer, but empty assistant messages
                 // must not enter provider history.
                 let content = turn.items;
-                if !is_empty_assistant_turn(&content) {
+                if !is_empty_assistant_turn(&content)
+                    && let Some(content) = NonEmpty::from_vec(content)
+                {
                     self.new_messages.push(Message::Assistant {
                         id: turn.message_id,
                         content,
@@ -902,10 +904,13 @@ impl AgentRun {
 
                     let missing = self.missing_required_output_fields(&args);
                     if !missing.is_empty() && self.can_reprompt_for_output() {
-                        self.new_messages.push(Message::Assistant {
-                            id: message_id,
-                            content: items.clone(),
-                        });
+                        // The turn holds the output call, so it is never empty.
+                        if let Some(content) = NonEmpty::from_vec(items.clone()) {
+                            self.new_messages.push(Message::Assistant {
+                                id: message_id,
+                                content,
+                            });
+                        }
                         let feedback = format!(
                             "The `{output_tool_name}` arguments were missing required field(s): \
                              {}. Call `{output_tool_name}` again with every required field.",
@@ -921,18 +926,19 @@ impl AgentRun {
 
                     // Store output as text without tool calls so resumed history
                     // cannot contain unanswered calls.
-                    let mut final_items: Vec<AssistantContent> = items
-                        .iter()
-                        .filter(|item| !matches!(item, AssistantContent::ToolCall(_)))
-                        .cloned()
-                        .collect();
-                    final_items.push(AssistantContent::text(output.clone()));
+                    let content = NonEmpty::with_last(
+                        items
+                            .iter()
+                            .filter(|item| !matches!(item, AssistantContent::ToolCall(_)))
+                            .cloned(),
+                        AssistantContent::text(output.clone()),
+                    );
                     self.new_messages.push(Message::Assistant {
                         id: message_id,
-                        content: final_items.clone(),
+                        content: content.clone(),
                     });
 
-                    return Ok(self.finish(output, final_items, output_tool_calls));
+                    return Ok(self.finish(output, content.into_vec(), output_tool_calls));
                 }
 
                 // Reasoning alone is not an answer. Reject answerless truncated turns
@@ -944,10 +950,12 @@ impl AgentRun {
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.
-                if !is_empty_assistant_turn(&items) {
+                if !is_empty_assistant_turn(&items)
+                    && let Some(content) = NonEmpty::from_vec(items.clone())
+                {
                     self.new_messages.push(Message::Assistant {
                         id: message_id,
-                        content: items.clone(),
+                        content,
                     });
                 }
 
@@ -1227,10 +1235,13 @@ impl AgentRun {
 
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
-                self.new_messages.push(Message::Assistant {
-                    id: resolving.message_id.clone(),
-                    content: resolving.original_choice.clone(),
-                });
+                // The turn holds the invalid call, so it is never empty.
+                if let Some(content) = NonEmpty::from_vec(resolving.original_choice.clone()) {
+                    self.new_messages.push(Message::Assistant {
+                        id: resolving.message_id.clone(),
+                        content,
+                    });
+                }
                 let Some(user_message) = invalid_tool_retry_user_message(
                     &resolving.original_choice,
                     &tool_call.id,
@@ -1260,7 +1271,7 @@ impl AgentRun {
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    vec![reason.into()],
+                    NonEmpty::new(reason.into()),
                 );
                 // Keyed by the call's position: `next_index` is exactly the
                 // invalid call's slot in `items`, and later mutations only
@@ -1352,7 +1363,9 @@ impl AgentRun {
             )));
         }
 
-        self.new_messages.push(Message::User { content: results });
+        if let Some(content) = NonEmpty::from_vec(results) {
+            self.new_messages.push(Message::User { content });
+        }
         self.state = RunState::PreparingRequest;
         Ok(())
     }
@@ -1531,7 +1544,7 @@ impl AgentRun {
                     call: invalid.tool_call.id.clone(),
                     provider: invalid.tool_call.provider.clone(),
                     name: invalid.tool_call.function.name.clone(),
-                    content: vec![ToolResultContent::text(reason.as_str())],
+                    content: NonEmpty::new(ToolResultContent::text(reason.as_str())),
                 };
                 self.abandon_streamed_turn(
                     partial,
@@ -1614,10 +1627,12 @@ impl AgentRun {
             };
             if !turn.allowed_tool_names.contains(&tool_call.function.name) {
                 let mut diagnostic_messages = self.new_messages.clone();
-                if !is_empty_assistant_turn(&turn.choice) {
+                if !is_empty_assistant_turn(&turn.choice)
+                    && let Some(content) = NonEmpty::from_vec(turn.choice.clone())
+                {
                     diagnostic_messages.push(Message::Assistant {
                         id: turn.message_id.clone(),
-                        content: turn.choice.clone(),
+                        content,
                     });
                 }
                 let diagnostic_history =
@@ -1660,10 +1675,12 @@ impl AgentRun {
     /// the unmodified assistant turn under inspection.
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
         let mut diagnostic_messages = self.new_messages.clone();
-        diagnostic_messages.push(Message::Assistant {
-            id: resolving.message_id.clone(),
-            content: resolving.original_choice.clone(),
-        });
+        if let Some(content) = NonEmpty::from_vec(resolving.original_choice.clone()) {
+            diagnostic_messages.push(Message::Assistant {
+                id: resolving.message_id.clone(),
+                content,
+            });
+        }
         build_full_history(self.chat_history.as_deref(), diagnostic_messages)
     }
 

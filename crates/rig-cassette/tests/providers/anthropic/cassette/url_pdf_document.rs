@@ -5,6 +5,7 @@
 //! document must map to a `"source": {"type": "url", ...}` content block.
 //! See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>.
 use rig::message::{Message, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
@@ -26,12 +27,12 @@ async fn url_pdf_document_prompt() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: vec![
+                    content: NonEmpty::of(
                         UserContent::document_url(PDF_URL, None),
-                        UserContent::text(
+                        [UserContent::text(
                             "What is the title of this paper? Answer in one short sentence.",
-                        ),
-                    ],
+                        )],
+                    ),
                 })
                 .await
                 .expect("URL PDF document prompt should succeed")

@@ -39,7 +39,7 @@ fn tool_result_texts(log: &EffectLog) -> Vec<String> {
         other => panic!("the last record is a completion, not {other:?}"),
     };
     request
-        .chat_history
+        .history()
         .iter()
         .filter_map(|message| match message {
             rig::message::Message::User { content } => Some(content.iter()),

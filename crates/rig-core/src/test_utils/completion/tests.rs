@@ -1,4 +1,5 @@
 use super::*;
+use crate::non_empty::NonEmpty;
 use crate::{
     error::ErrorKind,
     message::Message,
@@ -9,7 +10,8 @@ use futures::StreamExt;
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user(prompt)],
+        system: None,
+        messages: NonEmpty::new(Message::user(prompt)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

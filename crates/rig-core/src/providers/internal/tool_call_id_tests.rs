@@ -1,5 +1,6 @@
 //! Synthetic wire edge cases complement cassette replay: missing and colliding IDs
 //! cannot be reliably requested from a live provider.
+use crate::non_empty::NonEmpty;
 use crate::operation::Completion;
 use crate::wire::{Fold, Operation, Reply, Wire, WireFrame};
 use crate::{completion::CompletionResponse, message::AssistantContent};
@@ -17,7 +18,8 @@ fn fold_document<W: Wire<Op = Completion>>(wire: &W, body: &Value) -> Completion
     driver.finish();
     let mut fold = <Completion as Operation>::fold(&crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("probe")],
+        system: None,
+        messages: NonEmpty::new(crate::message::Message::user("probe")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

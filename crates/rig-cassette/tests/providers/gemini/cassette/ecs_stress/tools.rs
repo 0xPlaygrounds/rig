@@ -221,6 +221,9 @@ pub(super) async fn cancelled(ecs: &mut EcsAgent, prompt: &str, max_turns: usize
     history.sort_by_key(|(order, _)| *order);
     PromptError::PromptCancelled {
         reason: report.message,
-        chat_history: history.into_iter().map(|(_, message)| message).collect(),
+        chat_history: history
+            .into_iter()
+            .filter_map(|(_, message)| message)
+            .collect(),
     }
 }

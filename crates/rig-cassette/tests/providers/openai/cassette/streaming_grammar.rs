@@ -20,6 +20,7 @@ use rig::message::{
 use rig::providers::openai;
 use rig::streaming::{Delta, StreamEvent};
 use rig_core::completion::CompletionEnd;
+use rig_core::non_empty::NonEmpty;
 use serde_json::json;
 
 use super::super::support::with_openai_cassette;
@@ -430,13 +431,13 @@ async fn tool_call_then_followup_text_across_turns() {
 
             let assistant_message = Message::Assistant {
                 id: first.message_id.clone(),
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
+                content: NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
             };
             let tool_result = Message::from(UserContent::tool_result_for(
                 tool_call.id.clone(),
                 tool_call.provider.clone(),
                 tool_call.function.name.clone(),
-                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
             ));
             let followup_request = model
                 .completion_request(
@@ -549,13 +550,13 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // gate together with the tool result.
             let first_assistant = Message::Assistant {
                 id: first.message_id.clone(),
-                content: first.choice.clone(),
+                content: NonEmpty::from_vec(first.choice.clone()).expect("non-empty content"),
             };
             let tool_result = Message::from(UserContent::tool_result_for(
                 tool_call.id.clone(),
                 tool_call.provider.clone(),
                 tool_call.function.name.clone(),
-                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
             ));
             let second_request = model
                 .completion_request(
@@ -587,7 +588,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // Turn 3: both prior assistant turns' rs_* items replay together.
             let second_assistant = Message::Assistant {
                 id: second.message_id.clone(),
-                content: second.choice.clone(),
+                content: NonEmpty::from_vec(second.choice.clone()).expect("non-empty content"),
             };
             let third_request = model
                 .completion_request(

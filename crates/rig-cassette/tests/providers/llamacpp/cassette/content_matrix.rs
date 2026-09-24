@@ -33,6 +33,7 @@ use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolResult, ToolResultContent,
     UserContent,
 };
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use serde_json::{Value, json};
 
@@ -143,10 +144,14 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
                         .completion_request(format!("{NO_THINK}What was the second word I said?"))
                         .messages(vec![
                             Message::User {
-                                content: vec![UserContent::text("First word: heliotrope.")],
+                                content: NonEmpty::new(UserContent::text(
+                                    "First word: heliotrope.",
+                                )),
                             },
                             Message::User {
-                                content: vec![UserContent::text("Second word: quicksilver.")],
+                                content: NonEmpty::new(UserContent::text(
+                                    "Second word: quicksilver.",
+                                )),
                             },
                         ])
                         .max_tokens(256)
@@ -273,12 +278,12 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![UserContent::ToolResult(ToolResult {
+                            content: NonEmpty::new(UserContent::ToolResult(ToolResult {
                                 call: ToolCallId::new_or_minted("call_long", 0),
                                 provider: ProviderCallId::new("call_long"),
                                 name: "dump".to_string(),
-                                content: vec![ToolResultContent::text(long_output)],
-                            })],
+                                content: NonEmpty::new(ToolResultContent::text(long_output)),
+                            })),
                         })
                         .preamble(
                             "The tool result ends with a code. Reply with only that code."
@@ -286,17 +291,17 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                         )
                         .messages(vec![
                             Message::User {
-                                content: vec![UserContent::text(
+                                content: NonEmpty::new(UserContent::text(
                                     "What code does the dump end with?",
-                                )],
+                                )),
                             },
                             Message::Assistant {
                                 id: None,
-                                content: vec![AssistantContent::tool_call(
+                                content: NonEmpty::new(AssistantContent::tool_call(
                                     "call_long",
                                     "dump",
                                     json!({}),
-                                )],
+                                )),
                             },
                         ])
                         .max_tokens(256)
@@ -341,14 +346,18 @@ async fn a_system_message_plus_history_keeps_its_order() {
                     )
                     .messages(vec![
                         Message::User {
-                            content: vec![UserContent::text("Codeword one is heliotrope.")],
+                            content: NonEmpty::new(UserContent::text(
+                                "Codeword one is heliotrope.",
+                            )),
                         },
                         Message::Assistant {
                             id: None,
-                            content: vec![AssistantContent::text("Noted.")],
+                            content: NonEmpty::new(AssistantContent::text("Noted.")),
                         },
                         Message::User {
-                            content: vec![UserContent::text("Codeword two is quicksilver.")],
+                            content: NonEmpty::new(UserContent::text(
+                                "Codeword two is quicksilver.",
+                            )),
                         },
                     ])
                     .max_tokens(256)

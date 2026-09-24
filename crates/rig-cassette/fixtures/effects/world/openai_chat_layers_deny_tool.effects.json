@@ -79,11 +79,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
-            },
+          "system": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -214,11 +211,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
-            },
+          "system": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+          "messages": [
             {
               "role": "user",
               "content": [

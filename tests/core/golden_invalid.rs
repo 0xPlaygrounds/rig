@@ -61,7 +61,7 @@ async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String 
 fn tool_result_texts(log: &rig::cassette::effect_log::EffectLog, at: usize) -> Vec<String> {
     match &log.records[at].kind {
         rig::effect::EffectKind::Completion { request, .. } => request
-            .chat_history
+            .history()
             .iter()
             .filter_map(|message| match message {
                 rig::message::Message::User { content } => Some(content.iter()),

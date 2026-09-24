@@ -262,7 +262,7 @@ fn the_nested_completion_is_a_model_record_made_by_the_tool() {
         assert_eq!(log[2].kind.family(), EffectFamily::Completion);
         let question = match &log[2].kind {
             rig_core::effect::EffectKind::Completion { request, .. } => request
-                .chat_history
+                .history()
                 .iter()
                 .rev()
                 .find_map(rig_core::message::Message::rag_text)

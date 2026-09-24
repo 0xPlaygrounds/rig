@@ -113,7 +113,7 @@ fn validate_protocol_inputs(
             protocol,
         )?;
     }
-    for message in request.chat_history.iter() {
+    for message in &request.history() {
         match message {
             Message::System { content } => {
                 validate_protocol_text(content, "system message", protocol)?;
@@ -326,7 +326,7 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
 }
 
 fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
-    let mut messages = request.chat_history.clone();
+    let mut messages = request.history();
     if !request.documents.is_empty() {
         let context = request
             .documents

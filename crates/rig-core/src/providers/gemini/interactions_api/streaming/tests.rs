@@ -1,4 +1,5 @@
 use super::*;
+use crate::non_empty::NonEmpty;
 use crate::streaming::Delta;
 use serde_json::json;
 
@@ -8,7 +9,8 @@ use serde_json::json;
 fn interactions_request() -> crate::completion::CompletionRequest {
     crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("hello")],
+        system: None,
+        messages: NonEmpty::new(crate::message::Message::user("hello")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

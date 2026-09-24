@@ -5,6 +5,7 @@
 //! arguments, explicit tool choice, reasoning metadata, structured JSON output,
 //! and caller-owned long chat history.
 
+use rig::non_empty::NonEmpty;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -697,11 +698,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::tool_call(
+                    content: NonEmpty::new(AssistantContent::tool_call(
                         "call_REDACTED_1",
                         AlphaSignal::NAME,
                         json!({}),
-                    )],
+                    )),
                 })
                 .message(Message::tool_result(
                     "call_REDACTED_1",

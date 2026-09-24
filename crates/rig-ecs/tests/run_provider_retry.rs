@@ -197,7 +197,7 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
     // the lost attempt again: same history, the one tool result in it.
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 3);
-    assert_eq!(requests[1].chat_history, requests[2].chat_history);
+    assert_eq!(requests[1].history(), requests[2].history());
     let log: EffectLog =
         serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
     let tools = log
@@ -451,7 +451,7 @@ fn a_checkpoint_saved_during_the_hold_resumes_into_the_retry() {
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 1);
     assert!(
-        requests[0].chat_history.iter().any(|m| matches!(m, rig_core::message::Message::User { content } if content.iter().any(|p| matches!(p, rig_core::message::UserContent::ToolResult(_))))),
+        requests[0].history().iter().any(|m| matches!(m, rig_core::message::Message::User { content } if content.iter().any(|p| matches!(p, rig_core::message::UserContent::ToolResult(_))))),
         "the saved tool result is in the retried request"
     );
     assert_eq!(retried(app.world(), run), 1);

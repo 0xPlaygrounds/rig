@@ -14,6 +14,7 @@ use super::message::{AssistantContent, DocumentMediaType};
 use crate::error::ProviderError;
 use crate::id::{MessageId, ModelName, ProviderName, RequestId, ResponseId};
 use crate::message::ToolChoice;
+use crate::non_empty::NonEmpty;
 use crate::response::ResponseMeta;
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -481,15 +482,20 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     }
 }
 
-/// Struct representing a general completion request that can be sent to a completion model provider.
+/// A completion request: the system prompt, the conversation, and what the
+/// provider needs to answer it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// Optional model override for this request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Conversation ending with the prompt. Must contain at least one message;
-    /// checked by [`Self::validate_message_content`].
-    pub chat_history: Vec<Message>,
+    /// The system prompt. A wire that takes system messages renders it as the
+    /// leading one ([`Self::history`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    /// The conversation, ending with the prompt. A [`Message::System`] here is
+    /// a system message inside the conversation, not the system prompt.
+    pub messages: NonEmpty<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
     /// The tools to be sent to the completion model provider
@@ -521,83 +527,30 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    /// The system instructions of this request: the content of the leading
-    /// [`Message::System`] in `chat_history`, which is where
-    /// [`CompletionRequestBuilder::preamble`] places it.
+    /// The system instructions of this request.
     pub fn system_instructions(&self) -> Option<&str> {
-        match self.chat_history.first() {
-            Some(Message::System { content }) => Some(content.as_str()),
-            _ => None,
+        self.system.as_deref()
+    }
+
+    /// Drop reasoning none of `issuers` issued from the conversation; see
+    /// [`crate::message::retain_replayable_reasoning`]. A conversation that
+    /// held nothing else is left as it is, since there is none without it.
+    pub fn retain_replayable_reasoning(&mut self, issuers: &[&str]) {
+        let mut messages = self.messages.to_vec();
+        crate::message::retain_replayable_reasoning(&mut messages, issuers);
+        if let Some(messages) = NonEmpty::from_vec(messages) {
+            self.messages = messages;
         }
     }
 
-    /// Returns a request error for empty history, empty user or assistant
-    /// content lists, or tool results with no content blocks. Empty strings,
-    /// including system messages, are allowed.
-    ///
-    /// Builder `send` and `stream` validate automatically. Call this before
-    /// invoking a [`CompletionModel`] directly. Response-content validation is
-    /// provider-specific and is not performed here.
-    pub fn validate_message_content(&self) -> Result<(), ProviderError> {
-        if self.chat_history.is_empty() {
-            return Err(ProviderError::Request(
-                "request has an empty chat history; providers require at least one message"
-                    .to_owned()
-                    .into(),
-            ));
-        }
-
-        let empty_message = |role: &str, index: usize| {
-            ProviderError::Request(
-                format!(
-                    "{role} message at index {index} has no content; \
-                     providers reject empty content blocks"
-                )
-                .into(),
-            )
-        };
-
-        for (index, message) in self.chat_history.iter().enumerate() {
-            match message {
-                Message::System { .. } => {}
-                Message::Assistant { content, .. } => {
-                    if content.is_empty() {
-                        return Err(empty_message("assistant", index));
-                    }
-                }
-                Message::User { content } => {
-                    if content.is_empty() {
-                        return Err(empty_message("user", index));
-                    }
-
-                    for (position, item) in content.iter().enumerate() {
-                        // Keep exhaustive so new content variants must choose a
-                        // request-validation policy.
-                        match item {
-                            UserContent::ToolResult(result) if result.content.is_empty() => {
-                                let name = &result.name;
-                                return Err(ProviderError::Request(
-                                    format!(
-                                        "tool result for `{name}` at index {position} of the \
-                                         user message at index {index} has no content; \
-                                         providers reject empty content blocks"
-                                    )
-                                    .into(),
-                                ));
-                            }
-                            UserContent::ToolResult(_)
-                            | UserContent::Text(_)
-                            | UserContent::Image(_)
-                            | UserContent::Audio(_)
-                            | UserContent::Video(_)
-                            | UserContent::Document(_) => {}
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    /// The conversation as a wire renders it: the system prompt as the
+    /// leading [`Message::System`], then [`Self::messages`].
+    pub fn history(&self) -> Vec<Message> {
+        self.system
+            .iter()
+            .map(|system| Message::system(system.clone()))
+            .chain(self.messages.iter().cloned())
+            .collect()
     }
 
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
@@ -630,11 +583,14 @@ impl CompletionRequest {
             .map(|doc| UserContent::document(doc.to_string(), Some(DocumentMediaType::TXT)))
             .collect::<Vec<_>>();
 
-        crate::message::non_empty(messages).map(|content| Message::User { content })
+        NonEmpty::from_vec(messages).map(|content| Message::User { content })
     }
 
-    pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
-        let mut chat_history = self.chat_history.clone();
+    /// [`Self::history`] with the documents as one user message after the
+    /// leading system messages: how a wire without native documents sends
+    /// them.
+    pub fn history_with_documents(&self) -> Vec<Message> {
+        let mut chat_history = self.history();
         if let Some(documents) = self.normalized_documents() {
             insert_after_leading_system(&mut chat_history, documents);
         }
@@ -690,7 +646,6 @@ fn merge_provider_tools_into_additional_params(
 }
 
 /// Builds completion requests, optionally retaining a model for dispatch.
-/// [`Self::build`] does not validate message content; `send` and `stream` do.
 ///
 /// ```no_run
 /// use rig_core::completion::{CompletionModel, CompletionRequestBuilder};
@@ -755,8 +710,8 @@ impl<M> CompletionRequestBuilder<M> {
         }
     }
 
-    /// Sets the preamble for the completion request. It becomes the leading
-    /// [`Message::System`] of `chat_history` at build time.
+    /// Sets the preamble: the request's system prompt
+    /// ([`CompletionRequest::system`]).
     pub fn preamble(mut self, preamble: String) -> Self {
         self.preamble = Some(preamble);
         self
@@ -889,13 +844,7 @@ impl<M> CompletionRequestBuilder<M> {
     /// Moves out the model and constructs the request without cloning the model.
     fn into_model_and_request(self) -> (M, CompletionRequest) {
         let model = self.model;
-        let mut chat_history = self.chat_history;
-        let prompt = self.prompt;
-        if let Some(preamble) = self.preamble {
-            chat_history.insert(0, Message::system(preamble));
-        }
-
-        chat_history.push(prompt);
+        let (system, messages) = system_and_messages(self.preamble, self.chat_history, self.prompt);
         // Checked before provider tools are merged in: that merge writes a
         // `tools` key of its own, which is not a caller collision.
         for key in shadowed_typed_fields(
@@ -928,7 +877,8 @@ impl<M> CompletionRequestBuilder<M> {
 
         let request = CompletionRequest {
             model: self.request_model,
-            chat_history,
+            system,
+            messages,
             documents: self.documents,
             tools: self.tools,
             temperature: self.temperature,
@@ -940,6 +890,30 @@ impl<M> CompletionRequestBuilder<M> {
         };
         (model, request)
     }
+}
+
+/// The system prompt and the conversation of a request built from a preamble,
+/// a history and a prompt. Without a preamble, a leading system message of
+/// the history is the system prompt, unless it is the conversation's only
+/// message.
+fn system_and_messages(
+    preamble: Option<String>,
+    history: Vec<Message>,
+    prompt: Message,
+) -> (Option<String>, NonEmpty<Message>) {
+    let mut history = history.into_iter();
+    let (system, first) = match (preamble, history.next()) {
+        (Some(preamble), first) => (Some(preamble), first),
+        (None, Some(Message::System { content })) => match history.next() {
+            Some(next) => (Some(content), Some(next)),
+            None => (Some(content), None),
+        },
+        (None, first) => (None, first),
+    };
+    (
+        system,
+        NonEmpty::with_last(first.into_iter().chain(history), prompt),
+    )
 }
 
 /// The passthrough keys that will override a typed field the caller also set.
@@ -964,14 +938,12 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, ProviderError> {
         let (model, request) = self.into_model_and_request();
-        request.validate_message_content()?;
         model.completion(request).await
     }
 
     /// Stream the completion request
     pub async fn stream(self) -> Result<StreamingCompletionResponse, ProviderError> {
         let (model, request) = self.into_model_and_request();
-        request.validate_message_content()?;
         model.stream(request).await
     }
 }

@@ -1,3 +1,4 @@
+use rig_core::non_empty::NonEmpty;
 use std::collections::HashMap;
 
 use crate::agent::{
@@ -6593,10 +6594,7 @@ async fn patch_request_parity_across_run_and_stream() {
             "override max_tokens wins over the agent's 64"
         );
         // The override preamble wins and is sent as the leading system message.
-        let system = req.chat_history.iter().find_map(|m| match m {
-            Message::System { content } => Some(content.as_str()),
-            _ => None,
-        });
+        let system = req.system.as_deref();
         assert_eq!(
             system,
             Some(OVERRIDE_PREAMBLE),
@@ -6943,11 +6941,11 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
         )
         .build()
         .prompt(Message::User {
-            content: vec![UserContent::image_url(
+            content: NonEmpty::new(UserContent::image_url(
                 "https://example.com/prompt.png",
                 None,
                 None,
-            )],
+            )),
         })
         .history(vec![
             Message::user("older history query"),
@@ -7119,11 +7117,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         )
         .build()
         .prompt(Message::User {
-            content: vec![UserContent::image_url(
+            content: NonEmpty::new(UserContent::image_url(
                 "https://example.com/blocking.png",
                 None,
                 None,
-            )],
+            )),
         })
         .history(vec![
             Message::user("older blocking history query"),
@@ -7163,11 +7161,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
     )
     .build()
     .prompt(Message::User {
-        content: vec![UserContent::image_url(
+        content: NonEmpty::new(UserContent::image_url(
             "https://example.com/streaming.png",
             None,
             None,
-        )],
+        )),
     })
     .history(vec![
         Message::user("older streaming history query"),
@@ -7257,7 +7255,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
     }
 
     fn request_has_sentinel(req: &crate::completion::CompletionRequest) -> bool {
-        req.chat_history.iter().any(|m| match m {
+        req.history().iter().any(|m| match m {
             Message::User { content } => content
                 .iter()
                 .any(|c| matches!(c, UserContent::Text(text) if text.text.contains(SENTINEL))),
@@ -7721,7 +7719,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
     }
 
     assert!(
-        requests[1].chat_history.iter().any(|message| matches!(
+        requests[1].history().iter().any(|message| matches!(
             message,
             Message::User { content }
                 if content.iter().any(|item| matches!(
@@ -9079,8 +9077,8 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
 
     let requests = model.requests();
     assert_eq!(requests.len(), 2);
-    let first = requests[0].chat_history.clone();
-    let second = requests[1].chat_history.clone();
+    let first = requests[0].history().clone();
+    let second = requests[1].history().clone();
     assert_eq!(first, vec![Message::user("question")]);
     assert_eq!(
         second, first,
@@ -9120,7 +9118,7 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
     );
     let second_request = &model.requests()[1];
     assert_eq!(
-        second_request.chat_history.clone(),
+        second_request.history().clone(),
         vec![
             Message::user("question"),
             Message::assistant("rejected"),
@@ -9162,7 +9160,7 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
         ]
     );
     assert_eq!(
-        model.requests()[1].chat_history.clone(),
+        model.requests()[1].history().clone(),
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
@@ -9362,7 +9360,7 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
         ]
     );
     assert_eq!(
-        model.requests()[1].chat_history.clone(),
+        model.requests()[1].history().clone(),
         vec![
             Message::user("question"),
             Message::user("provide an answer"),

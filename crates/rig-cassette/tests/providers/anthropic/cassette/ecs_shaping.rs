@@ -644,9 +644,9 @@ async fn history_first_turn_effect_log() {
                 );
                 assert_eq!(families(&log), [EffectFamily::Completion]);
                 assert!(
-                    request_at(&log, 0).chat_history.len() >= 3,
+                    request_at(&log, 0).history().len() >= 3,
                     "the patched exchange precedes the prompt: {:?}",
-                    request_at(&log, 0).chat_history
+                    request_at(&log, 0).history()
                 );
             },
         )

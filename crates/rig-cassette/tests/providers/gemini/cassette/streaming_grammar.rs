@@ -23,6 +23,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
 use rig::providers::gemini::interactions_api;
 use rig::streaming::{Delta, StreamEvent};
 use rig_core::completion::CompletionEnd;
+use rig_core::non_empty::NonEmpty;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -783,7 +784,7 @@ async fn interactions_requires_action_roundtrip() {
                             tool_call.id.clone(),
                             tool_call.provider.clone(),
                             tool_call.function.name.clone(),
-                            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                            NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
                         )))
                         .additional_params(
                             serde_json::to_value(interactions_api::AdditionalParameters {
@@ -1028,7 +1029,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(ToolCall {
+                    content: NonEmpty::new(AssistantContent::ToolCall(ToolCall {
                         // The cross-provider shape: the other wire's
                         // identifier survives as rig's correlation handle,
                         // with no provider id for Gemini's wire.
@@ -1040,15 +1041,15 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                         },
                         signature: None,
                         additional_params: None,
-                    })],
+                    })),
                 },
                 rig::message::Message::User {
-                    content: vec![UserContent::ToolResult(rig::message::ToolResult {
+                    content: NonEmpty::new(UserContent::ToolResult(rig::message::ToolResult {
                         call: cross_provider_handle,
                         provider: None,
                         name: "add".to_owned(),
-                        content: vec![ToolResultContent::text("5")],
-                    })],
+                        content: NonEmpty::new(ToolResultContent::text("5")),
+                    })),
                 },
             ];
             let request = model

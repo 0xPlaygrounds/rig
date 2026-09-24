@@ -22,6 +22,7 @@ use crate::agent::content::{
     },
 };
 use bevy_reflect::Reflect;
+use rig_core::non_empty::NonEmpty;
 
 use crate::agent::content::parts::{EditTarget, RequestPartEdit};
 use bevy_ecs::{
@@ -1093,7 +1094,10 @@ pub fn append_memory(
                 EffectKind::Memory {
                     op: rig_core::effect::MemoryOp::Append {
                         conversation: rig_core::id::ConversationId::from(conversation.as_str()),
-                        messages: said.into_iter().map(|parts| parts.to_message()).collect(),
+                        messages: said
+                            .into_iter()
+                            .filter_map(|parts| parts.to_message())
+                            .collect(),
                     },
                 },
             ),
@@ -1680,7 +1684,10 @@ pub fn fold_turn(
             output_tool: inputs.output_tool.as_deref(),
             output_tool_config: inputs.output_tool_config.as_ref(),
         };
-        let request = policy::fold_request(&graph);
+        let Some(request) = policy::fold_request(&graph) else {
+            fail_content(&mut commands, run, ContentError::Empty);
+            continue;
+        };
         commands.spawn((
             PendingEffect::new(
                 model.key.clone(),
@@ -2700,7 +2707,7 @@ fn reprompt_for(
                         call: call.id.clone(),
                         provider: call.provider.clone(),
                         name: name.to_owned(),
-                        content: vec![ToolResultContent::text(feedback)],
+                        content: NonEmpty::new(ToolResultContent::text(feedback)),
                     },
                 )],
             };
@@ -2754,10 +2761,14 @@ pub fn materialise_reprompt(
         let Some((reprompt, statuses)) = reprompt_for(read, name, schema) else {
             continue;
         };
+        // A reprompt carries the tool result it answers, so it has parts.
+        let Some(message) = reprompt.to_message() else {
+            continue;
+        };
         commands
             .entity(turn)
             .remove::<TurnRead>()
-            .insert(Reprompt(reprompt.to_message()));
+            .insert(Reprompt(message));
         match spawn_deferred_with(&mut commands, &mut assets, run, reprompt, statuses) {
             Ok(_) => {
                 commands

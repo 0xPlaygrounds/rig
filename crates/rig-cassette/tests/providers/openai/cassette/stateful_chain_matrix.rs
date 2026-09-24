@@ -6,6 +6,7 @@
 //! deleted at the end of the recording, so the fixture cannot seed a live
 //! call later. Record a chain in one session.
 
+use rig::non_empty::NonEmpty;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};
@@ -35,7 +36,8 @@ fn lookup_tool() -> ToolDefinition {
 fn request(history: Vec<Message>, tools: Vec<ToolDefinition>, params: Value) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        system: None,
+        messages: NonEmpty::from_vec(history).expect("a conversation"),
         documents: vec![],
         tools,
         temperature: None,
@@ -71,14 +73,14 @@ fn only_call(choice: &[AssistantContent]) -> ToolCall {
 
 fn answer(call: &ToolCall) -> Message {
     Message::User {
-        content: vec![UserContent::tool_result_for(
+        content: NonEmpty::new(UserContent::tool_result_for(
             call.id.clone(),
             call.provider.clone(),
             call.function.name.clone(),
-            vec![ToolResultContent::text(format!(
+            NonEmpty::new(ToolResultContent::text(format!(
                 "record alpha: code {CODE}"
-            ))],
-        )],
+            ))),
+        )),
     }
 }
 
@@ -340,12 +342,14 @@ async fn stored_then_stateless_mid_conversation() {
                     prompt,
                     Message::Assistant {
                         id: first.end.message_id.clone().map(String::from),
-                        content: first.choice.clone(),
+                        content: NonEmpty::from_vec(first.choice.clone())
+                            .expect("non-empty content"),
                     },
                     tool_answer,
                     Message::Assistant {
                         id: second.end.message_id.clone().map(String::from),
-                        content: second.choice.clone(),
+                        content: NonEmpty::from_vec(second.choice.clone())
+                            .expect("non-empty content"),
                     },
                     Message::user("Repeat the code you reported, exactly, and nothing else."),
                 ];
@@ -424,14 +428,16 @@ async fn file_id_chain() {
             created(&resources, format!("files/{file_id}"));
 
             let document = Message::User {
-                content: vec![
+                content: NonEmpty::of(
                     UserContent::Document(rig::message::Document {
                         data: rig::message::DocumentSourceKind::file_id(&file_id),
                         media_type: Some(rig::message::DocumentMediaType::PDF),
                         additional_params: None,
                     }),
-                    UserContent::text("What is the title on the first page? Answer briefly."),
-                ],
+                    [UserContent::text(
+                        "What is the title on the first page? Answer briefly.",
+                    )],
+                ),
             };
             let model = client.openai.responses("gpt-4.1-mini");
             let params = json!({ "store": false });
@@ -443,7 +449,7 @@ async fn file_id_chain() {
                 document,
                 Message::Assistant {
                     id: first.end.message_id.clone().map(String::from),
-                    content: first.choice.clone(),
+                    content: NonEmpty::from_vec(first.choice.clone()).expect("non-empty content"),
                 },
                 Message::user("How many pages does the attached PDF have? Answer with a number."),
             ];

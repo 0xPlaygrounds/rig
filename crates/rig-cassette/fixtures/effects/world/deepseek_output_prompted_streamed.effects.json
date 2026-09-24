@@ -195,11 +195,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a concise assistant. Answer directly.\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Do not include any prose, explanation, or markdown code fences.\n{\"properties\":{\"category\":{\"type\":\"string\"},\"summary\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"title\",\"category\",\"summary\"],\"type\":\"object\"}"
-            },
+          "system": "You are a concise assistant. Answer directly.\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Do not include any prose, explanation, or markdown code fences.\n{\"properties\":{\"category\":{\"type\":\"string\"},\"summary\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"title\",\"category\",\"summary\"],\"type\":\"object\"}",
+          "messages": [
             {
               "role": "user",
               "content": [

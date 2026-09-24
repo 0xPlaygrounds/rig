@@ -20,6 +20,7 @@ use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::streaming::{Delta, StreamEvent};
 use rig_core::completion::CompletionEnd;
+use rig_core::non_empty::NonEmpty;
 
 use super::super::support::with_ollama_cassette;
 use crate::support::{
@@ -358,7 +359,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
+                    content: NonEmpty::new(AssistantContent::ToolCall(rig::message::ToolCall {
                         // The cross-provider shape: the other wire's
                         // identifier survives as rig's correlation
                         // handle, with no provider id for Ollama's wire.
@@ -371,18 +372,18 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                         },
                         signature: None,
                         additional_params: None,
-                    })],
+                    })),
                 },
                 rig::message::Message::User {
-                    content: vec![rig::message::UserContent::ToolResult(
+                    content: NonEmpty::new(rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
                             call: rig::message::ToolCallId::new("call_abc123")
                                 .expect("the chat-sourced identifier is non-empty"),
                             provider: None,
                             name: "add".to_owned(),
-                            content: vec![rig::message::ToolResultContent::text("5")],
+                            content: NonEmpty::new(rig::message::ToolResultContent::text("5")),
                         },
-                    )],
+                    )),
                 },
             ];
             let request = model

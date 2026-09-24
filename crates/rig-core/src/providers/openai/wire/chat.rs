@@ -726,7 +726,7 @@ fn refuse_file_ids(request: &CompletionRequest) -> Result<(), EncodeError> {
     let refusal = || {
         EncodeError::request("Provider file IDs are not supported for OpenRouter document inputs")
     };
-    for message in &request.chat_history {
+    for message in request.messages.iter() {
         let Message::User { content, .. } = message else {
             continue;
         };

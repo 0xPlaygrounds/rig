@@ -1,6 +1,7 @@
 //! Perplexity cassette coverage for regressions found during the #2040 provider migration.
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::providers::perplexity;
 use serde_json::json;
 
@@ -18,10 +19,10 @@ async fn text_only_content_parts_are_flattened() {
         |client| async move {
             let model = client.completion(perplexity::SONAR);
             let prompt = Message::User {
-                content: vec![
+                content: NonEmpty::of(
                     UserContent::text("First text part: amber."),
-                    UserContent::text("Second text part: rig."),
-                ],
+                    [UserContent::text("Second text part: rig.")],
+                ),
             };
 
             let response = model
@@ -58,7 +59,7 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                 .message(Message::user("Remember this code word: amber-rig."))
                 .message(Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(tool_call)],
+                    content: NonEmpty::new(AssistantContent::ToolCall(tool_call)),
                 })
                 .message(Message::tool_result(
                     "call_amber",

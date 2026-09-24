@@ -1,6 +1,7 @@
 //! Moonshot reasoning-history roundtrip smoke test.
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, Reasoning};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::moonshot;
 use rig::providers::openai::wire::{self as openai_wire, OpenAI};
@@ -27,10 +28,10 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
         .completion(moonshot::KIMI_K3);
     let assistant = Message::Assistant {
         id: None,
-        content: vec![
+        content: NonEmpty::of(
             AssistantContent::Reasoning(Reasoning::new("Remember the chosen color.")),
-            AssistantContent::text("Understood. I will remember teal."),
-        ],
+            [AssistantContent::text("Understood. I will remember teal.")],
+        ),
     };
 
     let response = model

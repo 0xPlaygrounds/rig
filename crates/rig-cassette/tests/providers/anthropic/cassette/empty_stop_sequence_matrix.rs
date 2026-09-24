@@ -678,15 +678,14 @@ async fn long_sequence_empty_stop() {
 #[test]
 fn unit_empty_assistant_turn_cannot_be_replayed() {
     // The adjacent boundary: an empty assistant turn normalizes fine, but the
-    // Anthropic wire rejects empty content, so rig refuses to send one back.
-    // Nothing here changed — pinned so widening the response-side carve-out is
-    // never mistaken for widening the request side too.
-    let empty_assistant = rig::message::Message::Assistant {
-        id: None,
-        content: Vec::new(),
-    };
+    // Anthropic wire rejects empty content, so rig cannot build one to send
+    // back: a message's content is non-empty by type, and loading one fails.
+    let loaded = serde_json::from_value::<rig::message::Message>(serde_json::json!({
+        "role": "assistant",
+        "content": [],
+    }));
     assert!(
-        anthropic::completion::Message::try_from(empty_assistant).is_err(),
+        loaded.is_err(),
         "an assistant turn with no content must not reach the wire"
     );
 }

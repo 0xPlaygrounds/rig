@@ -7,6 +7,7 @@
 //! recorded request: every handle must sit in its own slot, beside the value
 //! it belongs to.
 
+use rig_core::non_empty::NonEmpty;
 use serde_json::Value;
 
 use rig_agent::completion::CompletionModel;
@@ -50,7 +51,8 @@ fn lookup() -> ToolDefinition {
 pub fn request(history: Vec<Message>, params: Option<Value>, max_tokens: u64) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        system: None,
+        messages: NonEmpty::from_vec(history).expect("a conversation"),
         documents: vec![],
         tools: vec![lookup()],
         temperature: None,
@@ -77,17 +79,17 @@ fn result(call: ToolCallId, provider: Option<ProviderCallId>, record: &str) -> U
         call,
         provider,
         "lookup_code",
-        vec![ToolResultContent::text(format!(
+        NonEmpty::new(ToolResultContent::text(format!(
             "record {record}: code {}",
             code(record)
-        ))],
+        ))),
     )
 }
 
 fn assistant(reply: &CompletionResponse) -> Message {
     Message::Assistant {
         id: reply.end.message_id.clone().map(String::from),
-        content: reply.choice.clone(),
+        content: NonEmpty::from_vec(reply.choice.clone()).expect("non-empty content"),
     }
 }
 
@@ -101,15 +103,15 @@ pub async fn colliding_ids<M: CompletionModel>(model: &M, id: &str, params: Opti
         }
         history.push(Message::Assistant {
             id: None,
-            content: vec![AssistantContent::tool_call(
+            content: NonEmpty::new(AssistantContent::tool_call(
                 id,
                 "lookup_code",
                 serde_json::json!({ "record": record }),
-            )],
+            )),
         });
         let call = ToolCallId::new(id).expect("a nonempty id");
         history.push(Message::User {
-            content: vec![result(call, ProviderCallId::new(id), record)],
+            content: NonEmpty::new(result(call, ProviderCallId::new(id), record)),
         });
     }
     history.push(Message::user(
@@ -188,7 +190,11 @@ pub async fn out_of_order_results<M: CompletionModel>(model: &M, params: Option<
         prompt,
         assistant(&first),
         Message::User {
-            content: results.into_iter().collect(),
+            content: results
+                .into_iter()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty content"),
         },
         Message::user("Without calling any tool, reply exactly `alpha=<code> beta=<code>`."),
     ];
@@ -278,7 +284,7 @@ pub async fn reasoning_round_trip<M: CompletionModel>(
         prompt,
         assistant(&first),
         Message::User {
-            content: vec![result(call.id.clone(), call.provider.clone(), record)],
+            content: NonEmpty::new(result(call.id.clone(), call.provider.clone(), record)),
         },
     ];
     let reply = complete(model, request(history, params, max_tokens), streamed)

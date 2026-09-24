@@ -34,6 +34,7 @@
 //! than trusting the builder.
 
 use rig::completion::{CompletionModel, FinishReason};
+use rig::non_empty::NonEmpty;
 use rig::providers::openai::wire::{LLAMACPP, OpenAI};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::{Value, json};
@@ -450,9 +451,10 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
 
     let request = rig::completion::CompletionRequest {
         model: None,
-        chat_history: vec![rig::message::Message::User {
-            content: vec![rig::message::UserContent::text("hi")],
-        }],
+        system: None,
+        messages: NonEmpty::new(rig::message::Message::User {
+            content: NonEmpty::new(rig::message::UserContent::text("hi")),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.0),

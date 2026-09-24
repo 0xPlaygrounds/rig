@@ -153,7 +153,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
         let has_tool_call = choice.iter().any(AssistantContent::is_tool_call);
 
         Ok(completion::CompletionResponse {
-            choice,
+            choice: choice.into_vec(),
             end: completion::CompletionEnd {
                 finish_reason: Some(finish_reason.reconcile_with_output(has_tool_call)),
                 ..completion::CompletionEnd::new(rig_core::response::ResponseMeta {

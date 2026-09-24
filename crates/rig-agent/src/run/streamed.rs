@@ -10,16 +10,14 @@
 //! assert!(assembler.aggregated_text().is_empty());
 //! ```
 
+use rig_core::non_empty::NonEmpty;
 use std::collections::{BTreeSet, HashMap};
-
-use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionEnd, FinishReason};
 use rig_core::error::ProviderError;
-use rig_core::message::{
-    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
-};
+use rig_core::message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult};
 use rig_core::streaming::BlockId;
+use serde::{Deserialize, Serialize};
 
 use super::policy::InvalidToolCallReason;
 use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
@@ -36,8 +34,8 @@ pub fn ordered_streaming_assistant_content(
     reasoning_items: impl IntoIterator<Item = Reasoning>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
-) -> Option<Vec<AssistantContent>> {
-    non_empty(ordered_assistant_content(
+) -> Option<NonEmpty<AssistantContent>> {
+    NonEmpty::from_vec(ordered_assistant_content(
         reasoning_items,
         text_items,
         trailing_items,
@@ -149,27 +147,24 @@ impl PartialStreamedTurn {
         // Preserve call IDs so synthetic results correlate with their diagnostic calls.
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
 
-        let mut retry_results = self
-            .pending_tool_calls
-            .iter()
-            .map(|tool_call| {
-                tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.provider.clone(),
-                    tool_call.function.name.clone(),
-                    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-                )
-            })
-            .collect::<Vec<_>>();
-        retry_results.push(tool_result_message(
-            invalid_tool_call.id,
-            invalid_tool_call.provider,
-            invalid_tool_call.function.name,
-            feedback,
-        ));
-
+        let peer_results = self.pending_tool_calls.iter().map(|tool_call| {
+            tool_result_message(
+                tool_call.id.clone(),
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
+                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
+            )
+        });
         let user_message = Message::User {
-            content: retry_results,
+            content: NonEmpty::with_last(
+                peer_results,
+                tool_result_message(
+                    invalid_tool_call.id,
+                    invalid_tool_call.provider,
+                    invalid_tool_call.function.name,
+                    feedback,
+                ),
+            ),
         };
 
         Some((assistant_message, user_message))

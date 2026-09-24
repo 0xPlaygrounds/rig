@@ -26,12 +26,7 @@ fn request(name: &str, record: usize) -> serde_json::Value {
 }
 
 fn system_content(request: &serde_json::Value) -> Option<String> {
-    request["chat_history"]
-        .as_array()?
-        .first()
-        .filter(|message| message["role"] == "system")
-        .and_then(|message| message["content"].as_str())
-        .map(str::to_owned)
+    request["system"].as_str().map(str::to_owned)
 }
 
 /// CONTRACT §strings: the output tool's name and description
@@ -44,7 +39,7 @@ fn the_output_tool_is_the_goldens() {
 }
 
 /// CONTRACT §strings: the tool-mode augmentation after a blank line
-/// (`anthropic_output_tool_unary` `/records/0/kind/request/chat_history/0`).
+/// (`anthropic_output_tool_unary` `/records/0/kind/request/system`).
 #[test]
 fn the_tool_augmentation_is_the_goldens() {
     let system =
@@ -58,7 +53,7 @@ fn the_tool_augmentation_is_the_goldens() {
 }
 
 /// CONTRACT §strings: the prompted augmentation with the canonical schema
-/// (`anthropic_output_prompted_unary` `/records/0/kind/request/chat_history/0`).
+/// (`anthropic_output_prompted_unary` `/records/0/kind/request/system`).
 #[test]
 fn the_prompted_augmentation_is_the_goldens() {
     let system =
@@ -81,10 +76,10 @@ fn the_prompted_augmentation_is_the_goldens() {
 }
 
 /// CONTRACT §reprompts: the text-answer reprompt
-/// (`mock_output_tool_text_reprompt` `/records/1/kind/request/chat_history/3`).
+/// (`mock_output_tool_text_reprompt` `/records/1/kind/request/messages/2`).
 #[test]
 fn the_text_reprompt_is_the_goldens() {
-    let last = request("mock_output_tool_text_reprompt", 1)["chat_history"][3].clone();
+    let last = request("mock_output_tool_text_reprompt", 1)["messages"][2].clone();
     assert_eq!(last["role"], "user");
     assert_eq!(
         last["content"][0]["text"],
@@ -93,10 +88,10 @@ fn the_text_reprompt_is_the_goldens() {
 }
 
 /// CONTRACT §reprompts: the missing-field reprompt as a tool result
-/// (`mock_output_tool_missing_field_reprompt` `/records/1/kind/request/chat_history/3`).
+/// (`mock_output_tool_missing_field_reprompt` `/records/1/kind/request/messages/2`).
 #[test]
 fn the_missing_field_reprompt_is_the_goldens() {
-    let last = request("mock_output_tool_missing_field_reprompt", 1)["chat_history"][3].clone();
+    let last = request("mock_output_tool_missing_field_reprompt", 1)["messages"][2].clone();
     assert_eq!(last["content"][0]["type"], "toolresult");
     assert_eq!(last["content"][0]["name"], "final_result");
     assert_eq!(

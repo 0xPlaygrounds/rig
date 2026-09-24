@@ -1,5 +1,6 @@
 //! AWS Bedrock document prompt smoke tests inspired by Anthropic document tests.
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 
 use super::{
@@ -59,10 +60,12 @@ async fn plaintext_document_with_instruction() {
 
     let response = agent
         .prompt(Message::User {
-            content: vec![
+            content: NonEmpty::of(
                 UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
-                UserContent::text("List the three main goals of Rust mentioned in this document."),
-            ],
+                [UserContent::text(
+                    "List the three main goals of Rust mentioned in this document.",
+                )],
+            ),
         })
         .await
         .expect("instruction prompt should succeed")

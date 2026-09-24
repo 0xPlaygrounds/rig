@@ -10,6 +10,7 @@
 
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -217,13 +218,19 @@ async fn long_history_replay_nonstreaming() {
                 .message(Message::user("Now look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: vec![
+                    content: NonEmpty::of(
                         AssistantContent::text("Checking the harbor label now."),
-                        // Gemini issues no functionCall ids: an empty wire id
-                        // records no provider id and mints the correlation
-                        // handle, which never reaches the wire.
-                        AssistantContent::tool_call("", AlphaSignal::NAME, serde_json::json!({})),
-                    ],
+                        [
+                            // Gemini issues no functionCall ids: an empty wire id
+                            // records no provider id and mints the correlation
+                            // handle, which never reaches the wire.
+                            AssistantContent::tool_call(
+                                "",
+                                AlphaSignal::NAME,
+                                serde_json::json!({}),
+                            ),
+                        ],
+                    ),
                 })
                 .message(Message::tool_result(
                     "",

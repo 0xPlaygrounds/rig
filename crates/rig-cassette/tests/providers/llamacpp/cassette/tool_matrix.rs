@@ -48,6 +48,7 @@
 //! assistant text. Rig surfaces exactly what the server sent, which is right;
 //! the cell records the shape so nobody mistakes it for a rig defect later.
 
+use rig::non_empty::NonEmpty;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -73,7 +74,7 @@ const NO_THINK: &str = "/no_think ";
 fn lookup_call_turn(id: &str) -> Message {
     Message::Assistant {
         id: None,
-        content: vec![AssistantContent::tool_call(id, "lookup", json!({}))],
+        content: NonEmpty::new(AssistantContent::tool_call(id, "lookup", json!({}))),
     }
 }
 
@@ -706,12 +707,14 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
             .completion(
                 model
                     .completion_request(Message::User {
-                        content: vec![UserContent::ToolResult(ToolResult {
+                        content: NonEmpty::new(UserContent::ToolResult(ToolResult {
                             call: ToolCallId::new_or_minted("call_text", 0),
                             provider: ProviderCallId::new("call_text"),
                             name: "lookup".to_string(),
-                            content: vec![ToolResultContent::text("the codeword is heliotrope")],
-                        })],
+                            content: NonEmpty::new(ToolResultContent::text(
+                                "the codeword is heliotrope",
+                            )),
+                        })),
                     })
                     .preamble(
                         "Answer using only the tool result you were given. \
@@ -724,7 +727,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                     // has nothing to answer.
                     .messages(vec![
                         Message::User {
-                            content: vec![UserContent::text("What is the codeword?")],
+                            content: NonEmpty::new(UserContent::text("What is the codeword?")),
                         },
                         lookup_call_turn("call_text"),
                     ])
@@ -768,14 +771,14 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
             .completion(
                 model
                     .completion_request(Message::User {
-                        content: vec![UserContent::ToolResult(ToolResult {
+                        content: NonEmpty::new(UserContent::ToolResult(ToolResult {
                             call: ToolCallId::new_or_minted("call_json", 0),
                             provider: ProviderCallId::new("call_json"),
                             name: "lookup".to_string(),
-                            content: vec![ToolResultContent::text(
+                            content: NonEmpty::new(ToolResultContent::text(
                                 json!({ "codeword": "heliotrope", "confidence": 0.99 }).to_string(),
-                            )],
-                        })],
+                            )),
+                        })),
                     })
                     .preamble(
                         "Answer using only the JSON tool result you were given. \
@@ -784,7 +787,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                     )
                     .messages(vec![
                         Message::User {
-                            content: vec![UserContent::text("What is the codeword?")],
+                            content: NonEmpty::new(UserContent::text("What is the codeword?")),
                         },
                         lookup_call_turn("call_json"),
                     ])

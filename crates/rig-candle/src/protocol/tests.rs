@@ -1,5 +1,6 @@
 use rig_core::completion::{CompletionRequest, Document};
 use rig_core::message::{Message, ProviderCallId, ToolCallId, ToolChoice};
+use rig_core::non_empty::NonEmpty;
 
 use super::*;
 
@@ -21,11 +22,13 @@ fn tool(name: &str) -> ToolDefinition {
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: if messages.is_empty() {
+        system: None,
+        messages: NonEmpty::from_vec(if messages.is_empty() {
             vec![Message::user("fallback")]
         } else {
             messages
-        },
+        })
+        .expect("a conversation"),
         documents: Vec::new(),
         tools: vec![tool("calculate"), tool("lookup")],
         temperature: Some(0.0),
@@ -272,12 +275,12 @@ fn renderer_rejects_conflicting_tool_result_aliases() {
         Message::from(first),
         Message::from(second),
         Message::User {
-            content: vec![UserContent::tool_result_for(
+            content: NonEmpty::new(UserContent::tool_result_for(
                 ToolCallId::new("internal-a").expect("non-empty id"),
                 ProviderCallId::new("provider-b"),
                 "calculate",
-                vec![ToolResultContent::text("wrong call")],
-            )],
+                NonEmpty::new(ToolResultContent::text("wrong call")),
+            )),
         },
     ];
 
@@ -442,26 +445,26 @@ fn renderer_correlates_generated_and_explicit_equal_spellings() {
     let history = vec![
         Message::Assistant {
             id: None,
-            content: vec![
+            content: NonEmpty::of(
                 AssistantContent::ToolCall(generated.clone()),
-                AssistantContent::ToolCall(explicit.clone()),
-            ],
+                [AssistantContent::ToolCall(explicit.clone())],
+            ),
         },
         Message::User {
-            content: vec![
+            content: NonEmpty::of(
                 UserContent::tool_result_for(
                     explicit.id,
                     explicit.provider,
                     "lookup",
-                    vec![ToolResultContent::text("second")],
+                    NonEmpty::new(ToolResultContent::text("second")),
                 ),
-                UserContent::tool_result_for(
+                [UserContent::tool_result_for(
                     generated.id,
                     generated.provider,
                     "calculate",
-                    vec![ToolResultContent::text("first")],
-                ),
-            ],
+                    NonEmpty::new(ToolResultContent::text("first")),
+                )],
+            ),
         },
     ];
     let prompt = render_prompt(&request(history), ConversationProtocol::Qwen3)
@@ -492,11 +495,11 @@ fn renderer_allows_identity_reuse_in_completed_turns() {
                 call.id.clone(),
                 call.provider.clone(),
                 name,
-                vec![ToolResultContent::text(name)],
+                NonEmpty::new(ToolResultContent::text(name)),
             );
             history.push(Message::from(call));
             history.push(Message::User {
-                content: vec![result],
+                content: NonEmpty::new(result),
             });
         }
         let prompt = render_prompt(&request(history), ConversationProtocol::Qwen3)
@@ -527,12 +530,12 @@ fn renderer_rejects_stale_results_after_provider_handle_reuse() {
         )
         .with_provider(provider.clone());
         let answer = |id, name: &str, text: &str| Message::User {
-            content: vec![UserContent::tool_result_for(
+            content: NonEmpty::new(UserContent::tool_result_for(
                 id,
                 Some(provider.clone()),
                 name,
-                vec![ToolResultContent::text(text)],
-            )],
+                NonEmpty::new(ToolResultContent::text(text)),
+            )),
         };
         let mut history = vec![
             Message::from(first),

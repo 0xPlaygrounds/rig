@@ -25,6 +25,7 @@ mod support;
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::completion::{CompletionModel as _, CompletionRequest};
 use rig_core::message::{AssistantContent, Message, Text, UserContent};
+use rig_core::non_empty::NonEmpty;
 use rig_vertexai::Client;
 use rig_vertexai::completion::CompletionModel;
 use support::{LocalEndpoint, Reply, SentinelCredentials, text_response};
@@ -32,9 +33,10 @@ use support::{LocalEndpoint, Reply, SentinelCredentials, text_response};
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new(prompt.to_string()))],
-        }],
+        system: None,
+        messages: NonEmpty::new(Message::User {
+            content: NonEmpty::new(UserContent::Text(Text::new(prompt.to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,

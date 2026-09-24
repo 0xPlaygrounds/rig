@@ -3862,11 +3862,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -4396,11 +4393,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -4976,11 +4970,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -5635,11 +5626,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -6412,11 +6400,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -7234,11 +7219,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -7970,11 +7952,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -8831,11 +8810,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -9662,11 +9638,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -10542,11 +10515,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -11555,11 +11525,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -12546,11 +12513,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -13586,11 +13550,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -14751,11 +14712,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -15894,11 +15852,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -17086,11 +17041,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -18435,11 +18387,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -19877,11 +19826,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -21217,11 +21163,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -22690,11 +22633,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -24272,11 +24212,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -25776,11 +25713,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -27412,11 +27346,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision."
-            },
+          "system": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "messages": [
             {
               "role": "user",
               "content": [

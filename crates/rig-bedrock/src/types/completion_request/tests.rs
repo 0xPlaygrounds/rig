@@ -1,14 +1,16 @@
 use super::*;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
 use rig_core::message::{Message, Text, ToolChoice, UserContent};
+use rig_core::non_empty::NonEmpty;
 
 // Helper to create a minimal CompletionRequest for testing
 fn minimal_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new("test".to_string()))],
-        }],
+        system: None,
+        messages: NonEmpty::new(Message::User {
+            content: NonEmpty::new(UserContent::Text(Text::new("test".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -42,18 +44,18 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
     let real = ToolCall::from_wire(&hint, generated.function.clone());
     let call = |call: &ToolCall| Message::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(call.clone())],
+        content: NonEmpty::new(AssistantContent::ToolCall(call.clone())),
     };
     let result = |call: &ToolCall| Message::User {
-        content: vec![UserContent::tool_result_for(
+        content: NonEmpty::new(UserContent::tool_result_for(
             call.id.clone(),
             call.provider.clone(),
             "test",
-            vec![rig_core::message::ToolResultContent::text("done")],
-        )],
+            NonEmpty::new(rig_core::message::ToolResultContent::text("done")),
+        )),
     };
     let mut request = minimal_request();
-    request.chat_history = vec![
+    request.messages = NonEmpty::from_vec(vec![
         Message::system("system"),
         call(&generated),
         call(&real),
@@ -62,7 +64,8 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         result(&generated),
         call(&generated),
         result(&generated),
-    ];
+    ])
+    .expect("a conversation");
     let messages = aws_request(request, false).messages().unwrap();
     let mut calls = Vec::new();
     let mut results = Vec::new();
@@ -324,12 +327,10 @@ fn test_tool_with_parameters() {
 fn test_system_prompt_includes_system_history() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
-            Message::system("History system instruction"),
-            Message::User {
-                content: vec![UserContent::Text(Text::new("test".to_string()))],
-            },
-        ],
+        system: Some("History system instruction".into()),
+        messages: NonEmpty::new(Message::User {
+            content: NonEmpty::new(UserContent::Text(Text::new("test".to_string()))),
+        }),
         ..minimal_request()
     };
 
@@ -351,9 +352,7 @@ fn test_system_prompt_includes_system_history() {
 #[test]
 fn test_system_prompt_appends_cache_point_when_prompt_caching_enabled() {
     let mut request = minimal_request();
-    request
-        .chat_history
-        .insert(0, Message::system("System prompt"));
+    request.system = Some("System prompt".to_owned());
 
     let aws_request = aws_request(request, true);
     let system_prompt = aws_request
@@ -378,12 +377,10 @@ fn test_system_prompt_appends_cache_point_when_prompt_caching_enabled() {
 fn test_messages_exclude_system_history() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
-            Message::system("History system instruction"),
-            Message::User {
-                content: vec![UserContent::Text(Text::new("test".to_string()))],
-            },
-        ],
+        system: Some("History system instruction".into()),
+        messages: NonEmpty::new(Message::User {
+            content: NonEmpty::new(UserContent::Text(Text::new("test".to_string()))),
+        }),
         ..minimal_request()
     };
 
@@ -417,18 +414,23 @@ fn test_messages_skip_cache_point_when_history_contains_reasoning() {
     let reasoning =
         rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
     let request = CompletionRequest {
-        chat_history: vec![
+        system: None,
+        messages: NonEmpty::of(
             Message::User {
-                content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
+                content: NonEmpty::new(UserContent::Text(Text::new("user prompt".to_string()))),
             },
-            Message::Assistant {
-                id: None,
-                content: vec![rig_core::completion::AssistantContent::Reasoning(reasoning)],
-            },
-            Message::User {
-                content: vec![UserContent::Text(Text::new("follow up".to_string()))],
-            },
-        ],
+            [
+                Message::Assistant {
+                    id: None,
+                    content: NonEmpty::new(rig_core::completion::AssistantContent::Reasoning(
+                        reasoning,
+                    )),
+                },
+                Message::User {
+                    content: NonEmpty::new(UserContent::Text(Text::new("follow up".to_string()))),
+                },
+            ],
+        ),
         ..minimal_request()
     };
 
@@ -536,20 +538,23 @@ fn document_request(prompt_document: bool) -> CompletionRequest {
     use rig_core::completion::Document;
     use rig_core::message::DocumentMediaType;
     let mut request = minimal_request();
-    request.chat_history = vec![
+    request.messages = NonEmpty::from_vec(vec![
         Message::system("Answer with the exact token from the document only."),
         Message::assistant("Acknowledged."),
-    ];
+    ])
+    .expect("a conversation");
     if prompt_document {
-        request.chat_history.push(Message::User {
-            content: vec![
+        request.messages.push(Message::User {
+            content: NonEmpty::of(
                 UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
-                UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
-                UserContent::text("According to the document, what is the ordering token?"),
-            ],
+                [
+                    UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
+                    UserContent::text("According to the document, what is the ordering token?"),
+                ],
+            ),
         });
     } else {
-        request.chat_history.push(Message::user(
+        request.messages.push(Message::user(
             "According to the document, what is the ordering token?",
         ));
     }

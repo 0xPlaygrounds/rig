@@ -1,3 +1,4 @@
+use rig_core::non_empty::NonEmpty;
 use rig_core::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Message, Usage},
     effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome},
@@ -9,7 +10,8 @@ use super::*;
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("hi")],
+        system: None,
+        messages: NonEmpty::new(Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -739,11 +741,11 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         })
         .collect();
     let mut next = request();
-    next.chat_history.push(Message::Assistant {
+    next.messages.push(Message::Assistant {
         id: None,
-        content: choice.clone(),
+        content: NonEmpty::from_vec(choice.clone()).expect("non-empty content"),
     });
-    next.chat_history.push(Message::User {
+    next.messages.push(Message::User {
         content: calls
             .iter()
             .rev()
@@ -752,10 +754,12 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
                     call.id.clone(),
                     call.provider.clone(),
                     "add",
-                    vec![ToolResultContent::text("ok")],
+                    NonEmpty::new(ToolResultContent::text("ok")),
                 )
             })
-            .collect(),
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("non-empty content"),
     });
     let mut records = two_records().records;
     records[0].kind = EffectKind::Completion {
@@ -817,7 +821,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         let EffectKind::Completion { request, .. } = &mut changed else {
             unreachable!()
         };
-        let Message::User { content } = request.chat_history.last_mut().unwrap() else {
+        let Message::User { content } = request.messages.last_mut().unwrap() else {
             unreachable!()
         };
         let UserContent::ToolResult(result) = content.last_mut().unwrap() else {

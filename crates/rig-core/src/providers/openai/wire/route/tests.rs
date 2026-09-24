@@ -9,6 +9,7 @@ use super::*;
 use crate::completion::ToolDefinition;
 use crate::driver::Bound;
 use crate::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use crate::non_empty::NonEmpty;
 
 use super::super::OPENROUTER;
 
@@ -17,25 +18,27 @@ use super::super::OPENROUTER;
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![
-            Message::system("be brief"),
+        system: Some("be brief".into()),
+        messages: NonEmpty::of(
             "probe".into(),
-            Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::tool_call(
-                    "call_1",
-                    "lookup",
-                    serde_json::json!({"q": "x"}),
-                )],
-            },
-            Message::User {
-                content: vec![UserContent::tool_result_from_wire(
-                    "call_1",
-                    "lookup",
-                    vec![ToolResultContent::text("the answer")],
-                )],
-            },
-        ],
+            [
+                Message::Assistant {
+                    id: None,
+                    content: NonEmpty::new(AssistantContent::tool_call(
+                        "call_1",
+                        "lookup",
+                        serde_json::json!({"q": "x"}),
+                    )),
+                },
+                Message::User {
+                    content: NonEmpty::new(UserContent::tool_result_from_wire(
+                        "call_1",
+                        "lookup",
+                        NonEmpty::new(ToolResultContent::text("the answer")),
+                    )),
+                },
+            ],
+        ),
         documents: vec![],
         tools: vec![ToolDefinition {
             name: "lookup".to_owned(),
@@ -158,8 +161,11 @@ fn changed_system_prefix_changes_both_encoded_openai_routes() {
     for provider in [chat(), responses()] {
         let original = request();
         let mut changed = original.clone();
-        *changed.chat_history.first_mut().expect("system message") =
-            Message::system("different task rules");
+        assert!(
+            changed.system.is_some(),
+            "the request carries a system prompt"
+        );
+        changed.system = Some("different task rules".to_owned());
         assert_ne!(
             body_with_request(provider.clone(), untouched, original),
             body_with_request(provider, untouched, changed)
@@ -248,7 +254,7 @@ fn dialect_hooks_apply_to_both_routes_without_provider_identity() {
         completion_envelope: Some(|provider, request, mut builder| {
             ENVELOPES.fetch_add(1, Ordering::SeqCst);
             assert_eq!(provider.api_key.expose(), "regional");
-            assert!(!request.chat_history.is_empty());
+            assert!(!request.history().is_empty());
             assert_eq!(
                 builder.headers_ref().unwrap()[http::header::AUTHORIZATION],
                 "Bearer regional"

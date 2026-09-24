@@ -260,11 +260,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Use the provided tool to answer arithmetic questions."
-            },
+          "system": "Use the provided tool to answer arithmetic questions.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -637,11 +634,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Use the provided tool to answer arithmetic questions."
-            },
+          "system": "Use the provided tool to answer arithmetic questions.",
+          "messages": [
             {
               "role": "user",
               "content": [

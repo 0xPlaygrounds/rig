@@ -74,7 +74,7 @@ fn two_calls_then_text() -> Vec<Vec<AssistantContent>> {
 
 fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(String, String)> {
     request
-        .chat_history
+        .history()
         .iter()
         .flat_map(|message| match message {
             Message::User { content } => content
@@ -727,7 +727,7 @@ fn a_system_repairs_an_invalid_call_to_a_granted_tool() {
     let log = app.world().resource::<EffectLogResource>().log();
     assert!(matches!(&log.records[1].kind, EffectKind::ToolCall { name, .. } if name == "add"));
     let requests = requests.lock().unwrap();
-    let Message::Assistant { content, .. } = &requests[1].chat_history[2] else {
+    let Message::Assistant { content, .. } = &requests[1].history()[2] else {
         panic!("the assistant turn");
     };
     assert!(
@@ -814,7 +814,7 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 2);
         let calls: Vec<_> = requests[1]
-            .chat_history
+            .messages
             .iter()
             .filter_map(|message| match message {
                 Message::Assistant { content, .. } => Some(content),
@@ -827,7 +827,7 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
             })
             .collect();
         let results: Vec<_> = requests[1]
-            .chat_history
+            .messages
             .iter()
             .filter_map(|message| match message {
                 Message::User { content } => Some(content),
@@ -978,7 +978,7 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 2);
         let results: Vec<_> = requests[1]
-            .chat_history
+            .messages
             .iter()
             .filter_map(|message| match message {
                 Message::User { content } => Some(content),

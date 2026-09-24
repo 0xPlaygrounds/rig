@@ -58,11 +58,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a note-taking assistant. Use the write_note tool to save notes."
-            },
+          "system": "You are a note-taking assistant. Use the write_note tool to save notes.",
+          "messages": [
             {
               "role": "user",
               "content": [

@@ -161,7 +161,7 @@ async fn resume_continues_a_run_without_a_prompt() {
     assert_eq!(requests.len(), 1);
     assert_eq!(
         requests[0]
-            .chat_history
+            .history()
             .last()
             .and_then(Message::rag_text)
             .as_deref(),
@@ -194,7 +194,7 @@ async fn resume_streams_a_run_without_a_prompt() {
     assert_eq!(requests.len(), 1);
     assert_eq!(
         requests[0]
-            .chat_history
+            .history()
             .last()
             .and_then(Message::rag_text)
             .as_deref(),

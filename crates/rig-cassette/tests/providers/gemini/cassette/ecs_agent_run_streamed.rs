@@ -297,15 +297,12 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                     let turns = completed_turns(&mut ecs, run);
                     assert!(turns.len() >= 2, "abandoned turn retains its completion");
                     for turn in turns.iter().skip(1) {
-                        let (prompt, history) = turn
-                            .request
-                            .chat_history
-                            .split_last()
-                            .expect("retry prompt");
+                        let (prompt, history) =
+                            turn.request.messages.split_last().expect("retry prompt");
                         assert!(history_has_assistant_tool_call(history, "add"));
                         assert!(is_tool_result_user_message(prompt));
                     }
-                    let retry = &turns[1].request.chat_history;
+                    let retry = &turns[1].request.messages;
                     let Message::User { content } = retry.last().expect("retry prompt") else {
                         panic!("tool results are a user message")
                     };
@@ -425,7 +422,10 @@ fn history(ecs: &mut EcsAgent, run: Entity) -> Vec<Message> {
         })
         .collect();
     messages.sort_by_key(|(order, _)| *order);
-    messages.into_iter().map(|(_, message)| message).collect()
+    messages
+        .into_iter()
+        .filter_map(|(_, message)| message)
+        .collect()
 }
 
 #[tokio::test]

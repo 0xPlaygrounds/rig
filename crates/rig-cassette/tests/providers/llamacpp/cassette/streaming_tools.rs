@@ -12,6 +12,7 @@
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
 
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 
 use super::super::cassette_support::*;
@@ -209,15 +210,15 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             .expect("raw stream should yield lookup_harbor_label");
         let assistant_message = Message::Assistant {
             id: None,
-            content: vec![AssistantContent::ToolCall(tool_call.clone())],
+            content: NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
         };
         let tool_result_message = Message::User {
-            content: vec![UserContent::tool_result_for(
+            content: NonEmpty::new(UserContent::tool_result_for(
                 tool_call.id.clone(),
                 tool_call.provider.clone(),
                 tool_call.function.name.clone(),
-                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-            )],
+                NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+            )),
         };
         let followup_request = model
             .completion_request(

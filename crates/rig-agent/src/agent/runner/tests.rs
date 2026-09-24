@@ -183,7 +183,7 @@ async fn runner_applies_per_run_request_overrides() {
 
     let requests = model.requests();
     let request = requests.first().expect("one request");
-    assert!(request.chat_history.iter().any(
+    assert!(request.history().iter().any(
         |message| matches!(message, crate::completion::Message::System { content } if content == "run preamble")
     ));
     assert!(
@@ -281,7 +281,7 @@ async fn runner_can_clear_configured_request_defaults() {
     let request = requests.first().expect("one request");
     assert!(
         !request
-            .chat_history
+            .history()
             .iter()
             .any(|message| matches!(message, crate::completion::Message::System { .. }))
     );
@@ -375,19 +375,19 @@ async fn blocking_and_streaming_preserve_raw_failure_while_rewriting_presentatio
     );
 
     let blocking_history = serde_json::to_value(
-        &blocking_model
+        blocking_model
             .requests()
             .get(1)
             .expect("second blocking request")
-            .chat_history,
+            .history(),
     )
     .unwrap();
     let streaming_history = serde_json::to_value(
-        &streaming_model
+        streaming_model
             .requests()
             .get(1)
             .expect("second streaming request")
-            .chat_history,
+            .history(),
     )
     .unwrap();
     assert_eq!(blocking_history, streaming_history);

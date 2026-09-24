@@ -40,6 +40,7 @@
 
 use rig::completion::CompletionModel;
 use rig::message::Message;
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
@@ -103,7 +104,7 @@ async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, Prov
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
         id: first.end.message_id.clone().map(String::from),
-        content: first.choice.clone(),
+        content: NonEmpty::from_vec(first.choice.clone()).expect("non-empty content"),
     };
     let second = model
         .completion(

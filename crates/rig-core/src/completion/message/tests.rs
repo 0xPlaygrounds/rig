@@ -11,7 +11,7 @@ mod vec_content_serde {
         // this migration changes no persisted history and no recorded
         // provider fixture. Pin the wire shape so that stays true.
         let message = Message::User {
-            content: vec![UserContent::text("hi")],
+            content: crate::non_empty::NonEmpty::new(UserContent::text("hi")),
         };
         let json = serde_json::to_value(&message).expect("serialize");
         assert_eq!(
@@ -27,7 +27,7 @@ mod vec_content_serde {
     fn message_content_round_trips_byte_identically() {
         let message = Message::Assistant {
             id: Some("msg_1".to_owned()),
-            content: vec![AssistantContent::text("hello")],
+            content: crate::non_empty::NonEmpty::new(AssistantContent::text("hello")),
         };
         let encoded = serde_json::to_string(&message).expect("serialize");
         let decoded: Message = serde_json::from_str(&encoded).expect("deserialize");
@@ -38,17 +38,12 @@ mod vec_content_serde {
     }
 
     #[test]
-    fn an_empty_content_array_now_deserializes() {
-        // The container's `Deserialize` implemented only `visit_seq` and
-        // rejected `[]`. That is the single input whose behaviour this
-        // migration changes: it was an error, and it is now an empty list.
-        let message: Message =
-            serde_json::from_value(serde_json::json!({"role": "user", "content": []}))
-                .expect("an empty content list is representable now");
-        let Message::User { content } = message else {
-            panic!("expected a user message");
-        };
-        assert!(content.is_empty());
+    fn an_empty_content_array_is_refused() {
+        // A message carries at least one content part: `[]` is refused at
+        // load, as no request could send it.
+        let loaded =
+            serde_json::from_value::<Message>(serde_json::json!({"role": "user", "content": []}));
+        assert!(loaded.is_err(), "an empty content list is not a message");
     }
 }
 

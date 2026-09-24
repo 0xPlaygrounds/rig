@@ -12,7 +12,7 @@ pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 impl VertexCompletionRequest {
     pub fn contents(self) -> Result<Vec<vertexai::model::Content>, ProviderError> {
         // Function responses require names rather than call identifiers.
-        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history;
+        let mut history: Vec<rig_core::completion::Message> = self.0.history();
         // Cross-provider ingested results arrive with an empty name and
         // their paired call carries it.
         rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);
@@ -35,11 +35,11 @@ impl VertexCompletionRequest {
 
     pub fn system_instruction(&self) -> Option<vertexai::model::Content> {
         let mut system_texts = Vec::new();
-        for message in self.0.chat_history.iter() {
+        for message in self.0.history() {
             if let rig_core::completion::Message::System { content } = message
                 && !content.is_empty()
             {
-                system_texts.push(content.clone());
+                system_texts.push(content);
             }
         }
 

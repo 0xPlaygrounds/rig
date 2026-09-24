@@ -4,6 +4,7 @@ use crate::driver::Bound;
 use crate::embeddings::EmbeddingModel as _;
 use crate::message::AssistantContent;
 use crate::model::ModelLister as _;
+use crate::non_empty::NonEmpty;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
@@ -37,13 +38,11 @@ const STREAM_BODY: &str = concat!(
 fn recorded_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![
-            crate::message::Message::system("You are a concise assistant. Answer directly."),
-            crate::message::Message::user(
-                "In one or two sentences, explain what Rust programming language is and why \
+        system: Some("You are a concise assistant. Answer directly.".into()),
+        messages: NonEmpty::new(crate::message::Message::user(
+            "In one or two sentences, explain what Rust programming language is and why \
                  memory safety matters.",
-            ),
-        ],
+        )),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

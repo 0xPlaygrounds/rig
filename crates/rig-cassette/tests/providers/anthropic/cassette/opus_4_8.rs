@@ -5,6 +5,7 @@ use rig::completion::{
     Message, ProviderToolDefinition,
 };
 use rig::message::Text;
+use rig::non_empty::NonEmpty;
 use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse, Content};
 use serde::Deserialize;
 use serde_json::Value;
@@ -235,7 +236,7 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
 
     Message::Assistant {
         id: None,
-        content: raw_blocks,
+        content: NonEmpty::from_vec(raw_blocks).expect("non-empty content"),
     }
 }
 

@@ -7,6 +7,7 @@
 
 use super::{REDACTED, Secret};
 use crate::completion::CompletionRequest;
+use crate::non_empty::NonEmpty;
 use crate::operation::Completion;
 use crate::providers::anthropic::wire::Anthropic;
 use crate::providers::cohere::wire::Cohere;
@@ -85,7 +86,8 @@ fn a_reloaded_wire_sends_no_credential_sentinel() {
 fn probe_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec!["probe".into()],
+        system: None,
+        messages: NonEmpty::new("probe".into()),
         documents: vec![],
         tools: vec![],
         temperature: None,

@@ -139,7 +139,7 @@ async fn patch_tool_args_effect_log() {
             assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
             let history = request_at(&log, 2);
             let called = history
-                .chat_history
+                .history()
                 .iter()
                 .find_map(|message| match message {
                     Message::Assistant { content, .. } => content.iter().find_map(|c| match c {

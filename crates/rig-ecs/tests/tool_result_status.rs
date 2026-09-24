@@ -200,14 +200,14 @@ fn every_outcome_lands_as_its_status_and_the_dto_is_unchanged() {
     // status is graph data, not a content item.
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
-    let seen = &requests[1].chat_history;
+    let seen = &requests[1].history();
     let Message::User { content } = &seen[3] else {
         panic!("the results utterance: {seen:?}");
     };
     assert_eq!(content.len(), 7);
     assert_eq!(
         read_message(app.world(), utterance).unwrap().to_message(),
-        seen[3]
+        Some(seen[3].clone())
     );
 }
 

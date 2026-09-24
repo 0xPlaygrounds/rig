@@ -6,6 +6,7 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OPENROUTER, OpenAI};
 use rig::wire::{Body, Mode, Wire};
@@ -39,12 +40,12 @@ fn verifier_document() -> Document {
 
 fn document_question(page_number: u8) -> RigMessage {
     RigMessage::User {
-        content: vec![
+        content: NonEmpty::of(
             RigUserContent::Document(verifier_document()),
-            RigUserContent::Text(Text::new(format!(
+            [RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            ))),
-        ],
+            )))],
+        ),
     }
 }
 

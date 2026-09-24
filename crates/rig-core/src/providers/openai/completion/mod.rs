@@ -965,9 +965,9 @@ impl TryFrom<message::Message> for Vec<Message> {
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::System { content } => Ok(vec![Message::system(&content)]),
-            message::Message::User { content } => user_content_to_messages(content),
+            message::Message::User { content } => user_content_to_messages(content.into_vec()),
             message::Message::Assistant { content, .. } => {
-                assistant_content_to_messages(content, false)
+                assistant_content_to_messages(content.into_vec(), false)
             }
         }
     }
@@ -998,7 +998,7 @@ fn message_with_tool_ids(
     };
     let mut converted: Vec<Message> = match source {
         message::Message::Assistant { content, .. } => {
-            assistant_content_to_messages(content, reasoning_details)?
+            assistant_content_to_messages(content.into_vec(), reasoning_details)?
         }
         source => source.try_into()?,
     };
@@ -1568,11 +1568,12 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             supports_tools,
             reasoning_details,
         } = params;
-        let chat_history = req.chat_history_with_documents();
+        let chat_history = req.history_with_documents();
 
         let CoreCompletionRequest {
             model: request_model,
-            chat_history: _,
+            system: _,
+            messages: _,
             tools,
             temperature,
             max_tokens,

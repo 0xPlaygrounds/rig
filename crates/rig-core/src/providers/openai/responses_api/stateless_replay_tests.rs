@@ -8,6 +8,7 @@
 use super::*;
 use crate::completion;
 use crate::message::{self, Text};
+use crate::non_empty::NonEmpty;
 use serde_json::json;
 
 #[test]
@@ -97,7 +98,7 @@ fn phase_survives_history_and_is_resent_on_the_assistant_item() {
     let content = super::tests::folded_choice(vec![output]);
     let history = completion::Message::Assistant {
         id: Some("msg_1".to_string()),
-        content,
+        content: NonEmpty::from_vec(content).expect("non-empty content"),
     };
 
     let items = Vec::<InputItem>::try_from(history).expect("history converts");
@@ -128,7 +129,7 @@ fn phase_survives_history_and_is_resent_on_the_assistant_item() {
 fn history_without_phase_replays_without_the_key() {
     let history = completion::Message::Assistant {
         id: Some("msg_1".to_string()),
-        content: vec![message::AssistantContent::Text(Text::new("plain"))],
+        content: NonEmpty::new(message::AssistantContent::Text(Text::new("plain"))),
     };
     let items = Vec::<InputItem>::try_from(history).expect("history converts");
     let wire = serde_json::to_value(&items[0]).expect("item serializes");

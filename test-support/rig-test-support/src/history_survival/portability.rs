@@ -8,6 +8,7 @@
 //! target either accepts the foreign history or rejects it, and the recorded
 //! request shows which opaque fields were forwarded.
 
+use rig_core::non_empty::NonEmpty;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -150,7 +151,7 @@ impl Source {
                     call: call.id.clone(),
                     provider: call.provider.clone(),
                     name: call.function.name.clone(),
-                    content: vec![ToolResultContent::text(weather_report(&city))],
+                    content: NonEmpty::new(ToolResultContent::text(weather_report(&city))),
                 })
             })
             .collect();
@@ -163,9 +164,11 @@ impl Source {
             Message::user(TOOL_USER_PROMPT),
             Message::Assistant {
                 id: reply.end.message_id.map(String::from),
-                content: reply.choice,
+                content: NonEmpty::from_vec(reply.choice).expect("non-empty content"),
             },
-            Message::User { content: results },
+            Message::User {
+                content: NonEmpty::from_vec(results).expect("non-empty content"),
+            },
         ]
     }
 }

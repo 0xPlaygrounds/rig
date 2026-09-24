@@ -107,7 +107,8 @@ fn check_history(
                 .map(|entity| content
                     .message(*entity)
                     .expect("valid remembered graph")
-                    .to_message())
+                    .to_message()
+                    .expect("a remembered message has content"))
                 .collect::<Vec<_>>(),
             replaced_history()
         );

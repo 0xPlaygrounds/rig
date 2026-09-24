@@ -244,7 +244,7 @@ fn tool_result_output_preserves_multimodal_tool_output() {
 }
 
 fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
-    let history = request.chat_history.clone();
+    let history = request.history().clone();
     if history.len() != 3 {
         return Err(format!(
             "follow-up request should contain [original user prompt, assistant tool call, user tool result]: {history:?}"
@@ -2430,7 +2430,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let follow_up_history = requests[1].chat_history.clone();
+    let follow_up_history = requests[1].history().clone();
     assert!(matches!(
         follow_up_history.get(2),
         Some(Message::User { content })
@@ -2523,7 +2523,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let retry_history = requests[1].chat_history.clone();
+    let retry_history = requests[1].history().clone();
     assert_eq!(retry_history.len(), 3);
     assert!(matches!(
         retry_history.get(1),
@@ -2648,7 +2648,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let follow_up_history = requests[1].chat_history.clone();
+    let follow_up_history = requests[1].history().clone();
     assert_eq!(follow_up_history.len(), 3);
     assert!(matches!(
         follow_up_history.get(1),
@@ -2745,7 +2745,7 @@ async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history(
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let follow_up_history = requests[1].chat_history.clone();
+    let follow_up_history = requests[1].history().clone();
     assert!(history_contains_text(&follow_up_history, "checking "));
     assert!(assistant_reasoning_precedes_tool_call(
         &follow_up_history,
@@ -2798,7 +2798,7 @@ async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let retry_history = requests[1].chat_history.clone();
+    let retry_history = requests[1].history().clone();
     assert!(assistant_reasoning_precedes_tool_call(
         &retry_history,
         "delta reason",
@@ -2933,7 +2933,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let retry_history = requests[1].chat_history.clone();
+    let retry_history = requests[1].history().clone();
     assert!(matches!(
         retry_history.get(1),
         Some(Message::Assistant { content, .. })
@@ -3187,7 +3187,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let follow_up_history = requests[1].chat_history.clone();
+    let follow_up_history = requests[1].history().clone();
     assert!(matches!(
         follow_up_history.get(1),
         Some(Message::Assistant { content, .. })
@@ -4924,7 +4924,7 @@ async fn tool_follow_up_history_preserves_structured_text_metadata() {
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let follow_up_history = requests[1].chat_history.iter().collect::<Vec<_>>();
+    let follow_up_history = requests[1].messages.iter().collect::<Vec<_>>();
     let assistant_content = follow_up_history
         .iter()
         .find_map(|message| match message {
@@ -5817,7 +5817,7 @@ async fn streaming_with_filter_shapes_loaded_history() {
         }
     }
 
-    let received = recorded.requests()[0].chat_history.clone();
+    let received = recorded.requests()[0].history().clone();
     assert_eq!(
         received.len(),
         3,
@@ -6282,7 +6282,7 @@ async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
 
     let requests = recorded.requests();
     let reasoning: Vec<_> = requests[1]
-        .chat_history
+        .messages
         .iter()
         .flat_map(|message| match message {
             Message::Assistant { content, .. } => content.iter().collect::<Vec<_>>(),

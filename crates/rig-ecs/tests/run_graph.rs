@@ -267,7 +267,7 @@ fn a_system_before_assemble_rewrites_an_utterance() {
         texts(&requests[0]),
         vec!["system:You are terse.", "user:quietly!"]
     );
-    let Message::User { content } = &requests[0].chat_history[1] else {
+    let Message::User { content } = &requests[0].history()[1] else {
         panic!("the prompt");
     };
     assert_eq!(content.len(), 1);

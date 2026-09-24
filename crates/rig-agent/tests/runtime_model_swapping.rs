@@ -420,7 +420,8 @@ fn beta_static(text: &str) -> BetaModel {
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user(prompt)],
+        system: None,
+        messages: rig_core::non_empty::NonEmpty::new(Message::user(prompt)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -918,7 +919,7 @@ fn routing_models() -> (AlphaModel, BetaModel) {
 }
 
 fn history_has_tool_result(request: &CompletionRequest) -> bool {
-    request.chat_history.iter().any(|message| {
+    request.history().iter().any(|message| {
         matches!(
             message,
             Message::User { content }
@@ -1181,7 +1182,7 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
         .into_iter()
         .next()
         .expect("beta request");
-    assert!(!beta_request.chat_history.iter().any(|message| {
+    assert!(!beta_request.history().iter().any(|message| {
         matches!(
             message,
             Message::Assistant { content, .. }

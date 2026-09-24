@@ -6,8 +6,8 @@
 //! let history = build_history_for_request(None, &[Message::user("Hello")]);
 //! assert_eq!(history.len(), 1);
 //! ```
-
-use rig_core::message::{AssistantContent, Message, ToolCallId, non_empty};
+use rig_core::message::{AssistantContent, Message, ToolCallId};
+use rig_core::non_empty::NonEmpty;
 pub use rig_core::transcript::{
     TranscriptError, tool_result_message, tool_result_output, validate_canonical,
 };
@@ -65,7 +65,7 @@ pub fn invalid_tool_retry_user_message(
         .collect::<Vec<_>>();
 
     Some(Message::User {
-        content: non_empty(retry_results)?,
+        content: NonEmpty::from_vec(retry_results)?,
     })
 }
 

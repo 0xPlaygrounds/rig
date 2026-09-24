@@ -2,6 +2,7 @@ use futures::stream;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
+use rig::non_empty::NonEmpty;
 use rig::streaming::{BlockId, StreamEvent, StreamedUserContent};
 
 use crate::reasoning::collect_stream_stats;
@@ -20,7 +21,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
         call: tool_call.id.clone(),
         provider: tool_call.provider.clone(),
         name: tool_call.function.name.clone(),
-        content: vec![ToolResultContent::text("72F and sunny")],
+        content: NonEmpty::new(ToolResultContent::text("72F and sunny")),
     };
 
     let items = vec![

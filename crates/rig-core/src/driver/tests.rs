@@ -6,6 +6,7 @@
 //! and the property the whole model exists for — a unary reply and a
 //! streamed reply of the same content fold to the same response.
 
+use crate::non_empty::NonEmpty;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -165,7 +166,7 @@ impl Wire for Echo {
 
     fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let body = serde_json::to_vec(&serde_json::json!({
-            "messages": request.chat_history.len(),
+            "messages": request.history().len(),
         }))?;
         let request =
             http::Request::post("https://echo.invalid/v1/messages").body(Body::Bytes(body))?;
@@ -186,7 +187,8 @@ impl Wire for Echo {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("say hi")],
+        system: None,
+        messages: NonEmpty::new(crate::message::Message::user("say hi")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

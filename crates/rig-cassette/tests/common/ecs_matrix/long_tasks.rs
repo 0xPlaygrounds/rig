@@ -271,7 +271,7 @@ pub(crate) fn assert_world(
             })
             .expect("last request in scope");
         let request: Vec<_> = super::long_loop::request_history(last)
-            .iter()
+            .into_iter()
             .filter(|message| !matches!(message, Message::System { .. }))
             .collect();
         assert_eq!(
@@ -541,7 +541,7 @@ fn assert_history_growth(log: &EffectLog, task: Task) {
             };
             assert_eq!(&result.call, id, "call/result association");
             assert_eq!(
-                rig_core::tool::ToolOutput::content(result.content.clone())
+                rig_core::tool::ToolOutput::content(result.content.clone().into_vec())
                     .expect("content")
                     .render(),
                 dispatched_result(record).output().render(),

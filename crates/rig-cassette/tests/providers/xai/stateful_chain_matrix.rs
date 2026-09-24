@@ -4,6 +4,7 @@
 //! body passes or panics. The id is account-scoped and deleted by the
 //! recording, so the fixture replays but cannot seed a live call.
 
+use rig::non_empty::NonEmpty;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
 use futures::FutureExt;
@@ -19,7 +20,8 @@ use super::support::with_xai_cassette;
 fn request(history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        system: None,
+        messages: NonEmpty::from_vec(history).expect("a conversation"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -75,14 +77,16 @@ async fn file_id_chain() {
 
         let body = async {
             let document = Message::User {
-                content: vec![
+                content: NonEmpty::of(
                     UserContent::Document(Document {
                         data: DocumentSourceKind::file_id(&file_id),
                         media_type: Some(DocumentMediaType::PDF),
                         additional_params: None,
                     }),
-                    UserContent::text("How many pages does this PDF have? Answer with a number."),
-                ],
+                    [UserContent::text(
+                        "How many pages does this PDF have? Answer with a number.",
+                    )],
+                ),
             };
             let model = client.completion(xai::GROK_4);
             let first = model
@@ -94,7 +98,7 @@ async fn file_id_chain() {
                 document,
                 Message::Assistant {
                     id: first.end.message_id.clone().map(String::from),
-                    content: first.choice.clone(),
+                    content: NonEmpty::from_vec(first.choice.clone()).expect("non-empty content"),
                 },
                 Message::user("Is the attached PDF longer than two pages? Answer yes or no."),
             ];

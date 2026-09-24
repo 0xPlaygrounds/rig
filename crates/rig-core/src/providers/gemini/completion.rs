@@ -143,11 +143,12 @@ impl Wire for GenerateContent {
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, EncodeError> {
-    let chat_history = completion_request.chat_history_with_documents();
+    let chat_history = completion_request.history_with_documents();
 
     let CompletionRequest {
         model: _,
-        chat_history: _,
+        system: _,
+        messages: _,
         documents: _,
         tools: function_tools,
         temperature,

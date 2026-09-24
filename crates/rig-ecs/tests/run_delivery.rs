@@ -29,7 +29,7 @@ const ADD: &str = "t/tool:add#0";
 
 fn prompt_of(request: &CompletionRequest) -> String {
     request
-        .chat_history
+        .history()
         .iter()
         .find_map(|m| match m {
             Message::User { content } => content.iter().find_map(|p| match p {
@@ -42,7 +42,7 @@ fn prompt_of(request: &CompletionRequest) -> String {
 }
 
 fn has_tool_result(request: &CompletionRequest) -> bool {
-    request.chat_history.iter().any(|m| match m {
+    request.history().iter().any(|m| match m {
         Message::User { content } => content
             .iter()
             .any(|p| matches!(p, UserContent::ToolResult(_))),

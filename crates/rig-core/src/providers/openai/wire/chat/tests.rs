@@ -8,6 +8,7 @@
 //! answered both ways, so there is nothing hand-written for the two paths to
 //! agree about by accident.
 
+use crate::non_empty::NonEmpty;
 use bytes::Bytes;
 use futures::StreamExt;
 
@@ -29,7 +30,8 @@ fn wire() -> Chat {
 fn prompt(text: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(text)],
+        system: None,
+        messages: NonEmpty::new(crate::message::Message::user(text)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: Some(0.0),
@@ -388,13 +390,14 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
 
     let with_file_id = || {
         let mut request = prompt("read this");
-        request.chat_history = vec![Message::User {
-            content: vec![UserContent::Document(Document {
+        request.messages = NonEmpty::from_vec(vec![Message::User {
+            content: NonEmpty::new(UserContent::Document(Document {
                 data: DocumentSourceKind::FileId("file-abc".to_owned()),
                 media_type: None,
                 additional_params: None,
-            })],
-        }];
+            })),
+        }])
+        .expect("a conversation");
         request
     };
 
@@ -944,7 +947,10 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     let encode = |content: Vec<UserContent>| {
         let mut request = prompt("look at this");
-        request.chat_history = vec![Message::User { content }];
+        request.messages = NonEmpty::from_vec(vec![Message::User {
+            content: NonEmpty::from_vec(content).expect("non-empty content"),
+        }])
+        .expect("a conversation");
         OpenAI::new("k")
             .with_dialect(&MISTRAL)
             .chat("mistral-small-latest")
@@ -1017,14 +1023,15 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     // And no other dialect rebuilds content this way.
     let mut request = prompt("describe");
-    request.chat_history = vec![Message::User {
-        content: vec![UserContent::Image(Image {
+    request.messages = NonEmpty::from_vec(vec![Message::User {
+        content: NonEmpty::new(UserContent::Image(Image {
             data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.png".to_owned()),
             media_type: None,
             detail: None,
             additional_params: None,
-        })],
-    }];
+        })),
+    }])
+    .expect("a conversation");
     let openai = wire().encode(request, Mode::Unary).expect("encodes");
     let [http_request] = openai.requests.as_slice() else {
         panic!("one request")
@@ -1051,17 +1058,18 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
 
     let history = || {
         let mut request = prompt("and then?");
-        request.chat_history = vec![
+        request.messages = NonEmpty::from_vec(vec![
             Message::user("think first"),
             Message::Assistant {
                 id: None,
-                content: vec![
+                content: NonEmpty::of(
                     AssistantContent::Reasoning(Reasoning::new("private chain")),
-                    AssistantContent::text("visible answer"),
-                ],
+                    [AssistantContent::text("visible answer")],
+                ),
             },
             Message::user("and then?"),
-        ];
+        ])
+        .expect("a conversation");
         request
     };
     let assistant = |dialect: &Dialect| {

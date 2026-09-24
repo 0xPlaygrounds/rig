@@ -3,6 +3,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::non_empty::NonEmpty;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -166,15 +167,16 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    vec![rig::message::ToolResultContent::text(
+                    NonEmpty::new(rig::message::ToolResultContent::text(
                         "sent: deploy finished",
-                    )],
+                    )),
                 )))
                 .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
                 .max_tokens(1024)
                 .message(Message::Assistant {
                     id: first_turn.end.message_id.clone().map(String::from),
-                    content: first_turn.choice.clone(),
+                    content: NonEmpty::from_vec(first_turn.choice.clone())
+                        .expect("non-empty content"),
                 })
                 .send()
                 .await

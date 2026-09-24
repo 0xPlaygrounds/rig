@@ -9,6 +9,7 @@
 use super::*;
 use crate::driver::WireDriver;
 use crate::message::AssistantContent;
+use crate::non_empty::NonEmpty;
 use crate::streaming::StreamEvent;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use crate::wire::{Fold, Framing, Mode, Wire};
@@ -41,9 +42,10 @@ fn wire() -> Messages {
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(
+        system: None,
+        messages: NonEmpty::new(crate::message::Message::user(
             "Reply with exactly: parity probe",
-        )],
+        )),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

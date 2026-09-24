@@ -64,7 +64,7 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -103,7 +103,7 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -142,7 +142,7 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -181,7 +181,7 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
+          "messages": [
             {
               "role": "user",
               "content": [

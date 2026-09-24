@@ -11,6 +11,7 @@
 
 use rig::completion::CompletionModel;
 use rig::message::{Document, DocumentSourceKind, Message, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::providers::anthropic::completion::{
     self as anthropic_completion, CLAUDE_SONNET_4_6, Citation,
 };
@@ -59,13 +60,13 @@ async fn pdf_document_citations_decode_as_page_locations() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![
+                            content: NonEmpty::of(
                                 UserContent::Document(cited_pdf()),
-                                UserContent::text(
+                                [UserContent::text(
                                     "Using citations, state in one sentence what problem this \
                                      paper says it solves.",
-                                ),
-                            ],
+                                )],
+                            ),
                         })
                         .temperature(0.0)
                         .max_tokens(512)

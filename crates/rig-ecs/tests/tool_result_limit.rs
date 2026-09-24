@@ -10,6 +10,7 @@
 //! | a `RequestPartEdit` is applied first, then the limit | `an_edit_is_applied_before_the_limit` |
 
 use crate::run_support::{graph_messages, open_model_world, requests, utterances_of};
+use rig_core::non_empty::NonEmpty;
 
 use bevy_ecs::prelude::*;
 use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
@@ -42,12 +43,12 @@ fn history(text: &str) -> Vec<MessageParts> {
                 call: rig_core::message::ToolCallId::new("c1").unwrap(),
                 provider: None,
                 name: "probe".to_owned(),
-                content: vec![
+                content: NonEmpty::of(
                     ToolResultContent::text(text),
-                    ToolResultContent::Json {
+                    [ToolResultContent::Json {
                         value: serde_json::json!({"payload": LONG}),
-                    },
-                ],
+                    }],
+                ),
             })],
         },
     ]
@@ -86,9 +87,9 @@ fn no_limit_is_verbatim() {
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].chat_history, before);
+    assert_eq!(requests[0].history(), before);
     assert_eq!(
-        serde_json::to_vec(&requests[0].chat_history).unwrap(),
+        serde_json::to_vec(&requests[0].history()).unwrap(),
         serde_json::to_vec(&before).unwrap(),
         "byte-identical to the graph's DTOs"
     );
@@ -103,7 +104,7 @@ fn a_limit_cuts_the_request_and_keeps_the_graph_and_checkpoint_verbatim() {
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(requests.len(), 1);
-    let items = result_items(&requests[0].chat_history[1]);
+    let items = result_items(&requests[0].history()[1]);
     let expected = format!(
         "01234{}vwxyz",
         TOOL_RESULT_LIMIT_MARKER.replace("{omitted}", "26")
@@ -117,7 +118,7 @@ fn a_limit_cuts_the_request_and_keeps_the_graph_and_checkpoint_verbatim() {
         "the JSON item is verbatim"
     );
     // Everything but the cut text is what the graph holds.
-    let mut cut = requests[0].chat_history.clone();
+    let mut cut = requests[0].history().clone();
     let Message::User { content } = &mut cut[1] else {
         panic!("the results");
     };
@@ -126,7 +127,7 @@ fn a_limit_cuts_the_request_and_keeps_the_graph_and_checkpoint_verbatim() {
     };
     result.content = history(LONG)
         .pop()
-        .map(|parts| match parts.to_message() {
+        .map(|parts| match parts.to_message().unwrap() {
             Message::User { content } => match content.into_iter().next().unwrap() {
                 UserContent::ToolResult(result) => result.content,
                 other => panic!("{other:?}"),
@@ -180,7 +181,7 @@ fn the_cut_lands_on_character_boundaries() {
     });
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
-    let items = result_items(&requests[0].chat_history[1]);
+    let items = result_items(&requests[0].history()[1]);
     let cut = text_of(&items[0]);
     // head: 3 bytes floors to "é" (2); tail: 4 bytes is a boundary ("üÿ").
     let omitted = text.len() - 2 - 4;
@@ -207,7 +208,8 @@ fn json_items_and_user_text_are_never_cut() {
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(
-        requests[0].chat_history, before,
+        requests[0].history(),
+        before,
         "a short text, a long JSON item and a long user text: nothing to cut"
     );
 }
@@ -227,13 +229,10 @@ fn a_limit_change_between_turns_affects_only_later_turns() {
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(requests.len(), 3);
-    assert_eq!(
-        requests[0].chat_history, before,
-        "verbatim before any limit"
-    );
+    assert_eq!(requests[0].history(), before, "verbatim before any limit");
     let texts: Vec<String> = requests
         .iter()
-        .map(|request| text_of(&result_items(&request.chat_history[1])[0]).to_owned())
+        .map(|request| text_of(&result_items(&request.history()[1])[0]).to_owned())
         .collect();
     assert_eq!(texts[0], LONG);
     assert_eq!(
@@ -279,7 +278,7 @@ fn an_edit_is_applied_before_the_limit() {
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(requests.len(), 1);
-    let items = result_items(&requests[0].chat_history[1]);
+    let items = result_items(&requests[0].history()[1]);
     assert_eq!(
         text_of(&items[0]),
         format!(

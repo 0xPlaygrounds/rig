@@ -95,7 +95,12 @@ pub(super) async fn execute(
     messages.sort_by_key(|(order, _)| *order);
     NativeResponse {
         output,
-        messages: Some(messages.into_iter().map(|(_, message)| message).collect()),
+        messages: Some(
+            messages
+                .into_iter()
+                .filter_map(|(_, message)| message)
+                .collect(),
+        ),
         usage,
         requests,
     }

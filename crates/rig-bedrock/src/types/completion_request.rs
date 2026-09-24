@@ -8,6 +8,7 @@ use aws_sdk_bedrockruntime::types::{
 use rig_core::completion::Message;
 use rig_core::error::ProviderError;
 use rig_core::message::{DocumentMediaType, UserContent};
+use rig_core::non_empty::NonEmpty;
 
 pub struct AwsCompletionRequest {
     pub inner: rig_core::completion::CompletionRequest,
@@ -30,10 +31,9 @@ impl AwsCompletionRequest {
         model: &str,
         prompt_caching: bool,
     ) -> Self {
-        rig_core::message::retain_replayable_reasoning(
-            &mut inner.chat_history,
-            &[crate::types::assistant_content::reasoning_issuer(model)],
-        );
+        inner.retain_replayable_reasoning(&[crate::types::assistant_content::reasoning_issuer(
+            model,
+        )]);
         Self {
             inner,
             prompt_caching,
@@ -165,11 +165,11 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, ProviderError> {
         let mut system_blocks = Vec::new();
 
-        for message in self.inner.chat_history.iter() {
+        for message in self.inner.history() {
             if let Message::System { content } = message
                 && !content.is_empty()
             {
-                system_blocks.push(SystemContentBlock::Text(content.clone()));
+                system_blocks.push(SystemContentBlock::Text(content));
             }
         }
 
@@ -197,15 +197,15 @@ impl AwsCompletionRequest {
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = vec![UserContent::document(
+            let content = NonEmpty::new(UserContent::document(
                 messages,
                 Some(DocumentMediaType::TXT),
-            )];
+            ));
 
             full_history.push(Message::User { content });
         }
 
-        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
+        let has_reasoning = self.inner.messages.iter().any(|message| match message {
             Message::Assistant { content, .. } => content
                 .iter()
                 .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
@@ -214,7 +214,7 @@ impl AwsCompletionRequest {
 
         full_history.extend(
             self.inner
-                .chat_history
+                .messages
                 .into_iter()
                 .filter(|message| !matches!(message, Message::System { .. })),
         );

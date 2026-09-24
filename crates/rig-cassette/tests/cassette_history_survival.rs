@@ -390,7 +390,7 @@ fn every_native_request_pairs_tool_calls_with_results() {
         };
         for (index, record) in records.iter().enumerate() {
             let Some(history) = record
-                .pointer("/kind/request/chat_history")
+                .pointer("/kind/request/messages")
                 .and_then(Value::as_array)
             else {
                 continue;

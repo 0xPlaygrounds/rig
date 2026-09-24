@@ -183,7 +183,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
         let has_tool_call = choice.iter().any(AssistantContent::is_tool_call);
 
         Ok(CompletionResponse {
-            choice,
+            choice: choice.into_vec(),
             end: CompletionEnd {
                 finish_reason: finish_reason
                     .map(|reason| reason.reconcile_with_output(has_tool_call)),

@@ -749,7 +749,7 @@ async fn typed_prompt_response_preserves_completion_calls() {
 }
 
 fn validate_follow_up_tool_history(request: &CompletionRequest) {
-    let history = request.chat_history.clone();
+    let history = request.history().clone();
     assert_eq!(
         history.len(),
         3,
@@ -1208,7 +1208,7 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
-    let retry_history = requests[1].chat_history.clone();
+    let retry_history = requests[1].history().clone();
     assert_eq!(retry_history.len(), 3);
     assert!(matches!(
         retry_history.get(1),
@@ -1878,7 +1878,7 @@ async fn memory_loads_into_request_history() {
         .await
         .expect("prompt should succeed");
 
-    let received = recorded.requests()[0].chat_history.clone();
+    let received = recorded.requests()[0].history().clone();
     assert_eq!(
         received.len(),
         3,
@@ -1940,7 +1940,7 @@ async fn explicit_with_history_overrides_memory() {
         "explicit history bypasses memory: nothing to acknowledge"
     );
 
-    let received = recorded.requests()[0].chat_history.clone();
+    let received = recorded.requests()[0].history().clone();
     assert_eq!(received.len(), 2, "caller history (1) + current prompt");
     assert!(matches!(
         received.first(),
@@ -2193,7 +2193,7 @@ async fn with_filter_truncates_loaded_history() {
         .await
         .expect("prompt should succeed");
 
-    let received = recorded.requests()[0].chat_history.clone();
+    let received = recorded.requests()[0].history().clone();
     assert_eq!(
         received.len(),
         3,
@@ -2298,32 +2298,6 @@ fn completion_call_identity_round_trips() {
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);
-}
-
-/// The agent driver validates the request it builds the way the builder's
-/// own `send`/`stream` do: an empty user content block is a local, named
-/// error and never reaches the provider.
-#[tokio::test]
-async fn an_empty_content_block_is_rejected_before_the_provider() {
-    let model = MockCompletionModel::text("unreachable");
-    let recorded = model.clone();
-    let agent = AgentBuilder::new(model).build();
-
-    let error = agent
-        .prompt(Message::User {
-            content: Vec::new(),
-        })
-        .await
-        .expect_err("an empty content block is refused");
-
-    assert!(
-        error.to_string().contains("content"),
-        "the error names the empty content: {error}"
-    );
-    assert!(
-        recorded.requests().is_empty(),
-        "the provider was never asked"
-    );
 }
 
 /// The model-turn hook reads the reconciled finish reason: a wire that

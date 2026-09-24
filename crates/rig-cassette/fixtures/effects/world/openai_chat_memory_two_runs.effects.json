@@ -112,11 +112,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a concise assistant. Answer directly."
-            },
+          "system": "You are a concise assistant. Answer directly.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -278,11 +275,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a concise assistant. Answer directly."
-            },
+          "system": "You are a concise assistant. Answer directly.",
+          "messages": [
             {
               "role": "user",
               "content": [

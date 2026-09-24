@@ -1171,7 +1171,7 @@ fn assert_graph(app: &mut App, runs: &[Entity], program: &Program, log: &EffectL
             })
             .expect("a completion");
         let history = last
-            .chat_history
+            .history()
             .iter()
             .filter(|message| !matches!(message, rig_core::message::Message::System { .. }))
             .count();

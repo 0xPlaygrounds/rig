@@ -5,6 +5,7 @@ use candle_transformers::models::llama::LlamaConfig;
 use futures::StreamExt;
 use rig_core::completion::{CompletionModel, Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
+use rig_core::non_empty::NonEmpty;
 #[cfg(not(target_family = "wasm"))]
 use rig_core::streaming::{Delta, StreamEvent};
 #[cfg(not(target_family = "wasm"))]
@@ -231,11 +232,9 @@ fn config_with(
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: if messages.is_empty() {
-            vec![Message::user("hello")]
-        } else {
-            messages
-        },
+        system: None,
+        messages: NonEmpty::from_vec(messages)
+            .unwrap_or_else(|| NonEmpty::new(Message::user("hello"))),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -1443,16 +1442,16 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     assert!(render_prompt(&tool_result).is_err());
 
     let image = Message::User {
-        content: vec![UserContent::image_base64(
+        content: NonEmpty::new(UserContent::image_base64(
             "data",
             Some(ImageMediaType::PNG),
             Some(ImageDetail::Auto),
-        )],
+        )),
     };
     assert!(render_prompt(&request(vec![image])).is_err());
 
     let audio = Message::User {
-        content: vec![UserContent::audio("data", Some(AudioMediaType::WAV))],
+        content: NonEmpty::new(UserContent::audio("data", Some(AudioMediaType::WAV))),
     };
     assert!(render_prompt(&request(vec![audio])).is_err());
     Ok(())

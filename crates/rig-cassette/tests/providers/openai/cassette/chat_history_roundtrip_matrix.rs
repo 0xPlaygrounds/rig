@@ -29,6 +29,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
+use rig::non_empty::NonEmpty;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -106,57 +107,61 @@ fn history(shape: Shape) -> Vec<Message> {
     match shape {
         Shape::Text => vec![
             Message::User {
-                content: vec![UserContent::text(
+                content: NonEmpty::new(UserContent::text(
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
-                )],
+                )),
             },
             Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::text("lantern-42")],
+                content: NonEmpty::new(AssistantContent::text("lantern-42")),
             },
         ],
         Shape::SingleTool => vec![
             Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::tool_call(
+                content: NonEmpty::new(AssistantContent::tool_call(
                     "call_history_single",
                     "lookup_marker",
                     json!({ "key": "harbor" }),
-                )],
+                )),
             },
             Message::User {
-                content: vec![UserContent::tool_result(
+                content: NonEmpty::new(UserContent::tool_result(
                     "call_history_single",
                     "lookup_marker",
-                    vec![ToolResultContent::text("azimuth-47")],
-                )],
+                    NonEmpty::new(ToolResultContent::text("azimuth-47")),
+                )),
             },
         ],
         Shape::ParallelTool => vec![
             Message::Assistant {
                 id: None,
-                content: vec![
+                content: NonEmpty::of(
                     AssistantContent::tool_call(
                         "call_history_alpha",
                         "alpha",
                         json!({ "slot": 1 }),
                     ),
-                    AssistantContent::tool_call("call_history_beta", "beta", json!({ "slot": 2 })),
-                ],
+                    [AssistantContent::tool_call(
+                        "call_history_beta",
+                        "beta",
+                        json!({ "slot": 2 }),
+                    )],
+                ),
             },
             Message::User {
-                content: vec![
+                content: NonEmpty::of(
                     UserContent::tool_result(
                         "call_history_alpha",
                         "alpha",
-                        vec![ToolResultContent::text("red")],
+                        NonEmpty::new(ToolResultContent::text("red")),
                     ),
-                    UserContent::tool_result(
+                    [UserContent::tool_result(
                         "call_history_beta",
                         "beta",
-                        vec![ToolResultContent::text("blue")],
-                    ),
-                ],
+                        NonEmpty::new(ToolResultContent::text("blue")),
+                    )],
+                ),
             },
         ],
     }

@@ -12,6 +12,7 @@
 #![cfg(target_arch = "wasm32")]
 #![allow(clippy::expect_used)]
 
+use rig_core::non_empty::NonEmpty;
 use std::{
     cell::Cell,
     rc::Rc,
@@ -186,7 +187,8 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
     );
     let request = rig_core::completion::CompletionRequest {
         model: None,
-        chat_history: vec![rig_core::completion::Message::user("hi")],
+        system: None,
+        messages: NonEmpty::new(rig_core::completion::Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,

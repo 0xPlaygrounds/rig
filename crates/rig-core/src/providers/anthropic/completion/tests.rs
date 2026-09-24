@@ -2,6 +2,7 @@ use super::*;
 use crate::driver::WireDriver;
 use crate::error::ProviderError;
 use crate::message::EMPTY_RESPONSE_ERROR;
+use crate::non_empty::NonEmpty;
 use crate::operation::Completion;
 use crate::providers::anthropic::wire::Anthropic;
 use crate::wire::WireFrame;
@@ -329,10 +330,8 @@ fn completion_request_with_tools(
 ) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![
-            message::Message::system("System prompt"),
-            message::Message::from("Hello"),
-        ],
+        system: Some("System prompt".into()),
+        messages: NonEmpty::new(message::Message::from("Hello")),
         documents: Vec::new(),
         tools,
         temperature: None,
@@ -350,11 +349,15 @@ fn completion_request_with_history(
 ) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: preamble
-            .map(message::Message::system)
-            .into_iter()
-            .chain(chat_history)
-            .collect(),
+        system: None,
+        messages: NonEmpty::from_vec(
+            preamble
+                .map(message::Message::system)
+                .into_iter()
+                .chain(chat_history)
+                .collect(),
+        )
+        .expect("a conversation"),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -703,7 +706,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: vec![
+                content: NonEmpty::of(
                     message::AssistantContent::Text(message::Text {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
@@ -720,7 +723,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                         )
                         .expect("object params"),
                     }),
-                    message::AssistantContent::Text(message::Text {
+                    [message::AssistantContent::Text(message::Text {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
                             json!({
@@ -735,8 +738,8 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                             }),
                         )
                         .expect("object params"),
-                    }),
-                ],
+                    })],
+                ),
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -795,10 +798,10 @@ fn foreign_annotated_empty_text_produces_no_anthropic_block() {
 
     let message = message::Message::Assistant {
         id: None,
-        content: vec![
+        content: NonEmpty::of(
             foreign_annotated_empty,
-            message::AssistantContent::text("real answer"),
-        ],
+            [message::AssistantContent::text("real answer")],
+        ),
     };
     let converted = Message::try_from(message).expect("message converts");
     assert_eq!(converted.content.len(), 1, "only the real block survives");
@@ -814,7 +817,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: vec![message::AssistantContent::Text(message::Text {
+                content: NonEmpty::new(message::AssistantContent::Text(message::Text {
                     text: String::new(),
                     additional_params: crate::message::AdditionalParams::try_from_value(json!({
                         ANTHROPIC_RAW_CONTENT_KEY: {
@@ -827,7 +830,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
                         }
                     }))
                     .expect("object params"),
-                })],
+                })),
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -2342,11 +2345,11 @@ fn test_file_id_rig_to_anthropic_conversion() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
+        content: NonEmpty::new(msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::FileId("file_abc".to_string()),
             media_type: None,
             additional_params: None,
-        })],
+        })),
     };
 
     let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -2371,10 +2374,10 @@ fn test_plaintext_rig_to_anthropic_conversion() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::document(
+        content: NonEmpty::new(msg::UserContent::document(
             "Some plain text content".to_string(),
             Some(msg::DocumentMediaType::TXT),
-        )],
+        )),
     };
 
     let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -2400,11 +2403,11 @@ fn test_unsupported_document_type_returns_error() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
+        content: NonEmpty::new(msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::String("data".into()),
             media_type: Some(msg::DocumentMediaType::HTML),
             additional_params: None,
-        })],
+        })),
     };
 
     let result: Result<Message, _> = rig_message.try_into();
@@ -2421,11 +2424,11 @@ fn test_plaintext_document_url_source_returns_error() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
+        content: NonEmpty::new(msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::Url("https://example.com/doc.txt".into()),
             media_type: Some(msg::DocumentMediaType::TXT),
             additional_params: None,
-        })],
+        })),
     };
 
     let result: Result<Message, _> = rig_message.try_into();
@@ -2528,7 +2531,7 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 
     let msg = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Reasoning(reasoning)],
+        content: NonEmpty::new(message::AssistantContent::Reasoning(reasoning)),
     };
     let converted: Message = msg.try_into().expect("convert assistant message");
     let converted_content = converted.content.clone();
@@ -2566,7 +2569,7 @@ fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     };
     let msg = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Reasoning(reasoning)],
+        content: NonEmpty::new(message::AssistantContent::Reasoning(reasoning)),
     };
 
     let converted: Message = msg.try_into().expect("convert assistant message");
@@ -3053,7 +3056,7 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.end.message_id.clone().map(String::from),
-        content: converted.choice,
+        content: NonEmpty::from_vec(converted.choice).expect("non-empty content"),
     }
     .try_into()
     .unwrap();
@@ -3117,7 +3120,7 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.end.message_id.map(String::from),
-        content: converted.choice,
+        content: NonEmpty::from_vec(converted.choice).expect("non-empty content"),
     }
     .try_into()
     .unwrap();
@@ -3220,7 +3223,7 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.end.message_id.map(String::from),
-        content: converted.choice,
+        content: NonEmpty::from_vec(converted.choice).expect("non-empty content"),
     }
     .try_into()
     .unwrap();
@@ -3320,7 +3323,7 @@ fn anthropic_citations_returns_empty_when_absent() {
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Text(message::Text {
+        content: NonEmpty::new(message::AssistantContent::Text(message::Text {
             text: "the grass is green".into(),
             additional_params: crate::message::AdditionalParams::try_from_value(json!({
                 "citations": [{
@@ -3332,7 +3335,7 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
                 }]
             }))
             .expect("object params"),
-        })],
+        })),
     };
 
     let converted: Message = assistant.try_into().unwrap();
@@ -3389,7 +3392,9 @@ fn document_additional_params_forward_to_anthropic_document() {
         }))
         .expect("object params"),
     });
-    let msg = message::Message::User { content: vec![doc] };
+    let msg = message::Message::User {
+        content: NonEmpty::new(doc),
+    };
     let converted: Message = msg.try_into().unwrap();
     let block = converted.content.first();
     let Some(Content::Document {
@@ -3538,7 +3543,7 @@ fn url_pdf_with_or_without_media_type_converts_to_url_document_source() {
 
     for media_type in [Some(message::DocumentMediaType::PDF), None] {
         let msg = message::Message::User {
-            content: vec![message::UserContent::document_url(pdf_url, media_type)],
+            content: NonEmpty::new(message::UserContent::document_url(pdf_url, media_type)),
         };
 
         let converted = Message::try_from(msg).expect("URL PDF should convert");
@@ -3694,19 +3699,21 @@ fn request_reserves_raw_server_tool_handles_without_rewriting_them() {
     let history = vec![
         message::Message::Assistant {
             id: None,
-            content: vec![
+            content: NonEmpty::of(
                 message::AssistantContent::ToolCall(local.clone()),
-                message::AssistantContent::Text(raw_content_text(&raw_call)),
-                message::AssistantContent::Text(raw_content_text(&raw_result)),
-            ],
+                [
+                    message::AssistantContent::Text(raw_content_text(&raw_call)),
+                    message::AssistantContent::Text(raw_content_text(&raw_result)),
+                ],
+            ),
         },
         message::Message::User {
-            content: vec![message::UserContent::tool_result_for(
+            content: NonEmpty::new(message::UserContent::tool_result_for(
                 local.id,
                 None,
                 "local",
-                vec![],
-            )],
+                NonEmpty::new(message::ToolResultContent::text("")),
+            )),
         },
     ];
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {

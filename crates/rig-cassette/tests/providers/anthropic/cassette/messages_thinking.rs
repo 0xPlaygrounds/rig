@@ -11,6 +11,7 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ReasoningContent};
+use rig::non_empty::NonEmpty;
 use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent};
 
@@ -73,7 +74,8 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .message(Message::user(redacted_thinking_prompt()))
                 .message(Message::Assistant {
                     id: first_response.end.message_id.clone().map(String::from),
-                    content: first_response.choice.clone(),
+                    content: NonEmpty::from_vec(first_response.choice.clone())
+                        .expect("non-empty content"),
                 })
                 .build();
 

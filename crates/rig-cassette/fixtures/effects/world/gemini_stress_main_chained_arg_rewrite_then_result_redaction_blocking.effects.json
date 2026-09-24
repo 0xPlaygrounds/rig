@@ -84,11 +84,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. You MUST use the add tool for the addition. After the tool result is available, report the exact tool result text verbatim as your final answer."
-            },
+          "system": "You are a calculator assistant. You MUST use the add tool for the addition. After the tool result is available, report the exact tool result text verbatim as your final answer.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -235,11 +232,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. You MUST use the add tool for the addition. After the tool result is available, report the exact tool result text verbatim as your final answer."
-            },
+          "system": "You are a calculator assistant. You MUST use the add tool for the addition. After the tool result is available, report the exact tool result text verbatim as your final answer.",
+          "messages": [
             {
               "role": "user",
               "content": [

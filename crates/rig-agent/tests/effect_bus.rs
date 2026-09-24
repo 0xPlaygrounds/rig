@@ -3,6 +3,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 use rig_cassette::agent::AgentReplayExt;
+use rig_core::non_empty::NonEmpty;
 use std::{
     sync::{
         Arc, Mutex, OnceLock,
@@ -1783,7 +1784,8 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         .expect("the route is registered under the agent's owner");
     let request = |text: &str| rig_core::completion::CompletionRequest {
         model: None,
-        chat_history: vec![rig_core::message::Message::user(text)],
+        system: None,
+        messages: NonEmpty::new(rig_core::message::Message::user(text)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -1918,7 +1920,8 @@ impl AgentHook for AsksTheModel {
         let model = ctx.bind(&self.key).expect("bound for this run");
         let request = rig_core::completion::CompletionRequest {
             model: None,
-            chat_history: vec![rig_core::message::Message::user("side question")],
+            system: None,
+            messages: NonEmpty::new(rig_core::message::Message::user("side question")),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,

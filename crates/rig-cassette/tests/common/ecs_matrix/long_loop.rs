@@ -781,9 +781,9 @@ pub(crate) fn dispatched_result(record: &EffectRecord) -> &rig_core::tool::ToolR
     }
 }
 
-pub(crate) fn request_history(record: &EffectRecord) -> &[Message] {
+pub(crate) fn request_history(record: &EffectRecord) -> Vec<Message> {
     match &record.kind {
-        EffectKind::Completion { request, .. } => &request.chat_history,
+        EffectKind::Completion { request, .. } => request.history(),
         other => panic!("a completion record, not {other:?}"),
     }
 }
@@ -969,7 +969,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
     // per tool turn, and every request carries the whole prior history
     // behind the preamble (every wire folds it in as `chat_history[0]`, a
     // `Message::System`) and the prompt.
-    let mut previous: Option<&[Message]> = None;
+    let mut previous: Option<Vec<Message>> = None;
     let mut tool_turns_before = 0;
     let mut last_tool_turn: Option<&Turn<'_>> = None;
     for (n, turn) in turns.iter().enumerate() {
@@ -990,7 +990,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
             "{}: request {n}'s second message is the prompt",
             cell.name
         );
-        if let Some(previous) = previous {
+        if let Some(previous) = &previous {
             assert_eq!(
                 serde_json::to_value(&history[..previous.len()]).expect("history serializes"),
                 serde_json::to_value(previous).expect("history serializes"),
@@ -1044,9 +1044,10 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         "{}: request {n}'s result {i} ({name}) answers the turn's {i}th call, in call order",
                         cell.name
                     );
-                    let replayed = rig_core::tool::ToolOutput::content(part.content.clone())
-                        .expect("a tool-result part carries content")
-                        .render();
+                    let replayed =
+                        rig_core::tool::ToolOutput::content(part.content.clone().into_vec())
+                            .expect("a tool-result part carries content")
+                            .render();
                     assert_eq!(
                         replayed,
                         dispatched_result(record).output().render(),

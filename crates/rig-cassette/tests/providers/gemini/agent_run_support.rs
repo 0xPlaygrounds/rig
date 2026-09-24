@@ -3,6 +3,7 @@
 //! [`AgentRun`](rig::agent::run::AgentRun) state machine.
 #![allow(dead_code)]
 
+use rig::non_empty::NonEmpty;
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
@@ -213,7 +214,7 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
                 call.tool_call.id.clone(),
                 call.tool_call.provider.clone(),
                 call.tool_call.function.name.clone(),
-                content,
+                NonEmpty::from_vec(content).expect("non-empty content"),
             )
         })
         .collect()

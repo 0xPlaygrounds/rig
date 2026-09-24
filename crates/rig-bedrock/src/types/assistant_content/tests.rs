@@ -4,6 +4,7 @@ use crate::types::{
     errors::TypeConversionError,
     json::AwsDocument,
 };
+use rig_core::non_empty::NonEmpty;
 
 use super::AwsConverseOutput;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
@@ -734,12 +735,14 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             Message::user("hi"),
             Message::Assistant {
                 id: None,
-                content: vec![
+                content: NonEmpty::of(
                     signed("anthropic"),
-                    signed("gcp.gemini"),
-                    signed(super::PROVIDER_NAME),
-                    AssistantContent::text("hello"),
-                ],
+                    [
+                        signed("gcp.gemini"),
+                        signed(super::PROVIDER_NAME),
+                        AssistantContent::text("hello"),
+                    ],
+                ),
             },
         ]
     };
@@ -747,7 +750,8 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
     let kept = |model: &str| {
         let mut request = rig_core::completion::CompletionRequest {
             model: None,
-            chat_history: history(),
+            system: None,
+            messages: NonEmpty::from_vec(history()).expect("a conversation"),
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -761,7 +765,7 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             request, model, false,
         )
         .inner;
-        match &request.chat_history[1] {
+        match &request.history()[1] {
             Message::Assistant { content, .. } => content
                 .iter()
                 .filter_map(|part| match part {
@@ -823,14 +827,17 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
 
     let request = rig_core::completion::CompletionRequest {
         model: None,
-        chat_history: vec![
+        system: None,
+        messages: NonEmpty::of(
             Message::user("hi"),
-            Message::Assistant {
-                id: None,
-                content: response.choice,
-            },
-            Message::user("again"),
-        ],
+            [
+                Message::Assistant {
+                    id: None,
+                    content: NonEmpty::from_vec(response.choice).expect("non-empty content"),
+                },
+                Message::user("again"),
+            ],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -842,7 +849,7 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
     };
     let scoped =
         crate::types::completion_request::AwsCompletionRequest::for_model(request, claude, false);
-    let Message::Assistant { content, .. } = &scoped.inner.chat_history[1] else {
+    let Message::Assistant { content, .. } = &scoped.inner.history()[1] else {
         panic!("the assistant turn survives");
     };
     assert_eq!(

@@ -93,11 +93,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You look up team codewords with the lookup_codeword tool. If the tool returns an error with guidance, follow that guidance and try again, then report the codeword you obtain."
-            },
+          "system": "You look up team codewords with the lookup_codeword tool. If the tool returns an error with guidance, follow that guidance and try again, then report the codeword you obtain.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -242,11 +239,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You look up team codewords with the lookup_codeword tool. If the tool returns an error with guidance, follow that guidance and try again, then report the codeword you obtain."
-            },
+          "system": "You look up team codewords with the lookup_codeword tool. If the tool returns an error with guidance, follow that guidance and try again, then report the codeword you obtain.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -424,11 +418,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You look up team codewords with the lookup_codeword tool. If the tool returns an error with guidance, follow that guidance and try again, then report the codeword you obtain."
-            },
+          "system": "You look up team codewords with the lookup_codeword tool. If the tool returns an error with guidance, follow that guidance and try again, then report the codeword you obtain.",
+          "messages": [
             {
               "role": "user",
               "content": [

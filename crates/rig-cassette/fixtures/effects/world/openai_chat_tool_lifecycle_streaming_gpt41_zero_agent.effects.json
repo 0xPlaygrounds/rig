@@ -97,11 +97,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Follow the user's tool-call instruction exactly. Do not answer in prose."
-            },
+          "system": "Follow the user's tool-call instruction exactly. Do not answer in prose.",
+          "messages": [
             {
               "role": "user",
               "content": [

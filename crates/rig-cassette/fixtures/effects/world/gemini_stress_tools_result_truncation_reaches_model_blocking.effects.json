@@ -72,11 +72,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Call the fetch_motto tool, then report the exact tool result text verbatim."
-            },
+          "system": "Call the fetch_motto tool, then report the exact tool result text verbatim.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -205,11 +202,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Call the fetch_motto tool, then report the exact tool result text verbatim."
-            },
+          "system": "Call the fetch_motto tool, then report the exact tool result text verbatim.",
+          "messages": [
             {
               "role": "user",
               "content": [

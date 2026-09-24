@@ -43,11 +43,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You answer image questions concisely and directly."
-            },
+          "system": "You answer image questions concisely and directly.",
+          "messages": [
             {
               "role": "user",
               "content": [

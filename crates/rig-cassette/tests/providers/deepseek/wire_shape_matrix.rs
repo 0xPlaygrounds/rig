@@ -44,6 +44,7 @@
 
 use rig::completion::{CompletionModel, Document, Message};
 use rig::message::{DocumentMediaType, DocumentSourceKind, ToolChoice, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
@@ -76,7 +77,7 @@ fn red_png() -> UserContent {
 
 fn multimodal_prompt(part: UserContent) -> Message {
     Message::User {
-        content: vec![UserContent::text("What colour is the attachment?"), part],
+        content: NonEmpty::of(UserContent::text("What colour is the attachment?"), [part]),
     }
 }
 
@@ -296,7 +297,7 @@ async fn blocking_image_only_message_reaches_the_wire() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![red_png()],
+                            content: NonEmpty::new(red_png()),
                         })
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
@@ -381,10 +382,10 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
                 .completion(
                     model
                         .completion_request(Message::User {
-                            content: vec![
+                            content: NonEmpty::of(
                                 UserContent::text("Reply with exactly: parts-ok"),
-                                UserContent::text("Nothing else."),
-                            ],
+                                [UserContent::text("Nothing else.")],
+                            ),
                         })
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
@@ -465,21 +466,21 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
                         .completion_request("Now say: history-ok")
                         .message(Message::Assistant {
                             id: None,
-                            content: vec![
+                            content: NonEmpty::of(
                                 rig::message::AssistantContent::text("Checking the ledger."),
-                                rig::message::AssistantContent::tool_call(
+                                [rig::message::AssistantContent::tool_call(
                                     "call_history_1",
                                     "ping",
                                     json!({}),
-                                ),
-                            ],
+                                )],
+                            ),
                         })
                         .message(Message::User {
-                            content: vec![UserContent::tool_result(
+                            content: NonEmpty::new(UserContent::tool_result(
                                 "call_history_1",
                                 "ping",
-                                vec![rig::message::ToolResultContent::text("pong")],
-                            )],
+                                NonEmpty::new(rig::message::ToolResultContent::text("pong")),
+                            )),
                         })
                         .tool(crate::support::zero_arg_tool_definition("ping"))
                         .additional_params(non_thinking_params())

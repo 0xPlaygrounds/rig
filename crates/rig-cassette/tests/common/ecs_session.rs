@@ -65,6 +65,9 @@ pub(crate) async fn run_session(
     history.sort_by_key(|(order, _)| *order);
     Ok(SessionResult {
         output,
-        history: history.into_iter().map(|(_, message)| message).collect(),
+        history: history
+            .into_iter()
+            .filter_map(|(_, message)| message)
+            .collect(),
     })
 }

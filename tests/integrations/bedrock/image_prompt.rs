@@ -2,6 +2,7 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::message::{ImageMediaType, Message, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use tokio::fs;
 
@@ -24,14 +25,14 @@ async fn image_prompt_from_fixture() {
         .expect("fixture image should be readable");
     let response = agent
         .prompt(Message::User {
-            content: vec![
+            content: NonEmpty::of(
                 UserContent::image_base64(
                     BASE64_STANDARD.encode(image_bytes),
                     Some(ImageMediaType::JPEG),
                     None,
                 ),
-                UserContent::text("Describe the image in one sentence."),
-            ],
+                [UserContent::text("Describe the image in one sentence.")],
+            ),
         })
         .await
         .expect("image prompt should succeed")

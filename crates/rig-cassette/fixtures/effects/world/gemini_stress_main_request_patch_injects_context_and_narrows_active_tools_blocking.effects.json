@@ -110,11 +110,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a helpful assistant. Use a tool for any arithmetic. Consult the provided context for any facts you are asked about."
-            },
+          "system": "You are a helpful assistant. Use a tool for any arithmetic. Consult the provided context for any facts you are asked about.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -266,11 +263,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a helpful assistant. Use a tool for any arithmetic. Consult the provided context for any facts you are asked about."
-            },
+          "system": "You are a helpful assistant. Use a tool for any arithmetic. Consult the provided context for any facts you are asked about.",
+          "messages": [
             {
               "role": "user",
               "content": [

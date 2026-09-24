@@ -208,7 +208,7 @@ pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
     stream_override: Option<bool>,
 ) -> Result<CreateInteractionRequest, EncodeError> {
-    let chat_history = completion_request.chat_history_with_documents();
+    let chat_history = completion_request.history_with_documents();
 
     let mut history = Vec::new();
     history.extend(chat_history);

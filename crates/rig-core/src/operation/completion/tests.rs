@@ -1,3 +1,4 @@
+use crate::non_empty::NonEmpty;
 use bytes::Bytes;
 
 use crate::completion::CompletionEnd;
@@ -49,14 +50,19 @@ fn history(own: &str) -> CompletionRequest {
     .into_iter()
     .map(AssistantContent::Reasoning)
     .chain([AssistantContent::text("The answer is 4.")])
-    .collect();
+    .collect::<Vec<_>>()
+    .try_into()
+    .expect("non-empty content");
     CompletionRequest {
         model: None,
-        chat_history: vec![
+        system: None,
+        messages: NonEmpty::of(
             Message::user("What is 2 + 2?"),
-            Message::Assistant { id: None, content },
-            Message::user("And 3 + 3?"),
-        ],
+            [
+                Message::Assistant { id: None, content },
+                Message::user("And 3 + 3?"),
+            ],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -164,20 +170,22 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
     use crate::wire::Operation;
 
     let mut request = history("anthropic");
-    request.chat_history.insert(
+    request.messages.insert(
         1,
         Message::Assistant {
             id: None,
             content: reasoning(FOREIGN)
                 .into_iter()
                 .map(|reasoning| AssistantContent::Reasoning(reasoning.with_provider("another")))
-                .collect(),
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty content"),
         },
     );
-    assert_eq!(request.chat_history.len(), 4);
+    assert_eq!(request.history().len(), 4);
     super::Completion::scope_to_wire(&mut request, &["anthropic"]);
-    assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
-    assert!(request.chat_history.iter().all(|message| match message {
+    assert_eq!(request.history().len(), 3, "{:?}", request.history());
+    assert!(request.history().iter().all(|message| match message {
         Message::Assistant { content, .. } => !content.is_empty(),
         _ => true,
     }));
@@ -329,7 +337,10 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         content: Vec<AssistantContent>,
     ) -> String {
         let mut request = history("unused");
-        request.chat_history[1] = Message::Assistant { id: None, content };
+        request.messages[1] = Message::Assistant {
+            id: None,
+            content: NonEmpty::from_vec(content).expect("non-empty content"),
+        };
         let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
         let _ = crate::driver::call(&wire, &http, request, None).await;
         let requests = http.requests();
@@ -416,7 +427,10 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
         let content = content.clone();
         async move {
             let mut request = history("unused");
-            request.chat_history[1] = Message::Assistant { id: None, content };
+            request.messages[1] = Message::Assistant {
+                id: None,
+                content: NonEmpty::from_vec(content).expect("non-empty content"),
+            };
             let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
             let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
             let _ = crate::driver::call(&wire, &http, request, None).await;
@@ -501,9 +515,9 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
     assert_eq!(reasoning.provider.as_deref(), Some("anthropic"));
 
     let mut request = history("unused");
-    request.chat_history[1] = Message::Assistant {
+    request.messages[1] = Message::Assistant {
         id: None,
-        content: response.choice.clone(),
+        content: NonEmpty::from_vec(response.choice.clone()).expect("non-empty content"),
     };
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     let _ = crate::driver::call(&wire, &http, request, None).await;

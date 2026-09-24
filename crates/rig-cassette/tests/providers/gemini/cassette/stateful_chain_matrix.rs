@@ -5,6 +5,7 @@
 //! committed chain replays but cannot seed a live call later. Record a chain
 //! in one session.
 
+use rig::non_empty::NonEmpty;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};
@@ -62,7 +63,8 @@ const FILE_TEXT: &str =
 fn ask_with(history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        system: None,
+        messages: NonEmpty::from_vec(history).expect("a conversation"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -77,7 +79,8 @@ fn ask_with(history: Vec<Message>) -> CompletionRequest {
 fn ask(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user(prompt)],
+        system: None,
+        messages: NonEmpty::new(Message::user(prompt)),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.0),
@@ -374,9 +377,9 @@ async fn interactions_chain_with_tool_call() {
                                 call.id.clone(),
                                 call.provider.clone(),
                                 call.function.name.clone(),
-                                vec![ToolResultContent::text(format!(
+                                NonEmpty::new(ToolResultContent::text(format!(
                                     "record alpha: code {CODE}"
-                                ))],
+                                ))),
                             )))
                             .additional_params(params(Some(first_id.into())))
                             .build(),
@@ -482,16 +485,13 @@ async fn file_uri_chain() {
 
             let body = async {
                 let document = Message::User {
-                    content: vec![
-                        UserContent::Document(Document {
+                    content: NonEmpty::of(UserContent::Document(Document {
                             data: DocumentSourceKind::Url(uri.clone()),
                             media_type: Some(DocumentMediaType::TXT),
                             additional_params: None,
-                        }),
-                        UserContent::text(
+                        }), [UserContent::text(
                             "What is the ordering token in the attached file? Reply with the token only.",
-                        ),
-                    ],
+                        )]),
                 };
                 let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
                 let first = model
@@ -507,7 +507,7 @@ async fn file_uri_chain() {
                     document,
                     Message::Assistant {
                         id: first.end.message_id.clone().map(String::from),
-                        content: first.choice.clone(),
+                        content: NonEmpty::from_vec(first.choice.clone()).expect("non-empty content"),
                     },
                     Message::user(
                         "What is the shelf code in the same attached file? Reply with the code only.",

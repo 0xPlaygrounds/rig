@@ -1,5 +1,6 @@
 //! Part-targeted requests retain history and survive checkpoint entity remapping.
 use crate::run_support::{first_utterance, open_model_world};
+use rig_core::non_empty::NonEmpty;
 
 use bevy_ecs::prelude::*;
 use rig_core::{
@@ -66,9 +67,9 @@ fn ordered_edits_change_only_one_request_and_preserve_history() {
         })
         .unwrap();
     assert_eq!(
-        request.chat_history,
+        request.history(),
         vec![Message::User {
-            content: vec![UserContent::text("patched"), UserContent::text("sibling")]
+            content: NonEmpty::of(UserContent::text("patched"), [UserContent::text("sibling")])
         }]
     );
     assert_eq!(read_message(&world, utterance).unwrap(), original);
@@ -115,7 +116,7 @@ fn edit_target_is_remapped_with_the_checkpoint() {
     assert!(
         requests
             .iter()
-            .all(|request| request.chat_history == vec![Message::user("sibling")])
+            .all(|request| request.history() == vec![Message::user("sibling")])
     );
 }
 
@@ -128,10 +129,10 @@ fn nested_edit_target_and_its_result_parent_are_remapped() {
         content: vec![UserContent::tool_result(
             "call",
             "tool",
-            vec![
+            NonEmpty::of(
                 ToolResultContent::text("original"),
-                ToolResultContent::text("sibling"),
-            ],
+                [ToolResultContent::text("sibling")],
+            ),
         )],
     };
     write_message(&mut world, utterance, original.clone()).unwrap();
@@ -155,14 +156,14 @@ fn nested_edit_target_and_its_result_parent_are_remapped() {
     assert!(loaded.entities.contains(&remapped_result));
     world.run_schedule(RigSchedule);
     let expected = Message::User {
-        content: vec![UserContent::tool_result(
+        content: NonEmpty::new(UserContent::tool_result(
             "call",
             "tool",
-            vec![
+            NonEmpty::of(
                 ToolResultContent::text("patched"),
-                ToolResultContent::text("sibling"),
-            ],
-        )],
+                [ToolResultContent::text("sibling")],
+            ),
+        )),
     };
     let requests: Vec<_> = world
         .query::<&PendingEffect>()
@@ -176,7 +177,7 @@ fn nested_edit_target_and_its_result_parent_are_remapped() {
     assert!(
         requests
             .iter()
-            .all(|request| request.chat_history == vec![expected.clone()])
+            .all(|request| request.history() == vec![expected.clone()])
     );
     assert_eq!(read_message(&world, utterance).unwrap(), original);
     assert_eq!(read_message(&world, remapped_utterance).unwrap(), original);
@@ -301,12 +302,12 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
             call: ToolCallId::new("call").unwrap(),
             provider: None,
             name: "tool".into(),
-            content: vec![
+            content: NonEmpty::of(
                 ToolResultContent::Text(text.clone()),
-                ToolResultContent::Json {
+                [ToolResultContent::Json {
                     value: serde_json::json!({"keep":true}),
-                },
-            ],
+                }],
+            ),
         })],
     };
     write_message(&mut world, utterance, original.clone()).unwrap();
@@ -335,12 +336,12 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
             call: ToolCallId::new("call").unwrap(),
             provider: None,
             name: "tool".into(),
-            content: vec![
+            content: NonEmpty::of(
                 ToolResultContent::Text(changed),
-                ToolResultContent::Json {
+                [ToolResultContent::Json {
                     value: serde_json::json!({"keep":true}),
-                },
-            ],
+                }],
+            ),
         })],
     };
     assert_eq!(graph.message_with(utterance, &edits).unwrap(), expected);
@@ -351,7 +352,7 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
         )
         .unwrap();
     assert!(
-        matches!(removed, MessageParts::User { content } if matches!(content.first(), Some(UserContent::ToolResult(result)) if result.content == vec![ToolResultContent::Json { value: serde_json::json!({"keep":true}) }]))
+        matches!(removed, MessageParts::User { content } if matches!(content.first(), Some(UserContent::ToolResult(result)) if result.content == NonEmpty::new(ToolResultContent::Json { value: serde_json::json!({"keep":true}) })))
     );
     let removed_parent = graph
         .message_with(

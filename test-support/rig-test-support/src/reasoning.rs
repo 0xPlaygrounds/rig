@@ -5,6 +5,7 @@
 //! is recorded for diagnostics when a provider emits it, but is not required.
 #![allow(dead_code)]
 
+use rig_core::non_empty::NonEmpty;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -306,14 +307,12 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     F: FnMut(&rig_core::completion::CompletionEnd),
 {
     let turn1_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
+        content: NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
 
     let request = completion::CompletionRequest {
-        chat_history: vec![
-            Message::system(agent.preamble.clone()),
-            turn1_prompt.clone(),
-        ],
+        system: Some(agent.preamble.clone()),
+        messages: NonEmpty::new(turn1_prompt.clone()),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -396,20 +395,16 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
 
     let turn1_assistant = Message::Assistant {
         id: stream.message_id.clone().map(String::from),
-        content: assistant_content,
+        content: NonEmpty::from_vec(assistant_content).expect("non-empty content"),
     };
 
     let turn2_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
+        content: NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: vec![
-            Message::system(agent.preamble.clone()),
-            turn1_prompt,
-            turn1_assistant,
-            turn2_prompt,
-        ],
+        system: Some(agent.preamble.clone()),
+        messages: NonEmpty::of(turn1_prompt, [turn1_assistant, turn2_prompt]),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -459,14 +454,12 @@ where
     M: CompletionModel,
 {
     let turn1_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
+        content: NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
 
     let request = completion::CompletionRequest {
-        chat_history: vec![
-            Message::system(agent.preamble.clone()),
-            turn1_prompt.clone(),
-        ],
+        system: Some(agent.preamble.clone()),
+        messages: NonEmpty::new(turn1_prompt.clone()),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -503,20 +496,16 @@ where
 
     let turn1_assistant = Message::Assistant {
         id: response.end.message_id.map(String::from),
-        content: response.choice,
+        content: NonEmpty::from_vec(response.choice).expect("non-empty content"),
     };
 
     let turn2_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
+        content: NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: vec![
-            Message::system(agent.preamble.clone()),
-            turn1_prompt,
-            turn1_assistant,
-            turn2_prompt,
-        ],
+        system: Some(agent.preamble.clone()),
+        messages: NonEmpty::of(turn1_prompt, [turn1_assistant, turn2_prompt]),
         documents: vec![],
         tools: vec![],
         temperature: None,

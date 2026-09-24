@@ -110,11 +110,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation. If a tool reports it is unavailable, acknowledge that in your answer and still report any results you do have."
-            },
+          "system": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation. If a tool reports it is unavailable, acknowledge that in your answer and still report any results you do have.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -305,11 +302,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation. If a tool reports it is unavailable, acknowledge that in your answer and still report any results you do have."
-            },
+          "system": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation. If a tool reports it is unavailable, acknowledge that in your answer and still report any results you do have.",
+          "messages": [
             {
               "role": "user",
               "content": [

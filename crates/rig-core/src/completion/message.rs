@@ -1,4 +1,5 @@
 use crate::error::ProviderError;
+use crate::non_empty::NonEmpty;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
 use thiserror::Error;
@@ -17,14 +18,15 @@ pub enum Message {
     System { content: String },
 
     /// User message containing one or more content types defined by `UserContent`.
-    User { content: Vec<UserContent> },
+    User { content: NonEmpty<UserContent> },
 
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
         /// Provider-assigned assistant message ID, when available.
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
-        content: Vec<AssistantContent>,
+        /// One or more content items.
+        content: NonEmpty<AssistantContent>,
     },
 }
 
@@ -33,29 +35,20 @@ pub enum Message {
 /// output truncation, before calling [`require_non_empty_response`].
 pub const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
 
-/// Returns `items` unchanged unless the list is empty, then calls `error` once.
-/// Does not inspect individual items: empty text can carry replay signatures.
-/// Request conversions that discard content must validate the converted list
-/// when their wire requires at least one block.
-pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<Vec<T>, E> {
-    if items.is_empty() {
-        return Err(error());
-    }
-    Ok(items)
+/// Returns `items` as a [`NonEmpty`] list, or calls `error` once when it is
+/// empty. Does not inspect individual items: empty text can carry replay
+/// signatures. Request conversions that discard content must validate the
+/// converted list when their wire requires at least one block.
+pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<NonEmpty<T>, E> {
+    NonEmpty::from_vec(items).ok_or_else(error)
 }
 
 /// Returns a response error using [`EMPTY_RESPONSE_ERROR`] for an empty list.
 /// Callers must handle provider-legal empty outcomes before invoking this guard.
-pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, ProviderError> {
+pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<NonEmpty<T>, ProviderError> {
     require_non_empty(items, || {
         ProviderError::Response(EMPTY_RESPONSE_ERROR.to_owned())
     })
-}
-
-/// Returns `None` for an empty list or `Some(items)` otherwise.
-/// Individual items are not inspected.
-pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
-    if items.is_empty() { None } else { Some(items) }
 }
 
 /// Concatenates reasoning, text, and trailing content in that order without
@@ -194,19 +187,20 @@ pub struct Reasoning {
 /// assistant turn that held nothing else is dropped with it rather than sent
 /// empty, which leaves the user turns around it adjacent.
 pub fn retain_replayable_reasoning(history: &mut Vec<Message>, issuers: &[&str]) {
-    history.retain_mut(|message| {
-        let Message::Assistant { content, .. } = message else {
-            return true;
-        };
-        let before = content.len();
-        content.retain(|part| match part {
-            AssistantContent::Reasoning(reasoning) => {
-                issuers.iter().any(|issuer| reasoning.replayable_to(issuer))
-            }
-            _ => true,
-        });
-        before == 0 || !content.is_empty()
-    });
+    *history = std::mem::take(history)
+        .into_iter()
+        .filter_map(|message| match message {
+            Message::Assistant { id, content } => content
+                .retain(|part| match part {
+                    AssistantContent::Reasoning(reasoning) => {
+                        issuers.iter().any(|issuer| reasoning.replayable_to(issuer))
+                    }
+                    _ => true,
+                })
+                .map(|content| Message::Assistant { id, content }),
+            other => Some(other),
+        })
+        .collect();
 }
 
 impl Reasoning {
@@ -345,7 +339,7 @@ pub struct ToolResult {
     /// hook repair. Required for provider replay independently of call identity.
     pub name: String,
     /// One or more content items produced by the tool.
-    pub content: Vec<ToolResultContent>,
+    pub content: NonEmpty<ToolResultContent>,
 }
 
 impl ToolResult {
@@ -1341,7 +1335,7 @@ impl Message {
     /// Creates a user message containing one text block.
     pub fn user(text: impl Into<String>) -> Self {
         Message::User {
-            content: vec![UserContent::text(text)],
+            content: NonEmpty::new(UserContent::text(text)),
         }
     }
 
@@ -1349,7 +1343,7 @@ impl Message {
     pub fn assistant(text: impl Into<String>) -> Self {
         Message::Assistant {
             id: None,
-            content: vec![AssistantContent::text(text)],
+            content: NonEmpty::new(AssistantContent::text(text)),
         }
     }
 
@@ -1364,11 +1358,11 @@ impl Message {
         content: impl Into<String>,
     ) -> Self {
         Message::User {
-            content: vec![UserContent::tool_result(
+            content: NonEmpty::new(UserContent::tool_result(
                 call,
                 name,
-                vec![ToolResultContent::text(content)],
-            )],
+                NonEmpty::new(ToolResultContent::text(content)),
+            )),
         }
     }
 }
@@ -1459,7 +1453,7 @@ impl UserContent {
     pub fn tool_result(
         call: impl Into<String>,
         name: impl Into<String>,
-        content: Vec<ToolResultContent>,
+        content: NonEmpty<ToolResultContent>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             call: ToolCallId::new_or_minted(call, 0),
@@ -1474,7 +1468,7 @@ impl UserContent {
     pub fn tool_result_from_wire(
         wire_id: impl Into<String>,
         name: impl Into<String>,
-        content: Vec<ToolResultContent>,
+        content: NonEmpty<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(wire_id);
         let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
@@ -1487,7 +1481,7 @@ impl UserContent {
         call: ToolCallId,
         provider: Option<ProviderCallId>,
         name: impl Into<String>,
-        content: Vec<ToolResultContent>,
+        content: NonEmpty<ToolResultContent>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             call,
@@ -1504,7 +1498,7 @@ impl UserContent {
         item_id: impl Into<String>,
         call_id: impl Into<String>,
         name: impl Into<String>,
-        content: Vec<ToolResultContent>,
+        content: NonEmpty<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
         let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
@@ -1730,7 +1724,7 @@ macro_rules! single_content_message_from {
         impl From<$src> for Message {
             fn from(value: $src) -> Self {
                 Message::User {
-                    content: vec![UserContent::$variant(value.into())],
+                    content: NonEmpty::new(UserContent::$variant(value.into())),
                 }
             }
         }
@@ -1740,7 +1734,7 @@ macro_rules! single_content_message_from {
             fn from(value: $src) -> Self {
                 Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::$variant(value.into())],
+                    content: NonEmpty::new(AssistantContent::$variant(value.into())),
                 }
             }
         }
@@ -1780,7 +1774,7 @@ impl From<AssistantContent> for Message {
     fn from(content: AssistantContent) -> Self {
         Message::Assistant {
             id: None,
-            content: vec![content],
+            content: NonEmpty::new(content),
         }
     }
 }
@@ -1788,19 +1782,19 @@ impl From<AssistantContent> for Message {
 impl From<UserContent> for Message {
     fn from(content: UserContent) -> Self {
         Message::User {
-            content: vec![content],
+            content: NonEmpty::new(content),
         }
     }
 }
 
-impl From<Vec<AssistantContent>> for Message {
-    fn from(content: Vec<AssistantContent>) -> Self {
+impl From<NonEmpty<AssistantContent>> for Message {
+    fn from(content: NonEmpty<AssistantContent>) -> Self {
         Message::Assistant { id: None, content }
     }
 }
 
-impl From<Vec<UserContent>> for Message {
-    fn from(content: Vec<UserContent>) -> Self {
+impl From<NonEmpty<UserContent>> for Message {
+    fn from(content: NonEmpty<UserContent>) -> Self {
         Message::User { content }
     }
 }

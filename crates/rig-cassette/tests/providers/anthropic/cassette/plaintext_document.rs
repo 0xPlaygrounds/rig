@@ -1,6 +1,7 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 use rig::completion::CompletionModel;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
@@ -59,12 +60,12 @@ fn cited_rust_document() -> Document {
 
 fn citation_prompt() -> Message {
     Message::User {
-        content: vec![
+        content: NonEmpty::of(
             UserContent::Document(cited_rust_document()),
-            UserContent::text(
+            [UserContent::text(
                 "Using citations, answer in one sentence: what three goals does Rust focus on?",
-            ),
-        ],
+            )],
+        ),
     }
 }
 
@@ -134,12 +135,12 @@ async fn plaintext_document_with_instruction() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: vec![
+                    content: NonEmpty::of(
                         UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
-                        UserContent::text(
+                        [UserContent::text(
                             "List the three main goals of Rust mentioned in this document.",
-                        ),
-                    ],
+                        )],
+                    ),
                 })
                 .await
                 .expect("instruction prompt should succeed")
@@ -234,7 +235,8 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 .message(prompt)
                 .message(Message::Assistant {
                     id: first_turn.end.message_id.clone().map(String::from),
-                    content: first_turn.choice.clone(),
+                    content: NonEmpty::from_vec(first_turn.choice.clone())
+                        .expect("non-empty content"),
                 })
                 .send()
                 .await

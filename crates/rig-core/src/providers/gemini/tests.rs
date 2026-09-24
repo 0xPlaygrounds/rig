@@ -1,6 +1,7 @@
 //! The Gemini config's own tests: what it reads, and what it never writes.
 
 use super::{API_KEY_ENV, BASE_URL, Gemini};
+use crate::non_empty::NonEmpty;
 use crate::wire::Wire;
 
 /// A wire is data a host may serialize into a scene, a component or a config
@@ -34,7 +35,8 @@ fn a_serialized_config_carries_no_key_material() {
     // redaction above is a serialization property, not a lost credential.
     let request = crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec!["probe".into()],
+        system: None,
+        messages: NonEmpty::new("probe".into()),
         documents: vec![],
         tools: vec![],
         temperature: None,

@@ -271,11 +271,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -467,11 +464,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -706,11 +700,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -902,11 +893,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1184,11 +1172,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1509,11 +1494,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1875,11 +1857,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -2285,11 +2264,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -2736,11 +2712,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -3230,11 +3203,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -3768,11 +3738,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -4347,11 +4314,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
-            },
+          "system": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+          "messages": [
             {
               "role": "user",
               "content": [

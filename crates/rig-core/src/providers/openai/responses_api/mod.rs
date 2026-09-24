@@ -402,7 +402,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         crate::message::UserContent::ToolResult(tool_result) => {
                             // Prefer provider identity so results match replayed calls.
                             let call_id = tool_result.wire_call_id().into_owned();
-                            let output = responses_tool_result_output(tool_result.content)?;
+                            let output =
+                                responses_tool_result_output(tool_result.content.into_vec())?;
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {
@@ -1140,7 +1141,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
             request: mut req,
             system_instructions_placement,
         } = params;
-        let chat_history = req.chat_history_with_documents();
+        let chat_history = req.history_with_documents();
         let model = req.model.clone().unwrap_or(model);
         let mut instruction_parts = Vec::new();
         let mut input = {
@@ -1279,7 +1280,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         tools.append(&mut additional_tools);
 
         Ok(Self {
-            input,
+            input: input.into_vec(),
             model,
             instructions,
             max_output_tokens: req.max_tokens,

@@ -3,6 +3,7 @@ use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::message::{
     AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
 };
+use rig_core::non_empty::NonEmpty;
 
 fn create_text_response(text: &str) -> VertexGenerateContentOutput {
     let part = vertexai::model::Part::new().set_text(text.to_string());
@@ -522,7 +523,7 @@ fn answer_text_signature_is_kept_and_replayed_on_its_part() {
     let replayed: vertexai::model::Content =
         crate::types::message::RigMessage(rig_core::message::Message::Assistant {
             id: None,
-            content: response.choice.clone(),
+            content: NonEmpty::from_vec(response.choice.clone()).expect("non-empty content"),
         })
         .try_into()
         .expect("the turn replays");

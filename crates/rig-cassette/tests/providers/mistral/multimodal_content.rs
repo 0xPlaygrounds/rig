@@ -18,6 +18,7 @@ use anyhow::Result;
 use base64::Engine as _;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, UserContent};
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::mistral;
 
@@ -84,7 +85,9 @@ fn speech_audio() -> UserContent {
 }
 
 fn user_message(content: Vec<UserContent>) -> Message {
-    Message::User { content }
+    Message::User {
+        content: NonEmpty::from_vec(content).expect("non-empty content"),
+    }
 }
 
 /// Read a recorded cassette back. Called *after* the wrapper returns, because

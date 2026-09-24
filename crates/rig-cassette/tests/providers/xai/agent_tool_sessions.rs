@@ -5,6 +5,7 @@
 //! explicit tool choice, structured JSON output, multimodal input, and
 //! caller-owned long chat history.
 
+use rig::non_empty::NonEmpty;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -582,12 +583,12 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::tool_call_with_call_id(
+                    content: NonEmpty::new(AssistantContent::tool_call_with_call_id(
                         "call_REDACTED_1",
                         "call_REDACTED_1".to_string(),
                         AlphaSignal::NAME,
                         json!({}),
-                    )],
+                    )),
                 })
                 .message(Message::tool_result(
                     "call_REDACTED_1",
@@ -855,13 +856,9 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
 
             let response = agent
                 .prompt(Message::User {
-                    content: vec![
-                        UserContent::text("First, note this is an image-analysis cassette test."),
-                        image_content(),
-                        UserContent::text(
+                    content: NonEmpty::of(UserContent::text("First, note this is an image-analysis cassette test."), [image_content(), UserContent::text(
                             "Then answer in one short sentence naming the main visible subject.",
-                        ),
-                    ],
+                        )]),
                 })
                 .await?;
 

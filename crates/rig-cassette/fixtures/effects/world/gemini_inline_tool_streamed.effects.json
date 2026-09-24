@@ -124,11 +124,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a concise assistant with an add tool. Use the tool when asked, then answer directly."
-            },
+          "system": "You are a concise assistant with an add tool. Use the tool when asked, then answer directly.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -347,11 +344,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a concise assistant with an add tool. Use the tool when asked, then answer directly."
-            },
+          "system": "You are a concise assistant with an add tool. Use the tool when asked, then answer directly.",
+          "messages": [
             {
               "role": "user",
               "content": [

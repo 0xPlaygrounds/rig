@@ -14,6 +14,7 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::non_empty::NonEmpty;
 use serde_json::{Value, json};
 
 use super::super::support::{BoundOpenRouter, with_openrouter_cassette};
@@ -39,13 +40,13 @@ fn lookup() -> ToolDefinition {
 fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        system: None,
+        messages: NonEmpty::from_vec(history).expect("a conversation"),
         documents: vec![],
         tools: vec![lookup()],
         temperature: None,
         max_tokens: Some(4096),
-        tool_choice: None,
-        // The Responses route takes an effort, not a token budget.
+        tool_choice: None, // The Responses route takes an effort, not a token budget.
         additional_params: Some(match route {
             Route::Chat => json!({ "reasoning": { "max_tokens": 1024 } }),
             Route::Responses => json!({ "reasoning": { "effort": "low" } }),
@@ -121,19 +122,25 @@ async fn claude_tool_turn(client: &BoundOpenRouter, route: Route, streamed: bool
         prompt,
         Message::Assistant {
             id: None,
-            content: first.into_iter().collect(),
+            content: first
+                .into_iter()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty content"),
         },
         Message::User {
             content: vec![UserContent::tool_result_for(
                 call.id.clone(),
                 call.provider.clone(),
                 call.function.name.clone(),
-                vec![ToolResultContent::text(format!(
+                NonEmpty::new(ToolResultContent::text(format!(
                     "record alpha: code {CODE}"
-                ))],
+                ))),
             )]
             .into_iter()
-            .collect(),
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("non-empty content"),
         },
     ]
 }
@@ -147,7 +154,11 @@ async fn switch(client: BoundOpenRouter, route: Route, streamed: bool) {
     assert!(text(&on_gemini).contains(CODE), "{on_gemini:?}");
     history.push(Message::Assistant {
         id: None,
-        content: on_gemini.into_iter().collect(),
+        content: on_gemini
+            .into_iter()
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("non-empty content"),
     });
     history.push(Message::user(
         "Without calling any tool, say the code once more, in uppercase.",

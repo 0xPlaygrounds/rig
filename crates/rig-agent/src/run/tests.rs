@@ -1,5 +1,6 @@
 use super::*;
 use rig_core::message::{ToolFunction, ToolResultContent};
+use rig_core::non_empty::NonEmpty;
 use rig_core::streaming::BlockId;
 use serde_json::json;
 
@@ -240,7 +241,7 @@ fn tool_call_turn_with_raw(id: &str, name: &str, raw: serde_json::Value) -> Mode
 fn tool_result(id: &str, output: &str) -> UserContent {
     // Every result in these tests answers a call to the `add` tool; the
     // executed tool's name is required data on a result.
-    UserContent::tool_result(id, "add", vec![ToolResultContent::text(output)])
+    UserContent::tool_result(id, "add", NonEmpty::new(ToolResultContent::text(output)))
 }
 
 fn expect_call_model(run: &mut AgentRun) -> (Message, Vec<Message>, usize) {
@@ -957,7 +958,7 @@ fn serialized_run_alone_carries_pending_tool_calls() {
                 call.tool_call.id.clone(),
                 call.tool_call.provider.clone(),
                 call.tool_call.function.name.clone(),
-                vec![ToolResultContent::text("2")],
+                NonEmpty::new(ToolResultContent::text("2")),
             )
         })
         .collect::<Vec<_>>();
@@ -1703,7 +1704,10 @@ fn from_spec_matches_the_builder_chain() {
 }
 
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant { id: None, content }
+    Message::Assistant {
+        id: None,
+        content: NonEmpty::from_vec(content).expect("non-empty content"),
+    }
 }
 
 #[test]

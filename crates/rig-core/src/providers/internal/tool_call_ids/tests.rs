@@ -3,11 +3,12 @@
 
 use super::*;
 use crate::message::{ProviderCallId, ToolCallId, ToolFunction, ToolResult};
+use crate::non_empty::NonEmpty;
 
 fn call(id: ToolCallId, provider: Option<&str>) -> Message {
     Message::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall {
+        content: NonEmpty::new(AssistantContent::ToolCall(ToolCall {
             id,
             provider: provider.and_then(ProviderCallId::new),
             function: ToolFunction {
@@ -16,18 +17,18 @@ fn call(id: ToolCallId, provider: Option<&str>) -> Message {
             },
             signature: None,
             additional_params: None,
-        })],
+        })),
     }
 }
 
 fn result(id: ToolCallId, provider: Option<&str>) -> Message {
     Message::User {
-        content: vec![UserContent::ToolResult(ToolResult {
+        content: NonEmpty::new(UserContent::ToolResult(ToolResult {
             call: id,
             provider: provider.and_then(ProviderCallId::new),
             name: "possibly_repaired".into(),
-            content: vec![],
-        })],
+            content: NonEmpty::new(crate::message::ToolResultContent::text("")),
+        })),
     }
 }
 
@@ -40,16 +41,18 @@ pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
     let real = id.wire_hint().into_owned();
     crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![
-            Message::system("system"),
+        system: Some("system".into()),
+        messages: NonEmpty::of(
             call(id.clone(), None),
-            call(explicit(&real), Some(&real)),
-            result(explicit(&real), Some(&real)),
-            Message::assistant("intervening text"),
-            result(id.clone(), None),
-            call(id.clone(), None),
-            result(id, None),
-        ],
+            [
+                call(explicit(&real), Some(&real)),
+                result(explicit(&real), Some(&real)),
+                Message::assistant("intervening text"),
+                result(id.clone(), None),
+                call(id.clone(), None),
+                result(id, None),
+            ],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -127,7 +130,7 @@ pub(crate) fn assert_adapter_pairs(wire: serde_json::Value) {
 pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
     let full = adapter_request();
     let mut call_only = full.clone();
-    let Message::User { content } = &mut call_only.chat_history[3] else {
+    let Message::User { content } = &mut call_only.messages[2] else {
         panic!("result message");
     };
     let UserContent::ToolResult(result) = &mut content[0] else {
@@ -135,7 +138,7 @@ pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
     };
     result.provider = None;
     let mut result_only = full.clone();
-    let Message::Assistant { content, .. } = &mut result_only.chat_history[2] else {
+    let Message::Assistant { content, .. } = &mut result_only.messages[1] else {
         panic!("call message");
     };
     let AssistantContent::ToolCall(call) = &mut content[0] else {
@@ -149,24 +152,26 @@ pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
 fn wire_slot_assignment_is_atomic_and_uses_original_content_order() {
     let history = vec![Message::Assistant {
         id: None,
-        content: vec![
+        content: NonEmpty::of(
             AssistantContent::text("before"),
-            AssistantContent::ToolCall(ToolCall::from_wire(
-                "first",
-                ToolFunction {
-                    name: "test".into(),
-                    arguments: serde_json::json!({}),
-                },
-            )),
-            AssistantContent::text("between"),
-            AssistantContent::ToolCall(ToolCall::from_wire(
-                "second",
-                ToolFunction {
-                    name: "test".into(),
-                    arguments: serde_json::json!({}),
-                },
-            )),
-        ],
+            [
+                AssistantContent::ToolCall(ToolCall::from_wire(
+                    "first",
+                    ToolFunction {
+                        name: "test".into(),
+                        arguments: serde_json::json!({}),
+                    },
+                )),
+                AssistantContent::text("between"),
+                AssistantContent::ToolCall(ToolCall::from_wire(
+                    "second",
+                    ToolFunction {
+                        name: "test".into(),
+                        arguments: serde_json::json!({}),
+                    },
+                )),
+            ],
+        ),
     }];
     let ids = ToolCallIds::new(&history).unwrap();
     for count in [1, 3] {

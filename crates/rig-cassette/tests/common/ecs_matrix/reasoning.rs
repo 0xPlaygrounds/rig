@@ -4,6 +4,7 @@
 //! explicit HostAction extension. AdapterEnding describes HTTP closure
 //! (`Decoded`/`Terminal`); the run's Ended observation carries `settled`.
 
+use rig_core::non_empty::NonEmpty;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
@@ -356,7 +357,9 @@ pub(crate) fn assistant_history(world: &mut World, run: Entity) -> Vec<Message> 
         })
         .collect();
     rows.sort_by_key(|(order, _)| *order);
-    rows.into_iter().map(|(_, message)| message).collect()
+    rows.into_iter()
+        .filter_map(|(_, message)| message)
+        .collect()
 }
 
 pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) {
@@ -404,11 +407,12 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
                     .cloned()
                     .collect();
                 parts.push(AssistantContent::text(call.function.arguments.to_string()));
-                parts
+                NonEmpty::from_vec(parts).expect("non-empty content")
             } else if cell.program.streamed {
-                canonical_streamed_choice(response.choice.clone())
+                NonEmpty::from_vec(canonical_streamed_choice(response.choice.clone()))
+                    .expect("non-empty content")
             } else {
-                response.choice.clone()
+                NonEmpty::from_vec(response.choice.clone()).expect("non-empty content")
             },
         })
         .collect();

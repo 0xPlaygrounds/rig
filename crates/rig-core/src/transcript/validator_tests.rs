@@ -1,5 +1,6 @@
 use super::*;
 use crate::message::{ToolCall, ToolFunction, ToolResult};
+use crate::non_empty::NonEmpty;
 
 fn call(id: &str) -> AssistantContent {
     AssistantContent::ToolCall(ToolCall {
@@ -18,11 +19,14 @@ fn result(id: &str) -> UserContent {
         call: ToolCallId::new_or_minted(id, 0),
         provider: None,
         name: "add".into(),
-        content: vec![ToolResultContent::text("3")],
+        content: NonEmpty::new(ToolResultContent::text("3")),
     })
 }
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant { id: None, content }
+    Message::Assistant {
+        id: None,
+        content: NonEmpty::from_vec(content).expect("non-empty content"),
+    }
 }
 
 #[test]
@@ -31,7 +35,7 @@ fn canonical_transcripts_pass() {
         Message::user("hi"),
         assistant(vec![call("c1")]),
         Message::User {
-            content: vec![result("c1")],
+            content: NonEmpty::new(result("c1")),
         },
         assistant(vec![AssistantContent::text("done")]),
         Message::user("thanks"),
@@ -62,7 +66,7 @@ fn unanswered_and_orphan_results_are_rejected() {
     let orphan = vec![
         Message::user("hi"),
         Message::User {
-            content: vec![result("ghost")],
+            content: NonEmpty::new(result("ghost")),
         },
     ];
     assert!(matches!(
@@ -92,7 +96,7 @@ fn typed_identity_transcripts_preserve_namespaces_and_completion_scope() {
             call: id,
             provider: None,
             name: "add".into(),
-            content: vec![ToolResultContent::text("3")],
+            content: NonEmpty::new(ToolResultContent::text("3")),
         })
     };
     let history = vec![
@@ -101,18 +105,21 @@ fn typed_identity_transcripts_preserve_namespaces_and_completion_scope() {
             call_for(explicit.clone()),
         ]),
         Message::User {
-            content: vec![result_for(explicit.clone()), result_for(generated.clone())],
+            content: NonEmpty::of(
+                result_for(explicit.clone()),
+                [result_for(generated.clone())],
+            ),
         },
         assistant(vec![call_for(generated.clone())]),
         Message::User {
-            content: vec![result_for(generated.clone())],
+            content: NonEmpty::new(result_for(generated.clone())),
         },
     ];
     assert_eq!(validate_canonical(&history), Ok(()));
     let mismatched = vec![
         assistant(vec![call_for(generated)]),
         Message::User {
-            content: vec![result_for(explicit)],
+            content: NonEmpty::new(result_for(explicit)),
         },
     ];
     assert!(matches!(

@@ -12,6 +12,7 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message};
+use rig::non_empty::NonEmpty;
 use rig::providers::gemini;
 use serde_json::{Value, json};
 
@@ -55,7 +56,8 @@ fn params(cell: Cell) -> Value {
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        system: None,
+        messages: NonEmpty::from_vec(history).expect("a conversation"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -105,7 +107,11 @@ async fn conversation<M: CompletionModel>(model: M, cell: Cell) {
         Message::user(QUESTION),
         Message::Assistant {
             id: None,
-            content: first.into_iter().collect(),
+            content: first
+                .into_iter()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty content"),
         },
         Message::user(FOLLOW_UP),
     ];

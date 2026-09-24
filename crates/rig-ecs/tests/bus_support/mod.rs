@@ -3,6 +3,7 @@
 
 #![allow(dead_code, reason = "each suite uses the part of the support it needs")]
 
+use rig_core::non_empty::NonEmpty;
 use std::{
     sync::{
         Arc,
@@ -220,7 +221,8 @@ impl Drop for StreamGuard {
 pub fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("hi")],
+        system: None,
+        messages: NonEmpty::new(Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,

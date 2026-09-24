@@ -84,11 +84,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant."
-            },
+          "system": "You are a calculator assistant.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -236,11 +233,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant."
-            },
+          "system": "You are a calculator assistant.",
+          "messages": [
             {
               "role": "user",
               "content": [

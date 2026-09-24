@@ -1,4 +1,5 @@
 use super::*;
+use rig_core::non_empty::NonEmpty;
 use rig_core::{
     message::Message,
     streaming::{BlockAccumulator, BlockClose, BlockKind, StreamEvent},
@@ -9,7 +10,8 @@ use rig_core::{
 fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("tools")],
+        system: None,
+        messages: NonEmpty::new(Message::user("tools")),
         documents: vec![],
         tools: vec![],
         temperature: None,

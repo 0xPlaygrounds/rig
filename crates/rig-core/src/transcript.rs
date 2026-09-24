@@ -7,6 +7,7 @@
 //! # Ok::<(), rig_core::transcript::TranscriptError>(())
 //! ```
 
+use crate::non_empty::NonEmpty;
 use std::collections::BTreeSet;
 
 use crate::message::{
@@ -113,7 +114,7 @@ fn tool_result_with(
     call: ToolCallId,
     provider: Option<ProviderCallId>,
     name: String,
-    content: Vec<ToolResultContent>,
+    content: NonEmpty<ToolResultContent>,
 ) -> UserContent {
     // Replay protocols require the executed tool's name separately from its call ID.
     UserContent::tool_result_for(call, provider, name, content)
@@ -138,7 +139,12 @@ pub fn tool_result_message(
     name: String,
     message: String,
 ) -> UserContent {
-    tool_result_with(call, provider, name, vec![ToolResultContent::text(message)])
+    tool_result_with(
+        call,
+        provider,
+        name,
+        NonEmpty::new(ToolResultContent::text(message)),
+    )
 }
 
 #[cfg(test)]

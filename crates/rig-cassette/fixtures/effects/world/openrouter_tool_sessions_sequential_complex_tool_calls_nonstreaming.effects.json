@@ -223,11 +223,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-            },
+          "system": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -474,11 +471,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-            },
+          "system": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -783,11 +777,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-            },
+          "system": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1141,11 +1132,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-            },
+          "system": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -1542,11 +1530,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-            },
+          "system": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+          "messages": [
             {
               "role": "user",
               "content": [

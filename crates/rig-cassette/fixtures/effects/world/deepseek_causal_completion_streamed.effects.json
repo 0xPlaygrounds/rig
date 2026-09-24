@@ -146,11 +146,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a research assistant. Use the lookup tool to answer."
-            },
+          "system": "You are a research assistant. Use the lookup tool to answer.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -467,11 +464,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "Answer in one word."
-            },
+          "system": "Answer in one word.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -550,11 +544,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a research assistant. Use the lookup tool to answer."
-            },
+          "system": "You are a research assistant. Use the lookup tool to answer.",
+          "messages": [
             {
               "role": "user",
               "content": [

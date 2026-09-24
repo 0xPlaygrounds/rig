@@ -15,6 +15,7 @@
 
 use super::*;
 use crate::message;
+use crate::non_empty::NonEmpty;
 
 fn params(
     supports_image_tool_results: bool,
@@ -25,14 +26,15 @@ fn params(
         model: "test-model".to_string(),
         request: crate::completion::CompletionRequest {
             model: None,
-            chat_history: vec![message::Message::User {
-                content: vec![message::UserContent::ToolResult(message::ToolResult {
+            system: None,
+            messages: NonEmpty::new(message::Message::User {
+                content: NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
                     call: message::ToolCallId::new_or_minted("call_1", 0),
                     provider: message::ProviderCallId::new("call_1"),
                     name: "view_file".to_string(),
-                    content,
-                })],
-            }],
+                    content: NonEmpty::from_vec(content).expect("non-empty content"),
+                })),
+            }),
             documents: vec![],
             tools: vec![],
             temperature: None,

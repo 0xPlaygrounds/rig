@@ -24,6 +24,7 @@
 //! |---|---|
 //! | all 8 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_text.yaml` |
 
+use rig::non_empty::NonEmpty;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -90,13 +91,13 @@ fn history(shape: Shape) -> Vec<Message> {
     match shape {
         Shape::Text => vec![
             Message::User {
-                content: vec![UserContent::text(
+                content: NonEmpty::new(UserContent::text(
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
-                )],
+                )),
             },
             Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::text("lantern-42")],
+                content: NonEmpty::new(AssistantContent::text("lantern-42")),
             },
         ],
     }

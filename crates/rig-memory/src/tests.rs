@@ -3,6 +3,7 @@ use rig_core::message::{
     AssistantContent, ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent,
     UserContent,
 };
+use rig_core::non_empty::NonEmpty;
 use rig_core::transcript::validate_canonical;
 use std::sync::Mutex;
 
@@ -17,21 +18,21 @@ fn assistant(text: &str) -> Message {
 fn tool_call_msg() -> Message {
     Message::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::new(
+        content: NonEmpty::new(AssistantContent::ToolCall(ToolCall::new(
             ToolCallId::new_or_minted("call_1", 0),
             ToolFunction::new("t".into(), serde_json::json!({})),
-        ))],
+        ))),
     }
 }
 
 fn tool_result_msg() -> Message {
     Message::User {
-        content: vec![UserContent::ToolResult(ToolResult {
+        content: NonEmpty::new(UserContent::ToolResult(ToolResult {
             call: ToolCallId::new_or_minted("call_1", 0),
             provider: None,
             name: "t".into(),
-            content: vec![ToolResultContent::text("ok")],
-        })],
+            content: NonEmpty::new(ToolResultContent::text("ok")),
+        })),
     }
 }
 
@@ -125,7 +126,9 @@ fn mixed_tool_exchange() -> Vec<Message> {
                 ToolFunction::new("t".into(), serde_json::json!({})),
             ))
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("non-empty content");
     let mut results = vec![UserContent::text("Results follow:")];
     // Canonical results may be interleaved with text and answer calls in
     // a different order, but all calls must be answered in one user message.
@@ -134,7 +137,7 @@ fn mixed_tool_exchange() -> Vec<Message> {
             id,
             None,
             "t",
-            vec![ToolResultContent::text("ok")],
+            NonEmpty::new(ToolResultContent::text("ok")),
         ));
         results.push(UserContent::text("Result received."));
     }
@@ -143,7 +146,9 @@ fn mixed_tool_exchange() -> Vec<Message> {
             id: None,
             content: calls,
         },
-        Message::User { content: results },
+        Message::User {
+            content: NonEmpty::from_vec(results).expect("non-empty content"),
+        },
     ]
 }
 
@@ -203,15 +208,15 @@ fn window_policies_demote_all_neighboring_orphan_result_messages() {
     history.truncate(1);
     history.push(tool_result_msg());
     history.push(Message::User {
-        content: vec![
+        content: NonEmpty::of(
             UserContent::text("Another result:"),
-            UserContent::tool_result_for(
+            [UserContent::tool_result_for(
                 ToolCallId::new_or_minted("call_2", 0),
                 None,
                 "t",
-                vec![ToolResultContent::text("second result")],
-            ),
-        ],
+                NonEmpty::new(ToolResultContent::text("second result")),
+            )],
+        ),
     });
     history.extend([tool_call_msg(), tool_result_msg(), assistant("done")]);
     assert!(validate_canonical(&history).is_err());
@@ -1508,12 +1513,14 @@ async fn template_compactor_renders_tool_call_marker() {
 async fn template_compactor_separates_parts_asymmetrically_around_empty_text() {
     let compactor = TemplateCompactor::new();
     let evicted = vec![Message::User {
-        content: vec![
+        content: NonEmpty::of(
             UserContent::text(""),
-            UserContent::text("a"),
-            UserContent::text(""),
-            UserContent::text("b"),
-        ],
+            [
+                UserContent::text("a"),
+                UserContent::text(""),
+                UserContent::text("b"),
+            ],
+        ),
     }];
     let summary = compactor
         .compact(&"c".into(), &evicted, None)

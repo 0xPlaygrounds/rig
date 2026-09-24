@@ -1,6 +1,7 @@
 //! Typed graph round-trips and malformed content rejection.
 use bevy_ecs::prelude::*;
 use rig_core::message::*;
+use rig_core::non_empty::NonEmpty;
 use rig_ecs::agent::content::{binary::*, parts::*};
 use rig_ecs::agent::{MessageParts, Role, Utterance};
 
@@ -79,13 +80,15 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
                         .with_item_id("item-1"),
                 ),
                 name: "read".into(),
-                content: vec![
+                content: NonEmpty::of(
                     ToolResultContent::Text(text),
-                    ToolResultContent::Image(image),
-                    ToolResultContent::Json {
-                        value: serde_json::json!({"error":false,"items":[1,"two"]}),
-                    },
-                ],
+                    [
+                        ToolResultContent::Image(image),
+                        ToolResultContent::Json {
+                            value: serde_json::json!({"error":false,"items":[1,"two"]}),
+                        },
+                    ],
+                ),
             }),
         ],
     };
@@ -253,7 +256,7 @@ fn leaf_children_and_nested_results_are_rejected_even_when_removed() {
                 call: ToolCallId::new("call").unwrap(),
                 provider: None,
                 name: "tool".into(),
-                content: vec![ToolResultContent::text("child")],
+                content: NonEmpty::new(ToolResultContent::text("child")),
             })],
         });
         let parent = world
@@ -317,7 +320,11 @@ fn adding_a_payload_exposes_its_parent_and_sibling_membership() {
         MessageParts::User {
             content: vec![
                 UserContent::text("outer"),
-                UserContent::tool_result("call", "tool", vec![ToolResultContent::text("nested")]),
+                UserContent::tool_result(
+                    "call",
+                    "tool",
+                    NonEmpty::new(ToolResultContent::text("nested")),
+                ),
             ],
         },
     )
@@ -334,10 +341,10 @@ fn removal_cannot_hide_a_missing_nested_binary() {
         content: vec![UserContent::tool_result(
             "call",
             "tool",
-            vec![ToolResultContent::Image(Image {
+            NonEmpty::new(ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Raw(vec![1, 2, 3]),
                 ..Default::default()
-            })],
+            })),
         )],
     });
     let result = world.get::<Children>(utterance).unwrap()[0];
@@ -369,16 +376,16 @@ fn late_preparation_failure_preserves_assistant_id_and_children() {
             UserContent::tool_result(
                 "call",
                 "tool",
-                vec![
+                NonEmpty::of(
                     ToolResultContent::Image(Image {
                         data: DocumentSourceKind::Raw(vec![1, 2, 3]),
                         ..Default::default()
                     }),
-                    ToolResultContent::Image(Image {
+                    [ToolResultContent::Image(Image {
                         data: DocumentSourceKind::Base64("invalid!".into()),
                         ..Default::default()
-                    }),
-                ],
+                    })],
+                ),
             ),
         ],
     };
@@ -499,7 +506,7 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
         })
         .unwrap();
     assert_eq!(
-        request.chat_history,
+        request.history(),
         vec![rig_core::message::Message::user("hello")]
     );
 }

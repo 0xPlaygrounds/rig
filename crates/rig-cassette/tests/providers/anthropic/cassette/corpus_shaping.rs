@@ -443,9 +443,9 @@ async fn history_first_turn_effect_log_is_the_golden_fixture() {
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert!(
-                request_at(&log, 0).chat_history.len() >= 3,
+                request_at(&log, 0).history().len() >= 3,
                 "the patched exchange precedes the prompt: {:?}",
-                request_at(&log, 0).chat_history
+                request_at(&log, 0).history()
             );
             crate::goldens::golden_effects("anthropic_shaping_history_first_turn", &log);
         },

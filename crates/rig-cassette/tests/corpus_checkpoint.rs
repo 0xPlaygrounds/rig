@@ -382,10 +382,10 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
         panic!("a completion first");
     };
     let mut changed = request.clone();
-    // The preamble is the system message the request begins with.
-    match changed.chat_history.first_mut() {
-        Some(rig_core::message::Message::System { content }) => content.push('!'),
-        other => panic!("the request begins with its preamble, not {other:?}"),
+    // The preamble is the request's system prompt.
+    match changed.system.as_mut() {
+        Some(content) => content.push('!'),
+        None => panic!("the request carries its preamble"),
     }
     let changed = EffectKind::Completion {
         request: changed,
@@ -401,11 +401,9 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
             .expect_err("one byte differs");
         assert_eq!(report.kind, ErrorKind::Divergence);
         match check {
-            // The pointer to the byte: the preamble is the first message.
+            // The pointer to the byte: the preamble is the system prompt.
             RequestCheck::Payload => assert!(
-                report
-                    .message
-                    .contains("payload.request.chat_history[0].content differs"),
+                report.message.contains("payload.request.system differs"),
                 "{}",
                 report.message
             ),

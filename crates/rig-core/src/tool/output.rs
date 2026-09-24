@@ -7,6 +7,7 @@
 //! assert_eq!(output.as_text(), Some("done"));
 //! ```
 
+use crate::non_empty::NonEmpty;
 use std::{any::Any, fmt};
 
 use serde::Serialize;
@@ -24,7 +25,7 @@ use crate::{message::ToolResultContent, tool::ToolExecutionError};
 /// guess whether it represents rich content.
 #[derive(Clone, PartialEq)]
 pub struct ToolOutput {
-    content: Vec<ToolResultContent>,
+    content: NonEmpty<ToolResultContent>,
 }
 
 // Serde is the content list itself; deserialization goes through
@@ -79,7 +80,7 @@ impl ToolOutput {
     /// Constructs explicit model content, rejecting an empty block list.
     /// Use [`Self::text`] with `""` to represent an empty text result.
     pub fn content(content: Vec<ToolResultContent>) -> Result<Self, ToolExecutionError> {
-        let content = crate::message::require_non_empty(content, || {
+        let content = NonEmpty::from_vec(content).ok_or_else(|| {
             ToolExecutionError::other(
                 "tool output has no content blocks; return at least one block — \
                  an empty text block is valid",
@@ -91,7 +92,7 @@ impl ToolOutput {
     /// Construct one explicit model-content block.
     pub fn one(content: ToolResultContent) -> Self {
         Self {
-            content: vec![content],
+            content: NonEmpty::new(content),
         }
     }
 
@@ -126,11 +127,11 @@ impl ToolOutput {
 
     /// Borrow the canonical ordered content blocks.
     pub fn as_content(&self) -> &[ToolResultContent] {
-        &self.content
+        self.content.as_ref()
     }
 
     /// Convert this output into the canonical message content sent to a model.
-    pub fn into_content(self) -> Vec<ToolResultContent> {
+    pub fn into_content(self) -> NonEmpty<ToolResultContent> {
         self.content
     }
 

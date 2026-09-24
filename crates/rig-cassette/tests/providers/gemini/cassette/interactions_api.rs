@@ -5,6 +5,7 @@ use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
+use rig::non_empty::NonEmpty;
 use rig::providers::gemini::interactions_api::{AdditionalParameters, Interaction, Tool};
 use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize;
@@ -220,7 +221,9 @@ async fn tool_result_roundtrip() {
                             tool_call.id.clone(),
                             tool_call.provider.clone(),
                             tool_call.function.name.clone(),
-                            vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
+                            NonEmpty::new(ToolResultContent::json(
+                                serde_json::json!({ "sum": 18.0 }),
+                            )),
                         )))
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {

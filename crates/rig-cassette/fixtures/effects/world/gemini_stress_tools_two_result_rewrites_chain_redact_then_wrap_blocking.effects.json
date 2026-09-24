@@ -84,11 +84,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim."
-            },
+          "system": "You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim.",
+          "messages": [
             {
               "role": "user",
               "content": [
@@ -235,11 +232,8 @@
       "kind": {
         "effect": "completion",
         "request": {
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim."
-            },
+          "system": "You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim.",
+          "messages": [
             {
               "role": "user",
               "content": [

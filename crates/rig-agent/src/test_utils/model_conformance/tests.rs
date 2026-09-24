@@ -4,6 +4,7 @@ use crate::{
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn, mock_final},
 };
 use rig_core::message::{ToolCall, ToolFunction};
+use rig_core::non_empty::NonEmpty;
 
 fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
     AssistantContent::ToolCall(ToolCall::from_wire(
@@ -181,7 +182,7 @@ fn typed_validators_reject_bad_structured_output_and_protocol_leaks() {
 
     let messages = vec![Message::Assistant {
         id: None,
-        content: vec![AssistantContent::text("visible <tool_call>")],
+        content: NonEmpty::new(AssistantContent::text("visible <tool_call>")),
     }];
     let hygiene = validate_protocol_hygiene(
         "protocol_hygiene",
@@ -196,11 +197,11 @@ fn typed_validators_reject_bad_structured_output_and_protocol_leaks() {
 fn invalid_tool_diagnostics_require_rejected_call_history() {
     let history = vec![Message::Assistant {
         id: None,
-        content: vec![tool_call(
+        content: NonEmpty::new(tool_call(
             "bad_call",
             "missing",
             serde_json::json!({"value": 1}),
-        )],
+        )),
     }];
     let error = PromptError::UnknownToolCall {
         tool_name: "missing".to_string(),

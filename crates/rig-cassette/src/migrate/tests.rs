@@ -185,3 +185,24 @@ fn a_format_one_run_migrates_its_ids_and_messages() {
     assert_eq!(migration, Migration::Current);
     assert_eq!(again, migrated);
 }
+
+/// A format-0 request's leading system message becomes its system prompt,
+/// the way the request builder places a preamble, unless it is the
+/// conversation's only message.
+#[test]
+fn a_leading_system_message_becomes_the_system_prompt() {
+    let mut log = parse(V0_LOG);
+    let preamble = log["records"][1]["kind"]["request"]["chat_history"][0]["content"].clone();
+    let (migrated, _) = migrate(log.clone()).unwrap();
+    let current = &migrated["records"][1]["kind"]["request"];
+    assert_eq!(current["system"], preamble);
+    assert_eq!(current["messages"][0]["role"], "user");
+    assert!(current.get("chat_history").is_none());
+
+    log["records"][1]["kind"]["request"]["chat_history"] =
+        json!([{ "role": "system", "content": "alone" }]);
+    let (migrated, _) = migrate(log).unwrap();
+    let current = &migrated["records"][1]["kind"]["request"];
+    assert!(current.get("system").is_none());
+    assert_eq!(current["messages"][0]["content"], "alone");
+}

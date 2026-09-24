@@ -8,10 +8,10 @@
 //! let message = read_message(&world, utterance)?;
 //! # Ok::<(), rig_ecs::agent::content::parts::ContentError>(())
 //! ```
-
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use rig_core::message::{self, AssistantContent, ToolResultContent, UserContent};
+use rig_core::non_empty::NonEmpty;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -199,6 +199,9 @@ pub enum ContentError {
     /// A part has invalid children, an invalid parent, or the wrong role.
     #[error("content part has an invalid type or role")]
     Shape,
+    /// A message or a tool result has no content, which no request can send.
+    #[error("a message or tool result has no content")]
+    Empty,
 }
 
 // Planning before spawning avoids partially written utterances. Only tool
@@ -452,7 +455,8 @@ fn to_user<'a>(
                         _ => return Err(ContentError::Shape),
                     })
                 })
-                .collect::<Result<_, ContentError>>()?,
+                .collect::<Result<Vec<_>, ContentError>>()
+                .and_then(|content| NonEmpty::from_vec(content).ok_or(ContentError::Empty))?,
         }),
         _ => return Err(ContentError::Shape),
     })

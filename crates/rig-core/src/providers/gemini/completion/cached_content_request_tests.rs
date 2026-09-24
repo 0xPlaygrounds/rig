@@ -2,6 +2,7 @@ use super::gemini_api_types::GenerateContentRequest;
 use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::message::{Message, UserContent};
+use crate::non_empty::NonEmpty;
 
 fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
     let mut tool_defs = Vec::new();
@@ -13,13 +14,17 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
         });
     }
     super::create_request_body(CompletionRequest {
-        chat_history: preamble
-            .map(Message::system)
-            .into_iter()
-            .chain([Message::User {
-                content: vec![UserContent::text("hi")],
-            }])
-            .collect(),
+        system: None,
+        messages: NonEmpty::from_vec(
+            preamble
+                .map(Message::system)
+                .into_iter()
+                .chain([Message::User {
+                    content: NonEmpty::new(UserContent::text("hi")),
+                }])
+                .collect(),
+        )
+        .expect("a conversation"),
         documents: vec![],
         tools: tool_defs,
         temperature: None,
@@ -189,13 +194,17 @@ fn build_with(
     additional: Option<serde_json::Value>,
 ) -> Result<GenerateContentRequest, EncodeError> {
     super::create_request_body(CompletionRequest {
-        chat_history: preamble
-            .map(Message::system)
-            .into_iter()
-            .chain([Message::User {
-                content: vec![UserContent::text("hi")],
-            }])
-            .collect(),
+        system: None,
+        messages: NonEmpty::from_vec(
+            preamble
+                .map(Message::system)
+                .into_iter()
+                .chain([Message::User {
+                    content: NonEmpty::new(UserContent::text("hi")),
+                }])
+                .collect(),
+        )
+        .expect("a conversation"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -293,9 +302,10 @@ fn a_non_string_handle_in_additional_params_is_refused() {
 #[test]
 fn unrelated_additional_params_coexist_with_the_typed_field() {
     let mut request = super::create_request_body(CompletionRequest {
-        chat_history: vec![Message::User {
-            content: vec![UserContent::text("hi")],
-        }],
+        system: None,
+        messages: NonEmpty::new(Message::User {
+            content: NonEmpty::new(UserContent::text("hi")),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -379,9 +389,10 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
     );
 
     let message = super::create_request_body(CompletionRequest {
-        chat_history: vec![Message::User {
-            content: vec![UserContent::text("hi")],
-        }],
+        system: None,
+        messages: NonEmpty::new(Message::User {
+            content: NonEmpty::new(UserContent::text("hi")),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,

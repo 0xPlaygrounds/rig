@@ -188,9 +188,11 @@ pub(crate) fn create_grpc_request(
     model: &str,
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, ProviderError> {
+    let chat_history = completion_request.history();
     let CompletionRequest {
         model: _,
-        chat_history,
+        system: _,
+        messages: _,
         documents: _,
         tools,
         temperature,
@@ -551,7 +553,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             .iter()
             .any(completion::AssistantContent::is_tool_call);
         Ok(completion::CompletionResponse {
-            choice,
+            choice: choice.into_vec(),
             end: completion::CompletionEnd {
                 finish_reason: finish_reason
                     .map(|reason| reason.reconcile_with_output(has_tool_call)),

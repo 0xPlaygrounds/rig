@@ -105,21 +105,6 @@ const GOLDEN: &str = r#"
       "injected": true,
       "shared": "hook"
     },
-    "chat_history": [
-      {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
-      },
-      {
-        "content": [
-          {
-            "text": "add 2 and 3",
-            "type": "text"
-          }
-        ],
-        "role": "user"
-      }
-    ],
     "documents": [
       {
         "id": "static_doc_0",
@@ -131,6 +116,18 @@ const GOLDEN: &str = r#"
       }
     ],
     "max_tokens": 512,
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "add 2 and 3",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "system": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -178,11 +175,18 @@ const GOLDEN: &str = r#"
       "injected": true,
       "shared": "hook"
     },
-    "chat_history": [
+    "documents": [
       {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
+        "id": "static_doc_0",
+        "text": "static context"
       },
+      {
+        "id": "extra",
+        "text": "extra context"
+      }
+    ],
+    "max_tokens": 512,
+    "messages": [
       {
         "content": [
           {
@@ -237,17 +241,7 @@ const GOLDEN: &str = r#"
         "role": "user"
       }
     ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
-    "max_tokens": 512,
+    "system": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -295,11 +289,18 @@ const GOLDEN: &str = r#"
       "injected": true,
       "shared": "hook"
     },
-    "chat_history": [
+    "documents": [
       {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
+        "id": "static_doc_0",
+        "text": "static context"
       },
+      {
+        "id": "extra",
+        "text": "extra context"
+      }
+    ],
+    "max_tokens": 512,
+    "messages": [
       {
         "content": [
           {
@@ -372,17 +373,7 @@ const GOLDEN: &str = r#"
         "role": "user"
       }
     ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
-    "max_tokens": 512,
+    "system": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [

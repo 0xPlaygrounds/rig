@@ -4,6 +4,7 @@ use futures::FutureExt;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
+use rig::non_empty::NonEmpty;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{
@@ -154,12 +155,12 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
 
 fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
-        content: vec![
+        content: NonEmpty::of(
             content,
-            RigUserContent::Text(Text::new(format!(
+            [RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            ))),
-        ],
+            )))],
+        ),
     }
 }
 
