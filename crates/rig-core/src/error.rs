@@ -383,40 +383,6 @@ pub enum ProviderError {
         /// The provider's reply.
         response: ProviderResponseError,
     },
-    /// The provider does not support a request parameter configured on the
-    /// model.
-    #[error("{provider} embeddings do not support the `{parameter}` parameter")]
-    UnsupportedParameter {
-        /// Provider whose API rejects the parameter.
-        provider: &'static str,
-        /// Unsupported request parameter.
-        parameter: &'static str,
-    },
-    /// A request parameter was configured outside the provider's supported
-    /// range.
-    #[error("{provider} embeddings require `{parameter}` {requirement}")]
-    InvalidParameterValue {
-        /// Provider whose API constrains the parameter.
-        provider: &'static str,
-        /// Request parameter with the invalid value.
-        parameter: &'static str,
-        /// Concise description of the accepted values.
-        requirement: &'static str,
-    },
-    /// Rig cannot decode the requested response encoding.
-    #[error("Rig cannot decode {provider} embedding responses encoded as `{encoding_format}`")]
-    UnsupportedResponseEncoding {
-        /// Provider whose response encoding was requested.
-        provider: &'static str,
-        /// Response encoding that Rig cannot decode.
-        encoding_format: &'static str,
-    },
-    /// A provider that guarantees usage omitted it from the response.
-    #[error("{provider} embedding response omitted required usage")]
-    MissingUsage {
-        /// Provider whose response omitted usage.
-        provider: &'static str,
-    },
     /// The provider returned vectors of a width other than the one the caller
     /// declared through
     /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
@@ -468,13 +434,8 @@ impl ProviderError {
             Self::Http(_) => ErrorKind::Http,
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
-            Self::Request(_)
-            | Self::UnsupportedParameter { .. }
-            | Self::InvalidParameterValue { .. }
-            | Self::UnsupportedResponseEncoding { .. } => ErrorKind::Request,
-            Self::Response(_) | Self::MissingUsage { .. } | Self::MismatchedDimensions { .. } => {
-                ErrorKind::Response
-            }
+            Self::Request(_) => ErrorKind::Request,
+            Self::Response(_) | Self::MismatchedDimensions { .. } => ErrorKind::Response,
             Self::Provider(_) => ErrorKind::Provider,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
@@ -627,9 +588,9 @@ impl From<http_client::Error> for ProviderError {
 }
 
 /// A failure to build a provider request, returned by
-/// [`Wire::encode`](crate::wire::Wire::encode). It converts only into a
-/// request-building [`ProviderError`], `Request` or a typed request parameter
-/// variant, so every provider classifies its encode failures alike.
+/// [`Wire::encode`](crate::wire::Wire::encode). It converts only into
+/// [`ProviderError::Request`], so every provider classifies its encode
+/// failures alike.
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct EncodeError(ProviderError);
@@ -638,38 +599,6 @@ impl EncodeError {
     /// A request that could not be built, for the given reason.
     pub fn request(reason: impl Into<BoxError>) -> Self {
         Self(ProviderError::Request(reason.into()))
-    }
-
-    /// See [`ProviderError::UnsupportedParameter`].
-    pub fn unsupported_parameter(provider: &'static str, parameter: &'static str) -> Self {
-        Self(ProviderError::UnsupportedParameter {
-            provider,
-            parameter,
-        })
-    }
-
-    /// See [`ProviderError::InvalidParameterValue`].
-    pub fn invalid_parameter_value(
-        provider: &'static str,
-        parameter: &'static str,
-        requirement: &'static str,
-    ) -> Self {
-        Self(ProviderError::InvalidParameterValue {
-            provider,
-            parameter,
-            requirement,
-        })
-    }
-
-    /// See [`ProviderError::UnsupportedResponseEncoding`].
-    pub fn unsupported_response_encoding(
-        provider: &'static str,
-        encoding_format: &'static str,
-    ) -> Self {
-        Self(ProviderError::UnsupportedResponseEncoding {
-            provider,
-            encoding_format,
-        })
     }
 }
 

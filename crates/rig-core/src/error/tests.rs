@@ -695,25 +695,6 @@ fn reports_match_the_replaced_error_enums() {
             r#"{"code":null,"http_status":null,"kind":"request","message":"RequestError: io broke","refusal":false,"retryable":false,"source_chain":["io broke"]}"#,
             AdapterErrorBoundary::Request,
         ),
-        (
-            "Embedding::UnsupportedParameter",
-            ProviderError::UnsupportedParameter {
-                provider: "voyage",
-                parameter: "dimensions",
-            },
-            r#"{"code":null,"http_status":null,"kind":"request","message":"voyage embeddings do not support the `dimensions` parameter","refusal":false,"retryable":false,"source_chain":[]}"#,
-            AdapterErrorBoundary::Request,
-        ),
-        (
-            "Embedding::InvalidParameterValue",
-            ProviderError::InvalidParameterValue {
-                provider: "doubleword",
-                parameter: "dimensions",
-                requirement: "to be greater than zero",
-            },
-            r#"{"code":null,"http_status":null,"kind":"request","message":"doubleword embeddings require `dimensions` to be greater than zero","refusal":false,"retryable":false,"source_chain":[]}"#,
-            AdapterErrorBoundary::Request,
-        ),
     ];
     for (case, error, expected, boundary) in cases {
         let expected: serde_json::Value = serde_json::from_str(expected).expect("expected report");
@@ -758,7 +739,7 @@ fn transport_503() -> H {
 #[test]
 fn response_shaped_faults_report_the_decode_boundary() {
     for error in [
-        ProviderError::MissingUsage { provider: "openai" },
+        ProviderError::Response("openai embedding response omitted required usage".into()),
         ProviderError::MismatchedDimensions {
             provider: "llamacpp".into(),
             requested: 128,

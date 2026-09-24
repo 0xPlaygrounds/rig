@@ -13,7 +13,7 @@ use crate::providers::gemini::Gemini;
 use crate::providers::ollama::Ollama;
 use crate::providers::openai::OpenAI;
 use crate::providers::openai::embedding::EncodingFormat;
-use crate::providers::openai::wire::{GROQ, LLAMACPP, OPENAI, PERPLEXITY};
+use crate::providers::openai::wire::{GROQ, LLAMACPP, MISTRAL, OPENAI, PERPLEXITY, TOGETHER};
 use crate::providers::voyageai::VoyageAi;
 use crate::wire::{Mode, Wire};
 
@@ -45,10 +45,7 @@ fn assert_request_building(case: &str, error: &ProviderError) {
     assert!(!error.is_retryable(), "{case}: {error}");
     assert_eq!(error.report().kind, ErrorKind::Request, "{case}: {error}");
     match error {
-        ProviderError::Request(_)
-        | ProviderError::UnsupportedParameter { .. }
-        | ProviderError::InvalidParameterValue { .. }
-        | ProviderError::UnsupportedResponseEncoding { .. } => {}
+        ProviderError::Request(_) => {}
         ProviderError::Http(_)
         | ProviderError::Url(_)
         | ProviderError::Json(_)
@@ -57,7 +54,6 @@ fn assert_request_building(case: &str, error: &ProviderError) {
         | ProviderError::ProviderResponse(_)
         | ProviderError::InvalidAuthentication(_)
         | ProviderError::CacheExpired { .. }
-        | ProviderError::MissingUsage { .. }
         | ProviderError::MismatchedDimensions { .. } => {
             panic!("{case}: an encode failure must not classify as {error:?}")
         }
@@ -75,18 +71,6 @@ fn every_encode_error_constructor_classifies_as_request_building() {
     let message = crate::message::MessageError::ConversionError("nope".into());
     let cases: Vec<(&str, EncodeError)> = vec![
         ("request", EncodeError::request("no endpoint")),
-        (
-            "unsupported parameter",
-            EncodeError::unsupported_parameter("p", "user"),
-        ),
-        (
-            "invalid parameter value",
-            EncodeError::invalid_parameter_value("p", "dimensions", "to be positive"),
-        ),
-        (
-            "unsupported response encoding",
-            EncodeError::unsupported_response_encoding("p", "base64"),
-        ),
         ("from json", json.into()),
         ("from http", http.into()),
         ("from boxed", boxed.into()),
@@ -161,7 +145,27 @@ fn provider_encode_failures_classify_as_request_building() {
                     .with_encoding_format(EncodingFormat::Base64)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
-            "Rig cannot decode openai embedding responses encoded as `base64`",
+            "RequestError: Rig cannot decode openai embedding responses encoded as `base64`",
+        ),
+        (
+            "openai-compatible embeddings, unsupported encoding format",
+            failure(
+                OpenAI::with_key(&TOGETHER, "k")
+                    .embedding("m", None)
+                    .with_encoding_format(EncodingFormat::Float)
+                    .encode(vec!["a".into()], Mode::Unary),
+            ),
+            "RequestError: together embeddings do not support the `encoding_format` parameter",
+        ),
+        (
+            "openai-compatible embeddings, unsupported user",
+            failure(
+                OpenAI::with_key(&MISTRAL, "k")
+                    .embedding("mistral-embed", None)
+                    .with_user("u")
+                    .encode(vec!["a".into()], Mode::Unary),
+            ),
+            "RequestError: mistral embeddings do not support the `user` parameter",
         ),
         (
             "openai rerank without the endpoint",
