@@ -5,7 +5,7 @@
 //! # The feature
 //!
 //! Capture is always on. The provider populates `CompletionResponse::raw` /
-//! `StreamFinal::raw` on every response, and the agent exposes that payload —
+//! `CompletionEnd::raw` on every response, and the agent exposes that payload —
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
 //! `CompletionCall` the run records, and on the streamed
@@ -136,7 +136,7 @@ impl AgentHook for RawProbe {
                     .choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                raw: response.raw.clone(),
+                raw: response.end.meta.raw.clone(),
             });
         OutcomeAction::proceed()
     }
@@ -147,7 +147,7 @@ impl AgentHook for RawProbe {
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
         let mut seen = self.model_turn_finished.lock().expect("probe");
-        seen.push(event.raw.clone());
+        seen.push(event.end.meta.raw.clone());
         if self.retry_once && seen.len() == 1 {
             ModelTurnAction::repeat()
         } else {
@@ -161,7 +161,7 @@ impl AgentHook for RawProbe {
 #[derive(Default)]
 struct StreamedRun {
     completion_calls: Vec<rig::agent::CompletionCall>,
-    finals: Vec<rig::streaming::StreamFinal>,
+    finals: Vec<rig::completion::CompletionEnd>,
     output: Option<String>,
 }
 
@@ -320,7 +320,7 @@ async fn hooks_observe_raw_streamed() {
             assert!(run.output.is_some(), "the run finished");
             assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
             assert!(
-                !run.finals[0].raw.is_null(),
+                !run.finals[0].meta.raw.is_null(),
                 "the streamed terminal carries raw"
             );
         },
@@ -494,8 +494,8 @@ async fn streamed_final_carries_final_turn_raw() {
             let last = run.finals.last().expect("terminal");
             // The last terminal record is the final turn's, and its payload is
             // the one the final call recorded.
-            assert_eq!(last.raw, run.completion_calls[1].raw);
-            *sink.lock().expect("sink") = vec![last.raw.clone()];
+            assert_eq!(last.meta.raw, run.completion_calls[1].raw);
+            *sink.lock().expect("sink") = vec![last.meta.raw.clone()];
         },
     )
     .await;

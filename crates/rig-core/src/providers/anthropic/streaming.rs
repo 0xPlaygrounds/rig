@@ -1,14 +1,15 @@
-use crate::id::{MessageId, ModelName, RequestId};
+use crate::id::{MessageId, ModelName};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::completion::{CompletionResponse, Content, anthropic_usage_totals, map_finish_reason};
+use crate::completion::ReportedEnd;
 use crate::error::ProviderError;
 use crate::message::ReasoningContent;
 use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
-use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
+use crate::streaming::{self, BlockId, MintKind, ToolCallEnd, UnparseableToolInput};
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink, WireFrame,
 };
@@ -232,8 +233,6 @@ impl ThinkingState {
 
 /// Decode unary and streamed Messages replies into canonical content and terminal events.
 pub struct MessagesDecoder {
-    /// Selected dialect's provider name for terminal records.
-    provider: &'static str,
     /// Wire id of the open client tool-use block, when one is streaming.
     current_tool_call: Option<BlockId>,
     /// Keys for calls whose wire id is empty: an absent id is not an id.
@@ -250,11 +249,9 @@ pub struct MessagesDecoder {
     failed: bool,
 }
 
-impl MessagesDecoder {
-    /// A fresh decoder whose terminal record names `provider`.
-    pub fn new(provider: &'static str) -> Self {
+impl Default for MessagesDecoder {
+    fn default() -> Self {
         Self {
-            provider,
             current_tool_call: None,
             tool_ids: streaming::SyntheticIds::tool(),
             server_tool_uses: HashMap::new(),
@@ -266,7 +263,9 @@ impl MessagesDecoder {
             failed: false,
         }
     }
+}
 
+impl MessagesDecoder {
     /// The content-block frames: `content_block_start` / `_delta` / `_stop`.
     fn interpret_content(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
         match event {
@@ -526,9 +525,8 @@ impl MessagesDecoder {
             stop_sequence: message.stop_sequence,
             message_id: self.message_id.clone(),
             model: self.response_model.clone(),
-            provider_request_id: None,
         };
-        match terminal_record(self.provider, &native) {
+        match terminal_record(&native) {
             Ok(record) => out.final_record(record),
             Err(error) => out.error(error),
         }
@@ -602,11 +600,8 @@ impl Decoder<Completion> for MessagesDecoder {
                     stop_sequence: delta.stop_sequence,
                     message_id: self.message_id.clone(),
                     model: self.response_model.clone(),
-                    // Stamped by the driver onto the normalized record; the
-                    // decoder never sees connection headers.
-                    provider_request_id: None,
                 };
-                match terminal_record(self.provider, &native) {
+                match terminal_record(&native) {
                     Ok(record) => out.final_record(record),
                     Err(err) => out.error(err),
                 }
@@ -721,9 +716,9 @@ struct ObservedDelta {
 
 /// Anthropic's own terminal stream record.
 ///
-/// The adapter maps it once into the normalized [`StreamFinal`] (see
-/// `terminal_record`) and serializes it onto [`StreamFinal::raw`]; callers
-/// who want the provider-native shape deserialize it from there.
+/// The adapter maps it once into the normalized terminal record (see
+/// `terminal_record`) and serializes it as the record's `raw`; callers who
+/// want the provider-native shape deserialize it from there.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     /// Token usage carried by the terminal `message_delta` event.
@@ -741,29 +736,16 @@ pub struct StreamingCompletionResponse {
     /// The model named by `message_start`, when the stream reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Transport request id supplied by an external record builder.
-    /// Live decoders leave this absent; the driver attaches response headers
-    /// to [`StreamFinal::provider_request_id`] instead.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
 }
 
-/// Normalize terminal metadata for the selected `provider`, preserving the native
-/// record on [`StreamFinal::raw`]. Return an error if serialization fails.
-fn terminal_record(
-    provider: &str,
-    response: &StreamingCompletionResponse,
-) -> Result<StreamFinal, ProviderError> {
-    Ok(StreamFinal {
+/// What Anthropic's terminal record reports, with the native record as its
+/// document. Return an error if serialization fails.
+fn terminal_record(response: &StreamingCompletionResponse) -> Result<ReportedEnd, ProviderError> {
+    Ok(ReportedEnd {
         finish_reason: response.stop_reason.as_deref().map(map_finish_reason),
         message_id: response.message_id.clone().and_then(MessageId::non_empty),
-        provider_request_id: response
-            .provider_request_id
-            .clone()
-            .and_then(RequestId::non_empty),
         model: response.model.clone().and_then(ModelName::non_empty),
-        ..StreamFinal::new(
-            provider,
+        ..ReportedEnd::new(
             crate::completion::Usage::from(&response.usage),
             serde_json::to_value(response)?,
         )

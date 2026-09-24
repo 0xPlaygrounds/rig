@@ -83,42 +83,46 @@
               "text": "The dominant non-background color is bright red."
             }
           ],
-          "usage": {
-            "input_tokens": 43,
-            "output_tokens": 105,
-            "total_tokens": 148,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "message_id": "msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
-          "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
-          "provider_request_id": "req_13553fa18f864c4c8c45987d63c7d6ad",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "input_tokens": 43,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 105,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
+              "provider_request_id": "req_13553fa18f864c4c8c45987d63c7d6ad",
+              "usage": {
+                "input_tokens": 43,
+                "output_tokens": 105,
+                "total_tokens": 148,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 64
               },
-              "total_tokens": 148
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "reasoning_context": "current_turn",
-            "status": "completed",
-            "message_id": "msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
-            "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
-            "model": "gpt-5-mini-2025-08-07"
+              "raw": {
+                "usage": {
+                  "input_tokens": 43,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 105,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 64
+                  },
+                  "total_tokens": 148
+                },
+                "reasoning_metadata": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "reasoning_context": "current_turn",
+                "status": "completed",
+                "message_id": "msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
+                "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
+                "model": "gpt-5-mini-2025-08-07"
+              }
+            }
           }
         }
       },
@@ -246,42 +250,44 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 43,
-            "output_tokens": 105,
-            "total_tokens": 148,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
           "finish_reason": "stop",
           "message_id": "msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
-          "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
-          "provider_request_id": "req_13553fa18f864c4c8c45987d63c7d6ad",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
+            "provider_request_id": "req_13553fa18f864c4c8c45987d63c7d6ad",
             "usage": {
               "input_tokens": 43,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 105,
-              "output_tokens_details": {
-                "reasoning_tokens": 64
+              "total_tokens": 148,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 64
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 43,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 105,
+                "output_tokens_details": {
+                  "reasoning_tokens": 64
+                },
+                "total_tokens": 148
               },
-              "total_tokens": 148
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "reasoning_context": "current_turn",
-            "status": "completed",
-            "message_id": "msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
-            "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
-            "model": "gpt-5-mini-2025-08-07"
+              "reasoning_metadata": {
+                "context": "current_turn",
+                "effort": "medium",
+                "mode": "standard",
+                "summary": null
+              },
+              "reasoning_context": "current_turn",
+              "status": "completed",
+              "message_id": "msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
+              "response_id": "resp_05b944c3051ac2d6006ab2b456ef8c87d08ae7970beb2c386f",
+              "model": "gpt-5-mini-2025-08-07"
+            }
           }
         }
       ]

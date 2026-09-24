@@ -14,13 +14,14 @@
 //!
 //! Bind a wire to a transport to execute it. `Ollama::from_env` reads
 //! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
+use crate::completion::ReportedEnd;
 use crate::completion::Usage;
 use crate::error::EncodeError;
 use crate::message::DocumentSourceKind;
 use crate::model::Model;
 use crate::operation::Completion;
 use crate::providers::internal;
-use crate::streaming::{StreamFinal, ToolCallEnd};
+use crate::streaming::ToolCallEnd;
 use crate::{
     completion::{self, CompletionRequest},
     json_utils, message,
@@ -316,7 +317,7 @@ enum Level {
 }
 
 /// Ollama's terminal stream record: the `done: true` line's counters as rig
-/// parsed them, serialized onto [`StreamFinal::raw`] by the adapter's
+/// parsed them, serialized as the terminal record's `raw` by the adapter's
 /// terminal mapping.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
@@ -337,15 +338,15 @@ impl From<&StreamingCompletionResponse> for Usage {
     }
 }
 
-/// The adapter's terminal mapping: Ollama's `done: true` record as a
-/// normalized [`StreamFinal`] (the caller attaches `raw`).
-fn stream_final(response: StreamingCompletionResponse, raw: serde_json::Value) -> StreamFinal {
+/// The adapter's terminal mapping: what Ollama's `done: true` record
+/// reports, with `raw` as its document.
+fn stream_final(response: StreamingCompletionResponse, raw: serde_json::Value) -> ReportedEnd {
     // Ollama's `/api/chat` stream assigns no message identifier, so the
     // normalized `message_id` stays unset.
-    StreamFinal {
+    ReportedEnd {
         finish_reason: response.done_reason.as_deref().map(map_done_reason),
         model: crate::id::ModelName::non_empty(response.model.clone()),
-        ..StreamFinal::new(PROVIDER_NAME, Usage::from(&response), raw)
+        ..ReportedEnd::new(Usage::from(&response), raw)
     }
 }
 
@@ -387,7 +388,7 @@ impl OllamaDecoder {
         {
             // Id-less calls need distinct minted keys, not tool names; only daemon
             // IDs may be treated as provider-issued durable identity.
-            let mut tool_events = crate::operation::AdapterOutput::new();
+            let mut tool_events = out.scratch();
             for tool_call in tool_calls {
                 let key = match tool_call
                     .id

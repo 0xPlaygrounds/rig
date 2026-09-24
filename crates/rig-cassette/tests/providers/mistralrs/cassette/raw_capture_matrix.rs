@@ -110,16 +110,22 @@ async fn raw_is_the_reply_document() {
     .await;
 
     let response = captured.take();
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
+    let typed = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must deserialize into openai::CompletionResponse");
     // The typed view agrees with the normalized one on what the model said,
     // so raw is a superset, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(response.provider, NORMALIZED_PROVIDER);
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
+    assert_eq!(response.end.meta.provider, NORMALIZED_PROVIDER);
     assert!(!response.choice.is_empty());
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     openai::CompletionResponse::deserialize(&body)
@@ -155,7 +161,7 @@ async fn raw_exposes_envelope_fields() {
     let normalized = normalized_without_raw(response.clone());
     assert_normalized_lacks(&normalized, &["object", "created", "system_fingerprint"]);
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     for field in ["object", "system_fingerprint", "model"] {
@@ -201,11 +207,17 @@ async fn normalized_fields_equal_raw_renormalized() {
     .await;
 
     let response = captured.take();
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
+    let typed = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must deserialize into openai::CompletionResponse");
-    assert_eq!(response.provider, NORMALIZED_PROVIDER);
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(response.end.meta.provider, NORMALIZED_PROVIDER);
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
     let choice = typed
         .choices
         .first()
@@ -214,30 +226,37 @@ async fn normalized_fields_equal_raw_renormalized() {
     // vocabulary is unrecorded here, so this claims only that a native reason
     // was reported and that one reached the normalized response.
     assert!(
-        !choice.finish_reason.is_empty() && response.finish_reason.clone().is_some(),
+        !choice.finish_reason.is_empty() && response.end.finish_reason.clone().is_some(),
         "the native finish reason `{}` must reach the normalized response",
         choice.finish_reason
     );
     let usage = typed.usage.expect("mistral.rs reports usage");
     assert_eq!(
         Some(usage.prompt_tokens as u64),
-        response.usage.input_tokens
+        response.end.meta.usage.input_tokens
     );
-    assert_eq!(Some(usage.total_tokens as u64), response.usage.total_tokens);
+    assert_eq!(
+        Some(usage.total_tokens as u64),
+        response.end.meta.usage.total_tokens
+    );
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     // And the same fields against the recorded bytes, so a recording that
     // stopped carrying them fails loudly instead of covering nothing.
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
     assert_eq!(
-        response.usage.input_tokens,
+        response.end.meta.model.as_deref(),
+        body["model"].as_str(),
+        "model"
+    );
+    assert_eq!(
+        response.end.meta.usage.input_tokens,
         body["usage"]["prompt_tokens"].as_u64(),
         "input tokens"
     );
     assert_eq!(
-        response.usage.total_tokens,
+        response.end.meta.usage.total_tokens,
         body["usage"]["total_tokens"].as_u64(),
         "total tokens"
     );

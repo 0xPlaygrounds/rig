@@ -122,17 +122,21 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "usage": {},
+                "finish_reason": null,
+                "message_id": null,
+                "response_id": null,
+                "provider": "mock",
+                "model": null,
+                "raw": {
+                  "provider": "mock"
+                }
+              }
             }
           }
         }
@@ -178,17 +182,19 @@
         },
         {
           "event": "final",
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
+          "meta": {
             "provider": "mock",
-            "model": null,
+            "usage": {},
             "raw": {
-              "provider": "mock"
+              "usage": {},
+              "finish_reason": null,
+              "message_id": null,
+              "response_id": null,
+              "provider": "mock",
+              "model": null,
+              "raw": {
+                "provider": "mock"
+              }
             }
           }
         }
@@ -293,17 +299,21 @@
               "text": "2 + 3 = 5"
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "usage": {},
+                "finish_reason": null,
+                "message_id": null,
+                "response_id": null,
+                "provider": "mock",
+                "model": null,
+                "raw": {
+                  "provider": "mock"
+                }
+              }
             }
           }
         }
@@ -326,17 +336,19 @@
         },
         {
           "event": "final",
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
+          "meta": {
             "provider": "mock",
-            "model": null,
+            "usage": {},
             "raw": {
-              "provider": "mock"
+              "usage": {},
+              "finish_reason": null,
+              "message_id": null,
+              "response_id": null,
+              "provider": "mock",
+              "model": null,
+              "raw": {
+                "provider": "mock"
+              }
             }
           }
         }

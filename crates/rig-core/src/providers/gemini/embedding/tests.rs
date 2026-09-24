@@ -90,8 +90,10 @@ fn the_batch_request_is_the_recorded_one() {
 #[test]
 fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
     let wire = Gemini::new("test-key").embeddings(EMBEDDING_001, Some(256));
-    let mut driver =
-        WireDriver::<crate::operation::Embedding, _>::new(wire.decoder(crate::wire::Mode::Unary));
+    let mut driver = WireDriver::<crate::operation::Embedding, _>::new(
+        &crate::id::ProviderName::new(wire.name()).expect("a provider name"),
+        wire.decoder(crate::wire::Mode::Unary),
+    );
     driver.push(WireFrame::Text(RECORDED_REPLY.to_owned()));
     driver.finish();
 

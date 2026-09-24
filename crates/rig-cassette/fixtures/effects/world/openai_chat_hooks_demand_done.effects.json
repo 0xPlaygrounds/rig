@@ -79,51 +79,55 @@
               "text": "Rust is a systems programming language that delivers C-like performance and control while enforcing memory- and thread-safety through its ownership, borrowing, and type system without a garbage collector. Memory safety matters because it prevents common bugs (use-after-free, buffer overflows, data races) that cause crashes and security vulnerabilities, making software more reliable and secure."
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 206,
-            "total_tokens": 243,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "response_id": "chatcmpl-ERDBXDdt0a7TzycsG986P6g85mqnJ",
-          "provider_request_id": "req_a8fba1528182449fade3789937bdb896",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": "Rust is a systems programming language that delivers C-like performance and control while enforcing memory- and thread-safety through its ownership, borrowing, and type system without a garbage collector. Memory safety matters because it prevents common bugs (use-after-free, buffer overflows, data races) that cause crashes and security vulnerabilities, making software more reliable and secure.",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDBXDdt0a7TzycsG986P6g85mqnJ",
+              "provider_request_id": "req_a8fba1528182449fade3789937bdb896",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 206,
+                "total_tokens": 243,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 128
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "Rust is a systems programming language that delivers C-like performance and control while enforcing memory- and thread-safety through its ownership, borrowing, and type system without a garbage collector. Memory safety matters because it prevents common bugs (use-after-free, buffer overflows, data races) that cause crashes and security vulnerabilities, making software more reliable and secure.",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDBXDdt0a7TzycsG986P6g85mqnJ",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 206,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 128,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 37,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 243
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDBXDdt0a7TzycsG986P6g85mqnJ",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 206,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 128,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 37,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 243
             }
           }
         }
@@ -183,51 +187,55 @@
               "text": "Rust is a systems programming language that offers C-like performance and control while enforcing memory- and thread-safety through ownership and borrowing without a garbage collector. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities DONE"
             }
           ],
-          "usage": {
-            "input_tokens": 124,
-            "output_tokens": 577,
-            "total_tokens": 701,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 512
-          },
-          "response_id": "chatcmpl-ERDBaL4wS3HlKtFwYHpBtNB9AvprR",
-          "provider_request_id": "req_7fbdeca5b64a4209ac7b6e89a8739330",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": "Rust is a systems programming language that offers C-like performance and control while enforcing memory- and thread-safety through ownership and borrowing without a garbage collector. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities DONE",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDBaL4wS3HlKtFwYHpBtNB9AvprR",
+              "provider_request_id": "req_7fbdeca5b64a4209ac7b6e89a8739330",
+              "usage": {
+                "input_tokens": 124,
+                "output_tokens": 577,
+                "total_tokens": 701,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 512
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "Rust is a systems programming language that offers C-like performance and control while enforcing memory- and thread-safety through ownership and borrowing without a garbage collector. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities DONE",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDBaL4wS3HlKtFwYHpBtNB9AvprR",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 577,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 512,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 124,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 701
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDBaL4wS3HlKtFwYHpBtNB9AvprR",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 577,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 512,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 124,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 701
             }
           }
         }

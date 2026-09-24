@@ -93,44 +93,48 @@
               "text": "ready"
             }
           ],
-          "usage": {
-            "input_tokens": 34,
-            "output_tokens": 2,
-            "total_tokens": 36,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 34,
-              "completion_tokens": 2,
-              "total_tokens": 36,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
+              "usage": {
+                "input_tokens": 34,
+                "output_tokens": 2,
+                "total_tokens": 36,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 34,
+                  "completion_tokens": 2,
+                  "total_tokens": 36,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk"
+                }
+              }
             }
           }
         }
@@ -153,44 +157,46 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 34,
-            "output_tokens": 2,
-            "total_tokens": 36,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 34,
-              "completion_tokens": 2,
-              "total_tokens": 36,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+            "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
+            "usage": {
+              "input_tokens": 34,
+              "output_tokens": 2,
+              "total_tokens": 36,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 34,
+                "completion_tokens": 2,
+                "total_tokens": 36,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk"
+              }
             }
           }
         }
@@ -327,44 +333,48 @@
               "text": "again"
             }
           ],
-          "usage": {
-            "input_tokens": 54,
-            "output_tokens": 2,
-            "total_tokens": 56,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 54,
-              "completion_tokens": 2,
-              "total_tokens": 56,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
+              "usage": {
+                "input_tokens": 54,
+                "output_tokens": 2,
+                "total_tokens": 56,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 54,
+                  "completion_tokens": 2,
+                  "total_tokens": 56,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk"
+                }
+              }
             }
           }
         }
@@ -387,44 +397,46 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 54,
-            "output_tokens": 2,
-            "total_tokens": 56,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 54,
-              "completion_tokens": 2,
-              "total_tokens": 56,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+            "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
+            "usage": {
+              "input_tokens": 54,
+              "output_tokens": 2,
+              "total_tokens": 56,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 54,
+                "completion_tokens": 2,
+                "total_tokens": 56,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790146041-8tdrMJzv01TCwZe4EsNC",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk"
+              }
             }
           }
         }

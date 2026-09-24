@@ -10,7 +10,7 @@
 //! the item verbatim; `OutputMessage.phase` is captured, rides rig history
 //! on the text block's own-wire extras, and is lifted back onto the assistant
 //! input item at replay. Exposing the terminal `output[]` on the streamed
-//! record was tried and reverted: `StreamFinal::raw` is replay identity for
+//! record was tried and reverted: `CompletionEnd::raw` is replay identity for
 //! every streamed effect log, and the field changed 66 goldens.
 //!
 //! **Fixtures.** Cell 1 is recorded live against `gpt-5.6-sol`, which
@@ -90,7 +90,7 @@ fn assistant_items(request: &Value) -> Vec<&Value> {
 /// [`rig::completion::CompletionResponse::raw`] — the same value the
 /// normalized response beside it was derived from.
 fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderResponse {
-    ProviderResponse::deserialize(&response.raw)
+    ProviderResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the serialized responses_api::CompletionResponse")
 }
 
@@ -102,7 +102,7 @@ async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, Prov
         .await
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
-        id: first.message_id.clone().map(String::from),
+        id: first.end.message_id.clone().map(String::from),
         content: first.choice.clone(),
     };
     let second = model

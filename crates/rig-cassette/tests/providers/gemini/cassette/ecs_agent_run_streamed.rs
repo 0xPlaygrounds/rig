@@ -246,7 +246,7 @@ fn completed_turns(ecs: &mut EcsAgent, run: Entity) -> Vec<CompletedTurn> {
             Some(CompletedTurn {
                 order: crate::ecs_agent::sibling_index(world, turn).expect("turn order") as u64,
                 request: request.clone(),
-                usage: response.usage,
+                usage: response.end.meta.usage,
                 text: stream.text.clone(),
                 events: stream.events.clone(),
             })

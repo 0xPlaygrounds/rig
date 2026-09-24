@@ -82,45 +82,49 @@
               "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
             }
           ],
-          "usage": {
-            "input_tokens": 41,
-            "output_tokens": 17,
-            "total_tokens": 82,
-            "reasoning_tokens": 24
-          },
-          "response_id": "pnizavmDAtqgz7IPzKaO-QE",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "pnizavmDAtqgz7IPzKaO-QE",
+              "usage": {
+                "input_tokens": 41,
+                "output_tokens": 17,
+                "total_tokens": 82,
+                "reasoning_tokens": 24
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "pnizavmDAtqgz7IPzKaO-QE",
+                "usageMetadata": {
+                  "candidatesTokenCount": 17,
+                  "promptTokenCount": 41,
+                  "promptTokensDetails": [
                     {
-                      "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
+                      "modality": "TEXT",
+                      "tokenCount": 41
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "pnizavmDAtqgz7IPzKaO-QE",
-            "usageMetadata": {
-              "candidatesTokenCount": 17,
-              "promptTokenCount": 41,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 41
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 24,
+                  "totalTokenCount": 82
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 24,
-              "totalTokenCount": 82
+              }
             }
           }
         }

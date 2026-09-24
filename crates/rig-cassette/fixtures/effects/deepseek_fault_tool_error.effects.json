@@ -126,53 +126,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 329,
-            "output_tokens": 62,
-            "total_tokens": 391,
-            "cached_input_tokens": 0
-          },
-          "response_id": "c7f92718-feef-4fb0-b4cf-0e2fbdc8f1aa",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "I'll add 17 and 25 for you.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_A597c6UkHbxbojQsiUyT6037",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "c7f92718-feef-4fb0-b4cf-0e2fbdc8f1aa",
+              "usage": {
+                "input_tokens": 329,
+                "output_tokens": 62,
+                "total_tokens": 391,
+                "cached_input_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "I'll add 17 and 25 for you.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\": 17, \"y\": 25}",
+                            "name": "add"
+                          },
+                          "id": "call_00_A597c6UkHbxbojQsiUyT6037",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "c7f92718-feef-4fb0-b4cf-0e2fbdc8f1aa",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 62,
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 329,
+                  "prompt_tokens": 329,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 391
                 }
               }
-            ],
-            "created": 0,
-            "id": "c7f92718-feef-4fb0-b4cf-0e2fbdc8f1aa",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 62,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 329,
-              "prompt_tokens": 329,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "total_tokens": 391
             }
           }
         }
@@ -311,42 +315,46 @@
               "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
             }
           ],
-          "usage": {
-            "input_tokens": 407,
-            "output_tokens": 24,
-            "total_tokens": 431,
-            "cached_input_tokens": 256
-          },
-          "response_id": "85932f5b-4e01-4958-8de3-ca4899ca8b13",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again.",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "85932f5b-4e01-4958-8de3-ca4899ca8b13",
+              "usage": {
+                "input_tokens": 407,
+                "output_tokens": 24,
+                "total_tokens": 431,
+                "cached_input_tokens": 256
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again.",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "85932f5b-4e01-4958-8de3-ca4899ca8b13",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 24,
+                  "prompt_cache_hit_tokens": 256,
+                  "prompt_cache_miss_tokens": 151,
+                  "prompt_tokens": 407,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 256
+                  },
+                  "total_tokens": 431
                 }
               }
-            ],
-            "created": 0,
-            "id": "85932f5b-4e01-4958-8de3-ca4899ca8b13",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 24,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 151,
-              "prompt_tokens": 407,
-              "prompt_tokens_details": {
-                "cached_tokens": 256
-              },
-              "total_tokens": 431
             }
           }
         }

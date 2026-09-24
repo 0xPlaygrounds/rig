@@ -1,9 +1,10 @@
 use super::*;
 use futures::{FutureExt, Stream};
+use rig::completion::CompletionEnd;
 use rig::{
     completion::Usage,
     error::{ErrorKind, ErrorReport},
-    streaming::{BlockClose, BlockId, BlockKind, StreamFinal},
+    streaming::{BlockClose, BlockId, BlockKind},
 };
 use std::{
     collections::VecDeque,
@@ -126,13 +127,15 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
             end: BlockClose::Text,
             block: None,
         }),
-        Ok(StreamEvent::Final(StreamFinal {
+        Ok(StreamEvent::Final(CompletionEnd {
             message_id: Some("message".try_into().expect("a non-empty id")),
-            ..StreamFinal::new(
-                "anthropic",
-                Usage::default(),
-                serde_json::json!({"stop_reason": "end_turn"}),
-            )
+            ..CompletionEnd::new(rig::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({"stop_reason": "end_turn"}),
+                ..rig::response::ResponseMeta::new(
+                    rig::id::ProviderName::new("anthropic").expect("a provider name"),
+                )
+            })
         })),
     ]);
     let polls = Arc::new(AtomicUsize::new(0));

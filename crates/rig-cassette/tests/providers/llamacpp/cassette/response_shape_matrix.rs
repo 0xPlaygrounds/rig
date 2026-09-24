@@ -374,7 +374,7 @@ async fn logprobs_survive_into_the_raw_response() {
 
         // `raw` is the reply document, so the typed escape hatch reads the
         // per-token array straight off it.
-        let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
+        let typed = llamacpp::CompletionResponse::deserialize(&response.end.meta.raw)
             .expect("raw is llama.cpp's own response type");
         let logprobs = typed.openai.choices[0]
             .logprobs
@@ -390,7 +390,7 @@ async fn logprobs_survive_into_the_raw_response() {
         // The normalized view has no home for them, which is why `raw` is the
         // route.
         let mut without_raw = response.clone();
-        without_raw.raw = Value::Null;
+        without_raw.end.meta.raw = Value::Null;
         let serialized = serde_json::to_value(&without_raw).expect("serialize");
         assert!(
             serialized.get("logprobs").is_none(),

@@ -224,7 +224,7 @@ async fn blocking_raw_and_normalized_agree() {
                 .build();
 
             let normalized = model.completion(request).await.expect("the turn");
-            let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
+            let document = openrouter::CompletionResponse::deserialize(&normalized.end.meta.raw)
                 .expect("raw is OpenRouter's own completion response");
             let raw_refusal = document
                 .choices
@@ -241,11 +241,11 @@ async fn blocking_raw_and_normalized_agree() {
             // And `content` really is empty, so the refusal is the only thing
             // the turn said — the premise the fallback exists for.
             assert!(
-                normalized.raw["choices"][0]["message"]["content"]
+                normalized.end.meta.raw["choices"][0]["message"]["content"]
                     .as_str()
                     .is_none_or(str::is_empty),
                 "the recorded turn must carry no content beside the refusal: {}",
-                normalized.raw
+                normalized.end.meta.raw
             );
         },
     )
@@ -274,7 +274,7 @@ async fn blocking_refusal_finishes_with_stop() {
             let response = model.completion(request).await.expect("refusal turn");
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Stop)
             );
         },
@@ -302,21 +302,23 @@ async fn blocking_usage_survives_the_refusal() {
             let response = model.completion(request).await.expect("refusal turn");
 
             assert!(
-                response.usage.input_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.input_tokens.is_some_and(|n| n > 0),
                 "{:?}",
-                response.usage
+                response.end.meta.usage
             );
             assert!(
-                response.usage.output_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "{:?}",
-                response.usage
+                response.end.meta.usage
             );
             assert_eq!(
-                response.usage.total_tokens,
+                response.end.meta.usage.total_tokens,
                 response
+                    .end
+                    .meta
                     .usage
                     .input_tokens
-                    .zip(response.usage.output_tokens)
+                    .zip(response.end.meta.usage.output_tokens)
                     .map(|(input, output)| input + output)
             );
         },
@@ -559,9 +561,9 @@ async fn streaming_terminal_carries_usage_and_reason() {
 
             assert_nonempty_response(&text);
             assert!(
-                terminal.usage.output_tokens.is_some_and(|n| n > 0),
+                terminal.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "{:?}",
-                terminal.usage
+                terminal.meta.usage
             );
             assert_eq!(
                 terminal.finish_reason,

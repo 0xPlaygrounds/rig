@@ -33,7 +33,7 @@ async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
 
     // The wire premise, read off the captured document in the provider's own
     // vocabulary: the backend put hidden thinking in `reasoning_content`.
-    let reply = openai::CompletionResponse::deserialize(&response.raw)
+    let reply = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is the shared chat-completions response");
     let has_wire_reasoning = reply.choices.iter().any(|choice| {
         matches!(

@@ -45,9 +45,6 @@ pub use hook::{
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::completion::ModelRef;
-/// Provider-neutral identity shared by core responses, stream terminals,
-/// completion calls, and hook events.
-pub use rig_core::completion::ResponseIdentity;
 pub use rig_core::message::Text;
 pub use run::TurnTools;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};

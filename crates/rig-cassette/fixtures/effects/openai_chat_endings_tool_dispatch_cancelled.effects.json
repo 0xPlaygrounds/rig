@@ -127,61 +127,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 185,
-            "output_tokens": 90,
-            "total_tokens": 275,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "response_id": "chatcmpl-ERDBQ5ALLQWzlTPwacRaDxkK1ggnq",
-          "provider_request_id": "req_427d95740c4b441b9345451246baf8a3",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_2gkfAI7yfbva7YgRvKyXBYOn",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDBQ5ALLQWzlTPwacRaDxkK1ggnq",
+              "provider_request_id": "req_427d95740c4b441b9345451246baf8a3",
+              "usage": {
+                "input_tokens": 185,
+                "output_tokens": 90,
+                "total_tokens": 275,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 64
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\":17,\"y\":25}",
+                            "name": "add"
+                          },
+                          "id": "call_2gkfAI7yfbva7YgRvKyXBYOn",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDBQ5ALLQWzlTPwacRaDxkK1ggnq",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 90,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 64,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 185,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 275
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDBQ5ALLQWzlTPwacRaDxkK1ggnq",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 90,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 64,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 185,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 275
             }
           }
         }

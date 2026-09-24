@@ -140,53 +140,57 @@
               "signature": "CqoBAWkUfRNBZ1h4xfzRoL4UlH+/jt7tdLXJOo4tXG/ecjL4ug1hxctqpcvveo2mb1i14YwWgkFjadcz796roxZfNfPOIDoAi20gb1Lg+ZAEsyL0pjQb8v5VU1wGR4Q0oeV6xxtjJn7WGoosrKk9pwoFqeFkkdsyYP4PB0of2afYcQZGZ/ZmLbMRTNaqnwstHrz5bzDgvcvYAtajQ7DHYFv/BR8D27hLcNo5+LI="
             }
           ],
-          "usage": {
-            "input_tokens": 85,
-            "output_tokens": 20,
-            "total_tokens": 153,
-            "reasoning_tokens": 48
-          },
-          "response_id": "mq6yav6MIPr9qtsPyZqR-A8",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "mq6yav6MIPr9qtsPyZqR-A8",
+              "usage": {
+                "input_tokens": 85,
+                "output_tokens": 20,
+                "total_tokens": 153,
+                "reasoning_tokens": 48
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 21,
+                              "y": 21
+                            },
+                            "name": "add"
+                          },
+                          "thoughtSignature": "CqoBAWkUfRNBZ1h4xfzRoL4UlH+/jt7tdLXJOo4tXG/ecjL4ug1hxctqpcvveo2mb1i14YwWgkFjadcz796roxZfNfPOIDoAi20gb1Lg+ZAEsyL0pjQb8v5VU1wGR4Q0oeV6xxtjJn7WGoosrKk9pwoFqeFkkdsyYP4PB0of2afYcQZGZ/ZmLbMRTNaqnwstHrz5bzDgvcvYAtajQ7DHYFv/BR8D27hLcNo5+LI="
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "mq6yav6MIPr9qtsPyZqR-A8",
+                "usageMetadata": {
+                  "candidatesTokenCount": 20,
+                  "promptTokenCount": 85,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 21,
-                          "y": 21
-                        },
-                        "name": "add"
-                      },
-                      "thoughtSignature": "CqoBAWkUfRNBZ1h4xfzRoL4UlH+/jt7tdLXJOo4tXG/ecjL4ug1hxctqpcvveo2mb1i14YwWgkFjadcz796roxZfNfPOIDoAi20gb1Lg+ZAEsyL0pjQb8v5VU1wGR4Q0oeV6xxtjJn7WGoosrKk9pwoFqeFkkdsyYP4PB0of2afYcQZGZ/ZmLbMRTNaqnwstHrz5bzDgvcvYAtajQ7DHYFv/BR8D27hLcNo5+LI="
+                      "modality": "TEXT",
+                      "tokenCount": 85
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "mq6yav6MIPr9qtsPyZqR-A8",
-            "usageMetadata": {
-              "candidatesTokenCount": 20,
-              "promptTokenCount": 85,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 85
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 48,
+                  "totalTokenCount": 153
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 48,
-              "totalTokenCount": 153
+              }
             }
           }
         }

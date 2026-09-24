@@ -379,15 +379,19 @@ fn terminal_frame() -> proto::GenerateContentResponse {
 /// uses, returning the terminal record.
 async fn normalized_terminal(
     events: Vec<proto::GenerateContentResponse>,
-) -> streaming::StreamFinal {
+) -> rig_core::completion::CompletionEnd {
     collect_terminal(run_wire_stream(
+        super::super::completion::PROVIDER_NAME,
+        None,
         futures::stream::iter(events.into_iter().map(Ok)),
         GrpcAdapter::default(),
     ))
     .await
 }
 
-async fn collect_terminal(normalized: streaming::StreamingResult) -> streaming::StreamFinal {
+async fn collect_terminal(
+    normalized: streaming::StreamingResult,
+) -> rig_core::completion::CompletionEnd {
     let mut stream = streaming::StreamingCompletionResponse::stream(
         super::super::completion::PROVIDER_NAME,
         normalized,
@@ -416,11 +420,11 @@ async fn stream_from_events_terminal_carries_raw() {
     }
     let terminal = stream.response.expect("terminal record");
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed: proto::GenerateContentResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(typed, terminal_frame());
-    assert_eq!(terminal.usage.total_tokens, Some(5));
+    assert_eq!(terminal.meta.usage.total_tokens, Some(5));
 }
 
 /// The load-bearing streaming capture property at the seam
@@ -435,7 +439,7 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
     let terminal =
         normalized_terminal(vec![response(vec![text_part("hi")], 0), terminal_frame()]).await;
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed: proto::GenerateContentResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(
@@ -453,21 +457,20 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     // Feeding the capture back through the same pipeline tells the same
     // story as the terminal the stream produced.
-    let renormalized = collect_terminal(Box::pin(futures::stream::iter(vec![Ok(
-        StreamEvent::Final(terminal_record(&typed).expect("terminal record")),
-    )])))
-    .await;
-    assert_eq!(terminal.identity(), renormalized.identity());
+    let renormalized = terminal_record(&typed).expect("terminal record");
+    assert_eq!(terminal.message_id, renormalized.message_id);
+    assert_eq!(terminal.meta.response_id, renormalized.response_id);
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);
-    assert_eq!(terminal.model, renormalized.model);
-    assert_eq!(terminal.usage, renormalized.usage);
+    assert_eq!(terminal.meta.model, renormalized.model);
+    assert_eq!(terminal.meta.usage, renormalized.usage);
+    assert_eq!(terminal.reasoning_issuer, renormalized.reasoning_issuer);
     assert_eq!(
         terminal.finish_reason,
         Some(rig_core::completion::FinishReason::Stop)
     );
-    assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash"));
+    assert_eq!(terminal.meta.model.as_deref(), Some("gemini-2.5-flash"));
     assert_eq!(
-        terminal.identity().response_id.as_deref(),
+        terminal.meta.response_id.as_deref(),
         Some("resp-grpc-stream")
     );
 }
@@ -477,7 +480,10 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
     let terminal =
         normalized_terminal(vec![response(vec![text_part("hi")], 0), terminal_frame()]).await;
-    assert_eq!(terminal.provider, super::super::completion::PROVIDER_NAME);
+    assert_eq!(
+        terminal.meta.provider,
+        super::super::completion::PROVIDER_NAME
+    );
     assert_eq!(
         terminal.issuer(),
         super::super::completion::REASONING_ISSUER

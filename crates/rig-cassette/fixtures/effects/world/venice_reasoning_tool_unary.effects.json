@@ -167,65 +167,69 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1308,
-            "output_tokens": 194,
-            "total_tokens": 1502
-          },
-          "response_id": "chatcmpl-RYOU9cpOV2XWe4Bz8UvkiaIB",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "name": null,
-                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result.\n\nLet's do it.\n",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "chatcmpl-tool-b08eb180bbf6f33b",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "response_id": "chatcmpl-RYOU9cpOV2XWe4Bz8UvkiaIB",
+              "usage": {
+                "input_tokens": 1308,
+                "output_tokens": 194,
+                "total_tokens": 1502
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "name": null,
+                      "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result.\n\nLet's do it.\n",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\": 17, \"y\": 25}",
+                            "name": "add"
+                          },
+                          "id": "chatcmpl-tool-b08eb180bbf6f33b",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0012676
+                },
+                "created": 0,
+                "id": "chatcmpl-RYOU9cpOV2XWe4Bz8UvkiaIB",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 194,
+                  "prompt_tokens": 1308,
+                  "total_tokens": 1502
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.0012676
-            },
-            "created": 0,
-            "id": "chatcmpl-RYOU9cpOV2XWe4Bz8UvkiaIB",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 194,
-              "prompt_tokens": 1308,
-              "total_tokens": 1502
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }
@@ -389,56 +393,60 @@
               "text": "\n\n42"
             }
           ],
-          "usage": {
-            "input_tokens": 1519,
-            "output_tokens": 28,
-            "total_tokens": 1547
-          },
-          "response_id": "chatcmpl-RqrRlv8GQWjKFcu5FgyGReix",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "\n\n42",
-                  "name": null,
-                  "reasoning_content": "The tool returned 42. The user requested \"just the number\". I will output \"42\".\n",
-                  "role": "assistant",
-                  "tool_calls": null
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "response_id": "chatcmpl-RqrRlv8GQWjKFcu5FgyGReix",
+              "usage": {
+                "input_tokens": 1519,
+                "output_tokens": 28,
+                "total_tokens": 1547
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "\n\n42",
+                      "name": null,
+                      "reasoning_content": "The tool returned 42. The user requested \"just the number\". I will output \"42\".\n",
+                      "role": "assistant",
+                      "tool_calls": null
+                    }
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00078155
+                },
+                "created": 0,
+                "id": "chatcmpl-RqrRlv8GQWjKFcu5FgyGReix",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 28,
+                  "prompt_tokens": 1519,
+                  "total_tokens": 1547
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.00078155
-            },
-            "created": 0,
-            "id": "chatcmpl-RqrRlv8GQWjKFcu5FgyGReix",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 28,
-              "prompt_tokens": 1519,
-              "total_tokens": 1547
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }

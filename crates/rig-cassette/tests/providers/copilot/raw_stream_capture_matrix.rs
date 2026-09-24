@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on both Copilot streaming routes
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`CompletionEnd::raw`](rig::completion::CompletionEnd::raw)).
 //!
 //! # The feature
 //!
@@ -9,7 +9,7 @@
 //! route that is the shared chat terminal type, on the Responses route the
 //! shared Responses one, and each cell reads `raw` back through the type its
 //! route owns. It is the terminal record only, and nothing about it is sent
-//! to Copilot. `raw == Value::Null` means only that a `StreamFinal` was built
+//! to Copilot. `raw == Value::Null` means only that a `CompletionEnd` was built
 //! by hand without a provider terminal behind it, which no cell here can
 //! produce. Which route a stream took is a fact about the wire rather than
 //! about `raw`, so each typed-access cell asserts it on the bound wire
@@ -28,7 +28,7 @@
 //! accumulates unknown top-level chunk fields under `additional_params`,
 //! which is where Copilot's own `copilot_usage` block (with `total_nano_aiu`)
 //! and the `system_fingerprint` land — neither has a home on the normalized
-//! [`StreamFinal`](rig::streaming::StreamFinal); on the Responses route the
+//! [`CompletionEnd`](rig::completion::CompletionEnd); on the Responses route the
 //! terminal `status`.
 //!
 //! # Matrix
@@ -161,18 +161,15 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     // round trip is exact, and the accounting's own normalization is what the
     // terminal must carry. The transport id is the header's, so the native
     // record has no slot filled for it.
-    let typed = chat::assert_terminal_round_trips(&terminal);
+    chat::assert_terminal_round_trips(&terminal);
     // Copilot's recorded chat stream reports no transport id, so the native
-    // record and the normalized terminal agree on its absence — the claim
-    // this cell made before the round trip became shared.
-    assert_eq!(
-        typed.provider_request_id.as_deref(),
-        terminal.provider_request_id.as_deref()
-    );
+    // record and the normalized terminal agree on its absence.
+    assert!(terminal.meta.raw.get("provider_request_id").is_none());
+    assert_eq!(terminal.meta.provider_request_id, None);
 
     let (_, terminal_frame) = recorded_chat_frames(scenario);
     assert_eq!(
-        terminal.raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
+        terminal.meta.raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
     );
 }
@@ -199,7 +196,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
         &["copilot_usage", "system_fingerprint", "additional_params"],
     );
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let (frames, terminal_frame) = recorded_chat_frames(scenario);
     let params = raw
         .get("additional_params")
@@ -272,15 +269,12 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
     );
 
     let terminal = captured.take();
-    let raw = &terminal.raw;
-    let typed = responses::assert_terminal_round_trips(&terminal);
+    let raw = &terminal.meta.raw;
+    responses::assert_terminal_round_trips(&terminal);
     // Copilot's recorded Responses stream reports no transport id either, so
-    // the native record and the normalized terminal agree on its absence —
-    // the claim this cell made before the round trip became shared.
-    assert_eq!(
-        typed.provider_request_id.as_deref(),
-        terminal.provider_request_id.as_deref()
-    );
+    // the native record and the normalized terminal agree on its absence.
+    assert!(terminal.meta.raw.get("provider_request_id").is_none());
+    assert_eq!(terminal.meta.provider_request_id, None);
 
     let recorded_terminal = recorded_responses_terminal(scenario);
     assert_eq!(
@@ -308,7 +302,7 @@ async fn responses_stream_raw_exposes_terminal_status() {
     let normalized = stream_normalized_without_raw(&terminal);
     assert_normalized_lacks(&normalized, &["status"]);
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let recorded_terminal = recorded_responses_terminal(scenario);
     assert_eq!(
         recorded_terminal["status"],

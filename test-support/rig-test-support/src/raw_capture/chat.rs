@@ -10,17 +10,17 @@
 //! OpenAI-compatible fields, and whether it contracts a transport id header.
 //! Those stay at the call site.
 
+use rig_core::completion::CompletionEnd;
 use rig_core::completion::{CompletionResponse, FinishReason};
 use rig_core::providers::openai;
 use rig_core::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-use rig_core::streaming::StreamFinal;
 use serde::Deserialize as _;
 use serde_json::Value;
 
 use crate::support::{assert_matches_recorded_token, assistant_text};
 
 /// The provider-native terminal record a chat-completions stream's
-/// [`StreamFinal::raw`] holds, over the dialect-tolerant accounting.
+/// [`CompletionEnd::raw`] holds, over the dialect-tolerant accounting.
 pub type Terminal = StreamingCompletionResponse<ChatUsage>;
 
 /// The finish reason a recorded chat-completions body reports.
@@ -62,27 +62,27 @@ pub fn assert_reproduces_body(
     body: &Value,
     context: &str,
 ) {
-    assert_eq!(response.provider, provider, "{context}: provider");
+    assert_eq!(response.end.meta.provider, provider, "{context}: provider");
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         body["id"].as_str(),
         &format!("{context}: response id"),
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         body["model"].as_str(),
         "{context}: model"
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(recorded_chat_finish_reason(body)),
         "{context}: finish reason"
     );
     assert_eq!(
         (
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.usage.total_tokens
+            response.end.meta.usage.input_tokens,
+            response.end.meta.usage.output_tokens,
+            response.end.meta.usage.total_tokens
         ),
         (
             body["usage"]["prompt_tokens"].as_u64(),
@@ -114,12 +114,12 @@ pub fn assert_native_matches_normalized(
     context: &str,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         Some(native.id.as_str()),
         "{context}: native response id"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         Some(native.model.as_str()),
         "{context}: native model"
     );
@@ -128,16 +128,16 @@ pub fn assert_native_matches_normalized(
         .first()
         .expect("the reply carries at least one choice");
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(native_finish_reason(native_choice.finish_reason.as_str())),
         "{context}: the normalized reason is the native one"
     );
     let native_usage = native.usage.as_ref().expect("the reply reports usage");
     assert_eq!(
         (
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.usage.total_tokens
+            response.end.meta.usage.input_tokens,
+            response.end.meta.usage.output_tokens,
+            response.end.meta.usage.total_tokens
         ),
         (
             Some(native_usage.prompt_tokens as u64),
@@ -154,27 +154,27 @@ pub fn assert_native_matches_normalized(
 /// As with [`assert_reproduces_body`], the transport id contract is the
 /// cell's to state.
 pub fn assert_terminal_reproduces_frame(
-    terminal: &StreamFinal,
+    terminal: &CompletionEnd,
     provider: &str,
     frame: &Value,
     context: &str,
 ) {
-    assert_eq!(terminal.provider, provider, "{context}: provider");
+    assert_eq!(terminal.meta.provider, provider, "{context}: provider");
     assert_matches_recorded_token(
-        terminal.response_id.as_deref(),
+        terminal.meta.response_id.as_deref(),
         frame["id"].as_str(),
         &format!("{context}: response id"),
     );
     assert_eq!(
-        terminal.model.as_deref(),
+        terminal.meta.model.as_deref(),
         frame["model"].as_str(),
         "{context}: model"
     );
     assert_eq!(
         (
-            terminal.usage.input_tokens,
-            terminal.usage.output_tokens,
-            terminal.usage.total_tokens
+            terminal.meta.usage.input_tokens,
+            terminal.meta.usage.output_tokens,
+            terminal.meta.usage.total_tokens
         ),
         (
             frame["usage"]["prompt_tokens"].as_u64(),
@@ -193,8 +193,8 @@ pub fn assert_terminal_reproduces_frame(
 /// exact typed round trip the right claim here, unlike the blocking path
 /// where `raw` is the reply *document*. The returned typed record is the
 /// cell's handle on whatever its dialect keeps beside the shared fields.
-pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
-    let raw = &terminal.raw;
+pub fn assert_terminal_round_trips(terminal: &CompletionEnd) -> Terminal {
+    let raw = &terminal.meta.raw;
     let typed = Terminal::deserialize(raw)
         .expect("raw is the chat-completions terminal record, serialized");
     assert_eq!(
@@ -204,10 +204,14 @@ pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
     );
     assert_eq!(
         typed.response_id.as_deref(),
-        terminal.response_id.as_deref(),
+        terminal.meta.response_id.as_deref(),
         "response id"
     );
-    assert_eq!(typed.model.as_deref(), terminal.model.as_deref(), "model");
+    assert_eq!(
+        typed.model.as_deref(),
+        terminal.meta.model.as_deref(),
+        "model"
+    );
     assert_eq!(typed.finish_reason, terminal.finish_reason, "finish reason");
     let usage = typed
         .usage
@@ -215,12 +219,12 @@ pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
         .expect("the terminal record carries the reply's accounting");
     assert_eq!(
         usage.to_normalized(),
-        terminal.usage,
+        terminal.meta.usage,
         "the normalized usage is that accounting, normalized"
     );
-    assert_eq!(
-        typed.provider_request_id, None,
-        "the transport id is stamped on the normalized terminal, not the native record"
+    assert!(
+        raw.get("provider_request_id").is_none(),
+        "the transport id is on the normalized terminal, not the native record"
     );
     typed
 }

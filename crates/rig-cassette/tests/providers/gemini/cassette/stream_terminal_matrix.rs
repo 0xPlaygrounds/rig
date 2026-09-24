@@ -160,7 +160,7 @@ struct Drained {
     text: String,
     choice: Vec<AssistantContent>,
     terminals: usize,
-    terminal: Option<rig::streaming::StreamFinal>,
+    terminal: Option<rig::completion::CompletionEnd>,
     last_item_was_terminal: bool,
 }
 
@@ -343,7 +343,7 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
             // too. The expectation is read from the fixture, not hardcoded, so
             // a re-record cannot leave it behind.
             assert_eq!(
-                terminal.usage.total_tokens,
+                terminal.meta.usage.total_tokens,
                 Some(last_frame_total_tokens(
                     "stream_terminal_matrix/two_terminal_stream_terminal_carries_the_last_usage"
                 )),
@@ -357,13 +357,18 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
             );
             assert!(
                 terminal
+                    .meta
                     .response_id
                     .as_deref()
                     .is_some_and(|id| !id.is_empty()),
                 "the terminal should carry the responseId"
             );
             assert!(
-                terminal.model.as_deref().is_some_and(|m| !m.is_empty()),
+                terminal
+                    .meta
+                    .model
+                    .as_deref()
+                    .is_some_and(|m| !m.is_empty()),
                 "the terminal should carry the model version"
             );
         },
@@ -491,7 +496,7 @@ async fn two_terminal_stream_through_raw_stream() {
                     } => text.push_str(&chunk),
                     StreamEvent::Final(record) => {
                         let native: gemini::streaming::StreamingCompletionResponse =
-                            serde_json::from_value(record.raw.clone())
+                            serde_json::from_value(record.meta.raw.clone())
                                 .expect("Final.raw should decode as Gemini's native terminal");
                         assert_eq!(
                             native
@@ -762,12 +767,12 @@ mod unit {
         reasoning: usize,
         tool_calls: usize,
         unknowns: usize,
-        terminals: Vec<rig::streaming::StreamFinal>,
+        terminals: Vec<rig::completion::CompletionEnd>,
         errors: usize,
         /// The error items' messages, in order.
         error_messages: Vec<String>,
         last_was_terminal: bool,
-        response: Option<rig::streaming::StreamFinal>,
+        response: Option<rig::completion::CompletionEnd>,
     }
 
     async fn run(frames: &[&str]) -> Run {
@@ -861,7 +866,7 @@ mod unit {
         let run = run(&[ANSWER, REAL_TERMINAL, TRAILER]).await;
         let terminal = run.terminals.first().expect("one terminal");
         assert_eq!(
-            terminal.usage.total_tokens,
+            terminal.meta.usage.total_tokens,
             Some(109),
             "a usage trailer after the finish chunk must reach the terminal record"
         );
@@ -871,9 +876,9 @@ mod unit {
     async fn later_metadata_wins_on_the_terminal_record() {
         let run = run(&[CODE_ROUND, INTERMEDIATE_TERMINAL, ANSWER, REAL_TERMINAL]).await;
         let terminal = run.terminals.first().expect("one terminal");
-        assert_eq!(terminal.response_id.as_deref(), Some("resp-last"));
-        assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash-002"));
-        assert_eq!(terminal.usage.total_tokens, Some(50));
+        assert_eq!(terminal.meta.response_id.as_deref(), Some("resp-last"));
+        assert_eq!(terminal.meta.model.as_deref(), Some("gemini-2.5-flash-002"));
+        assert_eq!(terminal.meta.usage.total_tokens, Some(50));
     }
 
     #[tokio::test]

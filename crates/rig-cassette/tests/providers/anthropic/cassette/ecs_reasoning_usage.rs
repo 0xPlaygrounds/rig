@@ -51,7 +51,7 @@ async fn agent_blocking_thinking() {
                             };
                             Some((
                                 crate::ecs_agent::sibling_index(world, turn)?,
-                                response.usage,
+                                response.end.meta.usage,
                             ))
                         })
                         .min_by_key(|(order, _)| *order)

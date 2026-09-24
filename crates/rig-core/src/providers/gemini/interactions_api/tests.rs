@@ -404,9 +404,9 @@ async fn test_response_function_call_mapping() {
         other => panic!("unexpected content: {other:?}"),
     }
 
-    assert_eq!(response.usage.input_tokens, Some(5));
-    assert_eq!(response.usage.output_tokens, Some(7));
-    assert_eq!(response.usage.total_tokens, Some(12));
+    assert_eq!(response.end.meta.usage.input_tokens, Some(5));
+    assert_eq!(response.end.meta.usage.output_tokens, Some(7));
+    assert_eq!(response.end.meta.usage.total_tokens, Some(12));
 }
 
 #[test]
@@ -910,12 +910,15 @@ async fn test_completion_response_carries_normalized_metadata() {
 
     let response = fold_resource(&interaction).await;
 
-    assert_eq!(response.provider, PROVIDER_NAME);
-    assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
-    assert_eq!(response.response_id.as_deref(), Some("interaction-meta"));
-    assert_eq!(response.message_id, None);
+    assert_eq!(response.end.meta.provider, PROVIDER_NAME);
+    assert_eq!(response.end.meta.model.as_deref(), Some("gemini-2.5-pro"));
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.meta.response_id.as_deref(),
+        Some("interaction-meta")
+    );
+    assert_eq!(response.end.message_id, None);
+    assert_eq!(
+        response.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::Length)
     );
 }
@@ -938,10 +941,10 @@ async fn test_completion_response_upgrades_completed_to_tool_calls() {
     let response = fold_resource(&interaction).await;
 
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
-    assert_eq!(response.model, None);
+    assert_eq!(response.end.meta.model, None);
 }
 
 #[test]
@@ -1283,13 +1286,19 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
         )
     );
     // The turn's own facts, from the resource the reply carried.
-    assert_eq!(buffered.response_id.as_deref(), Some("v1_REDACTED_1"));
-    assert_eq!(buffered.model.as_deref(), Some("gemini-3-flash-preview"));
-    assert_eq!(buffered.usage.output_tokens, Some(34));
-    assert_eq!(streamed.usage.output_tokens, Some(32));
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.meta.response_id.as_deref(),
+        Some("v1_REDACTED_1")
+    );
+    assert_eq!(
+        buffered.end.meta.model.as_deref(),
+        Some("gemini-3-flash-preview")
+    );
+    assert_eq!(buffered.end.meta.usage.output_tokens, Some(34));
+    assert_eq!(streamed.end.meta.usage.output_tokens, Some(32));
+    assert_eq!(
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
     assert_eq!(
         buffered.choice.last(),
@@ -1304,13 +1313,13 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
     // reassembled, so the resource is under `/interaction`. A caller that
     // wants the provider's own vocabulary gets it either way, which is what
     // the escape hatch promises.
-    let buffered_interaction: Interaction = serde_json::from_value(buffered.raw.clone())
+    let buffered_interaction: Interaction = serde_json::from_value(buffered.end.meta.raw.clone())
         .expect("a unary reply's `raw` is the interaction document");
     assert_eq!(buffered_interaction.id, "v1_REDACTED_1");
     assert!(buffered_interaction.is_terminal());
 
     let streamed_interaction: Interaction =
-        serde_json::from_value(streamed.raw["interaction"].clone())
+        serde_json::from_value(streamed.end.meta.raw["interaction"].clone())
             .expect("a streamed reply's terminal record carries the interaction");
     assert_eq!(streamed_interaction.id, "v1_REDACTED_1");
     assert!(streamed_interaction.is_terminal());
@@ -1444,9 +1453,12 @@ async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
             Some("signature_REDACTED_1".to_owned())
         )
     );
-    assert_eq!(response.response_id.as_deref(), Some("v1_REDACTED_1"));
-    let interaction: Interaction =
-        serde_json::from_value(response.raw.clone()).expect("`raw` is the interaction document");
+    assert_eq!(
+        response.end.meta.response_id.as_deref(),
+        Some("v1_REDACTED_1")
+    );
+    let interaction: Interaction = serde_json::from_value(response.end.meta.raw.clone())
+        .expect("`raw` is the interaction document");
     assert_eq!(interaction.id, "v1_REDACTED_1");
     assert!(
         interaction.is_terminal(),

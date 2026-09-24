@@ -125,14 +125,20 @@ async fn raw_round_trips_mistral_type() {
     // `raw` is the reply document, so Mistral's own response type reads it
     // back — the documented escape hatch — and its provider-native fields
     // are the normalized response's fields.
-    let typed = mistral::CompletionResponse::deserialize(&response.raw)
+    let typed = mistral::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is Mistral's own CompletionResponse");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
     let usage = typed.usage.as_ref().expect("Mistral reports usage");
     assert_eq!(
         Some(usage.total_tokens as u64),
-        response.usage.total_tokens,
+        response.end.meta.usage.total_tokens,
         "one reply, one token count"
     );
 }
@@ -161,13 +167,13 @@ async fn raw_exposes_object_and_service_tier() {
         .as_str()
         .expect("Mistral reports usage.service_tier on the live chat wire");
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(raw["object"], json!(recorded_object));
     assert_eq!(raw["usage"]["service_tier"], json!(recorded_tier));
     // And the normalized view has no slot for either — checked against the
     // response with its capture cleared, so `raw` cannot satisfy the claim it
     // is the counterexample to.
-    let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
+    let normalized_usage = serde_json::to_value(response.end.meta.usage).expect("usage serializes");
     assert_normalized_lacks(&normalized_usage, &["service_tier"]);
     assert_normalized_lacks(&normalized_without_raw(response), &["object"]);
 }
@@ -193,7 +199,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // Mistral contracts `mistral-correlation-id`; the recorded header is the
     // premise.
     assert_contracted_request_id(
-        response.provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         recorded_request_id(SCENARIO).as_deref(),
         REQUEST_ID_HEADER,
     );
@@ -204,10 +210,16 @@ async fn normalized_fields_match_raw_renormalized() {
     // so this pins that mapping instead of comparing it with a second one —
     // which is why the native view here is Mistral's own type rather than
     // the shared chat-completions one.
-    let typed =
-        mistral::CompletionResponse::deserialize(&response.raw).expect("raw is Mistral's own type");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    let typed = mistral::CompletionResponse::deserialize(&response.end.meta.raw)
+        .expect("raw is Mistral's own type");
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
     assert_eq!(
         typed.choices.len(),
         1,
@@ -220,8 +232,8 @@ async fn normalized_fields_match_raw_renormalized() {
         "the typed view keeps the wire's own finish spelling"
     );
     assert_eq!(
-        response.finish_reason.clone(),
-        Some(chat::recorded_chat_finish_reason(&response.raw)),
+        response.end.finish_reason.clone(),
+        Some(chat::recorded_chat_finish_reason(&response.end.meta.raw)),
         "and the normalized reason is that same spelling, mapped"
     );
     assert_eq!(
@@ -231,15 +243,15 @@ async fn normalized_fields_match_raw_renormalized() {
     let typed_usage = typed.usage.as_ref().expect("Mistral reports usage");
     assert_eq!(
         Some(typed_usage.prompt_tokens as u64),
-        response.usage.input_tokens
+        response.end.meta.usage.input_tokens
     );
     assert_eq!(
         Some(typed_usage.completion_tokens as u64),
-        response.usage.output_tokens
+        response.end.meta.usage.output_tokens
     );
     assert_eq!(
         Some(typed_usage.total_tokens as u64),
-        response.usage.total_tokens
+        response.end.meta.usage.total_tokens
     );
 }
 
@@ -266,9 +278,12 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     .expect("tool_call_raw_round_trips_and_exposes_wire_tool_call should replay from its cassette");
 
     let response = observed.take();
-    let typed = mistral::CompletionResponse::deserialize(&response.raw)
+    let typed = mistral::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is Mistral's own CompletionResponse");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
 
     let (request_body, body) = recorded_json_turn(PROVIDER, SCENARIO);
     // Premise, from the bytes: the call was forced and the recorded turn is
@@ -295,7 +310,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     // raw keeps the wire's representation: `arguments` is a JSON string
     // (the typed view re-serializes it compactly, so it is compared parsed,
     // not byte-for-byte), and the finish reason is the wire's own spelling.
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(raw["choices"][0]["finish_reason"], json!("tool_calls"));
     let raw_call = &raw["choices"][0]["message"]["tool_calls"][0];
     assert_matches_recorded_token(
@@ -316,7 +331,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     // The normalized view maps both: an object for the arguments and
     // `ToolCalls` for the finish reason.
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(FinishReason::ToolCalls)
     );
     let normalized_calls = response

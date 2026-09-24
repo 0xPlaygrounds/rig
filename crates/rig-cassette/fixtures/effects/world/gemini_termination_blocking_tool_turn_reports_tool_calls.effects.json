@@ -154,50 +154,54 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 72,
-            "output_tokens": 18,
-            "total_tokens": 90
-          },
-          "response_id": "p3izar7ZKLrVz7IP_6PO0Qc",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "p3izar7ZKLrVz7IP_6PO0Qc",
+              "usage": {
+                "input_tokens": 72,
+                "output_tokens": 18,
+                "total_tokens": 90
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 2,
+                              "y": 3
+                            },
+                            "name": "add"
+                          }
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "p3izar7ZKLrVz7IP_6PO0Qc",
+                "usageMetadata": {
+                  "candidatesTokenCount": 18,
+                  "promptTokenCount": 72,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 2,
-                          "y": 3
-                        },
-                        "name": "add"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 72
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "p3izar7ZKLrVz7IP_6PO0Qc",
-            "usageMetadata": {
-              "candidatesTokenCount": 18,
-              "promptTokenCount": 72,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 72
+                  "serviceTier": "standard",
+                  "totalTokenCount": 90
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 90
+              }
             }
           }
         }
@@ -333,43 +337,47 @@
               "text": "The sum of 2 and 3 is 5."
             }
           ],
-          "usage": {
-            "input_tokens": 103,
-            "output_tokens": 12,
-            "total_tokens": 115
-          },
-          "response_id": "qHizatjDEaWhz7IP7aXA-QY",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "qHizatjDEaWhz7IP7aXA-QY",
+              "usage": {
+                "input_tokens": 103,
+                "output_tokens": 12,
+                "total_tokens": 115
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The sum of 2 and 3 is 5."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "qHizatjDEaWhz7IP7aXA-QY",
+                "usageMetadata": {
+                  "candidatesTokenCount": 12,
+                  "promptTokenCount": 103,
+                  "promptTokensDetails": [
                     {
-                      "text": "The sum of 2 and 3 is 5."
+                      "modality": "TEXT",
+                      "tokenCount": 103
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "qHizatjDEaWhz7IP7aXA-QY",
-            "usageMetadata": {
-              "candidatesTokenCount": 12,
-              "promptTokenCount": 103,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 103
+                  "serviceTier": "standard",
+                  "totalTokenCount": 115
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 115
+              }
             }
           }
         }

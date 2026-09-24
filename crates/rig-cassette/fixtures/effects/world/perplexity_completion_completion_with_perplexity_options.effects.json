@@ -76,206 +76,210 @@
               "text": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]"
             }
           ],
-          "usage": {
-            "input_tokens": 24,
-            "output_tokens": 51,
-            "total_tokens": 75
-          },
-          "response_id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207",
-          "finish_reason": "stop",
-          "provider": "perplexity",
-          "model": "sonar",
-          "raw": {
-            "choices": [
-              {
-                "delta": {
-                  "content": "",
-                  "role": "assistant"
-                },
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "perplexity",
+              "model": "sonar",
+              "response_id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207",
+              "usage": {
+                "input_tokens": 24,
+                "output_tokens": 51,
+                "total_tokens": 75
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "citations": [
+                  "https://this-week-in-rust.org/blog/2026/07/22/this-week-in-rust-661/",
+                  "https://doc.rust-lang.org/beta/releases.html",
+                  "https://this-week-in-rust.org/blog/2026/08/19/this-week-in-rust-665/",
+                  "https://this-week-in-rust.org/blog/2026/02/04/this-week-in-rust-637/",
+                  "https://xoomar.com/blog/listicle/best-ides-for-rust-development",
+                  "https://this-week-in-rust.org/blog/2026/07/01/this-week-in-rust-658/",
+                  "https://thesoftwarescout.com/best-ide-for-rust-2026-top-code-editors-for-rust-developers/",
+                  "https://this-week-in-rust.org/blog/2026/05/13/this-week-in-rust-651/",
+                  "https://this-week-in-rust.org/blog/2026/05/20/this-week-in-rust-652/",
+                  "https://www.theregister.com/devops/2026/09/11/microsoft-anoints-rust-as-a-tier-1-internal-language/5295732",
+                  "https://rust-osdev.com/this-month/2026-03/",
+                  "https://blog.jetbrains.com/rust/",
+                  "https://www.gzstudio.eu/2026/04/15/gli-strumenti/",
+                  "https://www.webpronews.com/microsoft-elevates-rust-to-tier-1-status-alongside-c-and-c",
+                  "https://blog.jetbrains.com/rust/2026/05/29/how-rust-ides-understand-code/"
+                ],
+                "created": 0,
+                "id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207",
+                "model": "sonar",
+                "object": "chat.completion",
+                "related_questions": [
+                  "What recent Rust tooling development was highlighted in This Week in Rust?",
+                  "How has RustRover improved Rust development workflows recently?",
+                  "What new features appeared in the latest Rust release?",
+                  "How do leading Rust IDEs compare in 2026?",
+                  "What does Microsoft’s Tier 1 Rust status mean for tooling?"
+                ],
+                "search_results": [
+                  {
+                    "date": "2026-07-22",
+                    "last_updated": "2026-08-10",
+                    "place_metadata": null,
+                    "snippet": "### Project/Tooling Updates\n- Announcing Topcoat: a framework for building full-stack reactive web apps with Rust\n- Syn 3.0.0\n- What’s New in RustRover 2026.2\n- kobe 0.35.0: readiness gates and cert recycling\n- Comhad v0.1.0: a ranger-style tui cyberduck replacement for browsing S3\n- Nova v0.2.1: co...",
+                    "source": "web",
+                    "title": "This Week in Rust 661",
+                    "url": "https://this-week-in-rust.org/blog/2026/07/22/this-week-in-rust-661/"
+                  },
+                  {
+                    "date": "2026-07-16",
+                    "last_updated": "2026-09-22",
+                    "place_metadata": null,
+                    "snippet": "# § Version 1.97.1 (2026-07-16)\n- rustc: Fix miscompilation in LLVM optimization This backports an LLVM submodule bump to include the LLVM-side fix and a revert of the rustc change that is one known trigger for the bug.",
+                    "source": "web",
+                    "title": "Rust Release Notes",
+                    "url": "https://doc.rust-lang.org/beta/releases.html"
+                  },
+                  {
+                    "date": "2026-08-19",
+                    "last_updated": "2026-09-21",
+                    "place_metadata": null,
+                    "snippet": "### Project/Tooling Updates\n- OxiSH: a modern, memory-safe SSH server\n- A critical review of Xilem in 2026\n- rama v0.4.0\n…",
+                    "source": "web",
+                    "title": "This Week in Rust 665",
+                    "url": "https://this-week-in-rust.org/blog/2026/08/19/this-week-in-rust-665/"
+                  },
+                  {
+                    "date": "2026-02-04",
+                    "last_updated": "2026-03-03",
+                    "place_metadata": null,
+                    "snippet": "### Project/Tooling Updates\n- Compiling Rust to readable C with Eurydice\n- 3DCF/doc2dataset v0.2.0 – embeddable document-compression crate (3DCF encoder + JSONL export helpers) to turn PDFs/markdown/HTML/etc into token-efficient chunks inside your Rust tooling.\n- kinded v0.5.0 - proc-macro for gener...",
+                    "source": "web",
+                    "title": "This Week in Rust 637",
+                    "url": "https://this-week-in-rust.org/blog/2026/02/04/this-week-in-rust-637/"
+                  },
+                  {
+                    "date": "2026-06-18",
+                    "last_updated": "2026-09-10",
+                    "place_metadata": null,
+                    "snippet": "1. **Full IDEs**: RustRover, CLion, IntelliJ IDEA, Eclipse\n2. **Extensible editors**: VS Code, Zed, Sublime Text, Atom, Theia\n3. **Terminal-first editors**: Neovim, Vim, Helix, Emacs with Rust-mode, Spacemacs",
+                    "source": "web",
+                    "title": "Rust IDEs That Cut Debugging Pain and Build Delays",
+                    "url": "https://xoomar.com/blog/listicle/best-ides-for-rust-development"
+                  },
+                  {
+                    "date": "2026-07-01",
+                    "last_updated": "2026-07-09",
+                    "place_metadata": null,
+                    "snippet": "### Project/Tooling Updates\n- Slint 1.17 Released\n- rustc_codegen_gcc: Progress Report #42\n- Introducing Test That!\n- Introducing Test That!: A rich test assertion library for Rust from the original author of GoogleTest Rust\n- Inside RSSH: one Rust crate, three binaries, and the Tauri lessons along ...",
+                    "source": "web",
+                    "title": "This Week in Rust 658",
+                    "url": "https://this-week-in-rust.org/blog/2026/07/01/this-week-in-rust-658/"
+                  },
+                  {
+                    "date": "2026-02-18",
+                    "last_updated": "2026-07-19",
+                    "place_metadata": null,
+                    "snippet": "- **Best Overall:** VS Code + rust-analyzer — widest ecosystem, excellent Rust support, free\n- **Best Dedicated Rust IDE:** RustRover by JetBrains — purpose-built, powerful debugging & refactoring",
+                    "source": "web",
+                    "title": "Best IDE for Rust 2026: Top Code Editors for Rust Developers",
+                    "url": "https://thesoftwarescout.com/best-ide-for-rust-2026-top-code-editors-for-rust-developers/"
+                  },
+                  {
+                    "date": "2026-05-13",
+                    "last_updated": "2026-06-25",
+                    "place_metadata": null,
+                    "snippet": "### Project/Tooling Updates\n- Numax - A portable Rust runtime for distributed apps\n- Entroly 0.18.0: Rust-powered AI context engine with PRISM reinforcement learning, SimHash dedup, and EGSC caching\n- uFerris: A Versatile Learning Board for Rust Embedded\n- Record Ownership: Which Side Is Right?\n- ir...",
+                    "source": "web",
+                    "title": "This Week in Rust 651",
+                    "url": "https://this-week-in-rust.org/blog/2026/05/13/this-week-in-rust-651/"
+                  },
+                  {
+                    "date": "2026-05-20",
+                    "last_updated": "2026-05-22",
+                    "place_metadata": null,
+                    "snippet": "### Project/Tooling Updates\n- Tonic is joining the gRPC project\n- Toasty 0.6.0 - What is new?\n- ex_ratatui: Elixir bindings for ratatui via Rustler NIFs\n- OmniScope: A Cross-Language LLVM IR Static Analyzer Targeting Unsafe/FFI Boundaries:\n- citum: a new Rust citation processor and associated tools....",
+                    "source": "web",
+                    "title": "This Week in Rust 652",
+                    "url": "https://this-week-in-rust.org/blog/2026/05/20/this-week-in-rust-652/"
+                  },
+                  {
+                    "date": "2026-09-11",
+                    "last_updated": "2026-09-23",
+                    "place_metadata": null,
+                    "snippet": "“Rust now is a Tier One language at Microsoft, and that just means that it sits among C++, C# and TypeScript as the best supported languages for internal development in the company,” explained Victor Ciura, Microsoft principal engineer for the Rust tooling team, during a keynote talk today at this y...",
+                    "source": "web",
+                    "title": "Microsoft anoints Rust as a 'Tier 1' internal language",
+                    "url": "https://www.theregister.com/devops/2026/09/11/microsoft-anoints-rust-as-a-tier-1-internal-language/5295732"
+                  },
+                  {
+                    "date": "2026-04-08",
+                    "last_updated": "2026-04-09",
+                    "place_metadata": null,
+                    "snippet": "In this section, we collect recent updates to `rustc`, `cargo`, and other tooling that are relevant to Rust OS development.",
+                    "source": "web",
+                    "title": "This Month in Rust OSDev: March 2026",
+                    "url": "https://rust-osdev.com/this-month/2026-03/"
+                  },
+                  {
+                    "date": "2026-05-01",
+                    "last_updated": "2026-09-10",
+                    "place_metadata": null,
+                    "snippet": "RustRover 2026.2 adds endpoint discovery and route–handler navigation for axum-based projects, brings support for Ferrocene, a qualified Rust toolchain, and improves your everyday experience with macros, imports, struct creation, module paths, benchmarks, .env files, and split mode.\n...\nExplore smar...",
+                    "source": "web",
+                    "title": "RustRover - The JetBrains Blog",
+                    "url": "https://blog.jetbrains.com/rust/"
+                  },
+                  {
+                    "date": "2026-04-15",
+                    "last_updated": "2026-05-29",
+                    "place_metadata": null,
+                    "snippet": "Nel 2026, tutti i principali IDE per Rust supportano in qualche forma l’assistenza AI.",
+                    "source": "web",
+                    "title": "Gli strumenti — la guida agli IDE per Rust (2026) - GZStudio",
+                    "url": "https://www.gzstudio.eu/2026/04/15/gli-strumenti/"
+                  },
+                  {
+                    "date": "2026-09-18",
+                    "last_updated": "2026-09-18",
+                    "place_metadata": null,
+                    "snippet": "The technical centerpiece enabling this elevation is a new compiler backend called rustc_codegen_utc.\nMicrosoft engineers wired the Rust frontend directly to the UTC code generator that powers MSVC, the company's long-standing C and C++ compiler for Windows.\nThe result is a single unified code gener...",
+                    "source": "web",
+                    "title": "Microsoft Elevates Rust to Tier-1 Status Alongside C++ and C#",
+                    "url": "https://www.webpronews.com/microsoft-elevates-rust-to-tier-1-status-alongside-c-and-c"
+                  },
+                  {
+                    "date": "2026-05-29",
+                    "last_updated": "2026-09-09",
+                    "place_metadata": null,
+                    "snippet": "While RustRover relies heavily on indexing infrastructure, rust-analyzer uses a query-driven architecture inspired by the Rust compiler itself.",
+                    "source": "web",
+                    "title": "How Rust IDEs Understand Code | The RustRover Blog",
+                    "url": "https://blog.jetbrains.com/rust/2026/05/29/how-rust-ides-understand-code/"
+                  }
+                ],
+                "usage": {
+                  "completion_tokens": 51,
+                  "cost": {
+                    "input_tokens_cost": 0.00002,
+                    "output_tokens_cost": 0.00005,
+                    "request_cost": 0.005,
+                    "total_cost": 0.00508
+                  },
+                  "prompt_tokens": 24,
+                  "search_context_size": "low",
+                  "total_tokens": 75
                 }
               }
-            ],
-            "citations": [
-              "https://this-week-in-rust.org/blog/2026/07/22/this-week-in-rust-661/",
-              "https://doc.rust-lang.org/beta/releases.html",
-              "https://this-week-in-rust.org/blog/2026/08/19/this-week-in-rust-665/",
-              "https://this-week-in-rust.org/blog/2026/02/04/this-week-in-rust-637/",
-              "https://xoomar.com/blog/listicle/best-ides-for-rust-development",
-              "https://this-week-in-rust.org/blog/2026/07/01/this-week-in-rust-658/",
-              "https://thesoftwarescout.com/best-ide-for-rust-2026-top-code-editors-for-rust-developers/",
-              "https://this-week-in-rust.org/blog/2026/05/13/this-week-in-rust-651/",
-              "https://this-week-in-rust.org/blog/2026/05/20/this-week-in-rust-652/",
-              "https://www.theregister.com/devops/2026/09/11/microsoft-anoints-rust-as-a-tier-1-internal-language/5295732",
-              "https://rust-osdev.com/this-month/2026-03/",
-              "https://blog.jetbrains.com/rust/",
-              "https://www.gzstudio.eu/2026/04/15/gli-strumenti/",
-              "https://www.webpronews.com/microsoft-elevates-rust-to-tier-1-status-alongside-c-and-c",
-              "https://blog.jetbrains.com/rust/2026/05/29/how-rust-ides-understand-code/"
-            ],
-            "created": 0,
-            "id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207",
-            "model": "sonar",
-            "object": "chat.completion",
-            "related_questions": [
-              "What recent Rust tooling development was highlighted in This Week in Rust?",
-              "How has RustRover improved Rust development workflows recently?",
-              "What new features appeared in the latest Rust release?",
-              "How do leading Rust IDEs compare in 2026?",
-              "What does Microsoft’s Tier 1 Rust status mean for tooling?"
-            ],
-            "search_results": [
-              {
-                "date": "2026-07-22",
-                "last_updated": "2026-08-10",
-                "place_metadata": null,
-                "snippet": "### Project/Tooling Updates\n- Announcing Topcoat: a framework for building full-stack reactive web apps with Rust\n- Syn 3.0.0\n- What’s New in RustRover 2026.2\n- kobe 0.35.0: readiness gates and cert recycling\n- Comhad v0.1.0: a ranger-style tui cyberduck replacement for browsing S3\n- Nova v0.2.1: co...",
-                "source": "web",
-                "title": "This Week in Rust 661",
-                "url": "https://this-week-in-rust.org/blog/2026/07/22/this-week-in-rust-661/"
-              },
-              {
-                "date": "2026-07-16",
-                "last_updated": "2026-09-22",
-                "place_metadata": null,
-                "snippet": "# § Version 1.97.1 (2026-07-16)\n- rustc: Fix miscompilation in LLVM optimization This backports an LLVM submodule bump to include the LLVM-side fix and a revert of the rustc change that is one known trigger for the bug.",
-                "source": "web",
-                "title": "Rust Release Notes",
-                "url": "https://doc.rust-lang.org/beta/releases.html"
-              },
-              {
-                "date": "2026-08-19",
-                "last_updated": "2026-09-21",
-                "place_metadata": null,
-                "snippet": "### Project/Tooling Updates\n- OxiSH: a modern, memory-safe SSH server\n- A critical review of Xilem in 2026\n- rama v0.4.0\n…",
-                "source": "web",
-                "title": "This Week in Rust 665",
-                "url": "https://this-week-in-rust.org/blog/2026/08/19/this-week-in-rust-665/"
-              },
-              {
-                "date": "2026-02-04",
-                "last_updated": "2026-03-03",
-                "place_metadata": null,
-                "snippet": "### Project/Tooling Updates\n- Compiling Rust to readable C with Eurydice\n- 3DCF/doc2dataset v0.2.0 – embeddable document-compression crate (3DCF encoder + JSONL export helpers) to turn PDFs/markdown/HTML/etc into token-efficient chunks inside your Rust tooling.\n- kinded v0.5.0 - proc-macro for gener...",
-                "source": "web",
-                "title": "This Week in Rust 637",
-                "url": "https://this-week-in-rust.org/blog/2026/02/04/this-week-in-rust-637/"
-              },
-              {
-                "date": "2026-06-18",
-                "last_updated": "2026-09-10",
-                "place_metadata": null,
-                "snippet": "1. **Full IDEs**: RustRover, CLion, IntelliJ IDEA, Eclipse\n2. **Extensible editors**: VS Code, Zed, Sublime Text, Atom, Theia\n3. **Terminal-first editors**: Neovim, Vim, Helix, Emacs with Rust-mode, Spacemacs",
-                "source": "web",
-                "title": "Rust IDEs That Cut Debugging Pain and Build Delays",
-                "url": "https://xoomar.com/blog/listicle/best-ides-for-rust-development"
-              },
-              {
-                "date": "2026-07-01",
-                "last_updated": "2026-07-09",
-                "place_metadata": null,
-                "snippet": "### Project/Tooling Updates\n- Slint 1.17 Released\n- rustc_codegen_gcc: Progress Report #42\n- Introducing Test That!\n- Introducing Test That!: A rich test assertion library for Rust from the original author of GoogleTest Rust\n- Inside RSSH: one Rust crate, three binaries, and the Tauri lessons along ...",
-                "source": "web",
-                "title": "This Week in Rust 658",
-                "url": "https://this-week-in-rust.org/blog/2026/07/01/this-week-in-rust-658/"
-              },
-              {
-                "date": "2026-02-18",
-                "last_updated": "2026-07-19",
-                "place_metadata": null,
-                "snippet": "- **Best Overall:** VS Code + rust-analyzer — widest ecosystem, excellent Rust support, free\n- **Best Dedicated Rust IDE:** RustRover by JetBrains — purpose-built, powerful debugging & refactoring",
-                "source": "web",
-                "title": "Best IDE for Rust 2026: Top Code Editors for Rust Developers",
-                "url": "https://thesoftwarescout.com/best-ide-for-rust-2026-top-code-editors-for-rust-developers/"
-              },
-              {
-                "date": "2026-05-13",
-                "last_updated": "2026-06-25",
-                "place_metadata": null,
-                "snippet": "### Project/Tooling Updates\n- Numax - A portable Rust runtime for distributed apps\n- Entroly 0.18.0: Rust-powered AI context engine with PRISM reinforcement learning, SimHash dedup, and EGSC caching\n- uFerris: A Versatile Learning Board for Rust Embedded\n- Record Ownership: Which Side Is Right?\n- ir...",
-                "source": "web",
-                "title": "This Week in Rust 651",
-                "url": "https://this-week-in-rust.org/blog/2026/05/13/this-week-in-rust-651/"
-              },
-              {
-                "date": "2026-05-20",
-                "last_updated": "2026-05-22",
-                "place_metadata": null,
-                "snippet": "### Project/Tooling Updates\n- Tonic is joining the gRPC project\n- Toasty 0.6.0 - What is new?\n- ex_ratatui: Elixir bindings for ratatui via Rustler NIFs\n- OmniScope: A Cross-Language LLVM IR Static Analyzer Targeting Unsafe/FFI Boundaries:\n- citum: a new Rust citation processor and associated tools....",
-                "source": "web",
-                "title": "This Week in Rust 652",
-                "url": "https://this-week-in-rust.org/blog/2026/05/20/this-week-in-rust-652/"
-              },
-              {
-                "date": "2026-09-11",
-                "last_updated": "2026-09-23",
-                "place_metadata": null,
-                "snippet": "“Rust now is a Tier One language at Microsoft, and that just means that it sits among C++, C# and TypeScript as the best supported languages for internal development in the company,” explained Victor Ciura, Microsoft principal engineer for the Rust tooling team, during a keynote talk today at this y...",
-                "source": "web",
-                "title": "Microsoft anoints Rust as a 'Tier 1' internal language",
-                "url": "https://www.theregister.com/devops/2026/09/11/microsoft-anoints-rust-as-a-tier-1-internal-language/5295732"
-              },
-              {
-                "date": "2026-04-08",
-                "last_updated": "2026-04-09",
-                "place_metadata": null,
-                "snippet": "In this section, we collect recent updates to `rustc`, `cargo`, and other tooling that are relevant to Rust OS development.",
-                "source": "web",
-                "title": "This Month in Rust OSDev: March 2026",
-                "url": "https://rust-osdev.com/this-month/2026-03/"
-              },
-              {
-                "date": "2026-05-01",
-                "last_updated": "2026-09-10",
-                "place_metadata": null,
-                "snippet": "RustRover 2026.2 adds endpoint discovery and route–handler navigation for axum-based projects, brings support for Ferrocene, a qualified Rust toolchain, and improves your everyday experience with macros, imports, struct creation, module paths, benchmarks, .env files, and split mode.\n...\nExplore smar...",
-                "source": "web",
-                "title": "RustRover - The JetBrains Blog",
-                "url": "https://blog.jetbrains.com/rust/"
-              },
-              {
-                "date": "2026-04-15",
-                "last_updated": "2026-05-29",
-                "place_metadata": null,
-                "snippet": "Nel 2026, tutti i principali IDE per Rust supportano in qualche forma l’assistenza AI.",
-                "source": "web",
-                "title": "Gli strumenti — la guida agli IDE per Rust (2026) - GZStudio",
-                "url": "https://www.gzstudio.eu/2026/04/15/gli-strumenti/"
-              },
-              {
-                "date": "2026-09-18",
-                "last_updated": "2026-09-18",
-                "place_metadata": null,
-                "snippet": "The technical centerpiece enabling this elevation is a new compiler backend called rustc_codegen_utc.\nMicrosoft engineers wired the Rust frontend directly to the UTC code generator that powers MSVC, the company's long-standing C and C++ compiler for Windows.\nThe result is a single unified code gener...",
-                "source": "web",
-                "title": "Microsoft Elevates Rust to Tier-1 Status Alongside C++ and C#",
-                "url": "https://www.webpronews.com/microsoft-elevates-rust-to-tier-1-status-alongside-c-and-c"
-              },
-              {
-                "date": "2026-05-29",
-                "last_updated": "2026-09-09",
-                "place_metadata": null,
-                "snippet": "While RustRover relies heavily on indexing infrastructure, rust-analyzer uses a query-driven architecture inspired by the Rust compiler itself.",
-                "source": "web",
-                "title": "How Rust IDEs Understand Code | The RustRover Blog",
-                "url": "https://blog.jetbrains.com/rust/2026/05/29/how-rust-ides-understand-code/"
-              }
-            ],
-            "usage": {
-              "completion_tokens": 51,
-              "cost": {
-                "input_tokens_cost": 0.00002,
-                "output_tokens_cost": 0.00005,
-                "request_cost": 0.005,
-                "total_cost": 0.00508
-              },
-              "prompt_tokens": 24,
-              "search_context_size": "low",
-              "total_tokens": 75
             }
           }
         }

@@ -152,7 +152,7 @@ fn contains_string(value: &Value, needle: &str) -> bool {
 fn assert_matches_fixture(scenario: &str, response: &RigCompletionResponse) {
     let body = assert_identity_matches_fixture(scenario, response);
     assert_eq!(body["stop_reason"], "end_turn", "{scenario}: premise");
-    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
     let recorded_text = body["content"]
         .as_array()
         .expect("content array")
@@ -167,7 +167,7 @@ fn assert_matches_fixture(scenario: &str, response: &RigCompletionResponse) {
 /// (`msg_…` id, `request-id` header), model, and usage totals are the
 /// fixture's. Returns the recorded body for the cell's own premise checks.
 fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionResponse) -> Value {
-    let identity = response.identity();
+    let identity = &response.end;
     let body = recorded_response_body(scenario);
     assert_ids_match_recording(
         std::slice::from_ref(&identity.message_id),
@@ -181,18 +181,18 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
         "{scenario}: premise — the recorded response carries a `request-id` header"
     );
     assert_ids_match_recording(
-        std::slice::from_ref(&identity.provider_request_id),
+        std::slice::from_ref(&identity.meta.provider_request_id),
         &request_ids,
         scenario,
     );
-    assert_eq!(identity.response_id, None);
-    assert_eq!(response.model.as_deref(), body["model"].as_str());
+    assert_eq!(identity.meta.response_id, None);
+    assert_eq!(response.end.meta.model.as_deref(), body["model"].as_str());
     assert_eq!(
-        response.usage.input_tokens,
+        response.end.meta.usage.input_tokens,
         body["usage"]["input_tokens"].as_u64()
     );
     assert_eq!(
-        response.usage.output_tokens,
+        response.end.meta.usage.output_tokens,
         body["usage"]["output_tokens"].as_u64()
     );
     body
@@ -246,7 +246,7 @@ async fn raw_round_trips_into_provider_type() {
     })
     .await;
     let response = sink.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = assert_raw_round_trips(raw);
     assert!(
         typed.content.iter().any(|block| matches!(
@@ -281,7 +281,7 @@ async fn raw_round_trips_into_provider_type() {
         "the transport id is a header, not part of the reply document"
     );
     assert!(
-        response.identity().provider_request_id.is_some(),
+        response.end.meta.provider_request_id.is_some(),
         "the normalized response carries the transport id instead"
     );
     // And the normalized view beside it reports what the fixture recorded.
@@ -331,12 +331,12 @@ async fn raw_exposes_stop_sequence() {
     // The normalized `CompletionResponse` has no `stop_sequence` field —
     // rig folds the stop into `FinishReason::Stop` and the sequence itself is
     // not part of the normalized vocabulary. Its serialized form proves it.
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert!(
         !raw.is_null(),
         "every response `completion` returns carries `raw`"
     );
-    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
     let normalized_keys: Vec<String> = normalized_without_raw(response.clone())
         .as_object()
         .expect("the normalized response serializes as an object")
@@ -385,8 +385,8 @@ async fn normalized_fields_match_raw_renormalized() {
     )
     .await;
     let response = sink.take();
-    let identity = response.identity();
-    let raw = &response.raw;
+    let identity = &response.end;
+    let raw = &response.end.meta.raw;
     assert!(
         !raw.is_null(),
         "every response `completion` returns carries `raw`"
@@ -405,15 +405,21 @@ async fn normalized_fields_match_raw_renormalized() {
         "premise: the recorded turn ended naturally"
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(FinishReason::Stop),
         "the decoder maps the document's `end_turn` onto `Stop`"
     );
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(Some(typed.usage.input_tokens), response.usage.input_tokens);
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
+    assert_eq!(
+        Some(typed.usage.input_tokens),
+        response.end.meta.usage.input_tokens
+    );
     assert_eq!(
         Some(typed.usage.output_tokens),
-        response.usage.output_tokens
+        response.end.meta.usage.output_tokens
     );
     let provider_text: String = typed
         .content
@@ -464,7 +470,7 @@ async fn raw_exposes_thinking_block_and_signature() {
     )
     .await;
     let response = sink.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = assert_raw_round_trips(raw);
 
     // Premise, from the fixture: the recorded body carries a `thinking` block
@@ -493,7 +499,7 @@ async fn raw_exposes_thinking_block_and_signature() {
         "premise: the recorded turn actually spent thinking tokens"
     );
     assert_eq!(body["stop_reason"], "end_turn", "premise");
-    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
 
     // `raw` carries the wire's own spelling of the reasoning, verbatim.
     let raw_blocks = raw["content"].as_array().expect("raw content array");
@@ -555,7 +561,7 @@ async fn raw_exposes_thinking_block_and_signature() {
         "the normalized reasoning is the wire's text and signature, re-spelled"
     );
     assert_eq!(
-        response.usage.reasoning_tokens,
+        response.end.meta.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
     let normalized = normalized_without_raw(response.clone());
@@ -601,7 +607,7 @@ async fn raw_exposes_tool_use_block() {
     })
     .await;
     let response = sink.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = assert_raw_round_trips(raw);
 
     // Premise, from the fixture: the recorded turn is a `tool_use` terminal
@@ -636,7 +642,7 @@ async fn raw_exposes_tool_use_block() {
     // Normalized: the provider's stop reason maps onto `ToolCalls`; the
     // spelling `tool_use` is only on `raw`.
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(FinishReason::ToolCalls)
     );
     assert_eq!(raw["stop_reason"], "tool_use");

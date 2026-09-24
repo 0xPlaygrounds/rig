@@ -73,32 +73,36 @@
               "text": "The dominant non-background color is **bright red**."
             }
           ],
-          "usage": {
-            "input_tokens": 47,
-            "output_tokens": 14,
-            "total_tokens": 61,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
-          "provider_request_id": "req_011CfLcZb6m68YgtafDwZxyM",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 14,
-              "input_tokens": 47,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
+          "end": {
+            "finish_reason": "stop",
             "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
-            "model": "claude-sonnet-4-6"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcZb6m68YgtafDwZxyM",
+              "usage": {
+                "input_tokens": 47,
+                "output_tokens": 14,
+                "total_tokens": 61,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 14,
+                  "input_tokens": 47,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "end_turn",
+                "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
+                "model": "claude-sonnet-4-6"
+              }
+            }
           }
         }
       },
@@ -152,32 +156,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 47,
-            "output_tokens": 14,
-            "total_tokens": 61,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
-          "provider_request_id": "req_011CfLcZb6m68YgtafDwZxyM",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "provider_request_id": "req_011CfLcZb6m68YgtafDwZxyM",
             "usage": {
-              "output_tokens": 14,
               "input_tokens": 47,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 14,
+              "total_tokens": 61,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
-            "model": "claude-sonnet-4-6"
+            "raw": {
+              "usage": {
+                "output_tokens": 14,
+                "input_tokens": 47,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "end_turn",
+              "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
+              "model": "claude-sonnet-4-6"
+            }
           }
         }
       ]

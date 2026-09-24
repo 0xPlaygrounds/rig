@@ -76,10 +76,10 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
                 .expect("completion should succeed");
 
             assert!(
-                response.provider_request_id.is_none(),
+                response.end.meta.provider_request_id.is_none(),
                 "llama.cpp sends no transport id and this provider declares no \
              contract for one: {:?}",
-                response.provider_request_id
+                response.end.meta.provider_request_id
             );
         },
     )
@@ -102,9 +102,9 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
             }
             let terminal = terminal.expect("the stream must terminate");
             assert!(
-                terminal.provider_request_id.is_none(),
+                terminal.meta.provider_request_id.is_none(),
                 "the streaming surface must agree: {:?}",
-                terminal.provider_request_id
+                terminal.meta.provider_request_id
             );
         },
     )
@@ -157,6 +157,8 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
                 .expect("completion should succeed");
 
             let id = response
+                .end
+                .meta
                 .response_id
                 .expect("llama.cpp mints a response id and rig surfaces it");
             assert!(
@@ -184,6 +186,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
             }
             let id = terminal
                 .expect("the stream must terminate")
+                .meta
                 .response_id
                 .expect("the streamed terminal must carry the same handle");
             assert!(id.starts_with("chatcmpl-"), "{id:?}");
@@ -265,40 +268,46 @@ async fn the_typed_route_reproduces_the_normalized_one() {
                 .expect("the same request should succeed again");
 
             // Across the two turns: everything the wire makes equal.
-            assert_eq!(first.provider, second.provider);
-            assert_eq!(first.model, second.model);
-            assert_eq!(first.finish_reason.clone(), second.finish_reason.clone());
+            assert_eq!(first.end.meta.provider, second.end.meta.provider);
+            assert_eq!(first.end.meta.model, second.end.meta.model);
             assert_eq!(
-                first.provider_request_id, second.provider_request_id,
+                first.end.finish_reason.clone(),
+                second.end.finish_reason.clone()
+            );
+            assert_eq!(
+                first.end.meta.provider_request_id, second.end.meta.provider_request_id,
                 "both are None, and neither turn may invent one"
             );
             assert_eq!(
-                first.provider_request_id, None,
+                first.end.meta.provider_request_id, None,
                 "the dialect contracts no request-id header, so the driver \
                  reports None by design"
             );
             assert!(
-                first.response_id.is_some() && second.response_id.is_some(),
+                first.end.meta.response_id.is_some() && second.end.meta.response_id.is_some(),
                 "both turns must carry the provider's own id: {:?} vs {:?}",
-                first.response_id,
-                second.response_id
+                first.end.meta.response_id,
+                second.end.meta.response_id
             );
             assert_eq!(
-                first.usage.input_tokens, second.usage.input_tokens,
+                first.end.meta.usage.input_tokens, second.end.meta.usage.input_tokens,
                 "the same prompt bills the same either way"
             );
 
             // Same reply, two views: the captured document read back through
             // llama.cpp's own type reproduces the normalized fields.
-            let typed = llamacpp::CompletionResponse::deserialize(&second.raw)
+            let typed = llamacpp::CompletionResponse::deserialize(&second.end.meta.raw)
                 .expect("raw is llama.cpp's own response type");
             assert_eq!(
-                second.response_id.as_deref(),
+                second.end.meta.response_id.as_deref(),
                 Some(typed.openai.id.as_str())
             );
-            assert_eq!(second.model.as_deref(), Some(typed.openai.model.as_str()));
             assert_eq!(
-                second.usage.input_tokens,
+                second.end.meta.model.as_deref(),
+                Some(typed.openai.model.as_str())
+            );
+            assert_eq!(
+                second.end.meta.usage.input_tokens,
                 typed
                     .openai
                     .usage

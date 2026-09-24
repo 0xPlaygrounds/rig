@@ -37,7 +37,7 @@ fn observe_response(
 ) {
     for (outcome, stream) in &effects {
         if let Ok(Outcome::Completion(response)) = &outcome.0 {
-            seen.responses.push(response.raw.clone());
+            seen.responses.push(response.end.meta.raw.clone());
             seen.streamed.push(stream.is_some());
             seen.tool_calls.push(
                 response
@@ -72,7 +72,7 @@ fn observe_turn(
                     return None;
                 }
                 match &outcome.0 {
-                    Ok(Outcome::Completion(response)) => Some(response.raw.clone()),
+                    Ok(Outcome::Completion(response)) => Some(response.end.meta.raw.clone()),
                     _ => None,
                 }
             })
@@ -175,7 +175,7 @@ async fn hooks_observe_raw_streamed() {
                         })
                         .collect();
                     assert_eq!(finals.len(), 1);
-                    assert!(!finals[0].raw.is_null());
+                    assert!(!finals[0].meta.raw.is_null());
                     *output = Some(ecs.app.world().resource::<Seen>().clone());
                 },
             )
@@ -213,7 +213,7 @@ fn attempt_raws(world: &mut World) -> Vec<Value> {
     let mut attempts: Vec<_> = query
         .iter(world)
         .filter_map(|(seq, outcome)| match &outcome.0 {
-            Ok(Outcome::Completion(response)) => Some((*seq, response.raw.clone())),
+            Ok(Outcome::Completion(response)) => Some((*seq, response.end.meta.raw.clone())),
             _ => None,
         })
         .collect();
@@ -252,7 +252,7 @@ async fn run_two_attempts(client: Bound<Anthropic>, streamed: bool, retry: bool)
             .into_iter()
             .flat_map(|(_, stream)| stream.events.iter())
             .filter_map(|event| match event {
-                StreamEvent::Final(final_) => Some(final_.raw.clone()),
+                StreamEvent::Final(final_) => Some(final_.meta.raw.clone()),
                 _ => None,
             })
             .collect();

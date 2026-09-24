@@ -168,7 +168,7 @@ async fn chat_raw_round_trips_provider_type() {
     .expect("chat_raw_round_trips_provider_type should replay from its cassette");
 
     let response = captured.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert!(
         raw.get("api").is_none(),
         "raw is the route's own reply document, not a rig-tagged envelope"
@@ -181,7 +181,7 @@ async fn chat_raw_round_trips_provider_type() {
          chat-completions type does not model: it reaches the caller \
          because raw is the reply document"
     );
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.end.meta.provider, COPILOT_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
@@ -215,7 +215,7 @@ async fn chat_raw_exposes_system_fingerprint() {
     let normalized = normalized_without_raw(response.clone());
     assert_normalized_lacks(&normalized, &["system_fingerprint"]);
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_chat_body(&body, scenario);
     // A live recording may see a different fingerprint than the fixture.
@@ -249,15 +249,15 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
     .expect("chat_normalized_fields_equal_raw_renormalized should replay from its cassette");
 
     let response = captured.take();
-    let reply = openai::CompletionResponse::deserialize(&response.raw)
+    let reply = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must read back as the chat route's own response type");
     chat::assert_native_matches_normalized(&response, &reply, "the typed view of raw");
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.end.meta.provider, COPILOT_PROVIDER);
     // Both sides of this comparison come from the same live reply, so the id
     // compares exactly in either cassette mode — stricter than the token
     // comparator the fixture-side check has to use.
     assert_eq!(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         Some(reply.id.as_str()),
         "response id"
     );
@@ -298,7 +298,7 @@ async fn responses_raw_round_trips_provider_type() {
     .expect("responses_raw_round_trips_provider_type should replay from its cassette");
 
     let response = captured.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert!(
         raw.get("api").is_none(),
         "raw is the route's own reply document, not a rig-tagged envelope"
@@ -309,7 +309,7 @@ async fn responses_raw_round_trips_provider_type() {
         typed.provider_request_id.is_none(),
         "the transport request id is a reply header, so the document never carries it"
     );
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.end.meta.provider, COPILOT_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
@@ -338,7 +338,7 @@ async fn responses_raw_exposes_envelope() {
     let normalized = normalized_without_raw(response.clone());
     assert_normalized_lacks(&normalized, &["object", "status", "created_at"]);
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_responses_body(&body, scenario);
     for field in ["object", "status", "model"] {
@@ -371,14 +371,14 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
     .expect("responses_normalized_fields_equal_raw_renormalized should replay from its cassette");
 
     let response = captured.take();
-    let reply = responses_api::CompletionResponse::deserialize(&response.raw)
+    let reply = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must read back as the Responses route's own response type");
     responses::assert_native_matches_normalized(&response, &reply, "the typed view of raw");
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.end.meta.provider, COPILOT_PROVIDER);
     // As on the chat route: both ids come from the same live reply here, so
     // the comparison is exact rather than mode-aware.
     assert_eq!(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         Some(reply.id.as_str()),
         "response id"
     );

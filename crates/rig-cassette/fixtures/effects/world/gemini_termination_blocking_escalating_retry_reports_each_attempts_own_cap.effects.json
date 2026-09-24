@@ -88,43 +88,47 @@
               "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
             }
           ],
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 24,
-            "total_tokens": 46
-          },
-          "response_id": "p3izatO-GbjiqtsPytTWQA",
-          "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "p3izatO-GbjiqtsPytTWQA",
+              "usage": {
+                "input_tokens": 22,
+                "output_tokens": 24,
+                "total_tokens": 46
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "MAX_TOKENS",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "p3izatO-GbjiqtsPytTWQA",
+                "usageMetadata": {
+                  "candidatesTokenCount": 24,
+                  "promptTokenCount": 22,
+                  "promptTokensDetails": [
                     {
-                      "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
+                      "modality": "TEXT",
+                      "tokenCount": 22
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "MAX_TOKENS",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "p3izatO-GbjiqtsPytTWQA",
-            "usageMetadata": {
-              "candidatesTokenCount": 24,
-              "promptTokenCount": 22,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 22
+                  "serviceTier": "standard",
+                  "totalTokenCount": 46
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 46
+              }
             }
           }
         }
@@ -175,43 +179,47 @@
               "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
             }
           ],
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 46,
-            "total_tokens": 68
-          },
-          "response_id": "p3izaob7Ooi-qtsPpfaNwQQ",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "p3izaob7Ooi-qtsPpfaNwQQ",
+              "usage": {
+                "input_tokens": 22,
+                "output_tokens": 46,
+                "total_tokens": 68
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "p3izaob7Ooi-qtsPpfaNwQQ",
+                "usageMetadata": {
+                  "candidatesTokenCount": 46,
+                  "promptTokenCount": 22,
+                  "promptTokensDetails": [
                     {
-                      "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
+                      "modality": "TEXT",
+                      "tokenCount": 22
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "p3izaob7Ooi-qtsPpfaNwQQ",
-            "usageMetadata": {
-              "candidatesTokenCount": 46,
-              "promptTokenCount": 22,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 22
+                  "serviceTier": "standard",
+                  "totalTokenCount": 68
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 68
+              }
             }
           }
         }

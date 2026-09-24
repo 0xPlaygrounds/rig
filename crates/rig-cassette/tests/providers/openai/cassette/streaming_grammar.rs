@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI Responses API,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
+//! [`StreamingCompletionResponse::choice`], the terminal [`CompletionEnd`]
 //! record, usage, IDs, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -18,7 +18,8 @@ use rig::message::{
     UserContent,
 };
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
+use rig_core::completion::CompletionEnd;
 use serde_json::json;
 
 use super::super::support::with_openai_cassette;
@@ -39,11 +40,11 @@ struct StreamRun {
     /// Complete tool calls yielded as stream events, in order.
     tool_calls: Vec<ToolCall>,
     /// Terminal records yielded by the stream.
-    finals: Vec<StreamFinal>,
+    finals: Vec<CompletionEnd>,
     /// The aggregated choice built by the normalized stream.
     choice: Vec<AssistantContent>,
     /// The normalized terminal record retained on the stream.
-    response: Option<StreamFinal>,
+    response: Option<CompletionEnd>,
     /// Provider-assigned assistant message ID retained on the stream.
     message_id: Option<String>,
 }
@@ -129,13 +130,14 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "unexpected finish reason"
     );
     assert!(
-        terminal.usage.total_tokens.is_some_and(|n| n > 0),
+        terminal.meta.usage.total_tokens.is_some_and(|n| n > 0),
         "terminal record should carry non-zero usage, got {:?}",
-        terminal.usage
+        terminal.meta.usage
     );
     // ID contract: the Responses API names both the response (`resp_`) and the
     // assistant output message (`msg_`); prefixes survive cassette scrubbing.
     let response_id = terminal
+        .meta
         .response_id
         .as_deref()
         .expect("Responses API should report a response-scoped ID");
@@ -773,7 +775,7 @@ async fn previous_response_id_chains_server_side_state() {
             let previous_response_id = first
                 .response
                 .as_ref()
-                .and_then(|terminal| terminal.response_id.clone())
+                .and_then(|terminal| terminal.meta.response_id.clone())
                 .expect("stored turn should report a resp_* id");
 
             let second_request = model
@@ -802,14 +804,14 @@ async fn previous_response_id_chains_server_side_state() {
             let second_id = second
                 .response
                 .as_ref()
-                .and_then(|terminal| terminal.response_id.as_deref())
+                .and_then(|terminal| terminal.meta.response_id.as_deref())
                 .expect("chained turn should report its own resp_* id");
             assert_ne!(
                 second_id,
                 first
                     .response
                     .as_ref()
-                    .and_then(|terminal| terminal.response_id.as_deref())
+                    .and_then(|terminal| terminal.meta.response_id.as_deref())
                     .expect("first turn id"),
                 "each turn carries its own response-scoped id"
             );

@@ -42,7 +42,7 @@ async fn web_search_on_returns_citations() {
             .completion(request)
             .await
             .expect("web-search completion should succeed");
-        let reply = venice_reply(&response.raw);
+        let reply = venice_reply(&response.end.meta.raw);
 
         let parameters = reply
             .venice_parameters
@@ -88,7 +88,7 @@ async fn web_search_auto_is_echoed() {
             .expect("auto web-search completion should succeed");
 
         assert_eq!(
-            venice_reply(&response.raw)
+            venice_reply(&response.end.meta.raw)
                 .venice_parameters
                 .expect("venice parameters echo")
                 .parameters
@@ -121,7 +121,7 @@ async fn disable_thinking_is_applied() {
             .await
             .expect("completion should succeed");
 
-        let echo = venice_reply(&response.raw)
+        let echo = venice_reply(&response.end.meta.raw)
             .venice_parameters
             .expect("venice parameters echo")
             .parameters;
@@ -154,7 +154,7 @@ async fn venice_system_prompt_can_be_disabled() {
                 .completion(request)
                 .await
                 .expect("completion should succeed");
-            let reply = venice_reply(&response.raw);
+            let reply = venice_reply(&response.end.meta.raw);
 
             assert_eq!(
                 reply
@@ -196,7 +196,7 @@ async fn character_slug_selects_a_persona() {
             .expect("character completion should succeed");
 
         assert_eq!(
-            venice_reply(&response.raw)
+            venice_reply(&response.end.meta.raw)
                 .venice_parameters
                 .expect("venice parameters echo")
                 .parameters

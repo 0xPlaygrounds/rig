@@ -195,73 +195,77 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 686,
-            "output_tokens": 126,
-            "total_tokens": 812,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
-          "provider_request_id": "req_011CfLcZN5vLEWqCbGZQTdoa",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi",
-                "input": {
-                  "slot": 0
-                },
-                "name": "checkpoint_batch",
-                "type": "tool_use"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZN5vLEWqCbGZQTdoa",
+              "usage": {
+                "input_tokens": 686,
+                "output_tokens": 126,
+                "total_tokens": 812,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn",
-                "input": {
-                  "slot": 1
-                },
-                "name": "checkpoint_batch",
-                "type": "tool_use"
-              },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd",
-                "input": {
-                  "slot": 2
-                },
-                "name": "checkpoint_batch",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi",
+                    "input": {
+                      "slot": 0
+                    },
+                    "name": "checkpoint_batch",
+                    "type": "tool_use"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn",
+                    "input": {
+                      "slot": 1
+                    },
+                    "name": "checkpoint_batch",
+                    "type": "tool_use"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd",
+                    "input": {
+                      "slot": 2
+                    },
+                    "name": "checkpoint_batch",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 686,
+                  "output_tokens": 126,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 686,
-              "output_tokens": 126,
-              "service_tier": "standard"
             }
           }
         }
@@ -517,44 +521,48 @@
               "text": "All three checkpoint_batch calls have completed:\n- slot=0: checkpoint-slot-zero\n- slot=1: failed (as expected)\n- slot=2: checkpoint-slot-two\n\ncheckpoint-complete"
             }
           ],
-          "usage": {
-            "input_tokens": 913,
-            "output_tokens": 49,
-            "total_tokens": 962,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
-          "provider_request_id": "req_011CfLcZT9mhs59LvJMutGFX",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "All three checkpoint_batch calls have completed:\n- slot=0: checkpoint-slot-zero\n- slot=1: failed (as expected)\n- slot=2: checkpoint-slot-two\n\ncheckpoint-complete",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZT9mhs59LvJMutGFX",
+              "usage": {
+                "input_tokens": 913,
+                "output_tokens": 49,
+                "total_tokens": 962,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 913,
-              "output_tokens": 49,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "All three checkpoint_batch calls have completed:\n- slot=0: checkpoint-slot-zero\n- slot=1: failed (as expected)\n- slot=2: checkpoint-slot-two\n\ncheckpoint-complete",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 913,
+                  "output_tokens": 49,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

@@ -111,7 +111,7 @@ fn assert_reported_usage(log: &EffectLog) {
         .records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Outcome::Completion(response)) => Some(&response.usage),
+            Ok(Outcome::Completion(response)) => Some(&response.end.meta.usage),
             _ => None,
         })
         .collect::<Vec<_>>();

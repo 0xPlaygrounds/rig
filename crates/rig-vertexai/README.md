@@ -31,7 +31,7 @@ use rig_core::{completion::CompletionResponse, serde_json};
 use rig_vertexai::completion::VertexGenerateContentOutput;
 
 fn recover(response: CompletionResponse) -> Result<VertexGenerateContentOutput, serde_json::Error> {
-    serde_json::from_value(response.raw)
+    serde_json::from_value(response.end.meta.raw)
 }
 ```
 

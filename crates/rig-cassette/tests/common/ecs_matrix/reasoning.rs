@@ -176,7 +176,10 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             );
         }
         for response in &responses {
-            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
+            assert_eq!(
+                response.end.finish_reason.clone(),
+                Some(FinishReason::Length)
+            );
             assert!(rig_core::message::turn_delivered_no_answer(
                 &response.choice
             ));
@@ -273,15 +276,20 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             )
         {
             assert!(
-                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0),
                 "{}: reasoning usage: {:?}",
                 cell.name,
-                response.usage
+                response.end.meta.usage
             );
         }
         if !thinking {
             assert_eq!(
-                response.usage.reasoning_tokens.unwrap_or(0),
+                response.end.meta.usage.reasoning_tokens.unwrap_or(0),
                 0,
                 "{}: reasoning explicitly off",
                 cell.name
@@ -373,7 +381,7 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
     let expected: Vec<_> = completions(log)
         .iter()
         .map(|response| Message::Assistant {
-            id: response.message_id.clone().map(String::from),
+            id: response.end.message_id.clone().map(String::from),
             content: if cell.reasoning == Some(ReasoningCase::Output) {
                 // The record retains the output call; committed history keeps
                 // its answer as JSON text, avoiding an unanswered tool call.
@@ -453,7 +461,7 @@ pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLo
     }
     for (response, reported) in completions(log).iter().zip(reported) {
         assert_eq!(
-            response.usage.reasoning_tokens, reported,
+            response.end.meta.usage.reasoning_tokens, reported,
             "{}: record usage equals the provider's witnessed counter",
             cell.name
         );

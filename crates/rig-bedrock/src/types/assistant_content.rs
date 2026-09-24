@@ -153,9 +153,18 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
         let has_tool_call = choice.iter().any(AssistantContent::is_tool_call);
 
         Ok(completion::CompletionResponse {
-            provider_request_id,
-            finish_reason: Some(finish_reason.reconcile_with_output(has_tool_call)),
-            ..completion::CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
+            choice,
+            end: completion::CompletionEnd {
+                finish_reason: Some(finish_reason.reconcile_with_output(has_tool_call)),
+                ..completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    provider_request_id,
+                    usage,
+                    raw,
+                    ..rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new(
+                        PROVIDER_NAME,
+                    )?)
+                })
+            },
         })
     }
 }

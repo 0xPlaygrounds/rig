@@ -4100,44 +4100,48 @@
               "text": "The history of the Rust programming language is a remarkable journey from a personal side project to a cornerstone of modern systems engineering. Born out of frustration with the limitations of existing languages, Rust has evolved into a tool that promises to solve the perennial conflict between memory safety and performance, fundamentally altering how developers approach low-level programming.\n\nThe story begins in 2006 with Graydon Hoare, a software engineer at Mozilla. Hoare started designing Rust as a personal project, driven by a desire to create a language that offered the control of C++ without its notorious susceptibility to memory errors, such as null pointer dereferences and buffer overflows. Named after the robust group of fungi known for their resilience, the language was intended to be \"safe, concurrent, and practical.\" By 2009, Mozilla recognized the potential in Hoare's work and began sponsoring the project, providing the resources necessary to transition Rust from an experimental concept into a viable industrial tool.\n\nThe early years of Rust were defined by intense experimentation. Between 2009 and 2012, the language underwent radical transformations. The type system, memory model, and syntax shifted frequently as the core team searched for the right balance between expressiveness and safety. A pivotal moment arrived with the introduction of the \"borrow checker,\" a compile-time mechanism that enforces strict rules about how memory is accessed. This innovation allowed Rust to guarantee memory safety without requiring a garbage collector, a feature that distinguished it from languages like Java or Go and made it suitable for systems programming where latency and resource usage are critical.\n\nIn 2012, the developers announced the first milestone: Rust 0.1. However, the path to stability was long. For several years, the language remained in a pre-1.0 state, characterized by breaking changes that frustrated early adopters but were necessary to refine the language's core semantics. During this period, the community grew around the concept of \"fearless concurrency,\" allowing programmers to write parallel code without the dread of data races. The development process itself was also innovative, embracing an open-source model where RFCs (Requests for Comments) allowed the community to shape the language's future.\n\nThe turning point came on May 15, 2015, with the release of Rust 1.0. This launch signified a commitment to backward compatibility; code written for version 1.0 would continue to compile on all future versions. This stability guarantee was crucial for enterprise adoption. Following this release, Rust began to gain traction in industries where reliability is paramount. Companies like Dropbox, Cloudflare, and Microsoft started integrating Rust into their infrastructure to rewrite performance-critical components, citing significant reductions in bugs and security vulnerabilities.\n\nRecognition followed adoption. In 2016, Rust won the \"Most Loved Programming Language\" survey on Stack Overflow, a title it would hold for seven consecutive years. This accolade reflected not just its technical merits but also its vibrant, inclusive community and exceptional documentation, particularly \"The Rust Programming Language\" book, often affectionately called \"The Book.\"\n\nAs the 2020s progressed, Rust's influence expanded beyond niche systems programming. In 2021, the Linux kernel maintainers accepted Rust as the second official language for kernel development, a historic endorsement validating its safety guarantees in one of the most complex software environments in existence. Furthermore, major tech giants like Google and Microsoft have increasingly advocated for Rust as a replacement for C and C++ to mitigate security risks, with the White House even urging developers to adopt memory-safe languages like Rust.\n\nToday, Rust stands as a mature, powerful language that has successfully challenged the status quo of systems programming. From Graydon Hoare's initial vision to its current status as an industry standard, Rust's history is a testament to the power of rethinking fundamental computer science problems. It has proven that high performance and memory safety are not mutually exclusive, paving the way for a more secure and reliable software future."
             }
           ],
-          "usage": {
-            "input_tokens": 43,
-            "output_tokens": 815,
-            "total_tokens": 858,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 43,
-              "completion_tokens": 815,
-              "total_tokens": 858,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
+              "usage": {
+                "input_tokens": 43,
+                "output_tokens": 815,
+                "total_tokens": 858,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 43,
+                  "completion_tokens": 815,
+                  "total_tokens": 858,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk"
+                }
+              }
             }
           }
         }
@@ -10648,44 +10652,46 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 43,
-            "output_tokens": 815,
-            "total_tokens": 858,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 43,
-              "completion_tokens": 815,
-              "total_tokens": 858,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+            "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
+            "usage": {
+              "input_tokens": 43,
+              "output_tokens": 815,
+              "total_tokens": 858,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 43,
+                "completion_tokens": 815,
+                "total_tokens": 858,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790145997-Ybzytu9v2p2HiM1UuClT",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk"
+              }
             }
           }
         }

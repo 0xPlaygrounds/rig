@@ -19,7 +19,7 @@ use futures::{Stream, StreamExt};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framing, NdjsonFramer, SseFramer};
 use crate::http_client::{self, HttpClientExt};
-use crate::id::RequestId;
+use crate::id::{ProviderName, RequestId};
 use crate::observe::{AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterSlot};
 use crate::providers::internal::wire::WireEvent;
 use crate::telemetry::SpanCombinator;
@@ -64,15 +64,19 @@ where
     Op: Operation,
     D: Decoder<Op, F>,
 {
-    /// A driver over one reply, without observation.
-    pub fn new(decoder: D) -> Self {
-        Self::observed(decoder, None)
+    /// A driver over one reply from `provider`, without observation.
+    pub fn new(provider: &ProviderName, decoder: D) -> Self {
+        Self::observed(provider, decoder, None)
     }
 
-    pub(crate) fn observed(decoder: D, observation: Option<AdapterSlot>) -> Self {
+    pub(crate) fn observed(
+        provider: &ProviderName,
+        decoder: D,
+        observation: Option<AdapterSlot>,
+    ) -> Self {
         Self {
             decoder,
-            out: Op::Output::default(),
+            out: Op::Output::for_reply(provider),
             ready: Vec::new(),
             frames: 0,
             observation,
@@ -80,6 +84,12 @@ where
             laws: Default::default(),
             frame: std::marker::PhantomData,
         }
+    }
+
+    /// Record the reply's transport request id, once its headers arrived and
+    /// before its frames: the terminal record carries it.
+    pub fn set_request_id(&mut self, request_id: Option<RequestId>) {
+        self.out.set_request_id(request_id);
     }
 
     /// Whether the provider's genuine terminal already arrived: the driver
@@ -227,14 +237,26 @@ where
 
 /// Drives already-framed completion events through a decoder until termination.
 /// Transport errors flush delivered content before the error; EOF invokes the
-/// decoder's finish policy. HTTP framing and observation are not supplied here.
-pub fn run_wire_stream<D, F, S>(transport: S, decoder: D) -> crate::streaming::StreamingResult
+/// decoder's finish policy. HTTP framing and observation are not supplied here:
+/// the caller's transport supplies the provider and the transport request id
+/// the terminal record carries. An empty `provider` yields one error item.
+pub fn run_wire_stream<D, F, S>(
+    provider: &str,
+    request_id: Option<RequestId>,
+    transport: S,
+    decoder: D,
+) -> crate::streaming::StreamingResult
 where
     D: Decoder<crate::operation::Completion, F> + WasmCompatSend + 'static,
     F: WasmCompatSend + 'static,
     S: Stream<Item = Result<F, ProviderError>> + WasmCompatSend + 'static,
 {
-    let mut driver = WireDriver::<crate::operation::Completion, _, F>::new(decoder);
+    let provider = match ProviderName::new(provider) {
+        Ok(provider) => provider,
+        Err(error) => return Box::pin(futures::stream::once(async move { Err(error.into()) })),
+    };
+    let mut driver = WireDriver::<crate::operation::Completion, _, F>::new(&provider, decoder);
+    driver.set_request_id(request_id);
     Box::pin(async_stream::stream! {
         let mut transport = Box::pin(transport);
         while let Some(frame) = transport.next().await {
@@ -390,6 +412,7 @@ where
             observation.install(attempt);
         }
         let mut page = WireDriver::<W::Op, _>::observed(
+            &reply.provider,
             // Each page is read completely, so unary mode treats EOF as a
             // complete answer rather than an interrupted stream.
             wire.decoder(Mode::Unary),
@@ -437,6 +460,7 @@ where
             return Err(error);
         }
 
+        page.set_request_id(page_reply.provider_request_id.clone());
         // Frame the reply the way a stream is framed, and project each
         // payload rather than the body: they are the same bytes only when
         // the framing is `Whole`, and a wire whose unary reply is an event
@@ -532,10 +556,9 @@ where
 
     let request_id = reply.provider_request_id.clone();
     let response = fold.finish(reply)?;
-    if let Some(meta) = <W::Op as Operation>::meta(&response) {
-        span.record_meta(meta);
+    if let Some(recorded) = <W::Op as Operation>::recorded(&response) {
+        span.record_meta(recorded);
     }
-    <W::Op as Operation>::record(span, &response);
     record_request_id(span, request_id.as_deref());
     Ok(response)
 }
@@ -583,8 +606,11 @@ where
 
     let http = http.clone();
     let observation = context.as_ref().map(|_| AdapterSlot::default());
-    let mut driver =
-        WireDriver::<W::Op, _>::observed(wire.decoder(Mode::Streaming), observation.clone());
+    let mut driver = WireDriver::<W::Op, _>::observed(
+        &provider_name(wire)?,
+        wire.decoder(Mode::Streaming),
+        observation.clone(),
+    );
     let recording = span.clone();
     // Read here rather than inside the stream: `wire` is borrowed, and the
     // generated stream outlives this call.
@@ -646,6 +672,7 @@ where
         }
         let request_id = request_id_from(response.headers(), request_id_header);
         record_request_id(&recording, request_id.as_deref());
+        driver.set_request_id(request_id.clone());
         let mut body = response.into_body();
         let mut framer = Framer::new(framing);
         while let Some(chunk) = body.next().await {
@@ -693,18 +720,20 @@ where
     Ok(tracing_futures::Instrument::instrument(frames, span))
 }
 
-/// Stamp the transport request id captured off the reply onto a terminal
-/// event or a preserved provider error. An id an upstream constructor
-/// already attached is never replaced: it saw the reply that carried it.
+/// Record a terminal event's metadata on the call's span, and stamp the
+/// transport request id captured off the reply onto a preserved provider
+/// error. An id an upstream constructor already attached is never replaced:
+/// it saw the reply that carried it.
 fn stamped<W: Wire>(
     item: Result<Event<W>, ProviderError>,
     request_id: &Option<RequestId>,
     span: &tracing::Span,
 ) -> Result<Event<W>, ProviderError> {
     match item {
-        Ok(mut event) => {
-            <W::Op as Operation>::stamp_request_id(&mut event, request_id);
-            <W::Op as Operation>::record_event(span, &event);
+        Ok(event) => {
+            if let Some(recorded) = <W::Op as Operation>::recorded_event(&event) {
+                span.record_meta(recorded);
+            }
             Ok(event)
         }
         Err(error) => {
@@ -717,8 +746,8 @@ fn stamped<W: Wire>(
 
 /// The wire's provider name. A wire that names none cannot attribute a
 /// response, so the call fails before anything is sent.
-fn provider_name<W: Wire>(wire: &W) -> Result<crate::id::ProviderName, ProviderError> {
-    Ok(crate::id::ProviderName::new(wire.name())?)
+fn provider_name<W: Wire>(wire: &W) -> Result<ProviderName, ProviderError> {
+    Ok(ProviderName::new(wire.name())?)
 }
 
 /// Drop request content no issuer this wire accepts for the request's model

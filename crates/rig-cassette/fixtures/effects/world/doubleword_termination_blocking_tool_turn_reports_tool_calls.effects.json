@@ -153,65 +153,69 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 317,
-            "output_tokens": 35,
-            "total_tokens": 352,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_46b1b26c-bb72-45a3-9bcb-a27639110e23",
-          "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 2, \"y\": 3}",
-                        "name": "add"
-                      },
-                      "id": "chatcmpl-tool-b346e368cd32f490",
-                      "type": "function"
-                    }
-                  ]
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_46b1b26c-bb72-45a3-9bcb-a27639110e23",
-            "model": "Qwen/Qwen3.5-9B",
-            "object": "chat.completion",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 35,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-9B",
+              "response_id": "resp_46b1b26c-bb72-45a3-9bcb-a27639110e23",
+              "usage": {
+                "input_tokens": 317,
+                "output_tokens": 35,
+                "total_tokens": 352,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 317,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 352
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\": 2, \"y\": 3}",
+                            "name": "add"
+                          },
+                          "id": "chatcmpl-tool-b346e368cd32f490",
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_46b1b26c-bb72-45a3-9bcb-a27639110e23",
+                "model": "Qwen/Qwen3.5-9B",
+                "object": "chat.completion",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 35,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 317,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 352
+                }
+              }
             }
           }
         }
@@ -349,56 +353,60 @@
               "text": "2 + 3 = 5"
             }
           ],
-          "usage": {
-            "input_tokens": 370,
-            "output_tokens": 8,
-            "total_tokens": 378,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_d069c531-905b-44e3-82d2-7d0e9be3cc2c",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "content": "2 + 3 = 5",
-                  "refusal": null,
-                  "role": "assistant"
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_d069c531-905b-44e3-82d2-7d0e9be3cc2c",
-            "model": "Qwen/Qwen3.5-9B",
-            "object": "chat.completion",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 8,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-9B",
+              "response_id": "resp_d069c531-905b-44e3-82d2-7d0e9be3cc2c",
+              "usage": {
+                "input_tokens": 370,
+                "output_tokens": 8,
+                "total_tokens": 378,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 370,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 378
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "content": "2 + 3 = 5",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_d069c531-905b-44e3-82d2-7d0e9be3cc2c",
+                "model": "Qwen/Qwen3.5-9B",
+                "object": "chat.completion",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 8,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 370,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 378
+                }
+              }
             }
           }
         }

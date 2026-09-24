@@ -121,65 +121,69 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 336,
-            "output_tokens": 31,
-            "total_tokens": 367,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_b6cb484c-1479-403c-9a35-f23322e3ba7e",
-          "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"q\": \"What is the capital of France?\"}",
-                        "name": "lookup"
-                      },
-                      "id": "call_d344dec1864846f18b0e8f0e",
-                      "type": "function"
-                    }
-                  ]
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_b6cb484c-1479-403c-9a35-f23322e3ba7e",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "object": "chat.completion",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 31,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "resp_b6cb484c-1479-403c-9a35-f23322e3ba7e",
+              "usage": {
+                "input_tokens": 336,
+                "output_tokens": 31,
+                "total_tokens": 367,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 336,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 367
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"q\": \"What is the capital of France?\"}",
+                            "name": "lookup"
+                          },
+                          "id": "call_d344dec1864846f18b0e8f0e",
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_b6cb484c-1479-403c-9a35-f23322e3ba7e",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "object": "chat.completion",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 31,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 336,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 367
+                }
+              }
             }
           }
         }
@@ -256,65 +260,69 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 27,
-            "output_tokens": 142,
-            "total_tokens": 169,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 119
-          },
-          "response_id": "resp_f7ddc373-9da4-4863-b5c9-fe5ed11264ea",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "content": "Paris",
-                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-                  "reasoning_details": [
-                    {
-                      "format": "unknown",
-                      "index": 0,
-                      "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-                      "type": "reasoning.text"
-                    }
-                  ],
-                  "refusal": null,
-                  "role": "assistant"
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_f7ddc373-9da4-4863-b5c9-fe5ed11264ea",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "object": "chat.completion",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 142,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "resp_f7ddc373-9da4-4863-b5c9-fe5ed11264ea",
+              "usage": {
+                "input_tokens": 27,
+                "output_tokens": 142,
+                "total_tokens": 169,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 119
               },
-              "prompt_tokens": 27,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 169
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "content": "Paris",
+                      "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
+                      "reasoning_details": [
+                        {
+                          "format": "unknown",
+                          "index": 0,
+                          "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
+                          "type": "reasoning.text"
+                        }
+                      ],
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_f7ddc373-9da4-4863-b5c9-fe5ed11264ea",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "object": "chat.completion",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 142,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 119
+                  },
+                  "prompt_tokens": 27,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 169
+                }
+              }
             }
           }
         }
@@ -424,56 +432,60 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 385,
-            "output_tokens": 2,
-            "total_tokens": 387,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_f6321732-6ebd-47e5-8bfa-8a00017e6a8c",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "content": "Paris",
-                  "refusal": null,
-                  "role": "assistant"
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_f6321732-6ebd-47e5-8bfa-8a00017e6a8c",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "object": "chat.completion",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 2,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "resp_f6321732-6ebd-47e5-8bfa-8a00017e6a8c",
+              "usage": {
+                "input_tokens": 385,
+                "output_tokens": 2,
+                "total_tokens": 387,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 385,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 387
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "content": "Paris",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_f6321732-6ebd-47e5-8bfa-8a00017e6a8c",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "object": "chat.completion",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 2,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 385,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 387
+                }
+              }
             }
           }
         }

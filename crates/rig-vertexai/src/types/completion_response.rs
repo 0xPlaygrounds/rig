@@ -1,13 +1,14 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::completion::{CompletionResponse, Usage};
+use rig_core::completion::{CompletionEnd, CompletionResponse, Usage};
 use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
 };
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
+use rig_core::response::ResponseMeta;
 use serde::{Deserialize, Serialize};
 
 /// Vertex AI's SDK reply, returned by
@@ -182,10 +183,18 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
         let has_tool_call = choice.iter().any(AssistantContent::is_tool_call);
 
         Ok(CompletionResponse {
-            finish_reason: finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call)),
-            model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
-            response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
-            ..CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
+            choice,
+            end: CompletionEnd {
+                finish_reason: finish_reason
+                    .map(|reason| reason.reconcile_with_output(has_tool_call)),
+                ..CompletionEnd::new(ResponseMeta {
+                    model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
+                    response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
+                    usage,
+                    raw,
+                    ..ResponseMeta::new(rig_core::id::ProviderName::new(PROVIDER_NAME)?)
+                })
+            },
         })
     }
 }

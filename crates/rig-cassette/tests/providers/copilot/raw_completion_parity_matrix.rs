@@ -115,29 +115,29 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     // mapping now, so the typed parse is compared field by field against the
     // folded response rather than re-derived through a second implementation
     // of it.
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
+    let typed = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the chat route's own reply body");
     chat::assert_native_matches_normalized(&response, &typed, "the chat route's own body");
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.end.meta.provider, COPILOT_PROVIDER);
     // The native comparison pins the reason to the body's word; this cell
     // also pins which word a plain answer carries.
-    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
     // Both ids come from the same live reply, so this compares exactly in
     // either cassette mode.
     assert_eq!(
         Some(typed.id.as_str()),
-        response.identity().response_id.as_deref()
+        response.end.meta.response_id.as_deref()
     );
 
     let bodies = recorded_json_bodies(scenario);
     assert_eq!(bodies.len(), 1, "{scenario}: expected one recorded turn");
     assert_contracted_request_id(
-        response.identity().provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         recorded_request_id(scenario, 0).as_deref(),
         REQUEST_ID_HEADER,
     );
     assert_eq!(
-        response.raw, bodies[0],
+        response.end.meta.raw, bodies[0],
         "`raw` is the recorded reply body, verbatim"
     );
 }
@@ -167,28 +167,28 @@ async fn responses_raw_completion_carries_request_id() {
     .expect("responses_raw_completion_carries_request_id should replay from its cassette");
 
     let response = captured.take();
-    let typed = responses_api::CompletionResponse::deserialize(&response.raw)
+    let typed = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the Responses route's own reply body");
     responses::assert_native_matches_normalized(
         &response,
         &typed,
         "the Responses route's own body",
     );
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.end.meta.provider, COPILOT_PROVIDER);
     assert_eq!(
         Some(typed.id.as_str()),
-        response.identity().response_id.as_deref()
+        response.end.meta.response_id.as_deref()
     );
 
     let bodies = recorded_json_bodies(scenario);
     assert_eq!(bodies.len(), 1, "{scenario}: expected one recorded turn");
     assert_contracted_request_id(
-        response.identity().provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         recorded_request_id(scenario, 0).as_deref(),
         REQUEST_ID_HEADER,
     );
     assert_eq!(
-        response.raw, bodies[0],
+        response.end.meta.raw, bodies[0],
         "`raw` is the recorded reply body, verbatim"
     );
 }

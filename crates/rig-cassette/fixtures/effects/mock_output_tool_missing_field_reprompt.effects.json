@@ -100,35 +100,39 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-1"
-                },
-                "provider": {
-                  "call_id": "call-1"
-                },
-                "function": {
-                  "name": "final_result",
-                  "arguments": {
-                    "title": "Seattle Rust Meetup",
-                    "category": "Technology"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-1"
+                    },
+                    "provider": {
+                      "call_id": "call-1"
+                    },
+                    "function": {
+                      "name": "final_result",
+                      "arguments": {
+                        "title": "Seattle Rust Meetup",
+                        "category": "Technology"
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }
@@ -250,36 +254,40 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-2"
-                },
-                "provider": {
-                  "call_id": "call-2"
-                },
-                "function": {
-                  "name": "final_result",
-                  "arguments": {
-                    "title": "Seattle Rust Meetup",
-                    "category": "Technology",
-                    "summary": "A meetup."
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-2"
+                    },
+                    "provider": {
+                      "call_id": "call-2"
+                    },
+                    "function": {
+                      "name": "final_result",
+                      "arguments": {
+                        "title": "Seattle Rust Meetup",
+                        "category": "Technology",
+                        "summary": "A meetup."
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }

@@ -4,8 +4,8 @@
 //! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
 //! streaming path — bytes → decode → normalize → aggregated
 //! [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse)
-//! — and asserts the [`StreamFinal`] contract
-//! table documented on that type. Scenarios state the contract; a per-provider
+//! — and asserts the terminal contract documented on
+//! [`StreamEvent::Final`]. Scenarios state the contract; a per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
 //! the same event differently.
 //!
@@ -28,11 +28,12 @@ use futures::future::BoxFuture;
 use crate::error::ProviderError;
 use crate::streaming::BlockId;
 use crate::{
+    completion::CompletionEnd,
     completion::FinishReason,
     error::ErrorReport,
     http_client,
     message::AssistantContent,
-    streaming::{Delta, StreamEvent, StreamFinal},
+    streaming::{Delta, StreamEvent},
 };
 
 /// Typed failure from a wire-conformance scenario.
@@ -575,7 +576,7 @@ pub struct DrainedStream {
     /// The final aggregated assistant message.
     pub choice: Vec<AssistantContent>,
     /// The normalized terminal record, absent on truncation or terminal error.
-    pub response: Option<StreamFinal>,
+    pub response: Option<CompletionEnd>,
 }
 
 impl DrainedStream {
@@ -1035,7 +1036,7 @@ pub async fn transport_error_after_tool_call_yields_err_then_end(
 /// surface as an `Err` item while the stream keeps consuming, so the terminal
 /// still completes it.
 ///
-/// Pins the malformed-frame policy row of the [`StreamFinal`] contract table
+/// Pins the malformed-frame policy row of the [`CompletionEnd`] contract table
 /// (round four, `rig-2257-code-review-findings-1e5a7ad8.md`).
 pub async fn malformed_frame_surfaces_err_and_terminal_still_completes(
     fixture: &ProviderWireFixture,
@@ -1320,7 +1321,7 @@ pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
 /// usage metrics must complete with no counter reported rather than being
 /// suppressed or invented.
 ///
-/// Pins the absent-usage contract on [`StreamFinal::usage`]
+/// Pins the absent-usage contract on [`CompletionEnd::usage`]
 /// (round one, `rig-2257-code-review-findings-ec9f2625.md`).
 pub async fn usage_variants_are_reported_or_absent(
     fixture: &ProviderWireFixture,
@@ -1337,11 +1338,11 @@ pub async fn usage_variants_are_reported_or_absent(
         .as_ref()
         .ok_or_else(|| checks.fail("the genuine terminal must produce a record"))?;
     checks.require(
-        response.usage.total_tokens == Some(fixture.expected_usage_total),
+        response.meta.usage.total_tokens == Some(fixture.expected_usage_total),
         || {
             format!(
                 "terminal usage must be preserved: expected total {}, observed {:?}",
-                fixture.expected_usage_total, response.usage.total_tokens
+                fixture.expected_usage_total, response.meta.usage.total_tokens
             )
         },
     )?;
@@ -1365,10 +1366,10 @@ pub async fn usage_variants_are_reported_or_absent(
         let response = drained.response.as_ref().ok_or_else(|| {
             checks.fail("a usage-less genuine terminal must still complete the stream")
         })?;
-        checks.require(!response.usage.is_reported(), || {
+        checks.require(!response.meta.usage.is_reported(), || {
             format!(
                 "missing usage metrics must leave every counter unreported, not invented: {:?}",
-                response.usage
+                response.meta.usage
             )
         })?;
         checks.note("usage-less terminal completed with no counter reported");

@@ -217,7 +217,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // normalized cell below reads rig's.
             let response = model.completion(request(&model, cell)).await?;
             Observation {
-                text: provider_text(&response.raw)?,
+                text: provider_text(&response.end.meta.raw)?,
                 saw_terminal: true,
             }
         }
@@ -230,7 +230,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
         }
         (Transport::Streaming, Surface::Raw) => {
             // The raw surface is the same event stream; the native terminal
-            // record rides on `StreamFinal::raw`, so the raw cell asserts the
+            // record rides on `CompletionEnd::raw`, so the raw cell asserts the
             // terminal decodes back to the chat-completions native type.
             let mut stream = model.stream(request(&model, cell)).await?;
             let mut observation = Observation {
@@ -246,7 +246,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
                     StreamEvent::Final(record) => {
                         serde_json::from_value::<
                             openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
-                        >(record.raw.clone())?;
+                        >(record.meta.raw.clone())?;
                         observation.saw_terminal = true;
                     }
                     _ => {}

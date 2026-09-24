@@ -151,39 +151,43 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 56,
-            "output_tokens": 10,
-            "total_tokens": 66,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
-          "provider_request_id": "req_0f2e9021319d467f9aa1872146863a9f",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 56,
-              "completion_tokens": 10,
-              "total_tokens": 66,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
+          "end": {
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "0P9weTfe7",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_33e21cda63"
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
+              "provider_request_id": "req_0f2e9021319d467f9aa1872146863a9f",
+              "usage": {
+                "input_tokens": 56,
+                "output_tokens": 10,
+                "total_tokens": 66,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 56,
+                  "completion_tokens": 10,
+                  "total_tokens": 66,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  }
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
+                "model": "gpt-4.1-mini-2025-04-14",
+                "additional_params": {
+                  "created": 0,
+                  "obfuscation": "0P9weTfe7",
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "system_fingerprint": "fp_33e21cda63"
+                }
+              }
             }
           }
         }
@@ -230,39 +234,41 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 56,
-            "output_tokens": 10,
-            "total_tokens": 66,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "tool_calls",
-          "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
-          "provider_request_id": "req_0f2e9021319d467f9aa1872146863a9f",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 56,
-              "completion_tokens": 10,
-              "total_tokens": 66,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
+          "meta": {
+            "provider": "openai",
             "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "0P9weTfe7",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_33e21cda63"
+            "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
+            "provider_request_id": "req_0f2e9021319d467f9aa1872146863a9f",
+            "usage": {
+              "input_tokens": 56,
+              "output_tokens": 10,
+              "total_tokens": 66,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 56,
+                "completion_tokens": 10,
+                "total_tokens": 66,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                }
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "additional_params": {
+                "created": 0,
+                "obfuscation": "0P9weTfe7",
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "system_fingerprint": "fp_33e21cda63"
+              }
             }
           }
         }

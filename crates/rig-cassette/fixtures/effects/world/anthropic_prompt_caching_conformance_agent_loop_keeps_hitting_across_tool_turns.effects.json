@@ -156,55 +156,59 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 3,
-            "output_tokens": 70,
-            "total_tokens": 5242,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 5169
-          },
-          "message_id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
-          "provider_request_id": "req_011CfLcfjWC7qDTPefp8MSLs",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "I'll look up the cache policy for 'prefix' first.",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcfjWC7qDTPefp8MSLs",
+              "usage": {
+                "input_tokens": 3,
+                "output_tokens": 70,
+                "total_tokens": 5242,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 5169
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01JymV3VoERZLkz5t9qVkicm",
-                "input": {
-                  "topic": "prefix"
-                },
-                "name": "lookup_cache_policy",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "I'll look up the cache policy for 'prefix' first.",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01JymV3VoERZLkz5t9qVkicm",
+                    "input": {
+                      "topic": "prefix"
+                    },
+                    "name": "lookup_cache_policy",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 5169
+                  },
+                  "cache_creation_input_tokens": 5169,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 3,
+                  "output_tokens": 70,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 5169
-              },
-              "cache_creation_input_tokens": 5169,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 3,
-              "output_tokens": 70,
-              "service_tier": "standard"
             }
           }
         }
@@ -353,55 +357,59 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1,
-            "output_tokens": 71,
-            "total_tokens": 5340,
-            "cached_input_tokens": 5169,
-            "cache_creation_input_tokens": 99
-          },
-          "message_id": "msg_011CfLcftRDqbZg3AekDvDdE",
-          "provider_request_id": "req_011CfLcfsygUabTJ13udR97G",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now I'll look up the cache policy for 'breakpoint'.",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcftRDqbZg3AekDvDdE",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcfsygUabTJ13udR97G",
+              "usage": {
+                "input_tokens": 1,
+                "output_tokens": 71,
+                "total_tokens": 5340,
+                "cached_input_tokens": 5169,
+                "cache_creation_input_tokens": 99
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq",
-                "input": {
-                  "topic": "breakpoint"
-                },
-                "name": "lookup_cache_policy",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now I'll look up the cache policy for 'breakpoint'.",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq",
+                    "input": {
+                      "topic": "breakpoint"
+                    },
+                    "name": "lookup_cache_policy",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcftRDqbZg3AekDvDdE",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 99
+                  },
+                  "cache_creation_input_tokens": 99,
+                  "cache_read_input_tokens": 5169,
+                  "inference_geo": "global",
+                  "input_tokens": 1,
+                  "output_tokens": 71,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcftRDqbZg3AekDvDdE",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 99
-              },
-              "cache_creation_input_tokens": 99,
-              "cache_read_input_tokens": 5169,
-              "inference_geo": "global",
-              "input_tokens": 1,
-              "output_tokens": 71,
-              "service_tier": "standard"
             }
           }
         }
@@ -582,44 +590,48 @@
               "text": "cache probe ready"
             }
           ],
-          "usage": {
-            "input_tokens": 1,
-            "output_tokens": 6,
-            "total_tokens": 5374,
-            "cached_input_tokens": 5268,
-            "cache_creation_input_tokens": 99
-          },
-          "message_id": "msg_011CfLcg23Mpzqj51sfCebrC",
-          "provider_request_id": "req_011CfLcg1a5nQAw6AfAzaPcg",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "cache probe ready",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcg23Mpzqj51sfCebrC",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 99
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcg23Mpzqj51sfCebrC",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcg1a5nQAw6AfAzaPcg",
+              "usage": {
+                "input_tokens": 1,
+                "output_tokens": 6,
+                "total_tokens": 5374,
+                "cached_input_tokens": 5268,
+                "cache_creation_input_tokens": 99
               },
-              "cache_creation_input_tokens": 99,
-              "cache_read_input_tokens": 5268,
-              "inference_geo": "global",
-              "input_tokens": 1,
-              "output_tokens": 6,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "cache probe ready",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcg23Mpzqj51sfCebrC",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 99
+                  },
+                  "cache_creation_input_tokens": 99,
+                  "cache_read_input_tokens": 5268,
+                  "inference_geo": "global",
+                  "input_tokens": 1,
+                  "output_tokens": 6,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

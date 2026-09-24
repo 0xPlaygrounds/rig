@@ -75,12 +75,12 @@ async fn raw_round_trips_venice_type() {
     .expect("raw_round_trips_venice_type should replay from its cassette");
     let response = sink.take();
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = venice::CompletionResponse::deserialize(raw)
         .expect("raw is Venice's own CompletionResponse");
     assert_eq!(
         Some(typed.openai.id.as_str()),
-        response.response_id.as_deref()
+        response.end.meta.response_id.as_deref()
     );
 
     // `raw` is the document Venice sent, not a re-serialization of `typed`:
@@ -134,7 +134,7 @@ async fn raw_exposes_venice_parameters_and_cost() {
         .as_f64()
         .expect("Venice reports what the request cost");
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(
         raw["venice_parameters"]["disable_thinking"],
         json!(recorded_echo)
@@ -166,13 +166,13 @@ async fn normalized_fields_match_raw_renormalized() {
     chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
     // Venice contracts no request-id header, so `None` is the documented
     // outcome.
-    assert_no_request_id(response.provider_request_id.as_deref(), "Venice");
+    assert_no_request_id(response.end.meta.provider_request_id.as_deref(), "Venice");
 
     // The other half: the provider-native fields of the captured payload are
     // the ones the decoder normalized. There is one mapping now, so this pins
     // it against Venice's own vocabulary rather than against a copy of
     // itself.
-    let typed = venice::CompletionResponse::deserialize(&response.raw)
+    let typed = venice::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is Venice's own CompletionResponse");
     chat::assert_native_matches_normalized(&response, &typed.openai, "the typed view of raw");
 }

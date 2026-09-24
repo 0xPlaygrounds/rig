@@ -125,10 +125,10 @@ pub async fn run<M, R>(
         .map(|values| values.clone())
         .unwrap_or_default();
     let observed = Observed {
-        unary: unary.provider_request_id.map(String::from),
-        unary_raw: unary.raw,
-        streamed: terminal.provider_request_id.map(String::from),
-        streamed_raw: terminal.raw,
+        unary: unary.end.meta.provider_request_id.map(String::from),
+        unary_raw: unary.end.meta.raw,
+        streamed: terminal.meta.provider_request_id.map(String::from),
+        streamed_raw: terminal.meta.raw,
         error: error.provider_request_id().map(str::to_owned),
         spans,
     };

@@ -132,58 +132,62 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 448,
-            "output_tokens": 109,
-            "total_tokens": 557,
-            "cached_input_tokens": 256,
-            "reasoning_tokens": 37
-          },
-          "response_id": "44466694-d359-4524-89b1-4a38983aa084",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "reasoning_content": "We need answer. We need extract structured data. Use submit. Fields: name, age, profession. Jane Smith, 45, data scientist. Must call submit even with defaults.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"name\": \"Jane Smith\", \"age\": 45, \"profession\": \"data scientist\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_00_UxZtz2IMskWA9Q93SIle5900",
-                      "index": 0,
-                      "type": "function"
-                    }
-                  ]
-                }
-              }
-            ],
-            "created": 0,
-            "id": "44466694-d359-4524-89b1-4a38983aa084",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 109,
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "44466694-d359-4524-89b1-4a38983aa084",
+              "usage": {
+                "input_tokens": 448,
+                "output_tokens": 109,
+                "total_tokens": 557,
+                "cached_input_tokens": 256,
                 "reasoning_tokens": 37
               },
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 192,
-              "prompt_tokens": 448,
-              "prompt_tokens_details": {
-                "cached_tokens": 256
-              },
-              "total_tokens": 557
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "We need answer. We need extract structured data. Use submit. Fields: name, age, profession. Jane Smith, 45, data scientist. Must call submit even with defaults.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"name\": \"Jane Smith\", \"age\": 45, \"profession\": \"data scientist\"}",
+                            "name": "submit"
+                          },
+                          "id": "call_00_UxZtz2IMskWA9Q93SIle5900",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "44466694-d359-4524-89b1-4a38983aa084",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 109,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 37
+                  },
+                  "prompt_cache_hit_tokens": 256,
+                  "prompt_cache_miss_tokens": 192,
+                  "prompt_tokens": 448,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 256
+                  },
+                  "total_tokens": 557
+                }
+              }
             }
           }
         }

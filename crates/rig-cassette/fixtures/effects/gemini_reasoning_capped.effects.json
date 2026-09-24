@@ -83,44 +83,48 @@
               "provider": "gcp.gemini"
             }
           ],
-          "usage": {
-            "input_tokens": 29,
-            "total_tokens": 42,
-            "reasoning_tokens": 13
-          },
-          "response_id": "m3izas7GOPufz7IP8q3P6AU",
-          "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "m3izas7GOPufz7IP8q3P6AU",
+              "usage": {
+                "input_tokens": 29,
+                "total_tokens": 42,
+                "reasoning_tokens": 13
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "Okay, here's my take on those thoughts, tailored for an expert audience:\n\n**Rust and the Memory Safety Dance**\n\nRight, so the Rust thing is buzzing again, and my mind keeps circling back to its core promise: memory safety without sacrificing performance. I'm thinking about it in the context of [Your Field of Expertise - e.g., high-performance computing, embedded systems, concurrent programming, etc.]. The whole borrow checker concept is, frankly, brilliant – a static analysis system that prevents the vast majority of those gnarly memory bugs we've all chased down at 3 AM. It’s elegant and it really does solve problems that are endemic to other systems, but it's really the price you pay. The real trick is whether this approach scales to very large code bases. I'm also really interested in seeing how the community is responding to the potential for run-time errors even with the compiler-enforced safety.\n\nI keep returning to its implications for [Specific Application Area related to your field]. The zero-cost abstractions are impressive on paper, but I’m keen to dig into the actual runtime overhead in production environments. We've all seen performance claims that don't hold up under real-world scrutiny. The ownership model is a fascinating paradigm shift, but it also has its own learning curve, which means it will take some time to see how the software that is being produced in Rust evolves in the long-term.\n\n\n",
+                          "thought": true
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "MAX_TOKENS",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3-flash-preview",
+                "responseId": "m3izas7GOPufz7IP8q3P6AU",
+                "usageMetadata": {
+                  "promptTokenCount": 29,
+                  "promptTokensDetails": [
                     {
-                      "text": "Okay, here's my take on those thoughts, tailored for an expert audience:\n\n**Rust and the Memory Safety Dance**\n\nRight, so the Rust thing is buzzing again, and my mind keeps circling back to its core promise: memory safety without sacrificing performance. I'm thinking about it in the context of [Your Field of Expertise - e.g., high-performance computing, embedded systems, concurrent programming, etc.]. The whole borrow checker concept is, frankly, brilliant – a static analysis system that prevents the vast majority of those gnarly memory bugs we've all chased down at 3 AM. It’s elegant and it really does solve problems that are endemic to other systems, but it's really the price you pay. The real trick is whether this approach scales to very large code bases. I'm also really interested in seeing how the community is responding to the potential for run-time errors even with the compiler-enforced safety.\n\nI keep returning to its implications for [Specific Application Area related to your field]. The zero-cost abstractions are impressive on paper, but I’m keen to dig into the actual runtime overhead in production environments. We've all seen performance claims that don't hold up under real-world scrutiny. The ownership model is a fascinating paradigm shift, but it also has its own learning curve, which means it will take some time to see how the software that is being produced in Rust evolves in the long-term.\n\n\n",
-                      "thought": true
+                      "modality": "TEXT",
+                      "tokenCount": 29
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "MAX_TOKENS",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-3-flash-preview",
-            "responseId": "m3izas7GOPufz7IP8q3P6AU",
-            "usageMetadata": {
-              "promptTokenCount": 29,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 29
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 13,
+                  "totalTokenCount": 42
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 13,
-              "totalTokenCount": 42
+              }
             }
           }
         }

@@ -381,88 +381,92 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1079,
-            "output_tokens": 192,
-            "total_tokens": 1271,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaZnAsHFz7j4p3GME9",
-          "provider_request_id": "req_011CfLcaZNrULoNpzodeQU3C",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "I'll start by reading the four files in parallel as requested.",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcaZnAsHFz7j4p3GME9",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcaZNrULoNpzodeQU3C",
+              "usage": {
+                "input_tokens": 1079,
+                "output_tokens": 192,
+                "total_tokens": 1271,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01VGxUhWH1D9BfezQSw37Kg6",
-                "input": {
-                  "path": "tests/basic.rs"
-                },
-                "name": "read_file",
-                "type": "tool_use"
-              },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01UUaMRiUxJKtorMsvY1tFwZ",
-                "input": {
-                  "path": "src/lib.rs"
-                },
-                "name": "read_file",
-                "type": "tool_use"
-              },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01VKGtjUNBXXB2yyKMwMGyyj",
-                "input": {
-                  "path": "src/calendar.rs"
-                },
-                "name": "read_file",
-                "type": "tool_use"
-              },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01HKDa213r3PBEmhkYjpxKgd",
-                "input": {
-                  "path": "docs/DESIGN.md"
-                },
-                "name": "read_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "I'll start by reading the four files in parallel as requested.",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01VGxUhWH1D9BfezQSw37Kg6",
+                    "input": {
+                      "path": "tests/basic.rs"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01UUaMRiUxJKtorMsvY1tFwZ",
+                    "input": {
+                      "path": "src/lib.rs"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01VKGtjUNBXXB2yyKMwMGyyj",
+                    "input": {
+                      "path": "src/calendar.rs"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01HKDa213r3PBEmhkYjpxKgd",
+                    "input": {
+                      "path": "docs/DESIGN.md"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcaZnAsHFz7j4p3GME9",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1079,
+                  "output_tokens": 192,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcaZnAsHFz7j4p3GME9",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1079,
-              "output_tokens": 192,
-              "service_tier": "standard"
             }
           }
         }
@@ -831,53 +835,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1561,
-            "output_tokens": 49,
-            "total_tokens": 1610,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcahbxERyNy3nG4Zkky",
-          "provider_request_id": "req_011CfLcah8BjGwpzWnu2Ai4W",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me run the tests to see which assertions fail:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcahbxERyNy3nG4Zkky",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcah8BjGwpzWnu2Ai4W",
+              "usage": {
+                "input_tokens": 1561,
+                "output_tokens": 49,
+                "total_tokens": 1610,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_017JD1aRaaNbV8Ltxca54dc1",
-                "input": {},
-                "name": "run_tests",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me run the tests to see which assertions fail:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_017JD1aRaaNbV8Ltxca54dc1",
+                    "input": {},
+                    "name": "run_tests",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcahbxERyNy3nG4Zkky",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1561,
+                  "output_tokens": 49,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcahbxERyNy3nG4Zkky",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1561,
-              "output_tokens": 49,
-              "service_tier": "standard"
             }
           }
         }
@@ -1214,56 +1222,60 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1787,
-            "output_tokens": 151,
-            "total_tokens": 1938,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcami2EZAb6zrMAXnuK",
-          "provider_request_id": "req_011CfLcamGidq8WG8AVvXohs",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "The first failing assertion is in `src/lib.rs` where `days_in_year()` returns 360 but should return 365. Let me fix that:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcami2EZAb6zrMAXnuK",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcamGidq8WG8AVvXohs",
+              "usage": {
+                "input_tokens": 1787,
+                "output_tokens": 151,
+                "total_tokens": 1938,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01WynPAp9G6nsq6j9jK6UgDT",
-                "input": {
-                  "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
-                  "path": "src/lib.rs"
-                },
-                "name": "write_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The first failing assertion is in `src/lib.rs` where `days_in_year()` returns 360 but should return 365. Let me fix that:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01WynPAp9G6nsq6j9jK6UgDT",
+                    "input": {
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                      "path": "src/lib.rs"
+                    },
+                    "name": "write_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcami2EZAb6zrMAXnuK",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1787,
+                  "output_tokens": 151,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcami2EZAb6zrMAXnuK",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1787,
-              "output_tokens": 151,
-              "service_tier": "standard"
             }
           }
         }
@@ -1646,53 +1658,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1961,
-            "output_tokens": 45,
-            "total_tokens": 2006,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcauAEgCV5KPQVYreFv",
-          "provider_request_id": "req_011CfLcatgTPXRYqGyBwRDso",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me run the tests again:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcauAEgCV5KPQVYreFv",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcatgTPXRYqGyBwRDso",
+              "usage": {
+                "input_tokens": 1961,
+                "output_tokens": 45,
+                "total_tokens": 2006,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01TAZsuTh9XKVmA3ccYrfsAU",
-                "input": {},
-                "name": "run_tests",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me run the tests again:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01TAZsuTh9XKVmA3ccYrfsAU",
+                    "input": {},
+                    "name": "run_tests",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcauAEgCV5KPQVYreFv",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1961,
+                  "output_tokens": 45,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcauAEgCV5KPQVYreFv",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1961,
-              "output_tokens": 45,
-              "service_tier": "standard"
             }
           }
         }
@@ -2124,56 +2140,60 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 2192,
-            "output_tokens": 143,
-            "total_tokens": 2335,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaxj43ykWMfr9QNuEe",
-          "provider_request_id": "req_011CfLcaxGWiSm4wwSpWxKmM",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now the second test is failing. The `days_in_week()` function in `src/calendar.rs` returns 8 but should return 7. Let me fix that:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcaxj43ykWMfr9QNuEe",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcaxGWiSm4wwSpWxKmM",
+              "usage": {
+                "input_tokens": 2192,
+                "output_tokens": 143,
+                "total_tokens": 2335,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01DpVxhp9RgYZCdUtNspb7Ww",
-                "input": {
-                  "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
-                  "path": "src/calendar.rs"
-                },
-                "name": "write_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now the second test is failing. The `days_in_week()` function in `src/calendar.rs` returns 8 but should return 7. Let me fix that:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01DpVxhp9RgYZCdUtNspb7Ww",
+                    "input": {
+                      "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
+                      "path": "src/calendar.rs"
+                    },
+                    "name": "write_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcaxj43ykWMfr9QNuEe",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 2192,
+                  "output_tokens": 143,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcaxj43ykWMfr9QNuEe",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 2192,
-              "output_tokens": 143,
-              "service_tier": "standard"
             }
           }
         }
@@ -2651,53 +2671,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 2358,
-            "output_tokens": 45,
-            "total_tokens": 2403,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcb5ohAEL4DTcsw7F65",
-          "provider_request_id": "req_011CfLcb5LuWxvDCuppRqCX5",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me run the tests again:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcb5ohAEL4DTcsw7F65",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcb5LuWxvDCuppRqCX5",
+              "usage": {
+                "input_tokens": 2358,
+                "output_tokens": 45,
+                "total_tokens": 2403,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01XFfCBy685uWWaY6G3GcSzb",
-                "input": {},
-                "name": "run_tests",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me run the tests again:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01XFfCBy685uWWaY6G3GcSzb",
+                    "input": {},
+                    "name": "run_tests",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcb5ohAEL4DTcsw7F65",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 2358,
+                  "output_tokens": 45,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcb5ohAEL4DTcsw7F65",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 2358,
-              "output_tokens": 45,
-              "service_tier": "standard"
             }
           }
         }
@@ -3207,44 +3231,48 @@
               "text": "done"
             }
           ],
-          "usage": {
-            "input_tokens": 2476,
-            "output_tokens": 4,
-            "total_tokens": 2480,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcb9VwMCWVEFMntwPEa",
-          "provider_request_id": "req_011CfLcb92AVre5NwXeenBGY",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "done",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcb9VwMCWVEFMntwPEa",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcb9VwMCWVEFMntwPEa",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcb92AVre5NwXeenBGY",
+              "usage": {
+                "input_tokens": 2476,
+                "output_tokens": 4,
+                "total_tokens": 2480,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 2476,
-              "output_tokens": 4,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "done",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcb9VwMCWVEFMntwPEa",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 2476,
+                  "output_tokens": 4,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

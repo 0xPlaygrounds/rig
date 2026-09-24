@@ -30,7 +30,10 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
         map.entry("type").or_insert_with(|| json!("message"));
     }
     let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
+    let mut driver = WireDriver::<Completion, _>::new(
+        &crate::id::ProviderName::new(wire.name()).expect("a provider name"),
+        wire.decoder(crate::wire::Mode::Unary),
+    );
     driver.push(WireFrame::Text(body.to_string()));
     driver.finish();
     let mut fold = <Completion as Operation>::fold(&hello_request());
@@ -2606,11 +2609,11 @@ fn empty_end_turn_response_normalizes_to_an_empty_choice() {
     // same turn, said honestly. Everything else about the response is
     // unchanged, which is the point of asserting it here.
     assert!(parsed.choice.is_empty());
-    assert_eq!(parsed.provider, "anthropic");
-    assert_eq!(parsed.message_id.as_deref(), Some("msg_123"));
-    assert_eq!(parsed.model.as_deref(), Some(CLAUDE_SONNET_4_6));
+    assert_eq!(parsed.end.meta.provider, "anthropic");
+    assert_eq!(parsed.end.message_id.as_deref(), Some("msg_123"));
+    assert_eq!(parsed.end.meta.model.as_deref(), Some(CLAUDE_SONNET_4_6));
     assert_eq!(
-        parsed.finish_reason.clone(),
+        parsed.end.finish_reason.clone(),
         Some(completion::FinishReason::Stop)
     );
 }
@@ -2680,7 +2683,7 @@ fn empty_stop_sequence_response_naming_its_sequence_is_a_completed_turn() {
 
     assert!(parsed.choice.is_empty());
     assert_eq!(
-        parsed.finish_reason.clone(),
+        parsed.end.finish_reason.clone(),
         Some(completion::FinishReason::Stop)
     );
 }
@@ -2754,7 +2757,7 @@ fn end_turn_with_a_tool_call_is_reconciled_to_tool_calls() {
         .expect("tool-use response should fold");
 
     assert_eq!(
-        parsed.finish_reason.clone(),
+        parsed.end.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
 }
@@ -3049,7 +3052,7 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
     ));
 
     let round_trip: Message = message::Message::Assistant {
-        id: converted.message_id.clone().map(String::from),
+        id: converted.end.message_id.clone().map(String::from),
         content: converted.choice,
     }
     .try_into()
@@ -3113,7 +3116,7 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
     );
 
     let round_trip: Message = message::Message::Assistant {
-        id: converted.message_id.map(String::from),
+        id: converted.end.message_id.map(String::from),
         content: converted.choice,
     }
     .try_into()
@@ -3216,7 +3219,7 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
     );
 
     let round_trip: Message = message::Message::Assistant {
-        id: converted.message_id.map(String::from),
+        id: converted.end.message_id.map(String::from),
         content: converted.choice,
     }
     .try_into()
@@ -3596,7 +3599,7 @@ mod raw_capture {
             .await
             .expect("completion");
 
-        let raw = &response.raw;
+        let raw = &response.end.meta.raw;
         assert_eq!(
             raw["type"], "message",
             "raw must be the verbatim reply, tag included"
@@ -3618,15 +3621,21 @@ mod raw_capture {
             raw.get("provider_request_id").is_none(),
             "the document carries no transport id"
         );
-        assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
+        assert_eq!(
+            response.end.meta.provider_request_id.as_deref(),
+            Some(REQUEST_ID)
+        );
 
         // The normalized response reports the reason and drops which
         // sequence fired — the whole reason `raw` is worth capturing.
         assert_eq!(
-            response.finish_reason.clone(),
+            response.end.finish_reason.clone(),
             Some(completion::FinishReason::Stop)
         );
-        assert_eq!(response.model.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(
+            response.end.meta.model.as_deref(),
+            Some("claude-sonnet-4-6")
+        );
     }
 }
 

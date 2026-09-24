@@ -17,7 +17,7 @@ async fn blocking_contract_captures_none() {
                 .send()
                 .await
                 .expect("completion should succeed");
-            assert_eq!(response.provider_request_id, None);
+            assert_eq!(response.end.meta.provider_request_id, None);
         },
     )
     .await;

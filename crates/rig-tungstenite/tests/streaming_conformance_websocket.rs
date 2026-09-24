@@ -113,7 +113,18 @@ async fn drain_openai_responses_websocket_events(
     };
 
     let mut accumulator = RawChoiceAccumulator::new(provider, None);
-    let mut out = AdapterOutput::new();
+    // The session's driver attributes the reply to the wire's provider name.
+    let mut out = match rig_core::id::ProviderName::new(provider) {
+        Ok(name) => AdapterOutput::new(name),
+        Err(error) => {
+            let failed: Vec<Result<_, ProviderError>> = vec![Err(error.into())];
+            let stream = rig_core::streaming::StreamingCompletionResponse::stream(
+                provider,
+                Box::pin(futures::stream::iter(failed)),
+            );
+            return conformance::fixtures::drain(stream).await;
+        }
+    };
     let mut errored = false;
     for event in events {
         match event {

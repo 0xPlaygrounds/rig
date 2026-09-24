@@ -225,34 +225,38 @@
               "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
             }
           ],
-          "usage": {
-            "input_tokens": 96,
-            "output_tokens": 33,
-            "total_tokens": 129,
-            "cached_input_tokens": 0
-          },
-          "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 96,
-              "completion_tokens": 33,
-              "total_tokens": 129,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 96
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
-            "model": "deepseek-flash",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
+              "usage": {
+                "input_tokens": 96,
+                "output_tokens": 33,
+                "total_tokens": 129,
+                "cached_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 96,
+                  "completion_tokens": 33,
+                  "total_tokens": 129,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 96
+                },
+                "finish_reason": "stop",
+                "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
+                "model": "deepseek-flash",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+                }
+              }
             }
           }
         }
@@ -531,34 +535,36 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 96,
-            "output_tokens": 33,
-            "total_tokens": 129,
-            "cached_input_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 96,
-              "completion_tokens": 33,
-              "total_tokens": 129,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 96
-            },
-            "finish_reason": "stop",
-            "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
+          "meta": {
+            "provider": "deepseek",
             "model": "deepseek-flash",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+            "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
+            "usage": {
+              "input_tokens": 96,
+              "output_tokens": 33,
+              "total_tokens": 129,
+              "cached_input_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 96,
+                "completion_tokens": 33,
+                "total_tokens": 129,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 96
+              },
+              "finish_reason": "stop",
+              "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
+              "model": "deepseek-flash",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+              }
             }
           }
         }

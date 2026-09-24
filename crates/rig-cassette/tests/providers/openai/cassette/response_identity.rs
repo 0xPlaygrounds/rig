@@ -32,14 +32,16 @@ async fn responses_nonstreaming_carries_identity() {
 
             assert!(
                 response
+                    .end
+                    .meta
                     .response_id
                     .as_deref()
                     .is_some_and(|id| id.starts_with("resp")),
                 "Responses API reports resp_ ids, got {:?}",
-                response.response_id
+                response.end.meta.response_id
             );
             assert_request_id(
-                response.provider_request_id.as_deref(),
+                response.end.meta.provider_request_id.as_deref(),
                 "responses blocking",
             );
         },
@@ -68,7 +70,7 @@ async fn responses_streaming_carries_identity() {
             }
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_request_id(
-                terminal.provider_request_id.as_deref(),
+                terminal.meta.provider_request_id.as_deref(),
                 "responses streaming terminal",
             );
         },
@@ -90,13 +92,18 @@ async fn chat_completions_nonstreaming_carries_identity() {
 
             assert!(
                 response
+                    .end
+                    .meta
                     .response_id
                     .as_deref()
                     .is_some_and(|id| id.starts_with("chatcmpl")),
                 "Chat Completions reports chatcmpl- ids, got {:?}",
-                response.response_id
+                response.end.meta.response_id
             );
-            assert_request_id(response.provider_request_id.as_deref(), "chat blocking");
+            assert_request_id(
+                response.end.meta.provider_request_id.as_deref(),
+                "chat blocking",
+            );
         },
     )
     .await;
@@ -123,7 +130,7 @@ async fn chat_completions_streaming_carries_identity() {
             }
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_request_id(
-                terminal.provider_request_id.as_deref(),
+                terminal.meta.provider_request_id.as_deref(),
                 "chat streaming terminal",
             );
         },
@@ -158,14 +165,17 @@ async fn agent_tool_run_reports_per_attempt_identity() {
             let turns = probe.turn_identities();
             assert!(turns.len() >= 2, "tool run makes at least two calls");
             for turn in &turns {
-                assert_request_id(turn.provider_request_id.as_deref(), "turn identity");
+                assert_request_id(turn.meta.provider_request_id.as_deref(), "turn identity");
             }
-            assert_ne!(turns[0].provider_request_id, turns[1].provider_request_id);
+            assert_ne!(
+                turns[0].meta.provider_request_id,
+                turns[1].meta.provider_request_id
+            );
             let calls = &response.completion_calls;
             assert_eq!(calls.len(), turns.len());
             for (call, turn) in calls.iter().zip(&turns) {
-                assert_eq!(call.provider_request_id, turn.provider_request_id);
-                assert_eq!(call.response_id, turn.response_id);
+                assert_eq!(call.provider_request_id, turn.meta.provider_request_id);
+                assert_eq!(call.response_id, turn.meta.response_id);
             }
         },
     )
@@ -201,7 +211,10 @@ async fn streamed_agent_run_reports_identity() {
 
             let turns = probe.turn_identities();
             assert_eq!(turns.len(), 1);
-            assert_request_id(turns[0].provider_request_id.as_deref(), "streamed turn");
+            assert_request_id(
+                turns[0].meta.provider_request_id.as_deref(),
+                "streamed turn",
+            );
             let finishes = probe.response_identities();
             assert_eq!(finishes.len(), 1);
             assert_eq!(finishes[0], turns[0]);

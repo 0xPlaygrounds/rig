@@ -393,10 +393,10 @@ async fn long_history_replay_nonstreaming() {
                 "answer should recall the replayed tool result, got {text:?}"
             );
             assert!(
-                response.usage.input_tokens.is_some_and(|n| n > 0)
-                    && response.usage.output_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.input_tokens.is_some_and(|n| n > 0)
+                    && response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated, got {:?}",
-                response.usage
+                response.end.meta.usage
             );
         },
     )

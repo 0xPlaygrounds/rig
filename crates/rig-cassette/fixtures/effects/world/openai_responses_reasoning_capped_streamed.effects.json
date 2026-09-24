@@ -105,43 +105,47 @@
               "provider": "openai"
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 0,
-            "total_tokens": 37,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
-          "provider_request_id": "req_754c1faf9b714535a2165baef9aa63e3",
-          "finish_reason": "length",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "input_tokens": 37,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 0,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
+              "provider_request_id": "req_754c1faf9b714535a2165baef9aa63e3",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 0,
+                "total_tokens": 37,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 37
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "low",
-              "mode": "standard",
-              "summary": "detailed"
-            },
-            "reasoning_context": "current_turn",
-            "status": "incomplete",
-            "incomplete_details": {
-              "reason": "max_output_tokens"
-            },
-            "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
-            "model": "gpt-5-mini-2025-08-07"
+              "raw": {
+                "usage": {
+                  "input_tokens": 37,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 0,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 37
+                },
+                "reasoning_metadata": {
+                  "context": "current_turn",
+                  "effort": "low",
+                  "mode": "standard",
+                  "summary": "detailed"
+                },
+                "reasoning_context": "current_turn",
+                "status": "incomplete",
+                "incomplete_details": {
+                  "reason": "max_output_tokens"
+                },
+                "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
+                "model": "gpt-5-mini-2025-08-07"
+              }
+            }
           }
         }
       },
@@ -183,43 +187,45 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 0,
-            "total_tokens": 37,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "length",
-          "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
-          "provider_request_id": "req_754c1faf9b714535a2165baef9aa63e3",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
+            "provider_request_id": "req_754c1faf9b714535a2165baef9aa63e3",
             "usage": {
               "input_tokens": 37,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 0,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "total_tokens": 37,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 37,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 37
               },
-              "total_tokens": 37
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "low",
-              "mode": "standard",
-              "summary": "detailed"
-            },
-            "reasoning_context": "current_turn",
-            "status": "incomplete",
-            "incomplete_details": {
-              "reason": "max_output_tokens"
-            },
-            "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
-            "model": "gpt-5-mini-2025-08-07"
+              "reasoning_metadata": {
+                "context": "current_turn",
+                "effort": "low",
+                "mode": "standard",
+                "summary": "detailed"
+              },
+              "reasoning_context": "current_turn",
+              "status": "incomplete",
+              "incomplete_details": {
+                "reason": "max_output_tokens"
+              },
+              "response_id": "resp_082af6be0dd7a3df006ab2b47d009087d08d8a318071f82f01",
+              "model": "gpt-5-mini-2025-08-07"
+            }
           }
         }
       ],

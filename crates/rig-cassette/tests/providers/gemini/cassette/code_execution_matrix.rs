@@ -392,7 +392,7 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
                 .await
                 .expect("a turn carrying code-execution parts must still convert");
 
-            let document = GenerateContentResponse::deserialize(&response.raw)
+            let document = GenerateContentResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is Gemini's own generateContent document");
             let parts = document
                 .candidates

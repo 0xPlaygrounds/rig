@@ -244,15 +244,8 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                         .await
                         .expect("never hangs")
                         .expect("the model");
-                run.model_response(ModelTurn::new(
-                    None,
-                    response.choice,
-                    response.usage,
-                    executable,
-                    allowed,
-                    response.raw,
-                ))
-                .expect("a model turn");
+                run.model_response(ModelTurn::new(response, executable, allowed))
+                    .expect("a model turn");
             }
             AgentRunStep::CallTools { calls } => {
                 let mut results = Vec::with_capacity(calls.len());

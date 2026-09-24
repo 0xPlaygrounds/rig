@@ -152,65 +152,69 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1093,
-            "output_tokens": 18,
-            "total_tokens": 1111
-          },
-          "response_id": "chatcmpl-RnqLp2PTBnuzUqC4h9rDLdIq",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "Lp35FBx56",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RnqLp2PTBnuzUqC4h9rDLdIq",
+              "usage": {
+                "input_tokens": 1093,
+                "output_tokens": 18,
+                "total_tokens": 1111
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\": 17, \"y\": 25}",
+                            "name": "add"
+                          },
+                          "id": "Lp35FBx56",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00010696875
+                },
+                "created": 0,
+                "id": "chatcmpl-RnqLp2PTBnuzUqC4h9rDLdIq",
+                "model": "mistral-small-3-2-24b-instruct",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 18,
+                  "prompt_tokens": 1093,
+                  "total_tokens": 1111
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.00010696875
-            },
-            "created": 0,
-            "id": "chatcmpl-RnqLp2PTBnuzUqC4h9rDLdIq",
-            "model": "mistral-small-3-2-24b-instruct",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 18,
-              "prompt_tokens": 1093,
-              "total_tokens": 1111
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }
@@ -344,56 +348,60 @@
               "text": "42"
             }
           ],
-          "usage": {
-            "input_tokens": 1133,
-            "output_tokens": 3,
-            "total_tokens": 1136
-          },
-          "response_id": "chatcmpl-RSHjLI8eLC8o83uWwbEHEAc7",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "42",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": []
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RSHjLI8eLC8o83uWwbEHEAc7",
+              "usage": {
+                "input_tokens": 1133,
+                "output_tokens": 3,
+                "total_tokens": 1136
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "42",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": []
+                    }
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00010696875000000001
+                },
+                "created": 0,
+                "id": "chatcmpl-RSHjLI8eLC8o83uWwbEHEAc7",
+                "model": "mistral-small-3-2-24b-instruct",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 3,
+                  "prompt_tokens": 1133,
+                  "total_tokens": 1136
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.00010696875000000001
-            },
-            "created": 0,
-            "id": "chatcmpl-RSHjLI8eLC8o83uWwbEHEAc7",
-            "model": "mistral-small-3-2-24b-instruct",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 3,
-              "prompt_tokens": 1133,
-              "total_tokens": 1136
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }

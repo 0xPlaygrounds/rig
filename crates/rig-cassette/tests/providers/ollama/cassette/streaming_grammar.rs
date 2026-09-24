@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Ollama's native chat wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`StreamingCompletionResponse::snapshot`], the terminal [`CompletionEnd`]
 //! record, usage, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -18,7 +18,8 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ToolCall};
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
+use rig_core::completion::CompletionEnd;
 
 use super::super::support::with_ollama_cassette;
 use crate::support::{
@@ -33,9 +34,9 @@ struct StreamRun {
     reasoning_blocks: Vec<Reasoning>,
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
+    finals: Vec<CompletionEnd>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionEnd>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
@@ -103,9 +104,9 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "unexpected finish reason"
     );
     assert!(
-        terminal.usage.total_tokens.is_some_and(|n| n > 0),
+        terminal.meta.usage.total_tokens.is_some_and(|n| n > 0),
         "terminal record should carry non-zero usage, got {:?}",
-        terminal.usage
+        terminal.meta.usage
     );
 }
 

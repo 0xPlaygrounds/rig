@@ -216,62 +216,66 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 180,
-            "output_tokens": 38,
-            "total_tokens": 298,
-            "reasoning_tokens": 80
-          },
-          "response_id": "Zq6yauiLLOGfqtsPpcP90AE",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
-                    {
-                      "functionCall": {
-                        "args": {
-                          "x": 12,
-                          "y": 8
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "Zq6yauiLLOGfqtsPpcP90AE",
+              "usage": {
+                "input_tokens": 180,
+                "output_tokens": 38,
+                "total_tokens": 298,
+                "reasoning_tokens": 80
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 12,
+                              "y": 8
+                            },
+                            "name": "add"
+                          },
+                          "thoughtSignature": "Ct4CAWkUfRNOnfzZlWMdtoTS92T5lWobSlWjxjpfTXzKW3LSOX6p3s5UebKE6GkxhmGti0EUrlFzlW0kIs6OTAiGFtBrsrnMI0BwNzmG2wQxExDbrk4ntPUMi/VJDprJbkI+sdsJPy4LhtNPFabOO/KkAeXJFEiq7qOzo8xRU+bmsXrpgPC3nQyH/wf22Id15AH99CuGKX1dEFMAJEAqyGCi79c2TXfFNurm1e7TZKJRMoxQgpS8Il5lPS1rbUZMfyiDlUDPkuaHKpwzpg8a3a4MLEsQJYfgHCqSHX4zf9I6vSyLO1aD+sDc81fNcwrMkbwQfBUjz6rKvsbGCNdcetL7SFlp3duPXfHXpwEt/UONjji3B/0ItRrjKqZEOgdM8UzgmSypyI1KzaV6RA3gXuKHH61wZBlAjaBVjawQGGfX/Frv+4qPvLvW6UUcCj6lA62BTtkwYpEUoYjZExcjrXM="
                         },
-                        "name": "add"
-                      },
-                      "thoughtSignature": "Ct4CAWkUfRNOnfzZlWMdtoTS92T5lWobSlWjxjpfTXzKW3LSOX6p3s5UebKE6GkxhmGti0EUrlFzlW0kIs6OTAiGFtBrsrnMI0BwNzmG2wQxExDbrk4ntPUMi/VJDprJbkI+sdsJPy4LhtNPFabOO/KkAeXJFEiq7qOzo8xRU+bmsXrpgPC3nQyH/wf22Id15AH99CuGKX1dEFMAJEAqyGCi79c2TXfFNurm1e7TZKJRMoxQgpS8Il5lPS1rbUZMfyiDlUDPkuaHKpwzpg8a3a4MLEsQJYfgHCqSHX4zf9I6vSyLO1aD+sDc81fNcwrMkbwQfBUjz6rKvsbGCNdcetL7SFlp3duPXfHXpwEt/UONjji3B/0ItRrjKqZEOgdM8UzgmSypyI1KzaV6RA3gXuKHH61wZBlAjaBVjawQGGfX/Frv+4qPvLvW6UUcCj6lA62BTtkwYpEUoYjZExcjrXM="
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 30,
+                              "y": 7
+                            },
+                            "name": "subtract"
+                          }
+                        }
+                      ],
+                      "role": "model"
                     },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "Zq6yauiLLOGfqtsPpcP90AE",
+                "usageMetadata": {
+                  "candidatesTokenCount": 38,
+                  "promptTokenCount": 180,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 30,
-                          "y": 7
-                        },
-                        "name": "subtract"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 180
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "Zq6yauiLLOGfqtsPpcP90AE",
-            "usageMetadata": {
-              "candidatesTokenCount": 38,
-              "promptTokenCount": 180,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 180
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 80,
+                  "totalTokenCount": 298
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 80,
-              "totalTokenCount": 298
+              }
             }
           }
         }
@@ -474,43 +478,47 @@
               "text": "The sum of 12 and 8 is 20. The difference of 30 and 7 is 23."
             }
           ],
-          "usage": {
-            "input_tokens": 244,
-            "output_tokens": 28,
-            "total_tokens": 272
-          },
-          "response_id": "Z66yau3jJ6foqtsPr97O0Ac",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "Z66yau3jJ6foqtsPr97O0Ac",
+              "usage": {
+                "input_tokens": 244,
+                "output_tokens": 28,
+                "total_tokens": 272
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The sum of 12 and 8 is 20. The difference of 30 and 7 is 23."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "Z66yau3jJ6foqtsPr97O0Ac",
+                "usageMetadata": {
+                  "candidatesTokenCount": 28,
+                  "promptTokenCount": 244,
+                  "promptTokensDetails": [
                     {
-                      "text": "The sum of 12 and 8 is 20. The difference of 30 and 7 is 23."
+                      "modality": "TEXT",
+                      "tokenCount": 244
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "Z66yau3jJ6foqtsPr97O0Ac",
-            "usageMetadata": {
-              "candidatesTokenCount": 28,
-              "promptTokenCount": 244,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 244
+                  "serviceTier": "standard",
+                  "totalTokenCount": 272
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 272
+              }
             }
           }
         }

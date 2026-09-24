@@ -414,7 +414,7 @@ pub(super) fn assert_history_records_sequential_tool_roundtrips(
 /// and the provider's model string can be checked — and it rides on the very
 /// response asserted beside it, so both views cost one cassette interaction.
 fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_nonempty_response(
         raw["id"]
             .as_str()
@@ -438,10 +438,10 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
         "raw DeepSeek choices should preserve finish reasons"
     );
     assert!(
-        response.usage.input_tokens.is_some_and(|n| n > 0)
-            && response.usage.output_tokens.is_some_and(|n| n > 0),
+        response.end.meta.usage.input_tokens.is_some_and(|n| n > 0)
+            && response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
         "usage should be populated: {:?}",
-        response.usage
+        response.end.meta.usage
     );
 }
 
@@ -836,15 +836,15 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 "DeepSeek reasoning response should preserve reasoning_content separately"
             );
             anyhow::ensure!(
-                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "core usage should preserve DeepSeek reasoning tokens: {:?}",
-                response.usage
+                response.end.meta.usage
             );
-            let raw_reasoning_tokens = response.raw["usage"]["completion_tokens_details"]
+            let raw_reasoning_tokens = response.end.meta.raw["usage"]["completion_tokens_details"]
                 ["reasoning_tokens"]
                 .as_u64();
             anyhow::ensure!(
-                response.usage.reasoning_tokens == raw_reasoning_tokens
+                response.end.meta.usage.reasoning_tokens == raw_reasoning_tokens
                     && raw_reasoning_tokens.is_some_and(|n| n > 0),
                 "usage reasoning tokens should match raw provider details"
             );
@@ -924,7 +924,12 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
                 "deepseek-reasoner alias should emit reasoning content"
             );
             anyhow::ensure!(
-                reasoner.usage.reasoning_tokens.is_some_and(|n| n > 0),
+                reasoner
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0),
                 "deepseek-reasoner usage should surface reasoning tokens"
             );
 

@@ -337,6 +337,12 @@ fn outcome_to_current(outcome: &mut Value) {
                 outcome,
                 &["message_id", "response_id", "provider_request_id", "model"],
             );
+            if let Some(fields) = outcome.as_object_mut() {
+                let mut end = Map::new();
+                move_fields(fields, &mut end, END_FIELDS);
+                nest_meta(fields, &mut end);
+                fields.insert("end".to_owned(), Value::Object(end));
+            }
         }
         Some("embeddings") => {
             if let Some(response) = outcome.get_mut("response") {
@@ -348,6 +354,36 @@ fn outcome_to_current(outcome: &mut Value) {
     }
 }
 
+/// The fields of a format-0 response that are the provider's metadata.
+const META_FIELDS: &[&str] = &[
+    "provider",
+    "model",
+    "response_id",
+    "provider_request_id",
+    "usage",
+    "raw",
+];
+
+/// The fields of a format-0 completion that say how it ended, beside its
+/// metadata.
+const END_FIELDS: &[&str] = &["finish_reason", "message_id", "reasoning_issuer"];
+
+/// Move each of `keys` present in `from` into `to`.
+fn move_fields(from: &mut Map<String, Value>, to: &mut Map<String, Value>, keys: &[&str]) {
+    for key in keys {
+        if let Some(value) = from.remove(*key) {
+            to.insert((*key).to_owned(), value);
+        }
+    }
+}
+
+/// Move the metadata fields of `from` under `to["meta"]`.
+fn nest_meta(from: &mut Map<String, Value>, to: &mut Map<String, Value>) {
+    let mut meta = Map::new();
+    move_fields(from, &mut meta, META_FIELDS);
+    to.insert("meta".to_owned(), Value::Object(meta));
+}
+
 /// A format-0 modality response in the current shape: its `output_key`
 /// field becomes `output`, and the metadata fields move under `meta`.
 /// Fields the envelope does not name (an outcome's tag) stay in place.
@@ -356,31 +392,26 @@ fn envelope(response: &mut Value, output_key: &str) {
     let Some(fields) = response.as_object_mut() else {
         return;
     };
-    let mut meta = Map::new();
-    for key in [
-        "provider",
-        "model",
-        "response_id",
-        "provider_request_id",
-        "usage",
-        "raw",
-    ] {
-        if let Some(value) = fields.remove(key) {
-            meta.insert(key.to_owned(), value);
-        }
-    }
     let output = fields.remove(output_key).unwrap_or(Value::Null);
+    let mut nested = Map::new();
+    nest_meta(fields, &mut nested);
     fields.insert("output".to_owned(), output);
-    fields.insert("meta".to_owned(), Value::Object(meta));
+    fields.extend(nested);
 }
 
-/// A format-0 stream event in the current shape.
+/// A format-0 stream event in the current shape: a terminal record's
+/// metadata moves under `meta`.
 fn event_to_current(event: &mut Value) {
     if event.get("event").and_then(Value::as_str) == Some("final") {
         drop_empty(
             event,
             &["message_id", "response_id", "provider_request_id", "model"],
         );
+        if let Some(fields) = event.as_object_mut() {
+            let mut nested = Map::new();
+            nest_meta(fields, &mut nested);
+            fields.extend(nested);
+        }
     }
 }
 

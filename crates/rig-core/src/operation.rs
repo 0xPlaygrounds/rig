@@ -37,14 +37,12 @@ pub struct One<Op: Operation> {
     items: Vec<Result<Op::Event, ProviderError>>,
 }
 
-impl<Op: Operation> Default for One<Op> {
-    fn default() -> Self {
-        Self { items: Vec::new() }
-    }
-}
-
 impl<Op: Operation> Sink<Op> for One<Op> {
     type Laws = ();
+
+    fn for_reply(_provider: &crate::id::ProviderName) -> Self {
+        Self { items: Vec::new() }
+    }
 
     fn push(&mut self, item: Result<Op::Event, ProviderError>) {
         self.items.push(item);

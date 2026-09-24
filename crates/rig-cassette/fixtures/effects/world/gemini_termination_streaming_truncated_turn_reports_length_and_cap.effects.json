@@ -105,30 +105,34 @@
               "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
             }
           ],
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 24,
-            "total_tokens": 52
-          },
-          "response_id": "qXizarW1Iof7qtsP-L2FkAU",
-          "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 28,
-              "candidatesTokenCount": 24,
-              "totalTokenCount": 52,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 28
-                }
-              ]
-            },
-            "finish_reason": "MAX_TOKENS",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizarW1Iof7qtsP-L2FkAU"
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "qXizarW1Iof7qtsP-L2FkAU",
+              "usage": {
+                "input_tokens": 28,
+                "output_tokens": 24,
+                "total_tokens": 52
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 28,
+                  "candidatesTokenCount": 24,
+                  "totalTokenCount": 52,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 28
+                    }
+                  ]
+                },
+                "finish_reason": "MAX_TOKENS",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "qXizarW1Iof7qtsP-L2FkAU"
+              }
+            }
           }
         }
       },
@@ -166,30 +170,32 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 24,
-            "total_tokens": 52
-          },
           "finish_reason": "length",
-          "response_id": "qXizarW1Iof7qtsP-L2FkAU",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 28,
-              "candidatesTokenCount": 24,
-              "totalTokenCount": 52,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 28
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "qXizarW1Iof7qtsP-L2FkAU",
+            "usage": {
+              "input_tokens": 28,
+              "output_tokens": 24,
+              "total_tokens": 52
             },
-            "finish_reason": "MAX_TOKENS",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizarW1Iof7qtsP-L2FkAU"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 28,
+                "candidatesTokenCount": 24,
+                "totalTokenCount": 52,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 28
+                  }
+                ]
+              },
+              "finish_reason": "MAX_TOKENS",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "qXizarW1Iof7qtsP-L2FkAU"
+            }
           }
         }
       ],

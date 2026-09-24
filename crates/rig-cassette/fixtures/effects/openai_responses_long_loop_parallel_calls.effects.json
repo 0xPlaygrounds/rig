@@ -267,198 +267,202 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 401,
-            "output_tokens": 83,
-            "total_tokens": 484,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8",
-          "provider_request_id": "req_e6316b979b0e46d792a9015a92eba96a",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"path\":\"tests/basic.rs\"}",
-                "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
-                "name": "read_file",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"path\":\"src/lib.rs\"}",
-                "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
-                "name": "read_file",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"path\":\"src/calendar.rs\"}",
-                "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
-                "name": "read_file",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"path\":\"docs/DESIGN.md\"}",
-                "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
-                "name": "read_file",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 401,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 83,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8",
+              "provider_request_id": "req_e6316b979b0e46d792a9015a92eba96a",
+              "usage": {
+                "input_tokens": 401,
+                "output_tokens": 83,
+                "total_tokens": 484,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 484
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"path\":\"tests/basic.rs\"}",
+                    "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                    "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                    "name": "read_file",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"path\":\"src/lib.rs\"}",
+                    "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                    "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                    "name": "read_file",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"path\":\"src/calendar.rs\"}",
+                    "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                    "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                    "name": "read_file",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                    "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                    "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                    "name": "read_file",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 401,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 83,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 484
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -821,174 +825,178 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 624,
-            "output_tokens": 11,
-            "total_tokens": 635,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd",
-          "provider_request_id": "req_154056eeaaf0425bbbeda716fd34c9bb",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{}",
-                "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
-                "name": "run_tests",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 624,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd",
+              "provider_request_id": "req_154056eeaaf0425bbbeda716fd34c9bb",
+              "usage": {
+                "input_tokens": 624,
+                "output_tokens": 11,
+                "total_tokens": 635,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 635
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{}",
+                    "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                    "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                    "name": "run_tests",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 624,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 11,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 635
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -1319,174 +1327,178 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 774,
-            "output_tokens": 53,
-            "total_tokens": 827,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae",
-          "provider_request_id": "req_5932ab93e1b8431188887b0b1fcc2edb",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
-                "name": "write_file",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 774,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 53,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae",
+              "provider_request_id": "req_5932ab93e1b8431188887b0b1fcc2edb",
+              "usage": {
+                "input_tokens": 774,
+                "output_tokens": 53,
+                "total_tokens": 827,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 827
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                    "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                    "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                    "name": "write_file",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 774,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 53,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 827
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -1860,174 +1872,178 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 844,
-            "output_tokens": 11,
-            "total_tokens": 855,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65",
-          "provider_request_id": "req_72db0c852eb34b2188386e72ee89bdfe",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{}",
-                "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
-                "name": "run_tests",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 844,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65",
+              "provider_request_id": "req_72db0c852eb34b2188386e72ee89bdfe",
+              "usage": {
+                "input_tokens": 844,
+                "output_tokens": 11,
+                "total_tokens": 855,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 855
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{}",
+                    "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
+                    "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
+                    "name": "run_tests",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 844,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 11,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 855
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -2447,174 +2463,178 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 917,
-            "output_tokens": 59,
-            "total_tokens": 976,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578",
-          "provider_request_id": "req_f1e96d0a72014d8cb3a752019d880072",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                "id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a",
-                "name": "write_file",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 917,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 59,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578",
+              "provider_request_id": "req_f1e96d0a72014d8cb3a752019d880072",
+              "usage": {
+                "input_tokens": 917,
+                "output_tokens": 59,
+                "total_tokens": 976,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 976
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                    "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
+                    "id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a",
+                    "name": "write_file",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 917,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 59,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 976
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -3077,174 +3097,178 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 993,
-            "output_tokens": 11,
-            "total_tokens": 1004,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff",
-          "provider_request_id": "req_55cd20ba07994fc9a0737fd981209f89",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{}",
-                "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                "id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02",
-                "name": "run_tests",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 993,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff",
+              "provider_request_id": "req_55cd20ba07994fc9a0737fd981209f89",
+              "usage": {
+                "input_tokens": 993,
+                "output_tokens": 11,
+                "total_tokens": 1004,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1004
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{}",
+                    "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
+                    "id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02",
+                    "name": "run_tests",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 993,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 11,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1004
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -3753,174 +3777,178 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1151,
-            "output_tokens": 47,
-            "total_tokens": 1198,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7",
-          "provider_request_id": "req_1bf3c62ae5094e61942e5c02b68c05d7",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
-                "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
-                "id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de",
-                "name": "write_file",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1151,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 47,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7",
+              "provider_request_id": "req_1bf3c62ae5094e61942e5c02b68c05d7",
+              "usage": {
+                "input_tokens": 1151,
+                "output_tokens": 47,
+                "total_tokens": 1198,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1198
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                    "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
+                    "id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de",
+                    "name": "write_file",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1151,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 47,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1198
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -4472,174 +4500,178 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1215,
-            "output_tokens": 11,
-            "total_tokens": 1226,
-            "cached_input_tokens": 1152,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_051d233ca58f0224006ab39695629087d0a662121ae8c03f0f",
-          "provider_request_id": "req_a582bbc346644dedaf6de7f4210e1716",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab39695629087d0a662121ae8c03f0f",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{}",
-                "call_id": "call_PEE038vzXE9U3NxYAUE3YY7D",
-                "id": "fc_051d233ca58f0224006ab39696388c87d0b6ed995ebd56292d",
-                "name": "run_tests",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1215,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1152
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab39695629087d0a662121ae8c03f0f",
+              "provider_request_id": "req_a582bbc346644dedaf6de7f4210e1716",
+              "usage": {
+                "input_tokens": 1215,
+                "output_tokens": 11,
+                "total_tokens": 1226,
+                "cached_input_tokens": 1152,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1226
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab39695629087d0a662121ae8c03f0f",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{}",
+                    "call_id": "call_PEE038vzXE9U3NxYAUE3YY7D",
+                    "id": "fc_051d233ca58f0224006ab39696388c87d0b6ed995ebd56292d",
+                    "name": "run_tests",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1215,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1152
+                  },
+                  "output_tokens": 11,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1226
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -5223,181 +5255,185 @@
               "text": "done"
             }
           ],
-          "usage": {
-            "input_tokens": 1282,
-            "output_tokens": 3,
-            "total_tokens": 1285,
-            "cached_input_tokens": 1152,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_051d233ca58f0224006ab3969764bc87d09b4c9d1cf8e6e5c0",
-          "response_id": "resp_051d233ca58f0224006ab39696c2b487d0a146478495d0737a",
-          "provider_request_id": "req_e2d8fec6775e4232a7c14bae1bb6f14e",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "access_programs": null,
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_051d233ca58f0224006ab39696c2b487d0a146478495d0737a",
-            "incomplete_details": null,
-            "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "done",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_051d233ca58f0224006ab3969764bc87d09b4c9d1cf8e6e5c0",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "List every file in the repository, one path per line.",
-                "name": "list_files",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "name": "read_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "name": "write_file",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "description": "The complete new text of the file.",
-                      "type": "string"
-                    },
-                    "path": {
-                      "description": "The file's path relative to the repository root.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "content"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "name": "run_tests",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {},
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1282,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1152
-              },
-              "output_tokens": 3,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_051d233ca58f0224006ab3969764bc87d09b4c9d1cf8e6e5c0",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_051d233ca58f0224006ab39696c2b487d0a146478495d0737a",
+              "provider_request_id": "req_e2d8fec6775e4232a7c14bae1bb6f14e",
+              "usage": {
+                "input_tokens": 1282,
+                "output_tokens": 3,
+                "total_tokens": 1285,
+                "cached_input_tokens": 1152,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1285
-            },
-            "user": null
+              "raw": {
+                "access_programs": null,
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_051d233ca58f0224006ab39696c2b487d0a146478495d0737a",
+                "incomplete_details": null,
+                "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "done",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_051d233ca58f0224006ab3969764bc87d09b4c9d1cf8e6e5c0",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "List every file in the repository, one path per line.",
+                    "name": "list_files",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+                    "name": "read_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "description": "The file's path relative to the repository root, e.g. src/lib.rs.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+                    "name": "write_file",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "content": {
+                          "description": "The complete new text of the file.",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "The file's path relative to the repository root.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+                    "name": "run_tests",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1282,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1152
+                  },
+                  "output_tokens": 3,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1285
+                },
+                "user": null
+              }
+            }
           }
         }
       }

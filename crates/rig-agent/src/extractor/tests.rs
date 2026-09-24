@@ -117,8 +117,8 @@ impl AgentHook for ExtractorResponseCapture {
         *self.snapshot.lock().expect("extractor response snapshot") = Some((
             prompt,
             response.choice.clone(),
-            response.usage,
-            response.message_id.clone().map(String::from),
+            response.end.meta.usage,
+            response.end.message_id.clone().map(String::from),
         ));
         OutcomeAction::proceed()
     }

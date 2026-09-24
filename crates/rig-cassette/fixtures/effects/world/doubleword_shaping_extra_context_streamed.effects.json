@@ -137,44 +137,48 @@
               "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
             }
           ],
-          "usage": {
-            "input_tokens": 75,
-            "output_tokens": 18,
-            "total_tokens": 93,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 75,
-              "completion_tokens": 18,
-              "total_tokens": 93,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
+              "usage": {
+                "input_tokens": 75,
+                "output_tokens": 18,
+                "total_tokens": 93,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 75,
+                  "completion_tokens": 18,
+                  "total_tokens": 93,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk"
+                }
+              }
             }
           }
         }
@@ -325,44 +329,46 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 75,
-            "output_tokens": 18,
-            "total_tokens": 93,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 75,
-              "completion_tokens": 18,
-              "total_tokens": 93,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
+            "usage": {
+              "input_tokens": 75,
+              "output_tokens": 18,
+              "total_tokens": 93,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 75,
+                "completion_tokens": 18,
+                "total_tokens": 93,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk"
+              }
             }
           }
         }

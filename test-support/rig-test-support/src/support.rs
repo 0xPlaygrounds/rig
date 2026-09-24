@@ -648,7 +648,7 @@ impl rig_agent::agent::AgentHook for TurnTerminationProbe {
         self.observations
             .lock()
             .expect("observations")
-            .push((event.finish_reason.cloned(), event.max_tokens));
+            .push((event.end.finish_reason.as_ref().cloned(), event.max_tokens));
         rig_agent::agent::ModelTurnAction::continue_run()
     }
 }
@@ -713,7 +713,9 @@ impl rig_agent::agent::AgentHook for EscalateCapOnTruncation {
         event: rig_agent::agent::ModelTurnFinished<'_>,
     ) -> rig_agent::agent::ModelTurnAction {
         let truncated = event
+            .end
             .finish_reason
+            .as_ref()
             .is_some_and(rig_agent::completion::FinishReason::truncated_output);
         // Retrying a turn carrying tool calls is rejected, so a policy that may
         // meet one has to check before asking.
@@ -758,7 +760,7 @@ pub async fn collect_stream_final_response(
 /// Drain the stream, propagating errors and requiring agent and provider final responses.
 pub async fn collect_stream_final_response_and_provider_final(
     stream: &mut StreamingResult,
-) -> Result<(String, rig_core::streaming::StreamFinal), StreamingError> {
+) -> Result<(String, rig_core::completion::CompletionEnd), StreamingError> {
     let mut final_response = None;
     let mut provider_final = None;
 
@@ -975,7 +977,7 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
 /// about what the terminal *carries* (a finish reason, usage) need it.
 pub async fn collect_text_and_terminal(
     mut stream: StreamingCompletionResponse,
-) -> (String, Option<rig_core::streaming::StreamFinal>) {
+) -> (String, Option<rig_core::completion::CompletionEnd>) {
     let mut text = String::new();
     let mut terminal = None;
 
@@ -1001,7 +1003,7 @@ pub async fn collect_text_and_terminal(
 /// [`collect_text_and_terminal`] reports it.
 pub async fn collect_required_terminal(
     stream: StreamingCompletionResponse,
-) -> rig_core::streaming::StreamFinal {
+) -> rig_core::completion::CompletionEnd {
     let (_, terminal) = collect_text_and_terminal(stream).await;
     terminal.expect("stream should end with a terminal record")
 }
@@ -1015,7 +1017,7 @@ pub async fn collect_required_terminal(
 /// keeps the last of several records.
 pub async fn collect_text_and_sole_terminal(
     mut stream: StreamingCompletionResponse,
-) -> (String, rig_core::streaming::StreamFinal) {
+) -> (String, rig_core::completion::CompletionEnd) {
     let mut text = String::new();
     let mut finals = Vec::new();
 
@@ -1046,7 +1048,7 @@ pub async fn collect_text_and_sole_terminal(
 /// back the last.
 pub async fn collect_sole_terminal(
     stream: StreamingCompletionResponse,
-) -> rig_core::streaming::StreamFinal {
+) -> rig_core::completion::CompletionEnd {
     collect_text_and_sole_terminal(stream).await.1
 }
 
@@ -1115,7 +1117,7 @@ pub fn assistant_text(choice: &[AssistantContent]) -> String {
 pub fn normalized_without_raw(
     mut response: rig_core::completion::CompletionResponse,
 ) -> serde_json::Value {
-    response.raw = serde_json::Value::Null;
+    response.end.meta.raw = serde_json::Value::Null;
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
@@ -1744,27 +1746,27 @@ pub fn assert_smoke_structured_output(output: &SmokeStructuredOutput) {
     assert_nonempty_response(&output.summary);
 }
 
-/// Shared identity-observing hook for the rig#2265 response-identity
-/// cassettes: captures each event's [`rig_agent::completion::ResponseIdentity`]
+/// Shared identity-observing hook for the response-identity cassettes:
+/// captures each event's [`CompletionEnd`](rig_core::completion::CompletionEnd)
 /// so provider suites can assert per-attempt identity on every observer
 /// surface. `CompletionResponse` fires once per accepted model turn on both
 /// drivers, so `responses` fills on blocking and streamed runs alike.
 #[derive(Clone, Default)]
 pub struct IdentityProbe {
-    /// Response identities captured at completion-response events.
-    pub responses: std::sync::Arc<std::sync::Mutex<Vec<rig_agent::completion::ResponseIdentity>>>,
-    /// Response identities captured at model-turn events.
-    pub turns: std::sync::Arc<std::sync::Mutex<Vec<rig_agent::completion::ResponseIdentity>>>,
+    /// Terminal records captured at completion-response events.
+    pub responses: std::sync::Arc<std::sync::Mutex<Vec<rig_core::completion::CompletionEnd>>>,
+    /// Terminal records captured at model-turn events.
+    pub turns: std::sync::Arc<std::sync::Mutex<Vec<rig_core::completion::CompletionEnd>>>,
 }
 
 impl IdentityProbe {
-    /// Return a snapshot of the model-turn response identities.
-    pub fn turn_identities(&self) -> Vec<rig_agent::completion::ResponseIdentity> {
+    /// Return a snapshot of the model-turn terminal records.
+    pub fn turn_identities(&self) -> Vec<rig_core::completion::CompletionEnd> {
         self.turns.lock().expect("turn identities").clone()
     }
 
-    /// Return a snapshot of the completion-response identities.
-    pub fn response_identities(&self) -> Vec<rig_agent::completion::ResponseIdentity> {
+    /// Return a snapshot of the completion-response terminal records.
+    pub fn response_identities(&self) -> Vec<rig_core::completion::CompletionEnd> {
         self.responses.lock().expect("response identities").clone()
     }
 }
@@ -1779,7 +1781,7 @@ impl rig_agent::agent::AgentHook for IdentityProbe {
             self.responses
                 .lock()
                 .expect("response identities")
-                .push(response.identity());
+                .push(response.end.clone());
         }
         rig_agent::agent::OutcomeAction::proceed()
     }
@@ -1792,7 +1794,7 @@ impl rig_agent::agent::AgentHook for IdentityProbe {
         self.turns
             .lock()
             .expect("turn identities")
-            .push(event.identity.clone());
+            .push(event.end.clone());
         rig_agent::agent::ModelTurnAction::continue_run()
     }
 }

@@ -14,11 +14,14 @@ use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
     completion::{CompletionModel, CompletionRequest, CompletionResponse, Usage},
-    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse, ToolCallEnd},
+    streaming::{BlockId, StreamEvent, StreamingCompletionResponse, ToolCallEnd},
     tool::{Tool, ToolContext},
 };
+use rig_core::completion::CompletionEnd;
 use rig_core::error::ProviderError;
+use rig_core::id::ProviderName;
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
+use rig_core::response::ResponseMeta;
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -32,16 +35,18 @@ fn response(
     provider: &'static str,
     choice: AssistantContent,
     total_tokens: u64,
-) -> CompletionResponse {
-    CompletionResponse {
-        message_id: rig_core::id::MessageId::non_empty(format!("{provider}-message")),
-        ..CompletionResponse::new(
-            vec![choice],
-            usage(total_tokens),
-            provider,
-            serde_json::json!({}),
-        )
-    }
+) -> Result<CompletionResponse, ProviderError> {
+    Ok(CompletionResponse {
+        choice: vec![choice],
+        end: CompletionEnd {
+            message_id: rig_core::id::MessageId::non_empty(format!("{provider}-message")),
+            ..CompletionEnd::new(ResponseMeta {
+                usage: usage(total_tokens),
+                raw: serde_json::json!({}),
+                ..ResponseMeta::new(ProviderName::new(provider)?)
+            })
+        },
+    })
 }
 
 #[derive(Clone)]
@@ -52,7 +57,7 @@ impl CompletionModel for FastResearchModel {
         &self,
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        Ok(response(
+        response(
             "fast",
             AssistantContent::ToolCall(ToolCall::from_wire(
                 "search-1",
@@ -62,7 +67,7 @@ impl CompletionModel for FastResearchModel {
                 ),
             )),
             3,
-        ))
+        )
     }
 
     async fn stream(
@@ -83,11 +88,11 @@ impl CompletionModel for FastResearchModel {
                     ),
                     block: None,
                 }),
-                Ok(StreamEvent::Final(StreamFinal::new(
-                    "fast",
-                    usage(3),
-                    serde_json::json!({}),
-                ))),
+                Ok(StreamEvent::Final(CompletionEnd::new(ResponseMeta {
+                    usage: usage(3),
+                    raw: serde_json::json!({}),
+                    ..ResponseMeta::new(ProviderName::new("fast")?)
+                }))),
             ])),
         ))
     }
@@ -110,7 +115,7 @@ impl CompletionModel for StrongSynthesisModel {
         } else {
             "The tool result was missing."
         };
-        Ok(response("strong", AssistantContent::text(answer), 5))
+        response("strong", AssistantContent::text(answer), 5)
     }
 
     async fn stream(
@@ -124,11 +129,11 @@ impl CompletionModel for StrongSynthesisModel {
                     BlockId::wire("text-1"),
                     "The strong model synthesized the committed search result.",
                 )),
-                Ok(StreamEvent::Final(StreamFinal::new(
-                    "strong",
-                    usage(5),
-                    serde_json::json!({}),
-                ))),
+                Ok(StreamEvent::Final(CompletionEnd::new(ResponseMeta {
+                    usage: usage(5),
+                    raw: serde_json::json!({}),
+                    ..ResponseMeta::new(ProviderName::new("strong")?)
+                }))),
             ])),
         ))
     }

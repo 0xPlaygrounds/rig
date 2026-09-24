@@ -214,7 +214,10 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
             .collect::<Vec<_>>()
     };
 
-    let mut first = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
+    let mut first = WireDriver::<ModelListing, _>::new(
+        &crate::id::ProviderName::new(wire.name()).expect("a provider name"),
+        wire.decoder(crate::wire::Mode::Unary),
+    );
     let mut listed = ids(&mut first, PAGE_ONE);
     let continuation = first.continuation().expect("page one named a cursor");
     assert_eq!(continuation.uri().path(), "/v1beta/models");
@@ -223,7 +226,10 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
         Some("pageSize=1000&pageToken=page-two&key=test-key"),
     );
 
-    let mut second = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
+    let mut second = WireDriver::<ModelListing, _>::new(
+        &crate::id::ProviderName::new(wire.name()).expect("a provider name"),
+        wire.decoder(crate::wire::Mode::Unary),
+    );
     listed.extend(ids(&mut second, PAGE_TWO));
 
     assert_eq!(

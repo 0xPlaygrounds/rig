@@ -529,7 +529,7 @@ impl Wire for Messages {
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        MessagesDecoder::new(self.provider.dialect.name)
+        MessagesDecoder::default()
     }
 
     fn capabilities(&self) -> ProviderCapabilities {

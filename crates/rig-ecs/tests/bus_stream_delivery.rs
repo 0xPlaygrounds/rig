@@ -1,6 +1,7 @@
 //! Independent live consumers and policy replay observe actual delivery batches.
 use crate::bus_support;
 use crate::run_support;
+use rig_core::completion::CompletionEnd;
 
 use bevy_ecs::prelude::*;
 use rig_core::{
@@ -8,7 +9,7 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor},
     error::{ErrorKind, ErrorReport},
     serve::{Dispatch, Reply, Serve},
-    streaming::{StreamEvent, StreamFinal},
+    streaming::StreamEvent,
 };
 use rig_ecs::bus::{EffectOutcome, PendingEffect, StreamItemsDelivered, Streamed};
 use std::sync::{Arc, Mutex};
@@ -56,10 +57,14 @@ impl Serve for WithErrors {
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter([
             Err(ErrorReport::new(ErrorKind::Response, "before final")),
-            Ok(StreamEvent::Final(StreamFinal::new(
-                "mock",
-                Usage::default(),
-                serde_json::json!({}),
+            Ok(StreamEvent::Final(CompletionEnd::new(
+                rig_core::response::ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                    )
+                },
             ))),
             Err(ErrorReport::new(ErrorKind::Provider, "after final")),
         ])))
@@ -269,10 +274,14 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
     enabled.store(true, std::sync::atomic::Ordering::SeqCst);
     sender.unbounded_send(text(" ω")).unwrap();
     sender
-        .unbounded_send(Ok(StreamEvent::Final(StreamFinal::new(
-            "mock",
-            Usage::default(),
-            serde_json::json!({}),
+        .unbounded_send(Ok(StreamEvent::Final(CompletionEnd::new(
+            rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                )
+            },
         ))))
         .unwrap();
     drop(sender);
@@ -436,10 +445,14 @@ fn empty_final_and_unary_stream_fold_have_distinct_delivery_contracts() {
             .world_mut()
             .spawn(PendingEffect::new("model", kind))
             .id();
-        let terminal = Ok(StreamEvent::Final(StreamFinal::new(
-            "mock",
-            Usage::default(),
-            serde_json::json!({}),
+        let terminal = Ok(StreamEvent::Final(CompletionEnd::new(
+            rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                )
+            },
         )));
         sender.unbounded_send(terminal.clone()).unwrap();
         drop(sender);
@@ -484,11 +497,13 @@ impl Serve for RetryingStream {
                 .unwrap();
             if !first {
                 writer
-                    .finish(StreamFinal::new(
-                        "mock",
-                        Usage::default(),
-                        serde_json::json!({}),
-                    ))
+                    .finish(CompletionEnd::new(rig_core::response::ResponseMeta {
+                        usage: Usage::default(),
+                        raw: serde_json::json!({}),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                        )
+                    }))
                     .await
                     .unwrap();
             }

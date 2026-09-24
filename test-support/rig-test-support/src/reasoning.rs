@@ -303,7 +303,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     mut inspect_final: F,
 ) where
     M: CompletionModel,
-    F: FnMut(&rig_core::streaming::StreamFinal),
+    F: FnMut(&rig_core::completion::CompletionEnd),
 {
     let turn1_prompt = Message::User {
         content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
@@ -502,7 +502,7 @@ where
     );
 
     let turn1_assistant = Message::Assistant {
-        id: response.message_id.map(String::from),
+        id: response.end.message_id.map(String::from),
         content: response.choice,
     };
 

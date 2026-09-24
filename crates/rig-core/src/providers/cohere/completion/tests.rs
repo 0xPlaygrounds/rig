@@ -147,17 +147,17 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
     )
     .await;
 
-    assert_eq!(normalized.provider, PROVIDER_NAME);
-    assert_eq!(normalized.response_id.as_deref(), Some("abc123"));
-    assert_eq!(normalized.message_id, None);
-    assert_eq!(normalized.model, None);
+    assert_eq!(normalized.end.meta.provider, PROVIDER_NAME);
+    assert_eq!(normalized.end.meta.response_id.as_deref(), Some("abc123"));
+    assert_eq!(normalized.end.message_id, None);
+    assert_eq!(normalized.end.meta.model, None);
     assert_eq!(
-        normalized.finish_reason.clone(),
+        normalized.end.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
-    assert_eq!(normalized.usage.input_tokens, Some(10));
-    assert_eq!(normalized.usage.output_tokens, Some(4));
-    assert_eq!(normalized.usage.total_tokens, Some(14));
+    assert_eq!(normalized.end.meta.usage.input_tokens, Some(10));
+    assert_eq!(normalized.end.meta.usage.output_tokens, Some(4));
+    assert_eq!(normalized.end.meta.usage.total_tokens, Some(14));
     let Some(completion::AssistantContent::ToolCall(call)) = normalized.choice.first() else {
         panic!("expected a tool call, got {:?}", normalized.choice);
     };
@@ -203,9 +203,9 @@ async fn response_usage_matches_the_canonical_mapping() {
 
     let converted = unary(BODY).await;
 
-    assert_eq!(converted.usage, expected);
-    assert_eq!(converted.usage.input_tokens, Some(1610));
-    assert_eq!(converted.usage.cached_input_tokens, Some(112));
+    assert_eq!(converted.end.meta.usage, expected);
+    assert_eq!(converted.end.meta.usage.input_tokens, Some(1610));
+    assert_eq!(converted.end.meta.usage.cached_input_tokens, Some(112));
     assert_eq!(
         converted.choice.first(),
         Some(&completion::AssistantContent::text("hi"))

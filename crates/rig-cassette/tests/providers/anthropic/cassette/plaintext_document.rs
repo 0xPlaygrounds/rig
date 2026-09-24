@@ -15,7 +15,7 @@ use crate::support::{
 /// The text Anthropic's own reply carried, read back out of
 /// [`rig::completion::CompletionResponse::raw`].
 fn provider_text(response: &rig::completion::CompletionResponse) -> Option<String> {
-    let reply = anthropic_completion::CompletionResponse::deserialize(&response.raw)
+    let reply = anthropic_completion::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
     let text: String = reply
         .content
@@ -233,7 +233,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 .temperature(0.0)
                 .message(prompt)
                 .message(Message::Assistant {
-                    id: first_turn.message_id.clone().map(String::from),
+                    id: first_turn.end.message_id.clone().map(String::from),
                     content: first_turn.choice.clone(),
                 })
                 .send()

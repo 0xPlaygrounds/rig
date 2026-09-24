@@ -1015,31 +1015,35 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1308,
-            "output_tokens": 191,
-            "total_tokens": 1499
-          },
-          "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1308,
-              "completion_tokens": 191,
-              "total_tokens": 1499
-            },
+          "end": {
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0012571000000000001
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
+              "usage": {
+                "input_tokens": 1308,
+                "output_tokens": 191,
+                "total_tokens": 1499
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1308,
+                  "completion_tokens": 191,
+                  "total_tokens": 1499
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0012571000000000001
+                  }
+                }
               }
             }
           }
@@ -2289,31 +2293,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1308,
-            "output_tokens": 191,
-            "total_tokens": 1499
-          },
           "finish_reason": "tool_calls",
-          "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
             "usage": {
-              "prompt_tokens": 1308,
-              "completion_tokens": 191,
+              "input_tokens": 1308,
+              "output_tokens": 191,
               "total_tokens": 1499
             },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0012571000000000001
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1308,
+                "completion_tokens": 191,
+                "total_tokens": 1499
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0012571000000000001
+                }
               }
             }
           }
@@ -2478,31 +2484,35 @@
               "text": "\n\n42"
             }
           ],
-          "usage": {
-            "input_tokens": 1516,
-            "output_tokens": 21,
-            "total_tokens": 1537
-          },
-          "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1516,
-              "completion_tokens": 21,
-              "total_tokens": 1537
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0007557
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
+              "usage": {
+                "input_tokens": 1516,
+                "output_tokens": 21,
+                "total_tokens": 1537
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1516,
+                  "completion_tokens": 21,
+                  "total_tokens": 1537
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0007557
+                  }
+                }
               }
             }
           }
@@ -2677,31 +2687,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1516,
-            "output_tokens": 21,
-            "total_tokens": 1537
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
             "usage": {
-              "prompt_tokens": 1516,
-              "completion_tokens": 21,
+              "input_tokens": 1516,
+              "output_tokens": 21,
               "total_tokens": 1537
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0007557
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1516,
+                "completion_tokens": 21,
+                "total_tokens": 1537
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0007557
+                }
               }
             }
           }

@@ -49,7 +49,7 @@ async fn usage_is_reported_from_token_counts() {
                 .completion(request)
                 .await
                 .expect("completion should succeed");
-            let raw_response = CohereCompletionResponse::deserialize(&response.raw)
+            let raw_response = CohereCompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` carries Cohere's own response");
 
             assert_eq!(raw_response.finish_reason, FinishReason::Complete);
@@ -75,10 +75,10 @@ async fn usage_is_reported_from_token_counts() {
                 .expect("Cohere should report `usage.cached_tokens`");
             let expected_usage = rig::completion::Usage::from(raw_usage);
 
-            assert_eq!(response.usage.input_tokens, Some(expected_input_tokens));
-            assert_eq!(response.usage.output_tokens, Some(expected_output_tokens));
+            assert_eq!(response.end.meta.usage.input_tokens, Some(expected_input_tokens));
+            assert_eq!(response.end.meta.usage.output_tokens, Some(expected_output_tokens));
             assert_eq!(
-                response.usage.total_tokens,
+                response.end.meta.usage.total_tokens,
                 Some(expected_input_tokens + expected_output_tokens)
             );
 
@@ -87,8 +87,8 @@ async fn usage_is_reported_from_token_counts() {
                 "expected Cohere's two input counters to differ, so the assertions above are meaningful"
             );
 
-            assert_eq!(response.usage.cached_input_tokens, Some(cached as u64));
-            assert_eq!(expected_usage, response.usage);
+            assert_eq!(response.end.meta.usage.cached_input_tokens, Some(cached as u64));
+            assert_eq!(expected_usage, response.end.meta.usage);
         },
     )
     .await;
@@ -109,7 +109,7 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
                 .completion(request)
                 .await
                 .expect("capped completion should succeed");
-            let raw = CohereCompletionResponse::deserialize(&response.raw)
+            let raw = CohereCompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` carries Cohere's own response");
 
             assert_eq!(raw.finish_reason, FinishReason::MaxTokens);
@@ -169,7 +169,7 @@ async fn stop_sequences_are_forwarded() {
             .completion(request)
             .await
             .expect("stop sequence request should succeed");
-        let raw = CohereCompletionResponse::deserialize(&response.raw)
+        let raw = CohereCompletionResponse::deserialize(&response.end.meta.raw)
             .expect("`raw` carries Cohere's own response");
 
         assert_eq!(raw.finish_reason, FinishReason::StopSequence);

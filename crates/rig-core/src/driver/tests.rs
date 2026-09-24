@@ -20,7 +20,7 @@ use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
 use crate::operation::{Completion, ModelListing};
-use crate::streaming::{StreamEvent, StreamFinal};
+use crate::streaming::StreamEvent;
 use crate::test_utils::{
     HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
     RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
@@ -139,10 +139,9 @@ impl Decoder<Completion> for EchoDecoder {
 
 fn terminal(out: &mut Output<Completion>, usage: Usage) {
     out.close_active_blocks();
-    out.final_record(StreamFinal {
+    out.final_record(crate::completion::ReportedEnd {
         model: Some("echo-1".try_into().expect("a non-empty id")),
-        ..StreamFinal::new(
-            "echo",
+        ..crate::completion::ReportedEnd::new(
             crate::completion::Usage {
                 output_tokens: Some(usage.output_tokens),
                 ..crate::completion::Usage::default()
@@ -226,11 +225,11 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
         .expect("the stream produced a terminal record");
 
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
+    assert_eq!(buffered.end.meta.model, streamed.end.meta.model);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
     assert_eq!(
         buffered.choice.first().and_then(|block| match block {
@@ -246,7 +245,12 @@ async fn a_unary_reply_carries_its_body_as_raw() {
     let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
     let response = bound.completion(prompt()).await.expect("the reply decodes");
     assert_eq!(
-        response.raw.pointer("/text").and_then(|text| text.as_str()),
+        response
+            .end
+            .meta
+            .raw
+            .pointer("/text")
+            .and_then(|text| text.as_str()),
         Some("hi there")
     );
 }
@@ -403,8 +407,8 @@ async fn a_reply_with_no_frames_folds_to_an_empty_response_with_no_terminal() {
         .await
         .expect("an empty body yields an empty choice");
     assert!(response.choice.is_empty());
-    assert_eq!(response.finish_reason.clone(), None);
-    assert_eq!(response.usage, crate::completion::Usage::default());
+    assert_eq!(response.end.finish_reason.clone(), None);
+    assert_eq!(response.end.meta.usage, crate::completion::Usage::default());
 }
 
 // ── streaming semantics ─────────────────────────────────────────────────
@@ -542,7 +546,7 @@ async fn a_streams_terminal_carries_the_transport_request_id() {
         _ => None,
     });
     assert_eq!(
-        terminal.and_then(|terminal| terminal.provider_request_id.as_deref()),
+        terminal.and_then(|terminal| terminal.meta.provider_request_id.as_deref()),
         None
     );
 }
@@ -779,7 +783,7 @@ async fn the_driver_records_the_folded_responses_metadata() {
         futures::executor::block_on(bound.completion(prompt()))
     })
     .expect("the reply decodes");
-    assert_eq!(response.model.as_deref(), Some("echo-1"));
+    assert_eq!(response.end.meta.model.as_deref(), Some("echo-1"));
     let recorded = recorded.lock().expect("no panic held the lock").clone();
     assert!(
         recorded

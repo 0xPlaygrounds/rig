@@ -3929,31 +3929,35 @@
               "text": "The Rust programming language has a rich history that reflects its evolution from a research project to a widely adopted systems programming language. Its development began in 2006 when Graydon Hoare, a software engineer at Mozilla, started working on a new language to address the challenges of writing safe and concurrent code. The initial goal was to create a language that could prevent common programming errors, such as null pointer dereferences, buffer overflows, and data races, while maintaining performance and control over system resources.\n\nIn 2009, Mozilla officially sponsored the project, and Rust's development gained momentum. The language's design was heavily influenced by existing languages like C++, Haskell, and ML, incorporating their strengths while introducing innovative features. One of the most notable aspects of Rust is its ownership model, which ensures memory safety without requiring a garbage collector. This model, combined with a strong type system and zero-cost abstractions, makes Rust particularly suitable for systems programming.\n\nThe first stable release of Rust, version 1.0, was launched in 2015 after years of iterative development and community feedback. This milestone marked the language's transition from a research project to a production-ready tool. The Rust team focused on stability, ensuring that the language's core features were well-tested and reliable. The 1.0 release also introduced the \"edition\" system, allowing the language to evolve while maintaining backward compatibility.\n\nRust's popularity grew rapidly due to its emphasis on safety, performance, and concurrency. The language's community, known for its inclusivity and support, played a significant role in its adoption. The annual \"State of Rust\" surveys and the Rust Foundation, established in 2021, further solidified the language's position in the programming ecosystem. The Rust Foundation, backed by major tech companies like Microsoft, Google, and Amazon, aims to support the language's long-term sustainability and growth.\n\nOver the years, Rust has been used in various high-profile projects. For example, the Linux kernel has been exploring the integration of Rust to enhance its safety and security. Microsoft has also adopted Rust for critical components of its operating systems. Additionally, Rust's use in web development, through frameworks like Actix and Rocket, has expanded its reach beyond systems programming.\n\nThe Rust programming language continues to evolve, with regular updates introducing new features and improvements. The language's design philosophy, which prioritizes safety, performance, and developer experience, has made it a favorite among programmers. As Rust's ecosystem grows, it is poised to play an increasingly important role in the future of software development."
             }
           ],
-          "usage": {
-            "input_tokens": 984,
-            "output_tokens": 527,
-            "total_tokens": 1511
-          },
-          "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 984,
-              "completion_tokens": 527,
-              "total_tokens": 1511
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00022400000000000002
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
+              "usage": {
+                "input_tokens": 984,
+                "output_tokens": 527,
+                "total_tokens": 1511
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 984,
+                  "completion_tokens": 527,
+                  "total_tokens": 1511
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.00022400000000000002
+                  }
+                }
               }
             }
           }
@@ -8177,31 +8181,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 984,
-            "output_tokens": 527,
-            "total_tokens": 1511
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
             "usage": {
-              "prompt_tokens": 984,
-              "completion_tokens": 527,
+              "input_tokens": 984,
+              "output_tokens": 527,
               "total_tokens": 1511
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00022400000000000002
+            "raw": {
+              "usage": {
+                "prompt_tokens": 984,
+                "completion_tokens": 527,
+                "total_tokens": 1511
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00022400000000000002
+                }
               }
             }
           }

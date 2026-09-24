@@ -12,9 +12,10 @@
 use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
+    completion::CompletionEnd,
     error::ErrorReport,
     operation::AdapterOutput,
-    streaming::{StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd},
+    streaming::{StreamEvent, SyntheticIds, ToolCallEnd},
 };
 
 use super::{Reply, SinkClosed};
@@ -25,7 +26,7 @@ use crate::wasm_compat::WasmCompatSend;
 /// a terminal leaves a truncated stream.
 pub struct StreamWriter {
     events: mpsc::Sender<Result<StreamEvent, ErrorReport>>,
-    output: AdapterOutput,
+    output: AdapterOutput<()>,
     tool_ids: SyntheticIds,
 }
 
@@ -100,10 +101,12 @@ impl StreamWriter {
     }
 
     /// The terminal record: closes the blocks bare fragments opened, sends
-    /// `record`. The returned stream ends when the writing future also finishes.
-    pub async fn finish(mut self, record: StreamFinal) -> Result<(), SinkClosed> {
+    /// `end`. The handler owns the record's attribution: it names the
+    /// provider it served. The returned stream ends when the writing future
+    /// also finishes.
+    pub async fn finish(mut self, end: CompletionEnd) -> Result<(), SinkClosed> {
         self.output.close_active_blocks();
-        self.output.final_record(record);
+        self.output.push(Ok(StreamEvent::Final(end)));
         self.flush().await
     }
 

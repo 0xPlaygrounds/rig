@@ -200,8 +200,8 @@ impl AgentHook for CanonicalResponseHook {
             .push(CanonicalResponseSnapshot {
                 prompt,
                 content: response.choice.clone(),
-                usage: response.usage,
-                message_id: response.message_id.clone().map(String::from),
+                usage: response.end.meta.usage,
+                message_id: response.end.message_id.clone().map(String::from),
             });
         OutcomeAction::proceed()
     }
@@ -262,8 +262,8 @@ impl AgentHook for FinishLifecycleHook {
             .push(CanonicalResponseSnapshot {
                 prompt,
                 content: response.choice.clone(),
-                usage: response.usage,
-                message_id: response.message_id.clone().map(String::from),
+                usage: response.end.meta.usage,
+                message_id: response.end.message_id.clone().map(String::from),
             });
         if self.stop.load(SeqCst) {
             OutcomeAction::stop("stop at stream EOF")
@@ -282,11 +282,15 @@ impl AgentHook for FinishLifecycleHook {
     }
 }
 
-/// A `'static` empty identity for hand-built hook events in tests.
-fn no_identity() -> &'static rig_core::completion::ResponseIdentity {
-    static EMPTY: std::sync::OnceLock<rig_core::completion::ResponseIdentity> =
+/// A `'static` record reporting nothing, for hand-built hook events in tests.
+fn no_end() -> &'static rig_core::completion::CompletionEnd {
+    static EMPTY: std::sync::OnceLock<rig_core::completion::CompletionEnd> =
         std::sync::OnceLock::new();
-    EMPTY.get_or_init(Default::default)
+    EMPTY.get_or_init(|| {
+        rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta::new(
+            rig_core::id::ProviderName::new("mock").expect("a provider name"),
+        ))
+    })
 }
 
 fn canonical_usage() -> Usage {
@@ -315,9 +319,14 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
         async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
             if let Some(response) = event.completion() {
                 self.seen.lock().expect("identity snapshots").push((
-                    response.message_id.clone().map(String::from),
-                    response.response_id.clone().map(String::from),
-                    response.provider_request_id.clone().map(String::from),
+                    response.end.message_id.clone().map(String::from),
+                    response.end.meta.response_id.clone().map(String::from),
+                    response
+                        .end
+                        .meta
+                        .provider_request_id
+                        .clone()
+                        .map(String::from),
                 ));
             }
             OutcomeAction::proceed()
@@ -415,7 +424,7 @@ async fn failed_attempt_error_carries_its_own_request_id() {
     let turns = hook.turns.lock().expect("turn identities").clone();
     assert_eq!(turns.len(), 1, "only the successful call fired the event");
     assert_eq!(
-        turns[0].provider_request_id.as_deref(),
+        turns[0].meta.provider_request_id.as_deref(),
         Some("req-success-1"),
         "the success keeps its own id — no cross-attribution"
     );
@@ -426,8 +435,8 @@ async fn failed_attempt_error_carries_its_own_request_id() {
 /// call" observer #2265 requires.
 #[derive(Clone, Default)]
 struct TurnIdentityHook {
-    turns: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
-    responses: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
+    turns: Arc<Mutex<Vec<rig_core::completion::CompletionEnd>>>,
+    responses: Arc<Mutex<Vec<rig_core::completion::CompletionEnd>>>,
 }
 
 impl AgentHook for TurnIdentityHook {
@@ -439,7 +448,7 @@ impl AgentHook for TurnIdentityHook {
         self.turns
             .lock()
             .expect("turn identities")
-            .push(event.identity.clone());
+            .push(event.end.clone());
         ModelTurnAction::continue_run()
     }
 
@@ -448,17 +457,17 @@ impl AgentHook for TurnIdentityHook {
             self.responses
                 .lock()
                 .expect("response identities")
-                .push(response.identity());
+                .push(response.end.clone());
         }
         OutcomeAction::proceed()
     }
 }
 
 fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent {
-    MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+    MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
         response_id: Some(response_id.try_into().expect("a non-empty id")),
         provider_request_id: Some(request_id.try_into().expect("a non-empty id")),
-        ..rig_core::streaming::StreamFinal::new("mock", Usage::default(), serde_json::json!({}))
+        ..rig_core::test_utils::MockFinal::new("mock", Usage::default(), serde_json::json!({}))
     })
 }
 
@@ -487,7 +496,13 @@ async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     let turns = hook.turns.lock().expect("turn identities").clone();
     let request_ids: Vec<_> = turns
         .iter()
-        .map(|identity| identity.provider_request_id.as_deref().map(str::to_owned))
+        .map(|identity| {
+            identity
+                .meta
+                .provider_request_id
+                .as_deref()
+                .map(str::to_owned)
+        })
         .collect();
     assert_eq!(
         request_ids,
@@ -539,7 +554,13 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
     let turns = hook.turns.lock().expect("turn identities").clone();
     let request_ids: Vec<_> = turns
         .iter()
-        .map(|identity| identity.provider_request_id.as_deref().map(str::to_owned))
+        .map(|identity| {
+            identity
+                .meta
+                .provider_request_id
+                .as_deref()
+                .map(str::to_owned)
+        })
         .collect();
     assert_eq!(
         request_ids,
@@ -552,7 +573,13 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
     let responses = hook.responses.lock().expect("responses").clone();
     let response_ids: Vec<_> = responses
         .iter()
-        .map(|identity| identity.provider_request_id.as_deref().map(str::to_owned))
+        .map(|identity| {
+            identity
+                .meta
+                .provider_request_id
+                .as_deref()
+                .map(str::to_owned)
+        })
         .collect();
     assert_eq!(
         response_ids, request_ids,
@@ -581,10 +608,13 @@ async fn model_turn_finished_identity_streamed_reasoning_only() {
     let turns = hook.turns.lock().expect("turn identities").clone();
     assert_eq!(turns.len(), 1);
     assert_eq!(
-        turns[0].provider_request_id.as_deref(),
+        turns[0].meta.provider_request_id.as_deref(),
         Some("req-reasoning-only")
     );
-    assert_eq!(turns[0].response_id.as_deref(), Some("resp-reasoning-only"));
+    assert_eq!(
+        turns[0].meta.response_id.as_deref(),
+        Some("resp-reasoning-only")
+    );
     let responses = hook.responses.lock().expect("responses").clone();
     assert_eq!(
         responses.len(),
@@ -592,7 +622,7 @@ async fn model_turn_finished_identity_streamed_reasoning_only() {
         "a reasoning-only turn fires CompletionResponse once"
     );
     assert_eq!(
-        responses[0].provider_request_id.as_deref(),
+        responses[0].meta.provider_request_id.as_deref(),
         Some("req-reasoning-only")
     );
 }
@@ -613,7 +643,7 @@ async fn retried_turn_reports_the_retried_attempts_own_identity() {
             event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
             let mut seen = self.seen.lock().expect("retry identities");
-            seen.push(event.identity.provider_request_id.clone().map(String::from));
+            seen.push(event.end.meta.provider_request_id.clone().map(String::from));
             if seen.len() == 1 {
                 ModelTurnAction::repeat()
             } else {
@@ -685,7 +715,7 @@ impl AgentHook for RawCaptureHook {
             self.completion_responses
                 .lock()
                 .expect("completion response raws")
-                .push(response.raw.clone());
+                .push(response.end.meta.raw.clone());
         }
         OutcomeAction::proceed()
     }
@@ -698,7 +728,7 @@ impl AgentHook for RawCaptureHook {
         self.turns
             .lock()
             .expect("turn raws")
-            .push(event.raw.clone());
+            .push(event.end.meta.raw.clone());
         ModelTurnAction::continue_run()
     }
 }
@@ -714,26 +744,28 @@ fn raw_payload(attempt: &str) -> serde_json::Value {
 }
 
 /// The scripted terminal for one streamed attempt, distinct per attempt.
-/// The mock's terminal type is `StreamFinal` itself, so the terminal's
-/// `raw` is exactly this record serialized.
-fn stream_final_for_attempt(attempt: &str, total_tokens: u64) -> rig_core::streaming::StreamFinal {
-    let usage = Usage {
-        total_tokens: Some(total_tokens),
-        ..Default::default()
-    };
-    rig_core::streaming::StreamFinal {
+/// The terminal's `raw` is this record in the mock's document layout.
+fn stream_final_for_attempt(attempt: &str, total_tokens: u64) -> rig_core::test_utils::MockFinal {
+    rig_core::test_utils::MockFinal {
         response_id: Some(
             format!("resp-{attempt}")
                 .try_into()
                 .expect("a non-empty id"),
         ),
         provider_request_id: Some(format!("req-{attempt}").try_into().expect("a non-empty id")),
-        ..rig_core::streaming::StreamFinal::new("mock", usage, serde_json::json!({}))
+        ..rig_core::test_utils::MockFinal::new(
+            "mock",
+            Usage {
+                total_tokens: Some(total_tokens),
+                ..Default::default()
+            },
+            serde_json::json!({}),
+        )
     }
 }
 
 /// What `raw` must be for a streamed attempt scripted with `terminal`.
-fn expected_stream_raw(terminal: &rig_core::streaming::StreamFinal) -> serde_json::Value {
+fn expected_stream_raw(terminal: &rig_core::test_utils::MockFinal) -> serde_json::Value {
     rig_core::test_utils::mock_terminal_document(terminal).expect("the mock's document")
 }
 
@@ -787,7 +819,7 @@ async fn hook_events_carry_raw_streamed() {
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
             MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_record)) => {
-                finals.push(final_record.raw.clone())
+                finals.push(final_record.meta.raw.clone())
             }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
             _ => {}
@@ -875,7 +907,7 @@ async fn completion_calls_carry_each_attempts_own_raw_streamed() {
         match item.expect("stream item") {
             MultiTurnStreamItem::CompletionCall(call) => forwarded_calls.push(call.raw.clone()),
             MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_record)) => {
-                finals.push(final_record.raw.clone())
+                finals.push(final_record.meta.raw.clone())
             }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
             _ => {}
@@ -921,7 +953,7 @@ impl AgentHook for RetryOnceCapturingRaw {
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
         let mut seen = self.seen.lock().expect("retry raws");
-        seen.push(event.raw.clone());
+        seen.push(event.end.meta.raw.clone());
         if seen.len() == 1 {
             ModelTurnAction::repeat()
         } else {
@@ -1001,7 +1033,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
             MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_record)) => {
-                finals.push(final_record.raw.clone())
+                finals.push(final_record.meta.raw.clone())
             }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
             _ => {}
@@ -8649,7 +8681,7 @@ impl AgentHook for TerminationProbe {
         self.observations
             .lock()
             .expect("observations")
-            .push((event.finish_reason.cloned(), event.max_tokens));
+            .push((event.end.finish_reason.as_ref().cloned(), event.max_tokens));
         ModelTurnAction::continue_run()
     }
 }
@@ -8671,7 +8703,9 @@ impl AgentHook for RetryOnTruncation {
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
         let truncated = event
+            .end
             .finish_reason
+            .as_ref()
             .is_some_and(FinishReason::truncated_output);
         let has_tool_call = event
             .content
@@ -8739,7 +8773,7 @@ async fn model_turn_finished_reports_termination_and_effective_max_tokens_stream
     let probe = TerminationProbe::default();
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::Text("a partial ans".to_string()),
-        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Length),
             ..mock_final(Usage::default())
         }),
@@ -8823,7 +8857,7 @@ async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_streamed_tool_
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call("call-1", "add", json!({ "x": 1, "y": 2 })),
-            MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
                 finish_reason: Some(FinishReason::Stop),
                 ..mock_final(Usage::default())
             }),
@@ -8893,14 +8927,14 @@ async fn streaming_retry_reports_the_second_attempts_own_effective_max_tokens() 
     let model = MockCompletionModel::from_stream_turns([
         [
             MockStreamEvent::Text("rejected".to_string()),
-            MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
                 finish_reason: Some(FinishReason::Length),
                 ..mock_final(Usage::default())
             }),
         ],
         [
             MockStreamEvent::Text("accepted".to_string()),
-            MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
                 finish_reason: Some(FinishReason::Stop),
                 ..mock_final(Usage::default())
             }),
@@ -9640,12 +9674,8 @@ async fn retry_scratchpad_state_is_isolated_by_run_and_hook_instance() {
     let first_event = ModelTurnFinished {
         turn: 1,
         content: &content,
-        usage: Usage::default(),
-        identity: no_identity(),
-        // These cases exercise hook dispatch, not termination metadata.
-        finish_reason: None,
+        end: no_end(),
         max_tokens: None,
-        raw: &serde_json::Value::Null,
     };
     let second_event = first_event;
 
@@ -9673,11 +9703,8 @@ async fn retry_scratchpad_state_is_isolated_by_run_and_hook_instance() {
             ModelTurnFinished {
                 turn: 1,
                 content: &first_content,
-                usage: Usage::default(),
-                identity: no_identity(),
-                finish_reason: None,
+                end: no_end(),
                 max_tokens: None,
-                raw: &serde_json::Value::Null,
             },
         )
         .await;
@@ -9687,11 +9714,8 @@ async fn retry_scratchpad_state_is_isolated_by_run_and_hook_instance() {
             ModelTurnFinished {
                 turn: 2,
                 content: &second_content,
-                usage: Usage::default(),
-                identity: no_identity(),
-                finish_reason: None,
+                end: no_end(),
                 max_tokens: None,
-                raw: &serde_json::Value::Null,
             },
         )
         .await;
@@ -9722,12 +9746,8 @@ async fn model_turn_action_short_circuits_flat_and_nested_hook_stacks() {
     let event = ModelTurnFinished {
         turn: 1,
         content: &content,
-        usage: Usage::default(),
-        identity: no_identity(),
-        // These cases exercise hook dispatch, not termination metadata.
-        finish_reason: None,
+        end: no_end(),
         max_tokens: None,
-        raw: &serde_json::Value::Null,
     };
     let ctx = HookContext::new(false, None, None);
 

@@ -400,38 +400,42 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 138,
-            "output_tokens": 66,
-            "total_tokens": 204,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
-          "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 138,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 66,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-2024-08-06",
+              "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+              "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
+              "usage": {
+                "input_tokens": 138,
+                "output_tokens": 66,
+                "total_tokens": 204,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 204
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
-            "model": "gpt-4o-2024-08-06"
+              "raw": {
+                "usage": {
+                  "input_tokens": 138,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 66,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 204
+                },
+                "reasoning_metadata": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+                "model": "gpt-4o-2024-08-06"
+              }
+            }
           }
         }
       },
@@ -936,38 +940,40 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 138,
-            "output_tokens": 66,
-            "total_tokens": 204,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "tool_calls",
-          "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
-          "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+            "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
             "usage": {
               "input_tokens": 138,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 66,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "total_tokens": 204,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 138,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 66,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 204
               },
-              "total_tokens": 204
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
-            "model": "gpt-4o-2024-08-06"
+              "reasoning_metadata": {
+                "context": null,
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+              "model": "gpt-4o-2024-08-06"
+            }
           }
         }
       ],

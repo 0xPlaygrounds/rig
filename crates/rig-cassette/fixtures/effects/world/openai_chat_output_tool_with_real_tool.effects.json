@@ -171,61 +171,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 291,
-            "output_tokens": 218,
-            "total_tokens": 509,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 192
-          },
-          "response_id": "chatcmpl-ERDCXWvE9kVTLTtI4bgPhOYywPjLR",
-          "provider_request_id": "req_b4e5ace04fe446a6b10b4f866b6c1e57",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_ksc5oACVf46FpFcl4dPjw0kj",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCXWvE9kVTLTtI4bgPhOYywPjLR",
+              "provider_request_id": "req_b4e5ace04fe446a6b10b4f866b6c1e57",
+              "usage": {
+                "input_tokens": 291,
+                "output_tokens": 218,
+                "total_tokens": 509,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 192
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\":17,\"y\":25}",
+                            "name": "add"
+                          },
+                          "id": "call_ksc5oACVf46FpFcl4dPjw0kj",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDCXWvE9kVTLTtI4bgPhOYywPjLR",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 218,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 192,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 291,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 509
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDCXWvE9kVTLTtI4bgPhOYywPjLR",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 218,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 192,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 291,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 509
             }
           }
         }
@@ -395,61 +399,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 322,
-            "output_tokens": 28,
-            "total_tokens": 350,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDCbZabGmHPxJCjDhDqU7cgXD2iR",
-          "provider_request_id": "req_0d797d4daefb464eb511fc891ca82b2a",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"meetup\",\"summary\":\"42\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_eQR2xBb4cTuLSiR1x8j3hTpI",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCbZabGmHPxJCjDhDqU7cgXD2iR",
+              "provider_request_id": "req_0d797d4daefb464eb511fc891ca82b2a",
+              "usage": {
+                "input_tokens": 322,
+                "output_tokens": 28,
+                "total_tokens": 350,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"meetup\",\"summary\":\"42\"}",
+                            "name": "final_result"
+                          },
+                          "id": "call_eQR2xBb4cTuLSiR1x8j3hTpI",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDCbZabGmHPxJCjDhDqU7cgXD2iR",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 28,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 322,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 350
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDCbZabGmHPxJCjDhDqU7cgXD2iR",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 28,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 0,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 322,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 350
             }
           }
         }

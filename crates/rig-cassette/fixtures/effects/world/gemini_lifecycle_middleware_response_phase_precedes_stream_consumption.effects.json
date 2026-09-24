@@ -88,32 +88,36 @@
               "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
             }
           ],
-          "usage": {
-            "input_tokens": 26,
-            "output_tokens": 47,
-            "total_tokens": 102,
-            "reasoning_tokens": 29
-          },
-          "response_id": "pHizaqGHG8zzz7IP5ci3qQI",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 26,
-              "candidatesTokenCount": 47,
-              "totalTokenCount": 102,
-              "thoughtsTokenCount": 29,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 26
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "pHizaqGHG8zzz7IP5ci3qQI"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "pHizaqGHG8zzz7IP5ci3qQI",
+              "usage": {
+                "input_tokens": 26,
+                "output_tokens": 47,
+                "total_tokens": 102,
+                "reasoning_tokens": 29
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 26,
+                  "candidatesTokenCount": 47,
+                  "totalTokenCount": 102,
+                  "thoughtsTokenCount": 29,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 26
+                    }
+                  ]
+                },
+                "finish_reason": "STOP",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "pHizaqGHG8zzz7IP5ci3qQI"
+              }
+            }
           }
         }
       },
@@ -143,32 +147,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 26,
-            "output_tokens": 47,
-            "total_tokens": 102,
-            "reasoning_tokens": 29
-          },
           "finish_reason": "stop",
-          "response_id": "pHizaqGHG8zzz7IP5ci3qQI",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 26,
-              "candidatesTokenCount": 47,
-              "totalTokenCount": 102,
-              "thoughtsTokenCount": 29,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 26
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "pHizaqGHG8zzz7IP5ci3qQI",
+            "usage": {
+              "input_tokens": 26,
+              "output_tokens": 47,
+              "total_tokens": 102,
+              "reasoning_tokens": 29
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "pHizaqGHG8zzz7IP5ci3qQI"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 26,
+                "candidatesTokenCount": 47,
+                "totalTokenCount": 102,
+                "thoughtsTokenCount": 29,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 26
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "pHizaqGHG8zzz7IP5ci3qQI"
+            }
           }
         }
       ],

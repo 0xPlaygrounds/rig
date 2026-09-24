@@ -2,6 +2,7 @@
 //! driver serves, the replayer answers it back. Also compiled by the minimal
 //! verification runner without the native HTTP engine.
 
+use rig_core::completion::CompletionEnd;
 use rig_core::serve::Dispatch;
 use std::{
     sync::{
@@ -57,10 +58,14 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
     }
     for error_first in [false, true] {
         let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
-        let terminal = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
-            "test",
-            rig_core::completion::Usage::default(),
-            serde_json::json!({}),
+        let terminal = Ok(StreamEvent::Final(CompletionEnd::new(
+            rig_core::response::ResponseMeta {
+                usage: rig_core::completion::Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("test").expect("a provider name"),
+                )
+            },
         )));
         let mut items = if error_first {
             vec![error, terminal]
@@ -117,12 +122,16 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
         }
         async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
             rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(
-                rig_core::completion::CompletionResponse::new(
-                    vec![AssistantContent::text("ok")],
-                    rig_core::completion::Usage::default(),
-                    "composing",
-                    serde_json::json!({ "composing": "ok" }),
-                ),
+                rig_core::completion::CompletionResponse {
+                    choice: vec![AssistantContent::text("ok")],
+                    end: CompletionEnd::new(rig_core::response::ResponseMeta {
+                        usage: rig_core::completion::Usage::default(),
+                        raw: serde_json::json!({ "composing": "ok" }),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("composing").expect("a provider name"),
+                        )
+                    }),
+                },
             )))
         }
     }
@@ -1176,7 +1185,7 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
 #[tokio::test]
 async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
     use rig_core::streaming::{
-        BlockClose, BlockId, BlockKind, Delta, StreamFinal, ToolCallEnd, UnparseableToolInput,
+        BlockClose, BlockId, BlockKind, Delta, ToolCallEnd, UnparseableToolInput,
     };
 
     struct Items(Vec<Result<StreamEvent, ErrorReport>>);
@@ -1219,10 +1228,14 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
             end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
             block: None,
         }),
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "test",
-            rig_core::completion::Usage::default(),
-            serde_json::json!({}),
+        Ok(StreamEvent::Final(CompletionEnd::new(
+            rig_core::response::ResponseMeta {
+                usage: rig_core::completion::Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("test").expect("a provider name"),
+                )
+            },
         ))),
     ];
     let key = HandlerKey::from("model");

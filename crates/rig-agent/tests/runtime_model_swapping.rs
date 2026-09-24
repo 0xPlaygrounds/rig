@@ -1,5 +1,6 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
+use rig_core::completion::CompletionEnd;
 use std::{
     collections::VecDeque,
     pin::Pin,
@@ -26,8 +27,8 @@ use rig_agent::{
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
-        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
-        StreamingCompletionResponse, ToolCallEnd, UnparseableToolInput,
+        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamingCompletionResponse,
+        ToolCallEnd, UnparseableToolInput,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
@@ -255,14 +256,18 @@ fn completion_from_script(
     if let Turn::Error(message) = &turn {
         return Err(ProviderError::Provider(message.clone()));
     }
-    Ok(CompletionResponse {
-        message_id: Some(turn.message_id().try_into().expect("a non-empty id")),
-        ..CompletionResponse::new(
-            turn.choice(),
-            turn.usage(),
-            script.provider,
-            serde_json::json!({}),
-        )
+    Ok(rig_core::completion::CompletionResponse {
+        choice: turn.choice(),
+        end: rig_core::completion::CompletionEnd {
+            message_id: Some(turn.message_id().try_into().expect("a non-empty id")),
+            ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: turn.usage(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new(script.provider).expect("a provider name"),
+                )
+            })
+        },
     })
 }
 
@@ -347,10 +352,18 @@ fn stream_from_script(
         // Handled by the early return above.
         Turn::Error(_) => return Err(ProviderError::Provider("unreachable".to_owned())),
     }
-    events.push(Ok(StreamEvent::Final(StreamFinal {
-        message_id: Some(turn.message_id().try_into().expect("a non-empty id")),
-        ..StreamFinal::new(script.provider, turn.usage(), serde_json::json!({}))
-    })));
+    events.push(Ok(StreamEvent::Final(
+        rig_core::completion::CompletionEnd {
+            message_id: Some(turn.message_id().try_into().expect("a non-empty id")),
+            ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: turn.usage(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new(script.provider).expect("a provider name"),
+                )
+            })
+        },
+    )));
 
     Ok(StreamingCompletionResponse::stream(
         script.provider,
@@ -450,20 +463,20 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
         .completion(request("low-level unary"))
         .await
         .expect("direct unary response");
-    assert_eq!(unary.provider, "alpha");
+    assert_eq!(unary.end.meta.provider, "alpha");
 
     let mut low_level_stream = beta
         .stream(request("low-level stream"))
         .await
         .expect("direct provider stream");
-    let mut stream_final: Option<StreamFinal> = None;
+    let mut stream_final: Option<CompletionEnd> = None;
     while let Some(item) = low_level_stream.next().await {
         if let StreamEvent::Final(final_) = item.expect("stream item") {
             stream_final = Some(final_);
         }
     }
     assert_eq!(
-        stream_final.expect("stream final").provider,
+        stream_final.expect("stream final").meta.provider,
         "beta",
         "direct model streams report their provider on the terminal record"
     );
@@ -1241,7 +1254,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     let mut saw_reasoning = false;
     let mut saw_reasoning_delta = false;
     let mut saw_unknown = false;
-    let mut provider_final: Option<StreamFinal> = None;
+    let mut provider_final: Option<CompletionEnd> = None;
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
@@ -1275,8 +1288,8 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     assert!(saw_reasoning_delta);
     assert!(saw_unknown);
     let provider_final = provider_final.expect("normalized provider final");
-    assert_eq!(provider_final.usage, usage(13));
-    assert_eq!(provider_final.provider, "alpha");
+    assert_eq!(provider_final.meta.usage, usage(13));
+    assert_eq!(provider_final.meta.provider, "alpha");
     let final_response = final_response.expect("agent final response");
     assert_eq!(final_response.output, "final text");
     assert_eq!(final_response.usage, usage(13));
@@ -1367,9 +1380,18 @@ impl CompletionModel for GatedToolModel {
         self.started.notify_one();
         self.release.notified().await;
         let turn = Turn::tool("lookup", 3, "gated-tool-message");
-        Ok(CompletionResponse {
-            message_id: Some(turn.message_id().try_into().expect("a non-empty id")),
-            ..CompletionResponse::new(turn.choice(), turn.usage(), "gated", serde_json::json!({}))
+        Ok(rig_core::completion::CompletionResponse {
+            choice: turn.choice(),
+            end: rig_core::completion::CompletionEnd {
+                message_id: Some(turn.message_id().try_into().expect("a non-empty id")),
+                ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage: turn.usage(),
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("gated").expect("a provider name"),
+                    )
+                })
+            },
         })
     }
 
@@ -1384,11 +1406,15 @@ impl CompletionModel for GatedToolModel {
                     MintKind::Text.for_wire_index(0),
                     "unused",
                 )),
-                Ok(StreamEvent::Final(StreamFinal::new(
-                    "gated",
-                    usage(1),
-                    serde_json::json!({}),
-                ))),
+                Ok(StreamEvent::Final(
+                    rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                        usage: usage(1),
+                        raw: serde_json::json!({}),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("gated").expect("a provider name"),
+                        )
+                    }),
+                )),
             ])),
         ))
     }
@@ -1512,12 +1538,16 @@ impl CompletionModel for PendingStreamingModel {
         &self,
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        Ok(CompletionResponse::new(
-            vec![AssistantContent::text("unused")],
-            Usage::default(),
-            "pending",
-            serde_json::json!({}),
-        ))
+        Ok(rig_core::completion::CompletionResponse {
+            choice: vec![AssistantContent::text("unused")],
+            end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("pending").expect("a provider name"),
+                )
+            }),
+        })
     }
 
     async fn stream(

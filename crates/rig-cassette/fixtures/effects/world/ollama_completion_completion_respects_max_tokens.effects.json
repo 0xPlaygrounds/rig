@@ -76,29 +76,33 @@
               "text": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences"
             }
           ],
-          "usage": {
-            "input_tokens": 42,
-            "output_tokens": 24,
-            "total_tokens": 66
-          },
-          "finish_reason": "length",
-          "provider": "ollama",
-          "model": "qwen3:4b",
-          "raw": {
-            "created_at": "1970-01-01T00:00:00Z",
-            "done": true,
-            "done_reason": "length",
-            "eval_count": 24,
-            "eval_duration": 318697665,
-            "load_duration": 4220408500,
-            "message": {
-              "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
-              "role": "assistant"
-            },
-            "model": "qwen3:4b",
-            "prompt_eval_count": 42,
-            "prompt_eval_duration": 2035633750,
-            "total_duration": 6668117083
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "ollama",
+              "model": "qwen3:4b",
+              "usage": {
+                "input_tokens": 42,
+                "output_tokens": 24,
+                "total_tokens": 66
+              },
+              "raw": {
+                "created_at": "1970-01-01T00:00:00Z",
+                "done": true,
+                "done_reason": "length",
+                "eval_count": 24,
+                "eval_duration": 318697665,
+                "load_duration": 4220408500,
+                "message": {
+                  "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
+                  "role": "assistant"
+                },
+                "model": "qwen3:4b",
+                "prompt_eval_count": 42,
+                "prompt_eval_duration": 2035633750,
+                "total_duration": 6668117083
+              }
+            }
           }
         }
       },

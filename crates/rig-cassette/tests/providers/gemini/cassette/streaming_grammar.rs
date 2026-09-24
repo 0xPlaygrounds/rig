@@ -1,7 +1,7 @@
 //! Canonical streaming-grammar coverage for Gemini (REST `generateContent`
 //! streaming plus the Interactions API), asserted through the *normalized*
 //! path: the aggregated [`StreamingCompletionResponse::snapshot`], the terminal
-//! [`StreamFinal`] record, usage, IDs, and finish reason — real recorded wire
+//! [`CompletionEnd`] record, usage, IDs, and finish reason — real recorded wire
 //! traffic, not synthetic chunks.
 //!
 //! Re-record with:
@@ -21,7 +21,8 @@ use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
 use rig::providers::gemini::interactions_api;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
+use rig_core::completion::CompletionEnd;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -35,9 +36,9 @@ struct StreamRun {
     reasoning_blocks: Vec<Reasoning>,
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
+    finals: Vec<CompletionEnd>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionEnd>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
@@ -108,15 +109,16 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "unexpected finish reason"
     );
     assert!(
-        terminal.usage.total_tokens.is_some_and(|n| n > 0),
+        terminal.meta.usage.total_tokens.is_some_and(|n| n > 0),
         "terminal record should carry non-zero usage, got {:?}",
-        terminal.usage
+        terminal.meta.usage
     );
     // ID contract: Gemini reports a `responseId` for the response as a whole
     // and no replayable assistant-message ID, so the normalized terminal must
     // populate `response_id` and leave `message_id` empty.
     assert!(
         terminal
+            .meta
             .response_id
             .as_deref()
             .is_some_and(|id| !id.is_empty()),
@@ -590,9 +592,9 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                 "unexpected finish reason"
             );
             assert!(
-                terminal.usage.total_tokens.is_some_and(|n| n > 0),
+                terminal.meta.usage.total_tokens.is_some_and(|n| n > 0),
                 "terminal record should carry non-zero usage, got {:?}",
-                terminal.usage
+                terminal.meta.usage
             );
             assert!(
                 !run.reasoning_delta.is_empty() || !run.reasoning_blocks.is_empty(),
@@ -727,7 +729,8 @@ async fn interactions_requires_action_roundtrip() {
             // document `raw` carries verbatim — the interaction resource is
             // the reply, and the fold is the other view of it.
             let interaction: interactions_api::Interaction =
-                serde_json::from_value(raw.raw.clone()).expect("`raw` is the interaction resource");
+                serde_json::from_value(raw.end.meta.raw.clone())
+                    .expect("`raw` is the interaction resource");
             assert!(
                 matches!(
                     interaction.status,
@@ -741,14 +744,19 @@ async fn interactions_requires_action_roundtrip() {
 
             let normalized = raw;
             assert_eq!(
-                normalized.finish_reason.clone(),
+                normalized.end.finish_reason.clone(),
                 Some(FinishReason::ToolCalls),
                 "requires_action should normalize to a ToolCalls finish"
             );
             assert!(
-                normalized.usage.total_tokens.is_some_and(|n| n > 0),
+                normalized
+                    .end
+                    .meta
+                    .usage
+                    .total_tokens
+                    .is_some_and(|n| n > 0),
                 "interaction should report usage, got {:?}",
-                normalized.usage
+                normalized.end.meta.usage
             );
             let tool_call = normalized
                 .choice
@@ -790,7 +798,7 @@ async fn interactions_requires_action_roundtrip() {
                 .expect("tool-result follow-up should succeed");
 
             assert_eq!(
-                followup.finish_reason.clone(),
+                followup.end.finish_reason.clone(),
                 Some(FinishReason::Stop),
                 "completed follow-up should normalize to Stop"
             );

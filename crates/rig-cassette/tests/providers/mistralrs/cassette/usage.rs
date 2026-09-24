@@ -24,6 +24,8 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
                 .await
                 .expect("usage check completion should succeed");
             let usage = response
+                .end
+                .meta
                 .raw
                 .get("usage")
                 .expect("mistral.rs response should include usage");

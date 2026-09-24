@@ -33,13 +33,15 @@ async fn nonstreaming_response_carries_identity() {
 
             assert!(
                 response
+                    .end
+                    .meta
                     .response_id
                     .as_deref()
                     .is_some_and(|id| !id.is_empty()),
                 "xAI reports a response id, got {:?}",
-                response.response_id
+                response.end.meta.response_id
             );
-            assert_request_id(response.provider_request_id.as_deref(), "blocking");
+            assert_request_id(response.end.meta.provider_request_id.as_deref(), "blocking");
         },
     )
     .await;
@@ -66,7 +68,7 @@ async fn streaming_terminal_carries_identity() {
             }
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_request_id(
-                terminal.provider_request_id.as_deref(),
+                terminal.meta.provider_request_id.as_deref(),
                 "streaming terminal",
             );
         },
@@ -102,7 +104,7 @@ async fn streamed_agent_run_reports_identity() {
             let turns = probe.turn_identities();
             assert_eq!(turns.len(), 1);
             assert_transport_request_id(
-                turns[0].provider_request_id.as_deref(),
+                turns[0].meta.provider_request_id.as_deref(),
                 "xai streamed turn",
             );
         },
@@ -128,13 +130,16 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .completion(request)
                 .await
                 .expect("completion should succeed");
-            assert_request_id(response.provider_request_id.as_deref(), "normalized view");
+            assert_request_id(
+                response.end.meta.provider_request_id.as_deref(),
+                "normalized view",
+            );
 
-            let raw_view = responses_api::CompletionResponse::deserialize(&response.raw)
+            let raw_view = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_eq!(
                 Some(raw_view.id.as_str()),
-                response.response_id.as_deref(),
+                response.end.meta.response_id.as_deref(),
                 "raw and normalized views describe the same interaction"
             );
             assert_eq!(

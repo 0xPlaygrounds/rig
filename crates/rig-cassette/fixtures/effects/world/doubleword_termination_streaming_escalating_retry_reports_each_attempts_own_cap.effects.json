@@ -364,45 +364,49 @@
               "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
             }
           ],
-          "usage": {
-            "input_tokens": 36,
-            "output_tokens": 16,
-            "total_tokens": 52,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
-          "finish_reason": "length",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 36,
-              "completion_tokens": 16,
-              "total_tokens": 52,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-9B",
+              "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
+              "usage": {
+                "input_tokens": 36,
+                "output_tokens": 16,
+                "total_tokens": 52,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "length",
-            "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
-            "model": "Qwen/Qwen3.5-9B",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 36,
+                  "completion_tokens": 16,
+                  "total_tokens": 52,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "length",
+                "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
+                "model": "Qwen/Qwen3.5-9B",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+                }
+              }
             }
           }
         }
@@ -545,45 +549,47 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 36,
-            "output_tokens": 16,
-            "total_tokens": 52,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "length",
-          "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 36,
-              "completion_tokens": 16,
-              "total_tokens": 52,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "length",
-            "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-9B",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+            "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
+            "usage": {
+              "input_tokens": 36,
+              "output_tokens": 16,
+              "total_tokens": 52,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 36,
+                "completion_tokens": 16,
+                "total_tokens": 52,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "length",
+              "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
+              "model": "Qwen/Qwen3.5-9B",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+              }
             }
           }
         }
@@ -630,45 +636,49 @@
               "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
             }
           ],
-          "usage": {
-            "input_tokens": 36,
-            "output_tokens": 49,
-            "total_tokens": 85,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 36,
-              "completion_tokens": 49,
-              "total_tokens": 85,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-9B",
+              "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
+              "usage": {
+                "input_tokens": 36,
+                "output_tokens": 49,
+                "total_tokens": 85,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
-            "model": "Qwen/Qwen3.5-9B",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 36,
+                  "completion_tokens": 49,
+                  "total_tokens": 85,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
+                "model": "Qwen/Qwen3.5-9B",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+                }
+              }
             }
           }
         }
@@ -1067,45 +1077,47 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 36,
-            "output_tokens": 49,
-            "total_tokens": 85,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 36,
-              "completion_tokens": 49,
-              "total_tokens": 85,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-9B",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+            "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
+            "usage": {
+              "input_tokens": 36,
+              "output_tokens": 49,
+              "total_tokens": 85,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 36,
+                "completion_tokens": 49,
+                "total_tokens": 85,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
+              "model": "Qwen/Qwen3.5-9B",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+              }
             }
           }
         }

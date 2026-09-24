@@ -145,58 +145,62 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 458,
-            "output_tokens": 132,
-            "total_tokens": 590,
-            "cached_input_tokens": 128,
-            "reasoning_tokens": 42
-          },
-          "response_id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_00_RxiGOALqiQeYFOmWght70756",
-                      "index": 0,
-                      "type": "function"
-                    }
-                  ]
-                }
-              }
-            ],
-            "created": 0,
-            "id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 132,
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
+              "usage": {
+                "input_tokens": 458,
+                "output_tokens": 132,
+                "total_tokens": 590,
+                "cached_input_tokens": 128,
                 "reasoning_tokens": 42
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 330,
-              "prompt_tokens": 458,
-              "prompt_tokens_details": {
-                "cached_tokens": 128
-              },
-              "total_tokens": 590
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                            "name": "submit"
+                          },
+                          "id": "call_00_RxiGOALqiQeYFOmWght70756",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 132,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 42
+                  },
+                  "prompt_cache_hit_tokens": 128,
+                  "prompt_cache_miss_tokens": 330,
+                  "prompt_tokens": 458,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 128
+                  },
+                  "total_tokens": 590
+                }
+              }
             }
           }
         }

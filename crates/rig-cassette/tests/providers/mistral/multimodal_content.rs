@@ -702,7 +702,7 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
             assert_mentions(&text, AUDIO_KEYWORD);
             // Mistral bills audio outside `prompt_tokens`, so counting only
             // that field leaves the parts short of the total it reported.
-            assert_usage_adds_up(&response.usage);
+            assert_usage_adds_up(&response.end.meta.usage);
             Ok::<_, anyhow::Error>(())
         },
     )

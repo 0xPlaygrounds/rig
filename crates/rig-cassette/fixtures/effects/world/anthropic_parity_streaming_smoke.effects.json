@@ -264,32 +264,36 @@
               "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, blocking the Sun's light and casting a shadow on Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, briefly turning day into darkness and allowing the Sun's outer atmosphere, called the corona, to become visible. Partial and annular eclipses occur when the alignment is not perfect or the Moon is too far from Earth to fully cover the Sun, leaving a ring of sunlight visible around the Moon's edges."
             }
           ],
-          "usage": {
-            "input_tokens": 33,
-            "output_tokens": 111,
-            "total_tokens": 144,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
-          "provider_request_id": "req_011CfLcVWqAekSY78VPi9un1",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 111,
-              "input_tokens": 33,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
+          "end": {
+            "finish_reason": "stop",
             "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
-            "model": "claude-sonnet-4-6"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcVWqAekSY78VPi9un1",
+              "usage": {
+                "input_tokens": 33,
+                "output_tokens": 111,
+                "total_tokens": 144,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 111,
+                  "input_tokens": 33,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "end_turn",
+                "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
+                "model": "claude-sonnet-4-6"
+              }
+            }
           }
         }
       },
@@ -663,32 +667,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 33,
-            "output_tokens": 111,
-            "total_tokens": 144,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
-          "provider_request_id": "req_011CfLcVWqAekSY78VPi9un1",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "provider_request_id": "req_011CfLcVWqAekSY78VPi9un1",
             "usage": {
-              "output_tokens": 111,
               "input_tokens": 33,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 111,
+              "total_tokens": 144,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
-            "model": "claude-sonnet-4-6"
+            "raw": {
+              "usage": {
+                "output_tokens": 111,
+                "input_tokens": 33,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "end_turn",
+              "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
+              "model": "claude-sonnet-4-6"
+            }
           }
         }
       ],

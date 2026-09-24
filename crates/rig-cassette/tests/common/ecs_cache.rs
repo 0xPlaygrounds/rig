@@ -44,7 +44,7 @@ pub async fn assert_cache_growth(mut ecs: EcsAgent, support: &CacheSupport, cont
             };
             Some((
                 crate::ecs_agent::sibling_index(world, turn).expect("turn order"),
-                response.usage,
+                response.end.meta.usage,
             ))
         })
         .collect();

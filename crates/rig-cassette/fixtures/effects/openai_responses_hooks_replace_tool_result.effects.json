@@ -139,136 +139,140 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 104,
-            "output_tokens": 174,
-            "total_tokens": 278,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "response_id": "resp_0ed6438f6ce1f6c1006ab2b2f5b39887d0990e659a7b7edf97",
-          "provider_request_id": "req_880ea51c19824ea8abf6cfbbceaed5b3",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_0ed6438f6ce1f6c1006ab2b2f5b39887d0990e659a7b7edf97",
-            "incomplete_details": null,
-            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrL4rWQxB2AV-VvuWbrfM2WbqRFtIa28fi4uAenJAtDgDIqNKKI2GiL0pDa9LDNyL0u6OCzrKK_oyX2gnkeNL9orvFF-T14-t4o0UshdsGvtwke2iNiwNtLZYQ6vwrY5MWwdutIGNXzTUABgkDjKFcCi0ESPEM_Dj--nwbO6wQYvmxXN2_C-KIR_9ZcbpqC4FwbkBiIKUey1O_Q_-XWa-ta1TCnULakpRjkxQujU_CfAMqBRdIQO_YKGO7EhnH49MY-QjERPACUtHS0hZK7oz3uELTvOAbzG9jixqYApL4wyrtUlkWy-XPd_wg04l6G8buWPKD0wT8P1FO1tYLvlWH38sjYKzc8nHB_Mua1IMo67cpa23BgxkneS_gGTve3K0PoPDw5ybfBUTNiM6z3m3xaF1_5AHSnhlwoqxZlAEcJDY9rWH6f9EKNmBiKwecoEvtONBEYEvRrp4rkprKjY97wrTILpcwf9Qv_nAWMGjWImtqV9MkEZpVz53W3LKrRKkoTMxJN5qj8WmADUR2YzPA3Ai-jT2GznA8oc1RWNGXuVM5sD6xhBvn9E1KpYaUL_1M8_0eyPG6GLqUT4qTL8CDSSpr73GBbPY5xpczyDWCYvoH-G5ohT0gw_W84iPH5zW1NETH2xySN0liacpCp-E1oz3rm6ko7CCH9O0jukLekyaBZ5u8hkyFzNE2IWvor0exlMXgSYMZrq3SEqVkR6I28j7QqlxyaHD6iY-1RkJvIPoVLhm1F3cwd_-LsPHrj2xBLH_98vbTehAwrmKzWMEkdrVi9ac6PQjeDNdpfZTpGwEFmg9qDPjaIJDiw8I-j97-1g3uSK0HhkcVJd6bQX13GI_uwVl3sY3_WA5u_1M4QuYlOi_XuzhzrIRGNtARY3Ao97e4PkjcMSA14U1a-oMOmQpGBuhDB5ZU6gnSq3JcCuonuRG6A0tjFPdbPGFocbDBqioR7prCEipbGq4iUj7_uKVvxsGS5sd3P4_19c0fE_cw-0WdMLTzU4MeLgKzKcHDto2VnUWjdetzK7dqXfE8oa2q0ZZrtpn6fJixIbTRkTBLUy1MyjP6Uz5F1Ucf_pJDAltBY2_l7daMMnmlxmPXCt8I9_-75o67oggZX1l_MRrPgpDIE86pU0nmmk6Ax6TAQEnQAyzdU7kzaEG8ZLOQ8uUAEAfH0OEInTINxCG6BuV2fBdaFq1ebDwKP4cgfXlAo24jrAHIa_31OdM_ULnYGh2q_qwCT8N3F6gvzTQdBSggvb6U2WBU5BTeIRj65-L51p7R0g6KNJD2RRzsOCDgFKrVLnC83KStG681EEKg1rbegagp9C2jMpMUUPyyfHXkiyJnL1PAYpkfu_jGnbUNy5RYTGnWZi5N3FPhKf3cicyEa5dRQnZ_AxF6XyX_WDGnpX8sy3RcChvPQ8Ps6Xm7m9HDhvxfspXgN5fK1r4yU9B2urUnVWMKCBDheXEfPg_GhhL_pCEL1ISqK-uuOfgI1rephl05qE4I51J-qh1GMw6T94yy7QMCJR9b7pKmqRsleKpST5VUp7h7e8qWZjyXKXz9hl5RbPCXyQzgrsSwOv06NFNkIzClmDbsjrd7OyDLrFbK3miPsGC8MIbCG6NKbn6q7VNWu_7a771kMhNK6TmUGNnWu2RdHmkiRUHdJld97sQ2p8YQdl_d5N5kvdYD3j6SbMQ8LVkQytLaGV0g6xIuucv6Q8ZYqi5BcylhEwjCAJlI4SxSiDP3gAGas5km6Q5_ApHx3jSrNfnd4ZBHsyjdievVJh13Aay2AMCQWm5QR8f1yCb_42fUHb7d0oTxNhwKjDCn6WrmvgbUbO9_jviuTQk9QkDkP0fPBtimotdiz77Ls4TbbDHCYpn5vxOLTG1R1SO0xU-Y-v3_yoctc5pzFAb2x1nWZ0a7WBD_QH5Ec2NcfnNc2lgEuZe9mIbkmaNt7U2_LLwT_TcJbrRsU30JBvn5CYW-iJEEnptVzzCtxECeL9NHkLzHThs1jGV5E5IOLFOH_jbqXeg3CBW-UtX-7f10jp8Y2XPKs-nXQQoUeOFf-gn8TMrlEH-CokqMmGDrjZivmhOLugMNGYaIMXazs=",
-                "id": "rs_0ed6438f6ce1f6c1006ab2b2f6187087d0b91566a919795524",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_pFhOOPhTulXv3IGctZosWHk0",
-                "id": "fc_0ed6438f6ce1f6c1006ab2b2f824fc87d0b7fe50adf3906b8f",
-                "name": "add",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Add x and y together",
-                "name": "add",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "x": {
-                      "description": "The first number to add",
-                      "type": "number"
-                    },
-                    "y": {
-                      "description": "The second number to add",
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "x",
-                    "y"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 104,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 174,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_0ed6438f6ce1f6c1006ab2b2f5b39887d0990e659a7b7edf97",
+              "provider_request_id": "req_880ea51c19824ea8abf6cfbbceaed5b3",
+              "usage": {
+                "input_tokens": 104,
+                "output_tokens": 174,
+                "total_tokens": 278,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 128
               },
-              "total_tokens": 278
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_0ed6438f6ce1f6c1006ab2b2f5b39887d0990e659a7b7edf97",
+                "incomplete_details": null,
+                "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrL4rWQxB2AV-VvuWbrfM2WbqRFtIa28fi4uAenJAtDgDIqNKKI2GiL0pDa9LDNyL0u6OCzrKK_oyX2gnkeNL9orvFF-T14-t4o0UshdsGvtwke2iNiwNtLZYQ6vwrY5MWwdutIGNXzTUABgkDjKFcCi0ESPEM_Dj--nwbO6wQYvmxXN2_C-KIR_9ZcbpqC4FwbkBiIKUey1O_Q_-XWa-ta1TCnULakpRjkxQujU_CfAMqBRdIQO_YKGO7EhnH49MY-QjERPACUtHS0hZK7oz3uELTvOAbzG9jixqYApL4wyrtUlkWy-XPd_wg04l6G8buWPKD0wT8P1FO1tYLvlWH38sjYKzc8nHB_Mua1IMo67cpa23BgxkneS_gGTve3K0PoPDw5ybfBUTNiM6z3m3xaF1_5AHSnhlwoqxZlAEcJDY9rWH6f9EKNmBiKwecoEvtONBEYEvRrp4rkprKjY97wrTILpcwf9Qv_nAWMGjWImtqV9MkEZpVz53W3LKrRKkoTMxJN5qj8WmADUR2YzPA3Ai-jT2GznA8oc1RWNGXuVM5sD6xhBvn9E1KpYaUL_1M8_0eyPG6GLqUT4qTL8CDSSpr73GBbPY5xpczyDWCYvoH-G5ohT0gw_W84iPH5zW1NETH2xySN0liacpCp-E1oz3rm6ko7CCH9O0jukLekyaBZ5u8hkyFzNE2IWvor0exlMXgSYMZrq3SEqVkR6I28j7QqlxyaHD6iY-1RkJvIPoVLhm1F3cwd_-LsPHrj2xBLH_98vbTehAwrmKzWMEkdrVi9ac6PQjeDNdpfZTpGwEFmg9qDPjaIJDiw8I-j97-1g3uSK0HhkcVJd6bQX13GI_uwVl3sY3_WA5u_1M4QuYlOi_XuzhzrIRGNtARY3Ao97e4PkjcMSA14U1a-oMOmQpGBuhDB5ZU6gnSq3JcCuonuRG6A0tjFPdbPGFocbDBqioR7prCEipbGq4iUj7_uKVvxsGS5sd3P4_19c0fE_cw-0WdMLTzU4MeLgKzKcHDto2VnUWjdetzK7dqXfE8oa2q0ZZrtpn6fJixIbTRkTBLUy1MyjP6Uz5F1Ucf_pJDAltBY2_l7daMMnmlxmPXCt8I9_-75o67oggZX1l_MRrPgpDIE86pU0nmmk6Ax6TAQEnQAyzdU7kzaEG8ZLOQ8uUAEAfH0OEInTINxCG6BuV2fBdaFq1ebDwKP4cgfXlAo24jrAHIa_31OdM_ULnYGh2q_qwCT8N3F6gvzTQdBSggvb6U2WBU5BTeIRj65-L51p7R0g6KNJD2RRzsOCDgFKrVLnC83KStG681EEKg1rbegagp9C2jMpMUUPyyfHXkiyJnL1PAYpkfu_jGnbUNy5RYTGnWZi5N3FPhKf3cicyEa5dRQnZ_AxF6XyX_WDGnpX8sy3RcChvPQ8Ps6Xm7m9HDhvxfspXgN5fK1r4yU9B2urUnVWMKCBDheXEfPg_GhhL_pCEL1ISqK-uuOfgI1rephl05qE4I51J-qh1GMw6T94yy7QMCJR9b7pKmqRsleKpST5VUp7h7e8qWZjyXKXz9hl5RbPCXyQzgrsSwOv06NFNkIzClmDbsjrd7OyDLrFbK3miPsGC8MIbCG6NKbn6q7VNWu_7a771kMhNK6TmUGNnWu2RdHmkiRUHdJld97sQ2p8YQdl_d5N5kvdYD3j6SbMQ8LVkQytLaGV0g6xIuucv6Q8ZYqi5BcylhEwjCAJlI4SxSiDP3gAGas5km6Q5_ApHx3jSrNfnd4ZBHsyjdievVJh13Aay2AMCQWm5QR8f1yCb_42fUHb7d0oTxNhwKjDCn6WrmvgbUbO9_jviuTQk9QkDkP0fPBtimotdiz77Ls4TbbDHCYpn5vxOLTG1R1SO0xU-Y-v3_yoctc5pzFAb2x1nWZ0a7WBD_QH5Ec2NcfnNc2lgEuZe9mIbkmaNt7U2_LLwT_TcJbrRsU30JBvn5CYW-iJEEnptVzzCtxECeL9NHkLzHThs1jGV5E5IOLFOH_jbqXeg3CBW-UtX-7f10jp8Y2XPKs-nXQQoUeOFf-gn8TMrlEH-CokqMmGDrjZivmhOLugMNGYaIMXazs=",
+                    "id": "rs_0ed6438f6ce1f6c1006ab2b2f6187087d0b91566a919795524",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "call_id": "call_pFhOOPhTulXv3IGctZosWHk0",
+                    "id": "fc_0ed6438f6ce1f6c1006ab2b2f824fc87d0b7fe50adf3906b8f",
+                    "name": "add",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Add x and y together",
+                    "name": "add",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "x": {
+                          "description": "The first number to add",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "The second number to add",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 104,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 174,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 128
+                  },
+                  "total_tokens": 278
+                },
+                "user": null
+              }
+            }
           }
         }
       }
@@ -422,143 +426,147 @@
               "text": "99"
             }
           ],
-          "usage": {
-            "input_tokens": 289,
-            "output_tokens": 188,
-            "total_tokens": 477,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "message_id": "msg_0ed6438f6ce1f6c1006ab2b2fb821087d0b187f6c16cb67794",
-          "response_id": "resp_0ed6438f6ce1f6c1006ab2b2f8adb887d0b9da22564685273f",
-          "provider_request_id": "req_3379872b2f524d6297ab0750be8eb998",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_0ed6438f6ce1f6c1006ab2b2f8adb887d0b9da22564685273f",
-            "incomplete_details": null,
-            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrL71AP5Jpd46AdUIb9QWHaxsfQ5yhztwlD88-proAo0lPJS2Yer2KmhK_TSZnpbZ2Q8D9cMONhGcarOKd04jKEd-1BTSWOvpYzGS6hDHxpngUslgLwIF_q8uKdY5T-AMJxf1KvuPy6MwYD0vyk8FXM9ckgKOJN5OXARkcf-BV5G1x3PvWVgPtqWvvQ1hkV6kKIHHO6duUhRgR-1ynwW1xe3KUMOS1aSp6qQosX4s1tV5j8DfVwcurEP-Yinf_kDGxg8BylxaCL1BUTsbZvX162H-Jk0LdtWykSM8AiCXcY1H_lUz7xvPxSDhFXbsCCVd4HuGW5ZJSgD_VkO2yzDRUjcxOQz9PWA8cva5PSRTGCxKjnxGoe4E-wYfPAepOSyFFo2Aa6SfM-FEIkMN501p6oWFCP_rGtLmplaqJBBM6qdBOj5WH0_ymSyquU-pLJLU3_E6jX-iMsmDNfS5GcP7iJSB__oPzaq-_VOP5UhIkXPo1Uyvz3eJDD4zuhw_yzfo1rqt8IsUujErVIaj_G4iUvcTyTjZpZWhyeZFbSVfPsBTN7_brl8d153HfETt7jzWIVsHcwalb8o3iNvn0pWaQqWyq-DtNWMRvmWhf-GjFssMQJIYuAdmb2cAEWjANsS5UJUyHBccX-OnNdE6BPi6V-I8sUTI1nzlUaAIHSY4DSArWIVihDMEzoOWkUVSHL75b-sTlyiEwenp-vbiPFft0n6P792Z8Ud-jSwirCadprikeHYO_f3zmDE164-qyVcoEzPB1R5wVAEXyh6Eiknhpwh3-pDffG5sRKsW6z51PCY8-YVWDVkkGWHC9GTkuYEXjorf2FXYwylHHBLUJse4SZzQr7X-dGETXia8n264ToZDT7vXXm78YZIjehFWiMqgU3rqIzt672strKS3W1becCtUrUa6qEGRfniMmfGDcE-CK02RXPvswQq7wsuXYmKSGpwM31JAVpdpm21VUPRMt3PbHbm3ocfjhGdOk1smrMOjTlSyvtvMYa8VlG3KQOaXtBr_5zE9aGGIOGipQB20Sc14cf9l1fjxZ3P0FGcUALvdrt8rFyIg8ibkkQ4A7HZmalbOf5uecjCRTfkmW7L3SQ8Uj4WhPtsW8JPox-Prv_o5DOpnvPt6VIybrX2hEV2O0pWQA4dkb8y3GAa85ztaF_iksgsgrlfYMbTj63VrZi_Vvw_UGP68RhELWJlZHi_a9jbqSjMEArXroD549-c94yH8e2i9wBlu1hfFph25X2NnPCZzAv28w9TJTBgNtY0dnjwJyXOo54F3mVn9dhN5cBli4FZW4WItEQRoidKvKT_ZYUN_JOGqQZBNSlG8m5xaSIGrZjakK-_PCREgyIMS5OE7a5R88DWJI0OY77ojDvfYJ8dgdjRDMpq_yPjCb51jvIke0VLgTwUervU4lwMsjb5ymLy9Hn2uSMG_kIkzJLrf_EWPodMOIHSFUvST91jI7MB6C9_oDv8averqizazr5JJynqtt9_LHyKgoz6llxzzyaj1tiIo9QG4DekfThMAkcRK7gD5VoJxdHhi94aZrwG8DK877fIBPsGPV-h0gMwn2t7fnOOy2dYi750u79fNE2LSUxQVZWE_DmaEAfrb4m7UHswQKJUzOnvLeIyTTbf-5Y5oj6FcE-srFHYlLFOTvZ12sln7sprbH4bFQxXRyiWoAz_mmbaYe21HsJQjd7fe3JaSjRWNER4HLLOO6chqfn9O5oRSdmCHo2KJNJBPEBFAd8lbyZQKFoQcrfA25qu6iKDHOWhwsr6Hj4VZdzutCh9RZweEmy7ota0QYLG2G6VZUzXuZ6Y0uemxXNtC1dpsvgtpbPrXQvQnRQNPmz9UwK8Bw2Ldl-yw0K1HBBalyz_Z8fC7dwZIU_x8MtXcl8B2nJ0ygP7lTyxZs-kxhnAWjvH5kfCuAXsnsTT93vwV1ciVXEdrp_JAOumooUGh6BEJ5k3iOIfA4ISG_4e5gJusyo_C40i-u8JcLT8PWPHOW5oifbwfKZMw6jVAKDLSyk8lAlHg_pysI_GgtQ_1IOMTeF5LfSzrT55g3vto_S5FwDE6WZI91GvXMfkZMtG9Xum4i_2Q2lMoKNR71y9oU_yoCt2e0nT1nFBy_a77o58BuJiNxSdxKisNKyDPVAr8w0MoQE_aRv7aMy_HI-KV8HC8RXo0rmrCO-kp_aJZ8YB7Tg-dTXfK0okqGUAoLXBozLLcDc=",
-                "id": "rs_0ed6438f6ce1f6c1006ab2b2f945a487d0bc385c8dba8365e9",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "99",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_0ed6438f6ce1f6c1006ab2b2fb821087d0b187f6c16cb67794",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Add x and y together",
-                "name": "add",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "x": {
-                      "description": "The first number to add",
-                      "type": "number"
-                    },
-                    "y": {
-                      "description": "The second number to add",
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "x",
-                    "y"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 289,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 188,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_0ed6438f6ce1f6c1006ab2b2fb821087d0b187f6c16cb67794",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_0ed6438f6ce1f6c1006ab2b2f8adb887d0b9da22564685273f",
+              "provider_request_id": "req_3379872b2f524d6297ab0750be8eb998",
+              "usage": {
+                "input_tokens": 289,
+                "output_tokens": 188,
+                "total_tokens": 477,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 128
               },
-              "total_tokens": 477
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_0ed6438f6ce1f6c1006ab2b2f8adb887d0b9da22564685273f",
+                "incomplete_details": null,
+                "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrL71AP5Jpd46AdUIb9QWHaxsfQ5yhztwlD88-proAo0lPJS2Yer2KmhK_TSZnpbZ2Q8D9cMONhGcarOKd04jKEd-1BTSWOvpYzGS6hDHxpngUslgLwIF_q8uKdY5T-AMJxf1KvuPy6MwYD0vyk8FXM9ckgKOJN5OXARkcf-BV5G1x3PvWVgPtqWvvQ1hkV6kKIHHO6duUhRgR-1ynwW1xe3KUMOS1aSp6qQosX4s1tV5j8DfVwcurEP-Yinf_kDGxg8BylxaCL1BUTsbZvX162H-Jk0LdtWykSM8AiCXcY1H_lUz7xvPxSDhFXbsCCVd4HuGW5ZJSgD_VkO2yzDRUjcxOQz9PWA8cva5PSRTGCxKjnxGoe4E-wYfPAepOSyFFo2Aa6SfM-FEIkMN501p6oWFCP_rGtLmplaqJBBM6qdBOj5WH0_ymSyquU-pLJLU3_E6jX-iMsmDNfS5GcP7iJSB__oPzaq-_VOP5UhIkXPo1Uyvz3eJDD4zuhw_yzfo1rqt8IsUujErVIaj_G4iUvcTyTjZpZWhyeZFbSVfPsBTN7_brl8d153HfETt7jzWIVsHcwalb8o3iNvn0pWaQqWyq-DtNWMRvmWhf-GjFssMQJIYuAdmb2cAEWjANsS5UJUyHBccX-OnNdE6BPi6V-I8sUTI1nzlUaAIHSY4DSArWIVihDMEzoOWkUVSHL75b-sTlyiEwenp-vbiPFft0n6P792Z8Ud-jSwirCadprikeHYO_f3zmDE164-qyVcoEzPB1R5wVAEXyh6Eiknhpwh3-pDffG5sRKsW6z51PCY8-YVWDVkkGWHC9GTkuYEXjorf2FXYwylHHBLUJse4SZzQr7X-dGETXia8n264ToZDT7vXXm78YZIjehFWiMqgU3rqIzt672strKS3W1becCtUrUa6qEGRfniMmfGDcE-CK02RXPvswQq7wsuXYmKSGpwM31JAVpdpm21VUPRMt3PbHbm3ocfjhGdOk1smrMOjTlSyvtvMYa8VlG3KQOaXtBr_5zE9aGGIOGipQB20Sc14cf9l1fjxZ3P0FGcUALvdrt8rFyIg8ibkkQ4A7HZmalbOf5uecjCRTfkmW7L3SQ8Uj4WhPtsW8JPox-Prv_o5DOpnvPt6VIybrX2hEV2O0pWQA4dkb8y3GAa85ztaF_iksgsgrlfYMbTj63VrZi_Vvw_UGP68RhELWJlZHi_a9jbqSjMEArXroD549-c94yH8e2i9wBlu1hfFph25X2NnPCZzAv28w9TJTBgNtY0dnjwJyXOo54F3mVn9dhN5cBli4FZW4WItEQRoidKvKT_ZYUN_JOGqQZBNSlG8m5xaSIGrZjakK-_PCREgyIMS5OE7a5R88DWJI0OY77ojDvfYJ8dgdjRDMpq_yPjCb51jvIke0VLgTwUervU4lwMsjb5ymLy9Hn2uSMG_kIkzJLrf_EWPodMOIHSFUvST91jI7MB6C9_oDv8averqizazr5JJynqtt9_LHyKgoz6llxzzyaj1tiIo9QG4DekfThMAkcRK7gD5VoJxdHhi94aZrwG8DK877fIBPsGPV-h0gMwn2t7fnOOy2dYi750u79fNE2LSUxQVZWE_DmaEAfrb4m7UHswQKJUzOnvLeIyTTbf-5Y5oj6FcE-srFHYlLFOTvZ12sln7sprbH4bFQxXRyiWoAz_mmbaYe21HsJQjd7fe3JaSjRWNER4HLLOO6chqfn9O5oRSdmCHo2KJNJBPEBFAd8lbyZQKFoQcrfA25qu6iKDHOWhwsr6Hj4VZdzutCh9RZweEmy7ota0QYLG2G6VZUzXuZ6Y0uemxXNtC1dpsvgtpbPrXQvQnRQNPmz9UwK8Bw2Ldl-yw0K1HBBalyz_Z8fC7dwZIU_x8MtXcl8B2nJ0ygP7lTyxZs-kxhnAWjvH5kfCuAXsnsTT93vwV1ciVXEdrp_JAOumooUGh6BEJ5k3iOIfA4ISG_4e5gJusyo_C40i-u8JcLT8PWPHOW5oifbwfKZMw6jVAKDLSyk8lAlHg_pysI_GgtQ_1IOMTeF5LfSzrT55g3vto_S5FwDE6WZI91GvXMfkZMtG9Xum4i_2Q2lMoKNR71y9oU_yoCt2e0nT1nFBy_a77o58BuJiNxSdxKisNKyDPVAr8w0MoQE_aRv7aMy_HI-KV8HC8RXo0rmrCO-kp_aJZ8YB7Tg-dTXfK0okqGUAoLXBozLLcDc=",
+                    "id": "rs_0ed6438f6ce1f6c1006ab2b2f945a487d0bc385c8dba8365e9",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "99",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_0ed6438f6ce1f6c1006ab2b2fb821087d0b187f6c16cb67794",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Add x and y together",
+                    "name": "add",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "x": {
+                          "description": "The first number to add",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "The second number to add",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 289,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 188,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 128
+                  },
+                  "total_tokens": 477
+                },
+                "user": null
+              }
+            }
           }
         }
       }

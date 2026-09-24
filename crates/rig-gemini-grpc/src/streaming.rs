@@ -10,9 +10,10 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde_json::{Map, Value};
 
-use rig_core::completion::CompletionRequest;
+use rig_core::completion::{CompletionRequest, ReportedEnd};
 use rig_core::driver::{run_wire_stream, warn_unmodeled};
 use rig_core::error::ProviderError;
+use rig_core::id::ProviderName;
 use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
@@ -106,7 +107,7 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
         if is_final {
             match terminal_record(&resp) {
                 Ok(record) => out.final_record(record),
-                Err(err) => out.error(err.into()),
+                Err(err) => out.error(err),
             }
         }
     }
@@ -191,29 +192,24 @@ impl GrpcAdapter {
     }
 }
 
-/// Map the terminal `GenerateContentResponse` onto rig's
-/// [`streaming::StreamFinal`], serializing the native record onto
-/// [`streaming::StreamFinal::raw`].
+/// What the terminal `GenerateContentResponse` reports, with the native
+/// record as its document.
 fn terminal_record(
     response: &proto::GenerateContentResponse,
-) -> Result<streaming::StreamFinal, serde_json::Error> {
+) -> Result<ReportedEnd, ProviderError> {
     let usage = super::completion::map_usage(response.usage_metadata.as_ref());
     let finish_reason = response
         .candidates
         .first()
         .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
 
-    Ok(streaming::StreamFinal {
+    Ok(ReportedEnd {
         finish_reason,
+        reasoning_issuer: Some(ProviderName::new(super::completion::REASONING_ISSUER)?),
         response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
         model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
-        ..streaming::StreamFinal::new(
-            super::completion::PROVIDER_NAME,
-            usage,
-            serde_json::to_value(response)?,
-        )
-    }
-    .with_reasoning_issuer(super::completion::REASONING_ISSUER))
+        ..ReportedEnd::new(usage, serde_json::to_value(response)?)
+    })
 }
 
 /// Normalizes typed protobuf events through the shared completion driver.
@@ -225,14 +221,18 @@ pub fn stream_from_events(
 ) -> streaming::StreamingCompletionResponse {
     streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
-        run_wire_stream(events, GrpcAdapter::default()),
+        run_wire_stream(
+            super::completion::PROVIDER_NAME,
+            None,
+            events,
+            GrpcAdapter::default(),
+        ),
     )
     .with_reasoning_issuer(super::completion::REASONING_ISSUER)
 }
 
-/// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
-/// record; the adapter maps Gemini's own protobuf terminal onto
-/// [`streaming::StreamFinal::raw`].
+/// Open a stream normalized to rig's terminal record; the adapter keeps
+/// Gemini's own protobuf terminal as the record's `raw`.
 pub(crate) async fn stream(
     client: Client,
     model: String,
@@ -266,7 +266,13 @@ pub(crate) async fn stream(
 
     Ok(streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
-        run_wire_stream(transport, GrpcAdapter::default()),
+        // gRPC carries no request id header rig reads.
+        run_wire_stream(
+            super::completion::PROVIDER_NAME,
+            None,
+            transport,
+            GrpcAdapter::default(),
+        ),
     )
     .with_reasoning_issuer(super::completion::REASONING_ISSUER))
 }

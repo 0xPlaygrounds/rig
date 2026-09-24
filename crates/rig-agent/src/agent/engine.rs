@@ -14,11 +14,12 @@ use tracing::{Instrument, span::Id};
 use crate::bus::{DispatchOptions, MemoryHandle};
 use rig_core::error::ProviderError;
 use rig_core::{
-    completion::{FinishReason, ModelRef, ResponseIdentity},
+    completion::{CompletionEnd, FinishReason, ModelRef},
     effect::{EffectId, EffectKind, Outcome},
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, ToolCall, UserContent},
-    streaming::BlockId,
+    response::ResponseMeta,
+    streaming::{BlockId, StreamingCompletionResponse},
     telemetry::SpanCombinator,
     wasm_compat::WasmCompatSend,
 };
@@ -137,6 +138,26 @@ fn truncated_stream_error() -> ProviderError {
         "provider stream ended without a terminal record; treating the turn as truncated"
             .to_string(),
     )
+}
+
+/// The record of a streamed attempt that settled on `usage` and
+/// `finish_reason`: the stream's terminal record, with the message id the
+/// stream reported. `None` when the stream delivered no terminal record.
+fn attempt_end(
+    stream: &StreamingCompletionResponse,
+    usage: Usage,
+    finish_reason: Option<FinishReason>,
+) -> Option<CompletionEnd> {
+    let terminal = stream.response.as_ref()?;
+    Some(CompletionEnd {
+        finish_reason,
+        message_id: stream.message_id.clone(),
+        meta: ResponseMeta {
+            usage,
+            ..terminal.meta.clone()
+        },
+        ..terminal.clone()
+    })
 }
 
 /// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
@@ -896,14 +917,9 @@ impl TurnSource for StreamingTurnSource {
                         // attempt's response, never a previous attempt's. A
                         // stream that delivered no terminal is truncated per
                         // the emission contract and has no call to record.
-                        match stream.response.as_ref().map(|response| response.raw.clone()) {
+                        match attempt_end(&stream, usage, $finish_reason) {
                             None => Err(truncated_stream_error().into()),
-                            Some(raw) => match run.record_streamed_completion_call(
-                                usage,
-                                stream.identity(),
-                                $finish_reason,
-                                raw,
-                            ) {
+                            Some(end) => match run.record_streamed_completion_call(&end) {
                                 Ok(call) => {
                                     completion_call_emitted = true;
                                     Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
@@ -1071,13 +1087,8 @@ impl TurnSource for StreamingTurnSource {
                                 },
                             ));
                         }
-                        StreamedTurnEvent::Completed {
-                            usage,
-                            emit_final,
-                            finish_reason,
-                            raw: _,
-                        } => {
-                            match emit_completion_call!(usage, finish_reason) {
+                        StreamedTurnEvent::Completed { end, emit_final } => {
+                            match emit_completion_call!(end.meta.usage, end.finish_reason) {
                                 Ok(Some(item)) => yield Ok(item),
                                 Ok(None) => {}
                                 Err(err) => {
@@ -1220,12 +1231,15 @@ impl TurnSource for StreamingTurnSource {
             // assignment. Identity and payload still come from the terminal
             // record, so completion calls and hook observations agree.
             if !completion_call_emitted {
-                match run.record_streamed_completion_call(
-                    crate::completion::Usage::default(),
-                    stream.identity(),
-                    terminal.finish_reason.clone(),
-                    terminal.raw.clone(),
-                ) {
+                let end = CompletionEnd {
+                    meta: ResponseMeta {
+                        usage: crate::completion::Usage::default(),
+                        ..terminal.meta.clone()
+                    },
+                    message_id: stream.message_id.clone(),
+                    ..terminal.clone()
+                };
+                match run.record_streamed_completion_call(&end) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
                         yield Err(err.into());
@@ -1240,30 +1254,30 @@ impl TurnSource for StreamingTurnSource {
                 &final_turn_content,
                 stream.reasoning_issuer(),
             );
-            // This attempt's identity comes from this stream's terminal record,
-            // and every attempt opens its own stream, so earlier ids cannot leak
-            // in. The message id prefers the assembled turn's, which folds in an
-            // explicit `MessageId` event.
-            let identity = rig_core::completion::ResponseIdentity {
+            // This attempt's record is this stream's terminal record, and every
+            // attempt opens its own stream, so a retry never observes an earlier
+            // attempt's ids or payload. The message id prefers the assembled
+            // turn's, which folds in an explicit `MessageId` event; the finish
+            // reason is the assembled turn's, reconciled with its content.
+            let attempt_end = CompletionEnd {
+                finish_reason: streamed_turn.finish_reason.clone(),
                 message_id: streamed_turn
                     .message_id
                     .clone()
                     .and_then(rig_core::id::MessageId::non_empty),
-                ..stream.identity()
+                // The assembled turn's reasoning already names its issuer.
+                reasoning_issuer: None,
+                meta: ResponseMeta {
+                    usage: last_usage,
+                    ..terminal.meta.clone()
+                },
             };
-            // The raw payload comes from the same terminal record as the identity
-            // above, so a retry never observes an earlier attempt's response.
-            let attempt_raw = &terminal.raw;
             self.last_message_id.clone_from(&streamed_turn.message_id);
             // The canonical assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
             // provider aggregate (`stream.snapshot()`). The hooks and run
             // history see this.
             let canonical_choice = streamed_turn.choice.clone();
-            // `streamed_turn` is moved into run state on the next line and the
-            // hooks fire after that. `FinishReason::Other` carries a `String`,
-            // so this is a clone rather than a copy.
-            let attempt_finish_reason = streamed_turn.finish_reason.clone();
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(err.into());
                 return;
@@ -1276,13 +1290,9 @@ impl TurnSource for StreamingTurnSource {
                     AssembledTurn {
                         dispatch_id,
                         dispatch_kind: &dispatched_kind,
-                        provider: stream.provider(),
                         content: &canonical_choice,
-                        usage: last_usage,
-                        identity: &identity,
-                        finish_reason: attempt_finish_reason.as_ref(),
+                        end: &attempt_end,
                         max_tokens: attempt_max_tokens,
-                        raw: attempt_raw,
                     },
                 )
                 .await;
@@ -1434,16 +1444,12 @@ pub(crate) struct AssembledTurn<'a> {
     /// correlation id and the effect that was dispatched.
     pub(crate) dispatch_id: EffectId,
     pub(crate) dispatch_kind: &'a EffectKind,
-    /// The provider that answered, as the response names it.
-    pub(crate) provider: &'a str,
     pub(crate) content: &'a Vec<AssistantContent>,
-    pub(crate) usage: Usage,
-    pub(crate) identity: &'a ResponseIdentity,
-    pub(crate) finish_reason: Option<&'a FinishReason>,
+    /// How the attempt ended, its finish reason reconciled with `content`.
+    pub(crate) end: &'a CompletionEnd,
     /// The cap this attempt was prepared with, completion-call patches
     /// included; read off the prepared request, never the agent config.
     pub(crate) max_tokens: Option<u64>,
-    pub(crate) raw: &'a serde_json::Value,
 }
 
 /// Settle a parked model turn: fire [`AgentHook::on_outcome`] for the
@@ -1464,23 +1470,10 @@ pub(crate) async fn settle_model_turn(
     run: &mut AgentRun,
     turn: AssembledTurn<'_>,
 ) -> Result<ModelTurnDecision, PromptError> {
-    let has_tool_call = turn
-        .content
-        .iter()
-        .any(rig_core::message::AssistantContent::is_tool_call);
-    let mut folded = rig_core::completion::CompletionResponse::new(
-        turn.content.clone(),
-        turn.usage,
-        turn.provider,
-        turn.raw.clone(),
-    );
-    folded.finish_reason = turn
-        .finish_reason
-        .cloned()
-        .map(|reason| reason.reconcile_with_output(has_tool_call));
-    folded.message_id = turn.identity.message_id.clone();
-    folded.response_id = turn.identity.response_id.clone();
-    folded.provider_request_id = turn.identity.provider_request_id.clone();
+    let folded = rig_core::completion::CompletionResponse {
+        choice: turn.content.clone(),
+        end: turn.end.clone(),
+    };
     let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
     let mut replaced: Option<Vec<AssistantContent>> = None;
     match hooks
@@ -1519,11 +1512,8 @@ pub(crate) async fn settle_model_turn(
             ModelTurnFinished {
                 turn: hook_ctx.turn(),
                 content,
-                usage: turn.usage,
-                identity: turn.identity,
-                finish_reason: turn.finish_reason,
+                end: turn.end,
                 max_tokens: turn.max_tokens,
-                raw: turn.raw,
             },
         )
         .await;
@@ -1915,12 +1905,10 @@ impl TurnSource for UnaryTurnSource {
                 }
             };
 
-            // Normalized once, then shared by run state and the per-turn hook, so
-            // the two cannot report different reasons for one attempt.
-            let attempt_finish_reason = resp.finish_reason.clone();
-
-            let mut outcome = match run.model_response(ModelTurn::from_response_parts(
-                &resp,
+            // One record, shared by run state and the per-turn hook, so the two
+            // cannot report different reasons for one attempt.
+            let mut outcome = match run.model_response(ModelTurn::new(
+                resp.clone(),
                 prepared.executable_tool_names,
                 prepared.allowed_tool_names,
             )) {
@@ -1955,7 +1943,6 @@ impl TurnSource for UnaryTurnSource {
                         response_hook_suppressed,
                     } => {
                         if !response_hook_suppressed {
-                            let identity = resp.identity();
                             let settlement = settle_model_turn(
                                 &runner.config.hooks,
                                 hook_ctx,
@@ -1963,13 +1950,9 @@ impl TurnSource for UnaryTurnSource {
                                 AssembledTurn {
                                     dispatch_id,
                                     dispatch_kind: &dispatched_kind,
-                                    provider: &resp.provider,
                                     content: &resp.choice,
-                                    usage: resp.usage,
-                                    identity: &identity,
-                                    finish_reason: attempt_finish_reason.as_ref(),
+                                    end: &resp.end,
                                     max_tokens: attempt_max_tokens,
-                                    raw: &resp.raw,
                                 },
                             )
                             .await;

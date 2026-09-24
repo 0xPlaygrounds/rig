@@ -113,73 +113,77 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 154,
-            "output_tokens": 28,
-            "total_tokens": 182,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152491-ffd2TiEqpdMcAvMq2asP",
-          "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o-mini",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": null,
-                  "reasoning": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_fv3ubVl9yrU9F9Q6VolXP8K0",
-                      "index": 0,
-                      "type": "function"
-                    }
-                  ]
-                },
-                "native_finish_reason": "tool_calls"
-              }
-            ],
-            "created": 0,
-            "id": "gen-1790152491-ffd2TiEqpdMcAvMq2asP",
-            "model": "openai/gpt-4o-mini",
-            "object": "chat.completion",
-            "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_2e30314e0f",
-            "usage": {
-              "completion_tokens": 28,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o-mini",
+              "response_id": "gen-1790152491-ffd2TiEqpdMcAvMq2asP",
+              "usage": {
+                "input_tokens": 154,
+                "output_tokens": 28,
+                "total_tokens": 182,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.0000399,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.0000168,
-                "upstream_inference_cost": 0.0000399,
-                "upstream_inference_prompt_cost": 0.0000231
-              },
-              "is_byok": false,
-              "prompt_tokens": 154,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 182
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": null,
+                      "reasoning": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
+                            "name": "submit"
+                          },
+                          "id": "call_fv3ubVl9yrU9F9Q6VolXP8K0",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    },
+                    "native_finish_reason": "tool_calls"
+                  }
+                ],
+                "created": 0,
+                "id": "gen-1790152491-ffd2TiEqpdMcAvMq2asP",
+                "model": "openai/gpt-4o-mini",
+                "object": "chat.completion",
+                "provider": "OpenAI",
+                "service_tier": null,
+                "system_fingerprint": "fp_2e30314e0f",
+                "usage": {
+                  "completion_tokens": 28,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.0000399,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.0000168,
+                    "upstream_inference_cost": 0.0000399,
+                    "upstream_inference_prompt_cost": 0.0000231
+                  },
+                  "is_byok": false,
+                  "prompt_tokens": 154,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 182
+                }
+              }
             }
           }
         }

@@ -345,32 +345,36 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 667,
-            "output_tokens": 67,
-            "total_tokens": 734,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-          "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 67,
-              "input_tokens": 667,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
+          "end": {
+            "finish_reason": "tool_calls",
             "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-            "model": "claude-haiku-4-5-20251001"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
+              "usage": {
+                "input_tokens": 667,
+                "output_tokens": 67,
+                "total_tokens": 734,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 67,
+                  "input_tokens": 667,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "tool_use",
+                "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
+                "model": "claude-haiku-4-5-20251001"
+              }
+            }
           }
         }
       },
@@ -487,32 +491,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 667,
-            "output_tokens": 67,
-            "total_tokens": 734,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-          "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
             "usage": {
-              "output_tokens": 67,
               "input_tokens": 667,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 67,
+              "total_tokens": 734,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-            "model": "claude-haiku-4-5-20251001"
+            "raw": {
+              "usage": {
+                "output_tokens": 67,
+                "input_tokens": 667,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "tool_use",
+              "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
+              "model": "claude-haiku-4-5-20251001"
+            }
           }
         }
       ],
@@ -669,32 +675,36 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 763,
-            "output_tokens": 75,
-            "total_tokens": 838,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-          "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 75,
-              "input_tokens": 763,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
+          "end": {
+            "finish_reason": "tool_calls",
             "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-            "model": "claude-haiku-4-5-20251001"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
+              "usage": {
+                "input_tokens": 763,
+                "output_tokens": 75,
+                "total_tokens": 838,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 75,
+                  "input_tokens": 763,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "tool_use",
+                "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
+                "model": "claude-haiku-4-5-20251001"
+              }
+            }
           }
         }
       },
@@ -811,32 +821,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 763,
-            "output_tokens": 75,
-            "total_tokens": 838,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-          "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
             "usage": {
-              "output_tokens": 75,
               "input_tokens": 763,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 75,
+              "total_tokens": 838,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-            "model": "claude-haiku-4-5-20251001"
+            "raw": {
+              "usage": {
+                "output_tokens": 75,
+                "input_tokens": 763,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "tool_use",
+              "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
+              "model": "claude-haiku-4-5-20251001"
+            }
           }
         }
       ],
@@ -1045,32 +1057,36 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 867,
-            "output_tokens": 75,
-            "total_tokens": 942,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-          "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 75,
-              "input_tokens": 867,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
+          "end": {
+            "finish_reason": "tool_calls",
             "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-            "model": "claude-haiku-4-5-20251001"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
+              "usage": {
+                "input_tokens": 867,
+                "output_tokens": 75,
+                "total_tokens": 942,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 75,
+                  "input_tokens": 867,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "tool_use",
+                "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
+                "model": "claude-haiku-4-5-20251001"
+              }
+            }
           }
         }
       },
@@ -1195,32 +1211,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 867,
-            "output_tokens": 75,
-            "total_tokens": 942,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-          "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
             "usage": {
-              "output_tokens": 75,
               "input_tokens": 867,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 75,
+              "total_tokens": 942,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-            "model": "claude-haiku-4-5-20251001"
+            "raw": {
+              "usage": {
+                "output_tokens": 75,
+                "input_tokens": 867,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "tool_use",
+              "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
+              "model": "claude-haiku-4-5-20251001"
+            }
           }
         }
       ],
@@ -1481,32 +1499,36 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 970,
-            "output_tokens": 73,
-            "total_tokens": 1043,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-          "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 73,
-              "input_tokens": 970,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
+          "end": {
+            "finish_reason": "tool_calls",
             "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-            "model": "claude-haiku-4-5-20251001"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
+              "usage": {
+                "input_tokens": 970,
+                "output_tokens": 73,
+                "total_tokens": 1043,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 73,
+                  "input_tokens": 970,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "tool_use",
+                "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
+                "model": "claude-haiku-4-5-20251001"
+              }
+            }
           }
         }
       },
@@ -1615,32 +1637,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 970,
-            "output_tokens": 73,
-            "total_tokens": 1043,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-          "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
             "usage": {
-              "output_tokens": 73,
               "input_tokens": 970,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 73,
+              "total_tokens": 1043,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-            "model": "claude-haiku-4-5-20251001"
+            "raw": {
+              "usage": {
+                "output_tokens": 73,
+                "input_tokens": 970,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "tool_use",
+              "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
+              "model": "claude-haiku-4-5-20251001"
+            }
           }
         }
       ],
@@ -1937,32 +1961,36 @@
               "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
             }
           ],
-          "usage": {
-            "input_tokens": 1069,
-            "output_tokens": 25,
-            "total_tokens": 1094,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-          "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 25,
-              "input_tokens": 1069,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
+          "end": {
+            "finish_reason": "stop",
             "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-            "model": "claude-haiku-4-5-20251001"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
+              "usage": {
+                "input_tokens": 1069,
+                "output_tokens": 25,
+                "total_tokens": 1094,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 25,
+                  "input_tokens": 1069,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "end_turn",
+                "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
+                "model": "claude-haiku-4-5-20251001"
+              }
+            }
           }
         }
       },
@@ -2064,32 +2092,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1069,
-            "output_tokens": 25,
-            "total_tokens": 1094,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-          "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
             "usage": {
-              "output_tokens": 25,
               "input_tokens": 1069,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 25,
+              "total_tokens": 1094,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-            "model": "claude-haiku-4-5-20251001"
+            "raw": {
+              "usage": {
+                "output_tokens": 25,
+                "input_tokens": 1069,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "end_turn",
+              "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
+              "model": "claude-haiku-4-5-20251001"
+            }
           }
         }
       ],

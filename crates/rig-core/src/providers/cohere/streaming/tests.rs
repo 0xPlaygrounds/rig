@@ -85,18 +85,21 @@ async fn stream_terminal_record_is_normalized() {
     }
 
     let terminal = terminal.expect("stream should yield a terminal record");
-    assert_eq!(terminal.provider, PROVIDER_NAME);
-    assert_eq!(terminal.response_id.as_deref(), Some("msg_1"));
+    assert_eq!(
+        terminal.meta.provider,
+        crate::providers::cohere::completion::PROVIDER_NAME
+    );
+    assert_eq!(terminal.meta.response_id.as_deref(), Some("msg_1"));
     assert_eq!(terminal.message_id, None);
     assert_eq!(
         terminal.finish_reason,
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
-    assert_eq!(terminal.usage.total_tokens, Some(14));
+    assert_eq!(terminal.meta.usage.input_tokens, Some(10));
+    assert_eq!(terminal.meta.usage.output_tokens, Some(4));
+    assert_eq!(terminal.meta.usage.total_tokens, Some(14));
     // Cohere's stream never names the model.
-    assert_eq!(terminal.model, None);
+    assert_eq!(terminal.meta.model, None);
 }
 
 #[tokio::test]
@@ -194,8 +197,8 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
     assert_eq!(texts, ["hi"]);
     assert!(saw_error, "the malformed frame must reach the consumer");
     let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert_eq!(terminal.meta.usage.input_tokens, Some(10));
+    assert_eq!(terminal.meta.usage.output_tokens, Some(4));
 }
 
 #[tokio::test]
@@ -248,7 +251,7 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
         "a known event with a malformed field must surface an error item"
     );
     let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
+    assert_eq!(terminal.meta.usage.input_tokens, Some(10));
 }
 
 #[tokio::test]
@@ -294,7 +297,7 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
 
     assert_eq!(texts, ["hi"]);
     let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert_eq!(terminal.meta.usage.output_tokens, Some(4));
 }
 
 #[tokio::test]
@@ -339,9 +342,9 @@ async fn message_end_without_delta_still_emits_the_terminal_record() {
 
     assert_eq!(texts, ["hi"]);
     let terminal = terminal.expect("message-end without a delta is still the terminal");
-    assert_eq!(terminal.usage, crate::completion::Usage::default());
+    assert_eq!(terminal.meta.usage, crate::completion::Usage::default());
     assert_eq!(terminal.finish_reason, None);
-    assert_eq!(terminal.response_id.as_deref(), Some("msg_1"));
+    assert_eq!(terminal.meta.response_id.as_deref(), Some("msg_1"));
 }
 
 #[tokio::test]

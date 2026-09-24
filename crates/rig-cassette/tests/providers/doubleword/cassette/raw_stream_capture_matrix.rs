@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! [`rig::completion::CompletionEnd::raw`] carries the decoder's own terminal
 //! record behind the stream's `StreamEvent::Final` — for Doubleword the
 //! shared chat-completions [`StreamingCompletionResponse`] over
 //! [`ChatUsage`] — serialized. Capture is always on: there is no flag to
@@ -83,7 +83,7 @@ async fn stream_raw_round_trips_terminal_type() {
 
     let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
     chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
-    assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
+    assert_no_request_id(terminal.meta.provider_request_id.as_deref(), PROVIDER);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
 }
@@ -110,7 +110,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
         .expect("Doubleword tags every chunk with an object");
     let recorded_usage = &frame["usage"];
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(
         raw["usage"]["prompt_tokens"],
         recorded_usage["prompt_tokens"]

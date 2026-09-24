@@ -790,7 +790,7 @@ pub(crate) fn request_history(record: &EffectRecord) -> &[Message] {
 
 fn usage(record: &EffectRecord) -> Option<&Usage> {
     match &record.outcome {
-        Ok(Outcome::Completion(response)) => Some(&response.usage),
+        Ok(Outcome::Completion(response)) => Some(&response.end.meta.usage),
         _ => None,
     }
 }
@@ -807,7 +807,7 @@ pub(crate) fn raw_usage(
     let Ok(Outcome::Completion(response)) = &record.outcome else {
         panic!("a completion record")
     };
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let count = |value: &serde_json::Value| value.as_u64();
     match thinking {
         ThinkingWire::Anthropic => {
@@ -1473,8 +1473,8 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                             serde_json::json!({
                                 "cut_turn": cut,
                                 "outcome": "ok",
-                                "finish_reason": response.finish_reason.clone().map(|reason| format!("{reason:?}")),
-                                "raw_finish": raw_finish_reason(thinking, &response.raw),
+                                "finish_reason": response.end.finish_reason.clone().map(|reason| format!("{reason:?}")),
+                                "raw_finish": raw_finish_reason(thinking, &response.end.meta.raw),
                             })
                         }
                         Ok(other) => panic!("{}: a completion record, not {other:?}", cell.name),
@@ -1490,7 +1490,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         panic!("{}: the capped completion answered", cell.name)
                     };
                     assert_eq!(
-                        response.finish_reason.clone(),
+                        response.end.finish_reason.clone(),
                         Some(rig_agent::completion::FinishReason::Length),
                         "{}: the last completion was cut by the cap",
                         cell.name
@@ -1513,7 +1513,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         "cut_turn": cut,
                         "outcome": "ok",
                         "finish_reason": "Length",
-                        "raw_finish": raw_finish_reason(thinking, &response.raw),
+                        "raw_finish": raw_finish_reason(thinking, &response.end.meta.raw),
                     })
                 }
                 other => panic!("{}: not an output-cap ending: {other:?}", cell.name),

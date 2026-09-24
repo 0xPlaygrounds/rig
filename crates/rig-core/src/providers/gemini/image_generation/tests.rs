@@ -198,6 +198,7 @@ fn the_wire_decodes_a_recorded_image_reply() {
     );
 
     let mut driver = crate::driver::WireDriver::<ImageGeneration, _>::new(
+        &crate::id::ProviderName::new(wire.name()).expect("a provider name"),
         wire.decoder(crate::wire::Mode::Unary),
     );
     driver.push(WireFrame::Text(RECORDED_IMAGE_REPLY.to_string()));

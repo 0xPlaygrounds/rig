@@ -121,7 +121,7 @@ async fn raw_round_trips_provider_type() {
     .await;
 
     let response = captured.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed =
         AwsConverseOutput::deserialize(raw).expect("raw must deserialize into AwsConverseOutput");
     assert_eq!(
@@ -156,7 +156,7 @@ async fn raw_exposes_latency_metrics() {
     .await;
 
     let response = captured.take();
-    let raw = response.raw.clone();
+    let raw = response.end.meta.raw.clone();
     // The normalized `CompletionResponse` must not grow a `metrics` field:
     // the latency is reachable only through the capture.
     assert_normalized_lacks(&normalized_without_raw(response), &["metrics"]);
@@ -214,24 +214,33 @@ async fn normalized_fields_equal_raw_renormalized() {
     // The AWS request id is the `x-amzn-requestid` header, not part of the
     // Converse body, so the raw-derived normalization is given the same one
     // before the field-for-field comparison.
-    let from_raw: RigCompletionResponse = AwsConverseOutput::deserialize(&response.raw)
+    let from_raw: RigCompletionResponse = AwsConverseOutput::deserialize(&response.end.meta.raw)
         .expect("raw must deserialize into AwsConverseOutput")
         .try_into()
         .expect("raw must normalize");
-    let from_raw = rig_core::completion::CompletionResponse {
-        provider_request_id: response.provider_request_id.clone(),
-        ..from_raw
-    };
+    let mut from_raw = from_raw;
+    from_raw.end.meta.provider_request_id = response.end.meta.provider_request_id.clone();
 
-    assert_eq!(response.provider, BEDROCK_PROVIDER);
-    assert_eq!(from_raw.provider, response.provider);
-    assert_eq!(from_raw.model, response.model);
+    assert_eq!(response.end.meta.provider, BEDROCK_PROVIDER);
+    assert_eq!(from_raw.end.meta.provider, response.end.meta.provider);
+    assert_eq!(from_raw.end.meta.model, response.end.meta.model);
     assert_eq!(
-        from_raw.finish_reason.clone(),
-        response.finish_reason.clone()
+        from_raw.end.finish_reason.clone(),
+        response.end.finish_reason.clone()
     );
-    assert_eq!(from_raw.identity(), response.identity());
-    assert_eq!(from_raw.usage, response.usage);
+    assert_eq!(
+        (
+            &from_raw.end.message_id,
+            &from_raw.end.meta.response_id,
+            &from_raw.end.meta.provider_request_id
+        ),
+        (
+            &response.end.message_id,
+            &response.end.meta.response_id,
+            &response.end.meta.provider_request_id
+        )
+    );
+    assert_eq!(from_raw.end.meta.usage, response.end.meta.usage);
     assert!(!response.choice.is_empty());
     assert_eq!(
         normalized_without_raw(from_raw),
@@ -242,7 +251,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
     assert!(
-        response.provider_request_id.is_some(),
+        response.end.meta.provider_request_id.is_some(),
         "Bedrock always reports an x-amzn-requestid on success"
     );
     // Only the fields the wire body decides are compared against it: the

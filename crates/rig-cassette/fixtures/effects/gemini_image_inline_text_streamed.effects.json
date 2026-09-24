@@ -82,36 +82,40 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1115,
-            "output_tokens": 9,
-            "total_tokens": 1177,
-            "reasoning_tokens": 53
-          },
-          "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1115,
-              "candidatesTokenCount": 9,
-              "totalTokenCount": 1177,
-              "thoughtsTokenCount": 53,
-              "promptTokensDetails": [
-                {
-                  "modality": "IMAGE",
-                  "tokenCount": 1089
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ",
+              "usage": {
+                "input_tokens": 1115,
+                "output_tokens": 9,
+                "total_tokens": 1177,
+                "reasoning_tokens": 53
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 1115,
+                  "candidatesTokenCount": 9,
+                  "totalTokenCount": 1177,
+                  "thoughtsTokenCount": 53,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "IMAGE",
+                      "tokenCount": 1089
+                    },
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 26
+                    }
+                  ]
                 },
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 26
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ"
+                "finish_reason": "STOP",
+                "model_version": "gemini-3-flash-preview",
+                "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ"
+              }
+            }
           }
         }
       },
@@ -166,36 +170,38 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1115,
-            "output_tokens": 9,
-            "total_tokens": 1177,
-            "reasoning_tokens": 53
-          },
           "finish_reason": "stop",
-          "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1115,
-              "candidatesTokenCount": 9,
-              "totalTokenCount": 1177,
-              "thoughtsTokenCount": 53,
-              "promptTokensDetails": [
-                {
-                  "modality": "IMAGE",
-                  "tokenCount": 1089
-                },
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 26
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ",
+            "usage": {
+              "input_tokens": 1115,
+              "output_tokens": 9,
+              "total_tokens": 1177,
+              "reasoning_tokens": 53
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 1115,
+                "candidatesTokenCount": 9,
+                "totalTokenCount": 1177,
+                "thoughtsTokenCount": 53,
+                "promptTokensDetails": [
+                  {
+                    "modality": "IMAGE",
+                    "tokenCount": 1089
+                  },
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 26
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "model_version": "gemini-3-flash-preview",
+              "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ"
+            }
           }
         }
       ]

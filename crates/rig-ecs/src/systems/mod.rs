@@ -1724,7 +1724,7 @@ pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outp
                 } else {
                     response.choice.clone()
                 };
-                outputs.message_id = response.message_id.clone().map(String::from);
+                outputs.message_id = response.end.message_id.clone().map(String::from);
                 outputs.done = true;
             }
             Some(EffectOutcome(Ok(_))) | Some(EffectOutcome(Err(_))) => {
@@ -2108,7 +2108,9 @@ pub fn record_usage(
         else {
             continue;
         };
-        commands.entity(run).insert(Usage(usage.0 + response.usage));
+        commands
+            .entity(run)
+            .insert(Usage(usage.0 + response.end.meta.usage));
         outs.usage_recorded = true;
     }
 }
@@ -2455,6 +2457,7 @@ pub fn read_turn(
         };
         if turn_delivered_no_answer(&outs.content)
             && let Some(reason) = response
+                .end
                 .finish_reason
                 .clone()
                 .filter(|reason| reason.truncated_output())
@@ -2469,7 +2472,7 @@ pub fn read_turn(
         let granted = granted_tools(turn, &children, &adverts, &bound, access);
         let allowed = access.and_then(|access| access.allowed.as_ref());
         let read = TurnRead {
-            message_id: response.message_id.clone().map(String::from),
+            message_id: response.end.message_id.clone().map(String::from),
             content: outs.content.clone(),
             granted,
             assistant: None,

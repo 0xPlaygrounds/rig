@@ -88,12 +88,7 @@ impl CompletionModel for ScriptedModel {
         } else {
             vec![AssistantContent::text("done")]
         };
-        std::future::ready(Ok(CompletionResponse::new(
-            choice,
-            Usage::default(),
-            "fixture",
-            serde_json::json!({ "provider": "fixture" }),
-        )))
+        std::future::ready(Ok(rig_core::completion::CompletionResponse { choice, end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta { usage: Usage::default(), raw: serde_json::json!({ "provider": "fixture" }), ..rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new("fixture").expect("a provider name")) }) }))
     }
 
     fn stream(
@@ -178,14 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .build();
                 let response = drive(model.complete(request), &mut driver)?;
                 model_calls += 1;
-                run.model_response(ModelTurn::new(
-                    None,
-                    response.choice,
-                    response.usage,
-                    executable,
-                    allowed,
-                    response.raw,
-                ))?;
+                run.model_response(ModelTurn::new(response, executable, allowed))?;
             }
             AgentRunStep::CallTools { calls } => {
                 let mut results = Vec::with_capacity(calls.len());

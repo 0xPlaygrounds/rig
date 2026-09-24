@@ -193,31 +193,35 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1083,
-            "output_tokens": 16,
-            "total_tokens": 1099
-          },
-          "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1083,
-              "completion_tokens": 16,
-              "total_tokens": 1099
-            },
+          "end": {
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00010553125000000001
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
+              "usage": {
+                "input_tokens": 1083,
+                "output_tokens": 16,
+                "total_tokens": 1099
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1083,
+                  "completion_tokens": 16,
+                  "total_tokens": 1099
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.00010553125000000001
+                  }
+                }
               }
             }
           }
@@ -267,31 +271,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1083,
-            "output_tokens": 16,
-            "total_tokens": 1099
-          },
           "finish_reason": "tool_calls",
-          "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
             "usage": {
-              "prompt_tokens": 1083,
-              "completion_tokens": 16,
+              "input_tokens": 1083,
+              "output_tokens": 16,
               "total_tokens": 1099
             },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00010553125000000001
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1083,
+                "completion_tokens": 16,
+                "total_tokens": 1099
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00010553125000000001
+                }
               }
             }
           }
@@ -359,56 +365,60 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 970,
-            "output_tokens": 2,
-            "total_tokens": 972
-          },
-          "response_id": "chatcmpl-RP91VL6VS6Ie7dJNCseKpDbs",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Paris",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": []
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RP91VL6VS6Ie7dJNCseKpDbs",
+              "usage": {
+                "input_tokens": 970,
+                "output_tokens": 2,
+                "total_tokens": 972
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Paris",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": []
+                    }
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00009143749999999999
+                },
+                "created": 0,
+                "id": "chatcmpl-RP91VL6VS6Ie7dJNCseKpDbs",
+                "model": "mistral-small-3-2-24b-instruct",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 2,
+                  "prompt_tokens": 970,
+                  "total_tokens": 972
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.00009143749999999999
-            },
-            "created": 0,
-            "id": "chatcmpl-RP91VL6VS6Ie7dJNCseKpDbs",
-            "model": "mistral-small-3-2-24b-instruct",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 2,
-              "prompt_tokens": 970,
-              "total_tokens": 972
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }
@@ -516,31 +526,35 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 1122,
-            "output_tokens": 2,
-            "total_tokens": 1124
-          },
-          "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1122,
-              "completion_tokens": 2,
-              "total_tokens": 1124
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001056875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
+              "usage": {
+                "input_tokens": 1122,
+                "output_tokens": 2,
+                "total_tokens": 1124
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1122,
+                  "completion_tokens": 2,
+                  "total_tokens": 1124
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0001056875
+                  }
+                }
               }
             }
           }
@@ -564,31 +578,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1122,
-            "output_tokens": 2,
-            "total_tokens": 1124
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
             "usage": {
-              "prompt_tokens": 1122,
-              "completion_tokens": 2,
+              "input_tokens": 1122,
+              "output_tokens": 2,
               "total_tokens": 1124
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001056875
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1122,
+                "completion_tokens": 2,
+                "total_tokens": 1124
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0001056875
+                }
               }
             }
           }

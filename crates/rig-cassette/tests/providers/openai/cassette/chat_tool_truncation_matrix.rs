@@ -202,7 +202,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
         // normalization, keeping the native value on `CompletionResponse::raw`.
         Transport::Blocking => match model.completion(request(&model, cell)).await {
             Ok(response) => Observation {
-                finish_reason: response.finish_reason.clone(),
+                finish_reason: response.end.finish_reason.clone(),
                 arguments: calls(&response.choice),
                 ..Default::default()
             },

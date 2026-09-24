@@ -135,12 +135,12 @@ async fn raw_reads_back_as_the_provider_type() {
     // make is that the document has the same fields.
     match CassetteMode::current() {
         CassetteMode::Replay => assert_eq!(
-            response.raw, body,
+            response.end.meta.raw, body,
             "raw must be the reply document the server sent, verbatim"
         ),
         CassetteMode::Record => {
             let (live, recorded) = (
-                response.raw.as_object().expect("raw is an object"),
+                response.end.meta.raw.as_object().expect("raw is an object"),
                 body.as_object().expect("the recorded body is an object"),
             );
             // The fixture stores canonical JSON with sorted keys, while `raw`
@@ -155,10 +155,13 @@ async fn raw_reads_back_as_the_provider_type() {
 
     // And the document reads back through llama.cpp's own response type,
     // which is the typed escape hatch `raw`'s documentation points at.
-    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
+    let typed = llamacpp::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");
-    assert_eq!(Some(typed.openai.model.as_str()), response.model.as_deref());
-    assert_eq!(response.provider, LLAMACPP_PROVIDER);
+    assert_eq!(
+        Some(typed.openai.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
+    assert_eq!(response.end.meta.provider, LLAMACPP_PROVIDER);
     assert!(!response.choice.is_empty());
     llamacpp::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response");
@@ -182,7 +185,7 @@ async fn raw_exposes_envelope_fields() {
     let normalized = normalized_without_raw(response.clone());
     assert_normalized_lacks(&normalized, &["object", "created", "system_fingerprint"]);
 
-    let raw = response.raw;
+    let raw = response.end.meta.raw;
     let (_, body) = recorded_json_turn(LLAMACPP_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     for field in ["object", "system_fingerprint"] {
@@ -232,19 +235,25 @@ async fn normalized_fields_match_the_typed_raw() {
     .expect("normalized_fields_equal_raw_renormalized should replay from its cassette");
     let response = sink.take();
 
-    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
+    let typed = llamacpp::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");
     let native = &typed.openai;
 
-    assert_eq!(response.provider, LLAMACPP_PROVIDER);
+    assert_eq!(response.end.meta.provider, LLAMACPP_PROVIDER);
     chat::assert_native_matches_normalized(&response, native, "the typed view of raw");
     // Both sides of this one come from the live document, so the id compares
     // exactly in either mode — the format contract's token-aware form is the
     // weaker claim, and there is nothing here for a scrubber to displace.
-    assert_eq!(response.response_id.as_deref(), Some(native.id.as_str()));
+    assert_eq!(
+        response.end.meta.response_id.as_deref(),
+        Some(native.id.as_str())
+    );
     // llama.cpp reports no request-id response header, so the driver has
     // nothing to attach — a documented outcome rather than a gap.
-    assert_no_request_id(response.provider_request_id.as_deref(), "llama.cpp");
+    assert_no_request_id(
+        response.end.meta.provider_request_id.as_deref(),
+        "llama.cpp",
+    );
 
     // And the same fields against the fixture bytes, so a recording that
     // stopped carrying them fails here rather than silently agreeing with an
@@ -258,7 +267,7 @@ async fn normalized_fields_match_the_typed_raw() {
             .expect("the recorded turn must carry assistant text")
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(chat::recorded_chat_finish_reason(&body))
     );
     // The response id is a generated per-call id the scrubber placeholders on
@@ -268,7 +277,7 @@ async fn normalized_fields_match_the_typed_raw() {
     // `/REDACTED_PATH/<basename>` on the way to disk, so the live value and
     // the recorded value cannot be equal on a recording pass.
     for field in ["id", "model"] {
-        assert_wire_value_matches(&response.raw, &body, field);
+        assert_wire_value_matches(&response.end.meta.raw, &body, field);
     }
 }
 
@@ -296,7 +305,7 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
     .expect("raw_preserves_timings should replay from its cassette");
     let response = sink.take();
 
-    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
+    let typed = llamacpp::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");
     let timings = typed
         .timings
@@ -314,14 +323,14 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
     // `cache_n` and the normalized cached-token count are populated
     // independently by the server; they must agree.
     assert_eq!(
-        timings.cache_n, response.usage.cached_input_tokens,
+        timings.cache_n, response.end.meta.usage.cached_input_tokens,
         "timings.cache_n and usage.prompt_tokens_details.cached_tokens \
          describe the same thing"
     );
 
     let (_, body) = recorded_json_turn(LLAMACPP_PROVIDER, scenario);
     assert_eq!(
-        response.raw.get("timings"),
+        response.end.meta.raw.get("timings"),
         body.get("timings"),
         "raw.timings must be the recorded wire value verbatim"
     );

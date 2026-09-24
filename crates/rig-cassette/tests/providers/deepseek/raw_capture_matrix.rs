@@ -104,29 +104,33 @@ fn reasoning_text_of(choice: &[AssistantContent]) -> String {
 fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &CompletionResponse) {
     assert_eq!(
         typed.id.as_deref(),
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         "response id"
     );
-    assert_eq!(typed.model.as_deref(), response.model.as_deref(), "model");
+    assert_eq!(
+        typed.model.as_deref(),
+        response.end.meta.model.as_deref(),
+        "model"
+    );
     let choice = typed.choices.first().expect("a reply carries a choice");
     assert_eq!(
         Some(chat::native_finish_reason(&choice.finish_reason)),
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         "finish reason"
     );
     assert_eq!(
         Some(u64::from(typed.usage.prompt_tokens)),
-        response.usage.input_tokens,
+        response.end.meta.usage.input_tokens,
         "input tokens"
     );
     assert_eq!(
         Some(u64::from(typed.usage.completion_tokens)),
-        response.usage.output_tokens,
+        response.end.meta.usage.output_tokens,
         "output tokens"
     );
     assert_eq!(
         Some(u64::from(typed.usage.prompt_cache_hit_tokens)),
-        response.usage.cached_input_tokens,
+        response.end.meta.usage.cached_input_tokens,
         "the hit count is the half of the split that gets normalized"
     );
     let deepseek::Message::Assistant { content, .. } = &choice.message;
@@ -149,15 +153,15 @@ async fn raw_round_trips_deepseek_type() {
     .expect("raw_round_trips_deepseek_type should replay from its cassette");
     let response = sink.take();
 
-    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
+    let typed = deepseek::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw reads back as DeepSeek's own CompletionResponse");
     assert_typed_view_matches(&typed, &response);
     // And `raw` is the reply document rather than a re-serialization
     // of that parse, so it keeps what neither view models.
     assert!(
-        response.raw["usage"]["prompt_cache_miss_tokens"].is_u64(),
+        response.end.meta.raw["usage"]["prompt_cache_miss_tokens"].is_u64(),
         "the document keeps DeepSeek's miss count: {}",
-        response.raw
+        response.end.meta.raw
     );
 
     let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
@@ -191,7 +195,7 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
         .as_str()
         .expect("DeepSeek reports a system_fingerprint");
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(
         raw["usage"]["prompt_cache_miss_tokens"],
         json!(recorded_miss)
@@ -203,7 +207,7 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
     );
     // And the normalized view has no slot for either: the miss count is not
     // any of the normalized usage counters, and there is no fingerprint field.
-    let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
+    let normalized_usage = serde_json::to_value(response.end.meta.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("prompt_cache_miss_tokens").is_none(),
         "the normalized usage has no miss-count slot: {normalized_usage}"
@@ -234,18 +238,18 @@ async fn normalized_fields_match_raw_renormalized() {
     // counters; DeepSeek's cache split is its own rule, and only the hit
     // half reaches a normalized slot.
     assert_eq!(
-        response.usage.cached_input_tokens,
+        response.end.meta.usage.cached_input_tokens,
         body["usage"]["prompt_cache_hit_tokens"].as_u64(),
         "cached input tokens come from prompt_cache_hit_tokens"
     );
     // The transport id is never on DeepSeek's wire: it contracts no
     // request-id header, so `None` is the documented outcome.
-    assert_no_request_id(response.provider_request_id.as_deref(), PROVIDER);
+    assert_no_request_id(response.end.meta.provider_request_id.as_deref(), PROVIDER);
 
     // One seam, two views: the typed read of the response's own `raw` is the
     // same reply the normalized fields describe. Capture adds a view; there
     // is only one mapping left, and this is what pins it.
-    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
+    let typed = deepseek::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw reads back as DeepSeek's own type");
     assert_typed_view_matches(&typed, &response);
 }
@@ -287,7 +291,7 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
 
     // The typed view of `raw` carries the wire's own spelling of the
     // reasoning block, and agrees with the normalized response beside it.
-    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
+    let typed = deepseek::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw reads back as DeepSeek's own CompletionResponse");
     assert_typed_view_matches(&typed, &response);
     let deepseek::Message::Assistant {

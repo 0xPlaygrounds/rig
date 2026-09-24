@@ -995,7 +995,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                 while let Some(item) = stream.next().await {
                     if let StreamEvent::Final(response) = item.expect("stream item should succeed")
                     {
-                        usage = Some(response.usage);
+                        usage = Some(response.meta.usage);
                     }
                 }
 

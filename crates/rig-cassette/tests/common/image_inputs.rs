@@ -115,7 +115,7 @@ pub async fn as_tool_result<M: CompletionModel>(model: &M, bytes: &[u8], params:
     let history = vec![
         prompt,
         Message::Assistant {
-            id: first.message_id.clone().map(String::from),
+            id: first.end.message_id.clone().map(String::from),
             content: first.choice.clone(),
         },
         Message::User {

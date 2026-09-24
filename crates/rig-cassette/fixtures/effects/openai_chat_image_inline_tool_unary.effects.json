@@ -134,61 +134,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 204,
-            "output_tokens": 154,
-            "total_tokens": 358,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "response_id": "chatcmpl-ERDDFQdJzW2cY5S4NYaCXIRkGE1Hd",
-          "provider_request_id": "req_64aae83e0dd94e02b59782847cf21c2f",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_680QeirzBDrXeifgqQyucX33",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDDFQdJzW2cY5S4NYaCXIRkGE1Hd",
+              "provider_request_id": "req_64aae83e0dd94e02b59782847cf21c2f",
+              "usage": {
+                "input_tokens": 204,
+                "output_tokens": 154,
+                "total_tokens": 358,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 128
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\":17,\"y\":25}",
+                            "name": "add"
+                          },
+                          "id": "call_680QeirzBDrXeifgqQyucX33",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDDFQdJzW2cY5S4NYaCXIRkGE1Hd",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 154,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 128,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 204,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 358
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDDFQdJzW2cY5S4NYaCXIRkGE1Hd",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 154,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 128,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 204,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 358
             }
           }
         }
@@ -328,51 +332,55 @@
               "text": "The image's dominant non-background color is red, and 17 + 25 = 42."
             }
           ],
-          "usage": {
-            "input_tokens": 235,
-            "output_tokens": 23,
-            "total_tokens": 258,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDDHbyZmbbLJ72KeAq68fRzit9vO",
-          "provider_request_id": "req_d322ae96369040e0a50d34ef34df2c28",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": "The image's dominant non-background color is red, and 17 + 25 = 42.",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDDHbyZmbbLJ72KeAq68fRzit9vO",
+              "provider_request_id": "req_d322ae96369040e0a50d34ef34df2c28",
+              "usage": {
+                "input_tokens": 235,
+                "output_tokens": 23,
+                "total_tokens": 258,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "The image's dominant non-background color is red, and 17 + 25 = 42.",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDDHbyZmbbLJ72KeAq68fRzit9vO",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 23,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 235,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 258
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDDHbyZmbbLJ72KeAq68fRzit9vO",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 23,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 0,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 235,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 258
             }
           }
         }

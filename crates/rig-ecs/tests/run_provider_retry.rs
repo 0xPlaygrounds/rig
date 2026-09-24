@@ -76,12 +76,16 @@ impl Serve for Flaky {
         self.requests.lock().unwrap().push(request);
         let next = self.script.lock().unwrap().pop_front();
         Reply::Outcome(match next {
-            Some(Ok(choice)) => Ok(Outcome::Completion(CompletionResponse::new(
+            Some(Ok(choice)) => Ok(Outcome::Completion(CompletionResponse {
                 choice,
-                Usage::default(),
-                "flaky",
-                serde_json::json!({}),
-            ))),
+                end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("flaky").expect("a provider name"),
+                    )
+                }),
+            })),
             Some(Err(report)) => Err(report),
             None => Err(ErrorReport::new(ErrorKind::Provider, "the script ran out")),
         })
@@ -497,12 +501,16 @@ impl Serve for Truncating {
                 // The connection drops here: no terminal record.
             });
         }
-        Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
-            done(),
-            Usage::default(),
-            "whole",
-            serde_json::json!({}),
-        ))))
+        Reply::Outcome(Ok(Outcome::Completion(CompletionResponse {
+            choice: done(),
+            end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("whole").expect("a provider name"),
+                )
+            }),
+        })))
     }
 }
 

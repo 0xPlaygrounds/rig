@@ -158,32 +158,36 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 633,
-            "output_tokens": 69,
-            "total_tokens": 702,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcWruwm4cxV2LDLLovT",
-          "provider_request_id": "req_011CfLcWrTemuohG1EjajgkQ",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 69,
-              "input_tokens": 633,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
+          "end": {
+            "finish_reason": "tool_calls",
             "message_id": "msg_011CfLcWruwm4cxV2LDLLovT",
-            "model": "claude-sonnet-4-6"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcWrTemuohG1EjajgkQ",
+              "usage": {
+                "input_tokens": 633,
+                "output_tokens": 69,
+                "total_tokens": 702,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 69,
+                  "input_tokens": 633,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "tool_use",
+                "message_id": "msg_011CfLcWruwm4cxV2LDLLovT",
+                "model": "claude-sonnet-4-6"
+              }
+            }
           }
         }
       },
@@ -270,32 +274,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 633,
-            "output_tokens": 69,
-            "total_tokens": 702,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcWruwm4cxV2LDLLovT",
-          "provider_request_id": "req_011CfLcWrTemuohG1EjajgkQ",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "provider_request_id": "req_011CfLcWrTemuohG1EjajgkQ",
             "usage": {
-              "output_tokens": 69,
               "input_tokens": 633,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 69,
+              "total_tokens": 702,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcWruwm4cxV2LDLLovT",
-            "model": "claude-sonnet-4-6"
+            "raw": {
+              "usage": {
+                "output_tokens": 69,
+                "input_tokens": 633,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "tool_use",
+              "message_id": "msg_011CfLcWruwm4cxV2LDLLovT",
+              "model": "claude-sonnet-4-6"
+            }
           }
         }
       ],

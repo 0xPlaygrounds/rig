@@ -118,21 +118,21 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
 
     assert_eq!(text_of(&buffered.choice), "The ocean,");
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
     // Cohere's `/v2/chat` names no model in either mode.
-    assert_eq!(buffered.model, streamed.model);
-    assert_eq!(buffered.response_id, streamed.response_id);
+    assert_eq!(buffered.end.meta.model, streamed.end.meta.model);
+    assert_eq!(buffered.end.meta.response_id, streamed.end.meta.response_id);
     assert_eq!(
-        buffered.usage.output_tokens,
+        buffered.end.meta.usage.output_tokens,
         Some(4),
         "the total-usage counter is the one that is read, not `billed_units`"
     );
     assert_eq!(
-        buffered.finish_reason.clone(),
+        buffered.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::Length)
     );
 }

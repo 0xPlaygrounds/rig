@@ -22,11 +22,15 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
             witness: None,
             observed: observed.clone(),
         };
-        let final_item = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
-            "test",
-            Default::default(),
-            serde_json::json!({}),
-        )));
+        let final_item = Ok(StreamEvent::Final(
+            rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Default::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("test").unwrap(),
+                )
+            }),
+        ));
         let answer = rig_core::serve::StreamTap::new()
             .observe(&final_item)
             .unwrap();

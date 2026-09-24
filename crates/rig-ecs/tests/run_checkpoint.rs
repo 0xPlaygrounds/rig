@@ -474,21 +474,29 @@ impl rig_core::serve::Serve for RetryModel {
             requests.len()
         };
         Reply::Outcome(match index {
-            1 => Ok(Outcome::Completion(CompletionResponse::new(
-                vec![call("c1", "add", serde_json::json!({"x":1,"y":2}))],
-                Usage::default(),
-                "retry-model",
-                serde_json::json!({}),
-            ))),
+            1 => Ok(Outcome::Completion(CompletionResponse {
+                choice: vec![call("c1", "add", serde_json::json!({"x":1,"y":2}))],
+                end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("retry-model").expect("a provider name"),
+                    )
+                }),
+            })),
             2 => Err(ErrorReport::new(ErrorKind::ProviderResponse, "transient")
                 .with_http_status(503)
                 .with_retryable(true)),
-            3 => Ok(Outcome::Completion(CompletionResponse::new(
-                vec![AssistantContent::text("done")],
-                Usage::default(),
-                "retry-model",
-                serde_json::json!({}),
-            ))),
+            3 => Ok(Outcome::Completion(CompletionResponse {
+                choice: vec![AssistantContent::text("done")],
+                end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("retry-model").expect("a provider name"),
+                    )
+                }),
+            })),
             _ => panic!("unexpected repeated request"),
         })
     }

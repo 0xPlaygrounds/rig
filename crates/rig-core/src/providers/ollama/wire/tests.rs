@@ -104,25 +104,25 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         .expect("the stream produced a terminal record");
 
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.end.meta.model, streamed.end.meta.model);
     assert_eq!(
         text_of(&buffered.choice),
         "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They \
          specifically asked for one or two sentences"
     );
-    assert_eq!(buffered.usage.input_tokens, Some(42));
-    assert_eq!(buffered.usage.output_tokens, Some(24));
-    assert_eq!(buffered.usage.total_tokens, Some(66));
+    assert_eq!(buffered.end.meta.usage.input_tokens, Some(42));
+    assert_eq!(buffered.end.meta.usage.output_tokens, Some(24));
+    assert_eq!(buffered.end.meta.usage.total_tokens, Some(66));
     assert_eq!(
-        buffered.finish_reason.clone(),
+        buffered.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(buffered.model.as_deref(), Some("qwen3:4b"));
+    assert_eq!(buffered.end.meta.model.as_deref(), Some("qwen3:4b"));
 }
 
 /// The mode picks `stream` and the framer, and changes nothing else. Both

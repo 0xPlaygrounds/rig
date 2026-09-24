@@ -91,44 +91,48 @@
               "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
             }
           ],
-          "usage": {
-            "input_tokens": 65,
-            "output_tokens": 134,
-            "total_tokens": 199,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
-          "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
-          "finish_reason": "content_filter",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "input_tokens": 65,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 134,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "content_filter",
+            "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
+              "usage": {
+                "input_tokens": 65,
+                "output_tokens": 134,
+                "total_tokens": 199,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 64
               },
-              "total_tokens": 199
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "reasoning_context": "current_turn",
-            "status": "incomplete",
-            "incomplete_details": {
-              "reason": "content_filter"
-            },
-            "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
-            "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
-            "model": "gpt-5-mini-2025-08-07"
+              "raw": {
+                "usage": {
+                  "input_tokens": 65,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 134,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 64
+                  },
+                  "total_tokens": 199
+                },
+                "reasoning_metadata": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "reasoning_context": "current_turn",
+                "status": "incomplete",
+                "incomplete_details": {
+                  "reason": "content_filter"
+                },
+                "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
+                "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
+                "model": "gpt-5-mini-2025-08-07"
+              }
+            }
           }
         }
       },
@@ -320,44 +324,46 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 65,
-            "output_tokens": 134,
-            "total_tokens": 199,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
           "finish_reason": "content_filter",
           "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
-          "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
             "usage": {
               "input_tokens": 65,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 134,
-              "output_tokens_details": {
-                "reasoning_tokens": 64
+              "total_tokens": 199,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 64
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 65,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 134,
+                "output_tokens_details": {
+                  "reasoning_tokens": 64
+                },
+                "total_tokens": 199
               },
-              "total_tokens": 199
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "reasoning_context": "current_turn",
-            "status": "incomplete",
-            "incomplete_details": {
-              "reason": "content_filter"
-            },
-            "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
-            "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
-            "model": "gpt-5-mini-2025-08-07"
+              "reasoning_metadata": {
+                "context": "current_turn",
+                "effort": "medium",
+                "mode": "standard",
+                "summary": null
+              },
+              "reasoning_context": "current_turn",
+              "status": "incomplete",
+              "incomplete_details": {
+                "reason": "content_filter"
+              },
+              "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
+              "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
+              "model": "gpt-5-mini-2025-08-07"
+            }
           }
         }
       ],

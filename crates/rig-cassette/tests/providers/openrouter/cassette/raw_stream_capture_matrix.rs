@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the record the chat decoder
+//! [`rig::completion::CompletionEnd::raw`] carries the record the chat decoder
 //! reassembled from the reply's frames — the shared chat terminal
 //! (`openai::wire::StreamingCompletionResponse`), serialized. Unlike a unary
 //! reply's `raw`, this one is a serialization of that record rather than the
@@ -82,7 +82,7 @@ async fn stream_raw_reads_back_as_terminal_type() {
     // dialect names no id header, so the normalized terminal reports `None`
     // — and the native record inside `raw` carries none either, which the
     // round trip above pinned.
-    assert_no_request_id(terminal.provider_request_id.as_deref(), "OpenRouter");
+    assert_no_request_id(terminal.meta.provider_request_id.as_deref(), "OpenRouter");
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
 }
@@ -113,7 +113,7 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
         .as_str()
         .expect("OpenRouter's frames name the routed provider");
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(raw["usage"]["cost"], json!(recorded_cost));
     assert_eq!(
         raw["additional_params"]["provider"],
@@ -121,8 +121,8 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
     );
     // The normalized terminal has no slot for either: its `provider` is rig's
     // descriptor name, not the routed upstream.
-    assert_eq!(terminal.provider, PROVIDER);
-    let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
+    assert_eq!(terminal.meta.provider, PROVIDER);
+    let normalized_usage = serde_json::to_value(terminal.meta.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("cost").is_none(),
         "the normalized usage has no cost slot: {normalized_usage}"

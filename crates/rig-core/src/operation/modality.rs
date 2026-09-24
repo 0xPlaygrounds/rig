@@ -11,8 +11,8 @@ use super::{One, Take};
 use crate::embeddings::Embedding as Vector;
 use crate::error::ProviderError;
 use crate::id::{ModelName, ResponseId};
-use crate::response::{Reported, Response, ResponseMeta};
-use crate::telemetry::{GenAiOperation, SpanBuilder};
+use crate::response::{Reported, Response};
+use crate::telemetry::{GenAiOperation, Recorded, SpanBuilder};
 use crate::wire::{Fold, Operation, Reply};
 
 /// Embedding batch limit, resolved dimensions, and optional caller-declared width.
@@ -136,8 +136,8 @@ macro_rules! modality_operation {
                 SpanBuilder::new(provider, model.unwrap_or_default(), telemetry).build()
             }
 
-            fn meta(response: &Self::Response) -> Option<&ResponseMeta> {
-                Some(&response.meta)
+            fn recorded(response: &Self::Response) -> Option<Recorded<'_>> {
+                Some(Recorded::from(&response.meta))
             }
         }
     };

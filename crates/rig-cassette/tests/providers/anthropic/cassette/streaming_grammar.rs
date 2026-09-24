@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the Anthropic Messages wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
+//! [`StreamingCompletionResponse::choice`], the terminal [`CompletionEnd`]
 //! record, usage, IDs, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -15,7 +15,8 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::providers::anthropic;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
+use rig_core::completion::CompletionEnd;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{AlphaSignal, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT};
@@ -25,9 +26,9 @@ struct StreamRun {
     reasoning_blocks: Vec<Reasoning>,
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
+    finals: Vec<CompletionEnd>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionEnd>,
     message_id: Option<String>,
 }
 
@@ -98,9 +99,9 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "unexpected finish reason"
     );
     assert!(
-        terminal.usage.total_tokens.is_some_and(|n| n > 0),
+        terminal.meta.usage.total_tokens.is_some_and(|n| n > 0),
         "terminal record should carry non-zero usage, got {:?}",
-        terminal.usage
+        terminal.meta.usage
     );
     // ID contract: Anthropic names the assistant message (`msg_*`).
     if let Some(message_id) = run.message_id.as_deref() {

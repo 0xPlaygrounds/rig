@@ -28,9 +28,9 @@
 pub mod chat;
 pub mod responses;
 
+use rig_core::completion::CompletionEnd;
 use rig_core::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig_core::error::ProviderError;
-use rig_core::streaming::StreamFinal;
 
 use crate::support::{
     Observed, collect_required_terminal, collect_sole_terminal, collect_text_and_sole_terminal,
@@ -80,7 +80,7 @@ where
 pub async fn capture_text_and_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
-    sink: Observed<(String, StreamFinal)>,
+    sink: Observed<(String, CompletionEnd)>,
 ) -> Result<(), ProviderError>
 where
     M: CompletionModel,
@@ -103,7 +103,7 @@ where
 pub async fn capture_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
-    sink: Observed<StreamFinal>,
+    sink: Observed<CompletionEnd>,
 ) -> Result<(), ProviderError>
 where
     M: CompletionModel,
@@ -118,7 +118,7 @@ where
 pub async fn capture_sole_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
-    sink: Observed<StreamFinal>,
+    sink: Observed<CompletionEnd>,
 ) -> Result<(), ProviderError>
 where
     M: CompletionModel,
@@ -138,7 +138,7 @@ where
 pub async fn capture_text_and_sole_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
-    sink: Observed<(String, StreamFinal)>,
+    sink: Observed<(String, CompletionEnd)>,
 ) -> Result<(), ProviderError>
 where
     M: CompletionModel,
@@ -176,9 +176,9 @@ pub fn assert_no_request_id(observed: Option<&str>, dialect: &str) {
 /// `raw` happens to carry.
 ///
 /// The blocking counterpart is [`crate::support::normalized_without_raw`].
-pub fn stream_normalized_without_raw(terminal: &StreamFinal) -> serde_json::Value {
+pub fn stream_normalized_without_raw(terminal: &CompletionEnd) -> serde_json::Value {
     let mut terminal = terminal.clone();
-    terminal.raw = serde_json::Value::Null;
+    terminal.meta.raw = serde_json::Value::Null;
     serde_json::to_value(&terminal).expect("terminal record should serialize")
 }
 

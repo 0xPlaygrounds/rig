@@ -105,61 +105,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 224,
-            "output_tokens": 173,
-            "total_tokens": 397,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "response_id": "chatcmpl-ERDCMhSAMj85rHwQgnl1v8Bjlti4g",
-          "provider_request_id": "req_53ad1d758afc4ce895cecc3bf99dc171",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle developers. Happens first Tuesday of each month, 6:30–8:30 PM at Impact Hub Seattle (220 2nd Ave S). Agenda: lightning talks, demo/project show-and-tell, networking. Open to all experience levels; bring a laptop. RSVP via meetup.com/seattle-rust or email seattle.rust@example.org.\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_zOwX3x5mRVPog78UHmVStKPq",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCMhSAMj85rHwQgnl1v8Bjlti4g",
+              "provider_request_id": "req_53ad1d758afc4ce895cecc3bf99dc171",
+              "usage": {
+                "input_tokens": 224,
+                "output_tokens": 173,
+                "total_tokens": 397,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 64
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle developers. Happens first Tuesday of each month, 6:30–8:30 PM at Impact Hub Seattle (220 2nd Ave S). Agenda: lightning talks, demo/project show-and-tell, networking. Open to all experience levels; bring a laptop. RSVP via meetup.com/seattle-rust or email seattle.rust@example.org.\"}",
+                            "name": "final_result"
+                          },
+                          "id": "call_zOwX3x5mRVPog78UHmVStKPq",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDCMhSAMj85rHwQgnl1v8Bjlti4g",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 173,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 64,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 224,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 397
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDCMhSAMj85rHwQgnl1v8Bjlti4g",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 173,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 64,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 224,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 397
             }
           }
         }

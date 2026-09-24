@@ -801,7 +801,7 @@ mod terminal_emission {
         assert!(!saw_error);
         assert!(saw_terminal);
         assert_eq!(
-            stream.response.unwrap().response_id.as_deref(),
+            stream.response.unwrap().meta.response_id.as_deref(),
             Some("last-response")
         );
     }
@@ -822,7 +822,7 @@ mod terminal_emission {
             terminal.finish_reason,
             Some(crate::completion::FinishReason::Stop)
         );
-        assert_eq!(terminal.response_id.as_deref(), Some("resp-1"));
+        assert_eq!(terminal.meta.response_id.as_deref(), Some("resp-1"));
     }
 
     /// What an *undelivered* reply means depends on how it arrived, which is
@@ -858,8 +858,8 @@ mod terminal_emission {
                     .await
                     .expect("a terminal that cut the turn short legalizes an empty choice");
             assert!(response.choice.is_empty());
-            assert_eq!(response.finish_reason.clone(), Some(normalized));
-            assert_eq!(response.usage.output_tokens, Some(32));
+            assert_eq!(response.end.finish_reason.clone(), Some(normalized));
+            assert_eq!(response.end.meta.usage.output_tokens, Some(32));
         }
 
         let completed = Bound::new(

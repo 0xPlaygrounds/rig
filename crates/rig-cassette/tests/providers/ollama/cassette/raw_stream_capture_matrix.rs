@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on Ollama's streaming `/api/chat`
-//! path ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! path ([`CompletionEnd::raw`](rig::completion::CompletionEnd::raw)).
 //!
 //! # The feature
 //!
@@ -8,14 +8,14 @@
 //! [`ollama::StreamingCompletionResponse`] carries it — serialized with
 //! `serde_json::to_value` by the provider adapter. It is the terminal record
 //! only, never the stream's frames, and nothing about it is sent to the daemon.
-//! `raw == Value::Null` means only that a `StreamFinal` was built by hand
+//! `raw == Value::Null` means only that a `CompletionEnd` was built by hand
 //! without a provider terminal behind it, which no cell here can produce.
 //!
 //! Ollama's stream is newline-delimited JSON, not SSE: every line is a chat
 //! record and exactly one — the last — carries `done: true` together with the
 //! token counts and the nanosecond timings. Those timings (`total_duration`,
 //! `eval_duration`, …) are what cell 2 reads back: the normalized
-//! [`StreamFinal`](rig::streaming::StreamFinal) has no field for them.
+//! [`CompletionEnd`](rig::completion::CompletionEnd) has no field for them.
 //!
 //! Because the wire is Ollama's own — NDJSON lines, `done`/`done_reason`,
 //! `prompt_eval_count`/`eval_count`, no response id — the shared
@@ -128,7 +128,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     .await;
     let terminal = captured.take();
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed = ollama::StreamingCompletionResponse::deserialize(raw)
         .expect("raw must deserialize into ollama::StreamingCompletionResponse");
     assert_eq!(
@@ -139,13 +139,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 
     // The typed terminal agrees with the normalized one: raw is the
     // record the adapter mapped, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), terminal.model.as_deref());
+    assert_eq!(Some(typed.model.as_str()), terminal.meta.model.as_deref());
     assert_eq!(
-        typed.eval_count, terminal.usage.output_tokens,
+        typed.eval_count, terminal.meta.usage.output_tokens,
         "normalized output tokens come from the raw eval_count"
     );
     assert_eq!(
-        typed.prompt_eval_count, terminal.usage.input_tokens,
+        typed.prompt_eval_count, terminal.meta.usage.input_tokens,
         "normalized input tokens come from the raw prompt_eval_count"
     );
 
@@ -182,7 +182,7 @@ async fn stream_raw_exposes_terminal_durations() {
         &["total_duration", "eval_duration", "load_duration"],
     );
 
-    let raw = terminal.raw;
+    let raw = terminal.meta.raw;
     let terminal_line = recorded_terminal_line(scenario);
     for field in [
         "total_duration",

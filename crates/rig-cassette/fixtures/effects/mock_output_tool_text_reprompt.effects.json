@@ -87,20 +87,24 @@
               "text": "Seattle Rust Meetup, a technology meetup."
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "text",
-                "text": "Seattle Rust Meetup, a technology meetup."
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "text",
+                    "text": "Seattle Rust Meetup, a technology meetup."
+                  }
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }
@@ -196,36 +200,40 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-1"
-                },
-                "provider": {
-                  "call_id": "call-1"
-                },
-                "function": {
-                  "name": "final_result",
-                  "arguments": {
-                    "title": "Seattle Rust Meetup",
-                    "category": "Technology",
-                    "summary": "A meetup."
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-1"
+                    },
+                    "provider": {
+                      "call_id": "call-1"
+                    },
+                    "function": {
+                      "name": "final_result",
+                      "arguments": {
+                        "title": "Seattle Rust Meetup",
+                        "category": "Technology",
+                        "summary": "A meetup."
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }

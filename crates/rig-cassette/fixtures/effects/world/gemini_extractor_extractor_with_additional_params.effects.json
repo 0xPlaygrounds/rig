@@ -118,54 +118,58 @@
               "signature": "Cp0CAWkUfRM3Mb3wgtOQlf1gLfPrGbNZ9uDaSGeCOVAtelCeEpf7sR9X/8lna2d4Qwn8HLnsR3Mpn3lEzPxLt8R15UPtw6e4kHPIGszIp6HOoJbDSrJaQNWwg38MxvaU8kJri8d3IsGuInQO3lZWVugcuEWtQs2EhSSGn5Fc3vJKe1TJ8YXCst3ot3Tyn99WmaAyt937OlhL/NtyhVuMgg/evFXtWL58ju71vpOWzuv1AnpDzhbXK9/BPENV1QyL3frIevyplWRySdZuyYNhQbvd/pcr/WtwekrwsT2uR8Ciwm4UN5GR8xzoho2+n/Z4nVIMszsySK2CaJg65HtdWMS+i2DKWK9SS0E3Zc+xIPcblAwpstydD4z8wdTbf3Ec"
             }
           ],
-          "usage": {
-            "input_tokens": 178,
-            "output_tokens": 28,
-            "total_tokens": 274,
-            "reasoning_tokens": 68
-          },
-          "response_id": "9q2yauaGCZvUz7IPp_OHsQE",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "9q2yauaGCZvUz7IPp_OHsQE",
+              "usage": {
+                "input_tokens": 178,
+                "output_tokens": 28,
+                "total_tokens": 274,
+                "reasoning_tokens": 68
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "first_name": "John",
+                              "job": "software engineer",
+                              "last_name": "Doe"
+                            },
+                            "name": "submit"
+                          },
+                          "thoughtSignature": "Cp0CAWkUfRM3Mb3wgtOQlf1gLfPrGbNZ9uDaSGeCOVAtelCeEpf7sR9X/8lna2d4Qwn8HLnsR3Mpn3lEzPxLt8R15UPtw6e4kHPIGszIp6HOoJbDSrJaQNWwg38MxvaU8kJri8d3IsGuInQO3lZWVugcuEWtQs2EhSSGn5Fc3vJKe1TJ8YXCst3ot3Tyn99WmaAyt937OlhL/NtyhVuMgg/evFXtWL58ju71vpOWzuv1AnpDzhbXK9/BPENV1QyL3frIevyplWRySdZuyYNhQbvd/pcr/WtwekrwsT2uR8Ciwm4UN5GR8xzoho2+n/Z4nVIMszsySK2CaJg65HtdWMS+i2DKWK9SS0E3Zc+xIPcblAwpstydD4z8wdTbf3Ec"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "9q2yauaGCZvUz7IPp_OHsQE",
+                "usageMetadata": {
+                  "candidatesTokenCount": 28,
+                  "promptTokenCount": 178,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "first_name": "John",
-                          "job": "software engineer",
-                          "last_name": "Doe"
-                        },
-                        "name": "submit"
-                      },
-                      "thoughtSignature": "Cp0CAWkUfRM3Mb3wgtOQlf1gLfPrGbNZ9uDaSGeCOVAtelCeEpf7sR9X/8lna2d4Qwn8HLnsR3Mpn3lEzPxLt8R15UPtw6e4kHPIGszIp6HOoJbDSrJaQNWwg38MxvaU8kJri8d3IsGuInQO3lZWVugcuEWtQs2EhSSGn5Fc3vJKe1TJ8YXCst3ot3Tyn99WmaAyt937OlhL/NtyhVuMgg/evFXtWL58ju71vpOWzuv1AnpDzhbXK9/BPENV1QyL3frIevyplWRySdZuyYNhQbvd/pcr/WtwekrwsT2uR8Ciwm4UN5GR8xzoho2+n/Z4nVIMszsySK2CaJg65HtdWMS+i2DKWK9SS0E3Zc+xIPcblAwpstydD4z8wdTbf3Ec"
+                      "modality": "TEXT",
+                      "tokenCount": 178
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "9q2yauaGCZvUz7IPp_OHsQE",
-            "usageMetadata": {
-              "candidatesTokenCount": 28,
-              "promptTokenCount": 178,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 178
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 68,
+                  "totalTokenCount": 274
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 68,
-              "totalTokenCount": 274
+              }
             }
           }
         }

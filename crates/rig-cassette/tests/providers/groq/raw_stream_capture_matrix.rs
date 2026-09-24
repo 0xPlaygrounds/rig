@@ -1,7 +1,7 @@
 //! Raw provider response capture on Groq's streaming chat-completions path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the provider-native terminal
+//! [`rig::completion::CompletionEnd::raw`] carries the provider-native terminal
 //! record the decoder assembled behind the stream's `StreamEvent::Final` —
 //! for Groq the shared chat-completions terminal
 //! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
@@ -84,7 +84,7 @@ async fn stream_raw_round_trips_terminal_type() {
     let frame = chat::recorded_agreeing_usage_frames(PROVIDER, SCENARIO);
     chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
     assert_contracted_request_id(
-        terminal.provider_request_id.as_deref(),
+        terminal.meta.provider_request_id.as_deref(),
         recorded_request_id(SCENARIO).as_deref(),
         REQUEST_ID_HEADER,
     );
@@ -125,7 +125,7 @@ async fn stream_raw_exposes_terminal_queue_time() {
         .find_map(|frame| frame["x_groq"]["id"].as_str().map(str::to_owned))
         .expect("Groq's closing frames carry an x_groq envelope with an id");
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(raw["usage"]["queue_time"], json!(recorded_queue_time));
     assert_matches_recorded_token(
         raw["additional_params"]["x_groq"]["id"].as_str(),
@@ -133,7 +133,7 @@ async fn stream_raw_exposes_terminal_queue_time() {
         "x_groq.id",
     );
     // The normalized terminal has no slot for either.
-    let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
+    let normalized_usage = serde_json::to_value(terminal.meta.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("queue_time").is_none(),
         "the normalized usage has no timing slot: {normalized_usage}"

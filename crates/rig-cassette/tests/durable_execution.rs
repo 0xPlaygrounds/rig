@@ -219,15 +219,8 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     .apply(CompletionRequestBuilder::unbound(prompt))
                     .build();
                 let response = within(model.complete(request)).await.expect("the model");
-                run.model_response(ModelTurn::new(
-                    None,
-                    response.choice,
-                    response.usage,
-                    executable,
-                    allowed,
-                    response.raw,
-                ))
-                .expect("a model turn");
+                run.model_response(ModelTurn::new(response, executable, allowed))
+                    .expect("a model turn");
             }
             AgentRunStep::CallTools { calls } => {
                 if tools_done == tools_before_stop {

@@ -374,37 +374,41 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 398,
-            "output_tokens": 275,
-            "total_tokens": 673,
-            "cached_input_tokens": 384,
-            "reasoning_tokens": 259
-          },
-          "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "usage": {
-              "input_tokens": 398,
-              "input_tokens_details": {
-                "cached_tokens": 384
-              },
-              "output_tokens": 275,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+              "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+              "usage": {
+                "input_tokens": 398,
+                "output_tokens": 275,
+                "total_tokens": 673,
+                "cached_input_tokens": 384,
                 "reasoning_tokens": 259
               },
-              "total_tokens": 673
-            },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-            "model": "grok-4.3"
+              "raw": {
+                "usage": {
+                  "input_tokens": 398,
+                  "input_tokens_details": {
+                    "cached_tokens": 384
+                  },
+                  "output_tokens": 275,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 259
+                  },
+                  "total_tokens": 673
+                },
+                "reasoning_metadata": {
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+                "model": "grok-4.3"
+              }
+            }
           }
         }
       },
@@ -578,37 +582,39 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 398,
-            "output_tokens": 275,
-            "total_tokens": 673,
-            "cached_input_tokens": 384,
-            "reasoning_tokens": 259
-          },
           "finish_reason": "tool_calls",
-          "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
+          "meta": {
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+            "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
             "usage": {
               "input_tokens": 398,
-              "input_tokens_details": {
-                "cached_tokens": 384
-              },
               "output_tokens": 275,
-              "output_tokens_details": {
-                "reasoning_tokens": 259
+              "total_tokens": 673,
+              "cached_input_tokens": 384,
+              "reasoning_tokens": 259
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 398,
+                "input_tokens_details": {
+                  "cached_tokens": 384
+                },
+                "output_tokens": 275,
+                "output_tokens_details": {
+                  "reasoning_tokens": 259
+                },
+                "total_tokens": 673
               },
-              "total_tokens": 673
-            },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-            "model": "grok-4.3"
+              "reasoning_metadata": {
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+              "model": "grok-4.3"
+            }
           }
         }
       ],
@@ -819,39 +825,43 @@
               "text": "The outputs are crimson-harbor and silver-orchard."
             }
           ],
-          "usage": {
-            "input_tokens": 432,
-            "output_tokens": 252,
-            "total_tokens": 684,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 240
-          },
-          "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-          "provider_request_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-          "finish_reason": "stop",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "usage": {
-              "input_tokens": 432,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "output_tokens": 252,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
+              "provider_request_id": "fe602993-cc54-916d-8917-e2d32b577a49",
+              "usage": {
+                "input_tokens": 432,
+                "output_tokens": 252,
+                "total_tokens": 684,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 240
               },
-              "total_tokens": 684
-            },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
-            "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-            "model": "grok-4.3"
+              "raw": {
+                "usage": {
+                  "input_tokens": 432,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "output_tokens": 252,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 240
+                  },
+                  "total_tokens": 684
+                },
+                "reasoning_metadata": {
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+                "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
+                "model": "grok-4.3"
+              }
+            }
           }
         }
       },
@@ -1035,39 +1045,41 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 432,
-            "output_tokens": 252,
-            "total_tokens": 684,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 240
-          },
           "finish_reason": "stop",
           "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-          "provider_request_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
+          "meta": {
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
+            "provider_request_id": "fe602993-cc54-916d-8917-e2d32b577a49",
             "usage": {
               "input_tokens": 432,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
               "output_tokens": 252,
-              "output_tokens_details": {
-                "reasoning_tokens": 240
+              "total_tokens": 684,
+              "cached_input_tokens": 192,
+              "reasoning_tokens": 240
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 432,
+                "input_tokens_details": {
+                  "cached_tokens": 192
+                },
+                "output_tokens": 252,
+                "output_tokens_details": {
+                  "reasoning_tokens": 240
+                },
+                "total_tokens": 684
               },
-              "total_tokens": 684
-            },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
-            "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-            "model": "grok-4.3"
+              "reasoning_metadata": {
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+              "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
+              "model": "grok-4.3"
+            }
           }
         }
       ],

@@ -6,6 +6,7 @@ mod errors;
 #[path = "run_stream_boundary/multiple.rs"]
 mod multiple;
 use crate::run_support;
+use rig_core::completion::CompletionEnd;
 
 use futures::channel::oneshot;
 use rig_core::{
@@ -27,7 +28,7 @@ use rig_core::{
     completion::{CompletionResponse, Usage as ProviderUsage},
     effect::Outcome,
     message::{AssistantContent, ToolCallId},
-    streaming::{BlockClose, StreamFinal, ToolCallEnd},
+    streaming::{BlockClose, ToolCallEnd},
 };
 use rig_ecs::{
     agent::{Grant, MessageParts, Resolution, RunResult, Settled, Usage},
@@ -47,15 +48,19 @@ impl Serve for FinishingName {
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let gate = self.0.lock().expect("gate lock").take();
         let Some(gate) = gate else {
-            return Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
-                vec![AssistantContent::text("done")],
-                ProviderUsage {
-                    total_tokens: Some(3),
-                    ..ProviderUsage::default()
-                },
-                "boundary",
-                serde_json::json!({}),
-            ))));
+            return Reply::Outcome(Ok(Outcome::Completion(CompletionResponse {
+                choice: vec![AssistantContent::text("done")],
+                end: CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage: ProviderUsage {
+                        total_tokens: Some(3),
+                        ..ProviderUsage::default()
+                    },
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("boundary").expect("a provider name"),
+                    )
+                }),
+            })));
         };
 
         Reply::written(move |mut writer| async move {
@@ -88,13 +93,17 @@ impl Serve for FinishingName {
                 .await
                 .expect("stream open");
             writer
-                .event(StreamEvent::Final(StreamFinal::new(
-                    "boundary",
-                    ProviderUsage {
-                        total_tokens: Some(7),
-                        ..ProviderUsage::default()
+                .event(StreamEvent::Final(CompletionEnd::new(
+                    rig_core::response::ResponseMeta {
+                        usage: ProviderUsage {
+                            total_tokens: Some(7),
+                            ..ProviderUsage::default()
+                        },
+                        raw: serde_json::json!({}),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("boundary").expect("a provider name"),
+                        )
                     },
-                    serde_json::json!({}),
                 )))
                 .await
                 .expect("stream open");

@@ -290,73 +290,77 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 164,
-                "output_tokens": 21,
-                "total_tokens": 185,
-                "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-                "reasoning_tokens": 0
-              },
-              "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
-              "finish_reason": "tool_calls",
-              "provider": "openrouter",
-              "model": "openai/gpt-4o-mini",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": null,
-                      "reasoning": null,
-                      "refusal": null,
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                            "name": "submit"
-                          },
-                          "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
-                          "index": 0,
-                          "type": "function"
-                        }
-                      ]
-                    },
-                    "native_finish_reason": "tool_calls"
-                  }
-                ],
-                "created": 0,
-                "id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
-                "model": "openai/gpt-4o-mini",
-                "object": "chat.completion",
-                "provider": "OpenAI",
-                "service_tier": null,
-                "system_fingerprint": "fp_1e58d0ce9b",
-                "usage": {
-                  "completion_tokens": 21,
-                  "completion_tokens_details": {
-                    "audio_tokens": 0,
-                    "image_tokens": 0,
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "openrouter",
+                  "model": "openai/gpt-4o-mini",
+                  "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
+                  "usage": {
+                    "input_tokens": 164,
+                    "output_tokens": 21,
+                    "total_tokens": 185,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
                     "reasoning_tokens": 0
                   },
-                  "cost": 0.0000372,
-                  "cost_details": {
-                    "upstream_inference_completions_cost": 0.0000126,
-                    "upstream_inference_cost": 0.0000372,
-                    "upstream_inference_prompt_cost": 0.0000246
-                  },
-                  "is_byok": false,
-                  "prompt_tokens": 164,
-                  "prompt_tokens_details": {
-                    "audio_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "cached_tokens": 0,
-                    "video_tokens": 0
-                  },
-                  "total_tokens": 185
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": null,
+                          "reasoning": null,
+                          "refusal": null,
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                                "name": "submit"
+                              },
+                              "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
+                        },
+                        "native_finish_reason": "tool_calls"
+                      }
+                    ],
+                    "created": 0,
+                    "id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
+                    "model": "openai/gpt-4o-mini",
+                    "object": "chat.completion",
+                    "provider": "OpenAI",
+                    "service_tier": null,
+                    "system_fingerprint": "fp_1e58d0ce9b",
+                    "usage": {
+                      "completion_tokens": 21,
+                      "completion_tokens_details": {
+                        "audio_tokens": 0,
+                        "image_tokens": 0,
+                        "reasoning_tokens": 0
+                      },
+                      "cost": 0.0000372,
+                      "cost_details": {
+                        "upstream_inference_completions_cost": 0.0000126,
+                        "upstream_inference_cost": 0.0000372,
+                        "upstream_inference_prompt_cost": 0.0000246
+                      },
+                      "is_byok": false,
+                      "prompt_tokens": 164,
+                      "prompt_tokens_details": {
+                        "audio_tokens": 0,
+                        "cache_write_tokens": 0,
+                        "cached_tokens": 0,
+                        "video_tokens": 0
+                      },
+                      "total_tokens": 185
+                    }
+                  }
                 }
               }
             }

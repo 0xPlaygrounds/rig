@@ -98,51 +98,55 @@
               "text": "The dominant non-background color is bright red."
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 82,
-            "total_tokens": 119,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "response_id": "chatcmpl-ERDDAce2DyMQqEJNYks9xHRHwFj4Y",
-          "provider_request_id": "req_5051bd1ae4734be2bc43d62fd48ff072",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDDAce2DyMQqEJNYks9xHRHwFj4Y",
+              "provider_request_id": "req_5051bd1ae4734be2bc43d62fd48ff072",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 82,
+                "total_tokens": 119,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 64
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "The dominant non-background color is bright red.",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDDAce2DyMQqEJNYks9xHRHwFj4Y",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 82,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 64,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 37,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 119
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDDAce2DyMQqEJNYks9xHRHwFj4Y",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 82,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 64,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 37,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 119
             }
           }
         }
@@ -300,51 +304,55 @@
               "text": "The image contained a red square."
             }
           ],
-          "usage": {
-            "input_tokens": 72,
-            "output_tokens": 144,
-            "total_tokens": 216,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "response_id": "chatcmpl-ERDDCCMeDjsAUQHNcIn3mBQHYfI99",
-          "provider_request_id": "req_a09a0095115b43248254f1bcfc820911",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": "The image contained a red square.",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDDCCMeDjsAUQHNcIn3mBQHYfI99",
+              "provider_request_id": "req_a09a0095115b43248254f1bcfc820911",
+              "usage": {
+                "input_tokens": 72,
+                "output_tokens": 144,
+                "total_tokens": 216,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 128
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "The image contained a red square.",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDDCCMeDjsAUQHNcIn3mBQHYfI99",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 144,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 128,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 72,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 216
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDDCCMeDjsAUQHNcIn3mBQHYfI99",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 144,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 128,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 72,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 216
             }
           }
         }

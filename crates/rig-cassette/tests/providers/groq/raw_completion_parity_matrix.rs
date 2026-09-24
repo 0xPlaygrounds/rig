@@ -81,13 +81,13 @@ fn assert_reproduces_fixture(
     context: &str,
 ) {
     chat::assert_reproduces_body(response, PROVIDER, body, context);
-    let identity = response.identity();
+    let identity = &response.end;
     assert_eq!(
         identity.message_id, None,
         "{context}: chat has no message id"
     );
     assert_matches_recorded_token(
-        identity.provider_request_id.as_deref(),
+        identity.meta.provider_request_id.as_deref(),
         Some(request_id),
         &format!("{context}: request id"),
     );
@@ -102,7 +102,7 @@ fn assert_raw_is_the_reply_document(
     request_id: &str,
     context: &str,
 ) {
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_matches_recorded_token(
         raw["id"].as_str(),
         body["id"].as_str(),
@@ -169,13 +169,19 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
     assert_raw_is_the_reply_document(&second, &interactions[1].1, &second_id, "second turn");
 
     // Where the wire makes the two turns equal, they are equal.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
-    assert_eq!(second.finish_reason.clone(), first.finish_reason.clone());
-    assert_eq!(second.identity().message_id, first.identity().message_id);
+    assert_eq!(second.end.meta.provider, first.end.meta.provider);
+    assert_eq!(second.end.meta.model, first.end.meta.model);
+    assert_eq!(
+        second.end.finish_reason.clone(),
+        first.end.finish_reason.clone()
+    );
+    assert_eq!(second.end.message_id, first.end.message_id);
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
-    assert_eq!(second.usage.input_tokens, first.usage.input_tokens);
+    assert_eq!(
+        second.end.meta.usage.input_tokens,
+        first.end.meta.usage.input_tokens
+    );
 }
 
 // ================================================================
@@ -200,15 +206,15 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
     assert!(!request_id.trim().is_empty());
 
     assert_matches_recorded_token(
-        response.provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         Some(request_id.as_str()),
         "the driver stamps the transport id from the header Groq contracts",
     );
-    assert!(response.response_id.is_some());
+    assert!(response.end.meta.response_id.is_some());
 
     // The shared typed view of the document has no slot for a transport id —
     // which is why reading it off the header is the only way to have it.
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
+    let typed = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is the shared OpenAI chat-completions reply Groq sends");
     let typed_document = serde_json::to_value(&typed).expect("typed serializes");
     assert!(
@@ -220,7 +226,7 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
     // The document itself carries it only in Groq's own envelope, and that
     // reaches the caller because `raw` is the body rather than the parse.
     assert_matches_recorded_token(
-        response.raw["x_groq"]["id"].as_str(),
+        response.end.meta.raw["x_groq"]["id"].as_str(),
         Some(request_id.as_str()),
         "Groq's own envelope mirrors the transport id",
     );

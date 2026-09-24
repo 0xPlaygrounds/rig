@@ -158,17 +158,17 @@ async fn response_metadata_is_normalized() {
     .await
     .expect("normalization should succeed");
 
-    assert_eq!(normalized.provider, PROVIDER_NAME);
-    assert_eq!(normalized.model.as_deref(), Some("llama3.2"));
+    assert_eq!(normalized.end.meta.provider, PROVIDER_NAME);
+    assert_eq!(normalized.end.meta.model.as_deref(), Some("llama3.2"));
     assert_eq!(
-        normalized.finish_reason.clone(),
+        normalized.end.finish_reason.clone(),
         Some(completion::FinishReason::Length)
     );
     // Ollama assigns no message identifier.
-    assert_eq!(normalized.message_id, None);
-    assert_eq!(normalized.usage.input_tokens, Some(12));
-    assert_eq!(normalized.usage.output_tokens, Some(3));
-    assert_eq!(normalized.usage.total_tokens, Some(15));
+    assert_eq!(normalized.end.message_id, None);
+    assert_eq!(normalized.end.meta.usage.input_tokens, Some(12));
+    assert_eq!(normalized.end.meta.usage.output_tokens, Some(3));
+    assert_eq!(normalized.end.meta.usage.total_tokens, Some(15));
 }
 
 // A `done_reason` of `stop` on a turn that actually called a tool must be
@@ -192,7 +192,7 @@ async fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
     .expect("normalization should succeed");
 
     assert_eq!(
-        normalized.finish_reason.clone(),
+        normalized.end.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
 }
@@ -213,7 +213,6 @@ fn streaming_terminal_record_is_normalized() {
     let raw = serde_json::to_value(&terminal).expect("serialize terminal");
     let final_record = stream_final(terminal, raw.clone());
     assert_eq!(final_record.raw, raw);
-    assert_eq!(final_record.provider, PROVIDER_NAME);
     assert_eq!(final_record.model.as_deref(), Some("llama3.2"));
     assert_eq!(
         final_record.finish_reason,
@@ -1218,8 +1217,8 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     assert_eq!(texts, ["hi", " there"]);
     assert!(saw_error, "the malformed line must reach the consumer");
     let terminal = terminal.expect("the genuine done record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert_eq!(terminal.meta.usage.input_tokens, Some(10));
+    assert_eq!(terminal.meta.usage.output_tokens, Some(4));
 }
 
 // Proves the `done: true` record ends the stream: a content line that
@@ -1274,8 +1273,8 @@ async fn content_after_the_done_record_is_not_yielded() {
         "content after the done record must not be yielded"
     );
     let terminal = terminal.expect("the done record must yield the terminal record");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert_eq!(terminal.meta.usage.input_tokens, Some(10));
+    assert_eq!(terminal.meta.usage.output_tokens, Some(4));
 }
 
 // Proves a non-success HTTP response from `/api/chat` preserves the
@@ -1388,7 +1387,7 @@ mod raw_capture {
             .await
             .expect("completion");
 
-        let raw = &response.raw;
+        let raw = &response.end.meta.raw;
         assert_eq!(
             *raw,
             serde_json::from_str::<serde_json::Value>(BODY).expect("the recorded body is JSON"),
@@ -1410,20 +1409,31 @@ mod raw_capture {
         assert_eq!(typed.done_reason.as_deref(), Some("stop"));
 
         let renormalized = unary(raw.clone()).await.expect("re-fold the capture");
-        assert_eq!(response.identity(), renormalized.identity());
         assert_eq!(
-            response.finish_reason.clone(),
-            renormalized.finish_reason.clone()
+            (
+                &response.end.message_id,
+                &response.end.meta.response_id,
+                &response.end.meta.provider_request_id
+            ),
+            (
+                &renormalized.end.message_id,
+                &renormalized.end.meta.response_id,
+                &renormalized.end.meta.provider_request_id
+            )
         );
-        assert_eq!(response.model, renormalized.model);
-        assert_eq!(response.usage, renormalized.usage);
+        assert_eq!(
+            response.end.finish_reason.clone(),
+            renormalized.end.finish_reason.clone()
+        );
+        assert_eq!(response.end.meta.model, renormalized.end.meta.model);
+        assert_eq!(response.end.meta.usage, renormalized.end.meta.usage);
         assert_eq!(response.choice, renormalized.choice);
         assert_eq!(
-            response.finish_reason.clone(),
+            response.end.finish_reason.clone(),
             Some(completion::FinishReason::Stop)
         );
-        assert_eq!(response.model.as_deref(), Some("llama3.2"));
-        assert_eq!(response.usage.total_tokens, Some(31));
+        assert_eq!(response.end.meta.model.as_deref(), Some("llama3.2"));
+        assert_eq!(response.end.meta.usage.total_tokens, Some(31));
     }
 }
 

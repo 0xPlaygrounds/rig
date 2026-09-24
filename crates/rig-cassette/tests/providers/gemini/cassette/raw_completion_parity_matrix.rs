@@ -63,29 +63,40 @@ fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::Completio
 /// everything the contract names, except that each request gets its own
 /// response id.
 fn assert_cross_request_parity(first: &RigCompletionResponse, second: &RigCompletionResponse) {
-    assert_eq!(first.finish_reason.clone(), second.finish_reason.clone());
-    assert_eq!(first.model, second.model);
-    assert_eq!(first.provider, second.provider);
+    assert_eq!(
+        first.end.finish_reason.clone(),
+        second.end.finish_reason.clone()
+    );
+    assert_eq!(first.end.meta.model, second.end.meta.model);
+    assert_eq!(first.end.meta.provider, second.end.meta.provider);
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
-    assert_eq!(first.usage.input_tokens, second.usage.input_tokens);
+    assert_eq!(
+        first.end.meta.usage.input_tokens,
+        second.end.meta.usage.input_tokens
+    );
 
-    let first_identity = first.identity();
-    let second_identity = second.identity();
+    let first_identity = &first.end;
+    let second_identity = &second.end;
     assert_eq!(first_identity.message_id, second_identity.message_id);
     // Gemini sends no request-id header, so the driver reports None by
     // design — and so does the second reply: the same seam, the same header
     // set.
-    assert_no_request_id(first_identity.provider_request_id.as_deref(), "Gemini");
-    assert_no_request_id(second_identity.provider_request_id.as_deref(), "Gemini");
+    assert_no_request_id(first_identity.meta.provider_request_id.as_deref(), "Gemini");
+    assert_no_request_id(
+        second_identity.meta.provider_request_id.as_deref(),
+        "Gemini",
+    );
     assert!(
         first_identity
+            .meta
             .response_id
             .as_deref()
             .is_some_and(|id| !id.is_empty())
     );
     assert!(
         second_identity
+            .meta
             .response_id
             .as_deref()
             .is_some_and(|id| !id.is_empty())
@@ -158,26 +169,29 @@ async fn rest_raw_try_into_matches_completion() {
 
     // Same response: the captured raw, read back as Gemini's own
     // `generateContent` document, reproduces the response it rode on.
-    let typed = GenerateContentResponse::deserialize(&second.raw)
+    let typed = GenerateContentResponse::deserialize(&second.end.meta.raw)
         .expect("captured raw is Gemini's own generateContent document");
-    assert_eq!(typed.model_version.as_deref(), second.model.as_deref());
+    assert_eq!(
+        typed.model_version.as_deref(),
+        second.end.meta.model.as_deref()
+    );
     assert_eq!(
         Some(typed.response_id.as_str()),
-        second.response_id.as_deref()
+        second.end.meta.response_id.as_deref()
     );
     assert_eq!(
         typed
             .usage_metadata
             .as_ref()
             .map(|usage| usage.prompt_token_count as u64),
-        second.usage.input_tokens
+        second.end.meta.usage.input_tokens
     );
     assert_eq!(
         typed
             .usage_metadata
             .as_ref()
             .map(|usage| usage.total_token_count as u64),
-        second.usage.total_tokens
+        second.end.meta.usage.total_tokens
     );
     let candidate = typed
         .candidates
@@ -189,7 +203,7 @@ async fn rest_raw_try_into_matches_completion() {
         "the normalized text is exactly the document's visible text parts"
     );
     assert_eq!(
-        second.finish_reason.clone(),
+        second.end.finish_reason.clone(),
         Some(FinishReason::Stop),
         "the document's STOP reaches the caller as rig's Stop"
     );
@@ -222,20 +236,23 @@ async fn interactions_raw_try_into_matches_completion() {
 
     // Same response: the captured raw, read back as the Interactions API's
     // own document, reproduces the response it rode on.
-    let typed = Interaction::deserialize(&second.raw)
+    let typed = Interaction::deserialize(&second.end.meta.raw)
         .expect("captured raw is the Interactions API's own document");
-    assert_eq!(typed.model.as_deref(), second.model.as_deref());
-    assert_eq!(Some(typed.id.as_str()), second.response_id.as_deref());
+    assert_eq!(typed.model.as_deref(), second.end.meta.model.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        second.end.meta.response_id.as_deref()
+    );
     assert_eq!(
         typed
             .usage
             .as_ref()
             .and_then(|usage| usage.total_input_tokens),
-        second.usage.input_tokens
+        second.end.meta.usage.input_tokens
     );
     assert_eq!(
         typed.usage.as_ref().and_then(|usage| usage.total_tokens),
-        second.usage.total_tokens
+        second.end.meta.usage.total_tokens
     );
     assert!(
         matches!(typed.status, Some(InteractionStatus::Completed)),
@@ -243,7 +260,7 @@ async fn interactions_raw_try_into_matches_completion() {
         typed.status
     );
     assert_eq!(
-        second.finish_reason.clone(),
+        second.end.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and `completed` reaches the caller as rig's Stop"
     );

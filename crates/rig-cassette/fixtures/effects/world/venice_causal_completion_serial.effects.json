@@ -153,65 +153,69 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1083,
-            "output_tokens": 16,
-            "total_tokens": 1099
-          },
-          "response_id": "chatcmpl-Rt5jMENKGQhEVds5cXM5QVtC",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"q\": \"What is the capital of France?\"}",
-                        "name": "lookup"
-                      },
-                      "id": "g0vd5hLmo",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-Rt5jMENKGQhEVds5cXM5QVtC",
+              "usage": {
+                "input_tokens": 1083,
+                "output_tokens": 16,
+                "total_tokens": 1099
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"q\": \"What is the capital of France?\"}",
+                            "name": "lookup"
+                          },
+                          "id": "g0vd5hLmo",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00010553125000000001
+                },
+                "created": 0,
+                "id": "chatcmpl-Rt5jMENKGQhEVds5cXM5QVtC",
+                "model": "mistral-small-3-2-24b-instruct",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 16,
+                  "prompt_tokens": 1083,
+                  "total_tokens": 1099
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.00010553125000000001
-            },
-            "created": 0,
-            "id": "chatcmpl-Rt5jMENKGQhEVds5cXM5QVtC",
-            "model": "mistral-small-3-2-24b-instruct",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 16,
-              "prompt_tokens": 1083,
-              "total_tokens": 1099
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }
@@ -278,56 +282,60 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 970,
-            "output_tokens": 2,
-            "total_tokens": 972
-          },
-          "response_id": "chatcmpl-RB1Y7vbHEPeQVtVneuoGVTCl",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Paris",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": []
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RB1Y7vbHEPeQVtVneuoGVTCl",
+              "usage": {
+                "input_tokens": 970,
+                "output_tokens": 2,
+                "total_tokens": 972
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Paris",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": []
+                    }
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00009143749999999999
+                },
+                "created": 0,
+                "id": "chatcmpl-RB1Y7vbHEPeQVtVneuoGVTCl",
+                "model": "mistral-small-3-2-24b-instruct",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 2,
+                  "prompt_tokens": 970,
+                  "total_tokens": 972
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.00009143749999999999
-            },
-            "created": 0,
-            "id": "chatcmpl-RB1Y7vbHEPeQVtVneuoGVTCl",
-            "model": "mistral-small-3-2-24b-instruct",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 2,
-              "prompt_tokens": 970,
-              "total_tokens": 972
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }
@@ -435,56 +443,60 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 1118,
-            "output_tokens": 2,
-            "total_tokens": 1120
-          },
-          "response_id": "chatcmpl-RGOrUJY1A9LFZKFDD4VGddAZ",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Paris",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": []
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RGOrUJY1A9LFZKFDD4VGddAZ",
+              "usage": {
+                "input_tokens": 1118,
+                "output_tokens": 2,
+                "total_tokens": 1120
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Paris",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": []
+                    }
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0001053125
+                },
+                "created": 0,
+                "id": "chatcmpl-RGOrUJY1A9LFZKFDD4VGddAZ",
+                "model": "mistral-small-3-2-24b-instruct",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 2,
+                  "prompt_tokens": 1118,
+                  "total_tokens": 1120
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.0001053125
-            },
-            "created": 0,
-            "id": "chatcmpl-RGOrUJY1A9LFZKFDD4VGddAZ",
-            "model": "mistral-small-3-2-24b-instruct",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 2,
-              "prompt_tokens": 1118,
-              "total_tokens": 1120
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }

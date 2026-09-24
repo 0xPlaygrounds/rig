@@ -121,44 +121,48 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 336,
-            "output_tokens": 31,
-            "total_tokens": 367,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
-          "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 336,
-              "completion_tokens": 31,
-              "total_tokens": 367,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
+              "usage": {
+                "input_tokens": 336,
+                "output_tokens": 31,
+                "total_tokens": 367,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 336,
+                  "completion_tokens": 31,
+                  "total_tokens": 367,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk"
+                }
+              }
             }
           }
         }
@@ -207,44 +211,46 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 336,
-            "output_tokens": 31,
-            "total_tokens": 367,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "tool_calls",
-          "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 336,
-              "completion_tokens": 31,
-              "total_tokens": 367,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+            "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
+            "usage": {
+              "input_tokens": 336,
+              "output_tokens": 31,
+              "total_tokens": 367,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 336,
+                "completion_tokens": 31,
+                "total_tokens": 367,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk"
+              }
             }
           }
         }
@@ -321,65 +327,69 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 27,
-            "output_tokens": 142,
-            "total_tokens": 169,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 119
-          },
-          "response_id": "resp_3ec6939c-5216-483d-a82e-b7acb9ccf7d8",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "content": "Paris",
-                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-                  "reasoning_details": [
-                    {
-                      "format": "unknown",
-                      "index": 0,
-                      "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-                      "type": "reasoning.text"
-                    }
-                  ],
-                  "refusal": null,
-                  "role": "assistant"
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_3ec6939c-5216-483d-a82e-b7acb9ccf7d8",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "object": "chat.completion",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 142,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "resp_3ec6939c-5216-483d-a82e-b7acb9ccf7d8",
+              "usage": {
+                "input_tokens": 27,
+                "output_tokens": 142,
+                "total_tokens": 169,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 119
               },
-              "prompt_tokens": 27,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 169
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "content": "Paris",
+                      "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
+                      "reasoning_details": [
+                        {
+                          "format": "unknown",
+                          "index": 0,
+                          "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
+                          "type": "reasoning.text"
+                        }
+                      ],
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_3ec6939c-5216-483d-a82e-b7acb9ccf7d8",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "object": "chat.completion",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 142,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 119
+                  },
+                  "prompt_tokens": 27,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 169
+                }
+              }
             }
           }
         }
@@ -489,44 +499,48 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 385,
-            "output_tokens": 2,
-            "total_tokens": 387,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 385,
-              "completion_tokens": 2,
-              "total_tokens": 387,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
+              "usage": {
+                "input_tokens": 385,
+                "output_tokens": 2,
+                "total_tokens": 387,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 385,
+                  "completion_tokens": 2,
+                  "total_tokens": 387,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk"
+                }
+              }
             }
           }
         }
@@ -549,44 +563,46 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 385,
-            "output_tokens": 2,
-            "total_tokens": 387,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 385,
-              "completion_tokens": 2,
-              "total_tokens": 387,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+            "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
+            "usage": {
+              "input_tokens": 385,
+              "output_tokens": 2,
+              "total_tokens": 387,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 385,
+                "completion_tokens": 2,
+                "total_tokens": 387,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk"
+              }
             }
           }
         }

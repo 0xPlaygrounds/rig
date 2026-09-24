@@ -1454,47 +1454,51 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 352,
-            "output_tokens": 11,
-            "total_tokens": 363,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
-          "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 352,
-              "completion_tokens": 11,
-              "total_tokens": 363,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o",
+              "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
+              "usage": {
+                "input_tokens": 352,
+                "output_tokens": 11,
+                "total_tokens": 363,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.00099,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00011,
-                "upstream_inference_cost": 0.00099,
-                "upstream_inference_prompt_cost": 0.00088
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 352,
+                  "completion_tokens": 11,
+                  "total_tokens": 363,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.00099,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.00011,
+                    "upstream_inference_cost": 0.00099,
+                    "upstream_inference_prompt_cost": 0.00088
+                  },
+                  "is_byok": false
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
+                "model": "openai/gpt-4o",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "provider": "OpenAI",
+                  "system_fingerprint": "fp_38255cd5f6",
+                  "service_tier": null
+                }
+              }
             }
           }
         }
@@ -1541,48 +1545,50 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 352,
-            "output_tokens": 11,
-            "total_tokens": 363,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "tool_calls",
-          "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
-          "provider": "openrouter",
           "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 352,
-              "completion_tokens": 11,
-              "total_tokens": 363,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.00099,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00011,
-                "upstream_inference_cost": 0.00099,
-                "upstream_inference_prompt_cost": 0.00088
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
+          "meta": {
+            "provider": "openrouter",
             "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+            "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
+            "usage": {
+              "input_tokens": 352,
+              "output_tokens": 11,
+              "total_tokens": 363,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 352,
+                "completion_tokens": 11,
+                "total_tokens": 363,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cost": 0.00099,
+                "cost_details": {
+                  "upstream_inference_completions_cost": 0.00011,
+                  "upstream_inference_cost": 0.00099,
+                  "upstream_inference_prompt_cost": 0.00088
+                },
+                "is_byok": false
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
+              "model": "openai/gpt-4o",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "provider": "OpenAI",
+                "system_fingerprint": "fp_38255cd5f6",
+                "service_tier": null
+              }
             }
           }
         }
@@ -1821,47 +1827,51 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 374,
-            "output_tokens": 67,
-            "total_tokens": 441,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
-          "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 374,
-              "completion_tokens": 67,
-              "total_tokens": 441,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o",
+              "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
+              "usage": {
+                "input_tokens": 374,
+                "output_tokens": 67,
+                "total_tokens": 441,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.001605,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00067,
-                "upstream_inference_cost": 0.001605,
-                "upstream_inference_prompt_cost": 0.000935
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 374,
+                  "completion_tokens": 67,
+                  "total_tokens": 441,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.001605,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.00067,
+                    "upstream_inference_cost": 0.001605,
+                    "upstream_inference_prompt_cost": 0.000935
+                  },
+                  "is_byok": false
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
+                "model": "openai/gpt-4o",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "provider": "OpenAI",
+                  "system_fingerprint": "fp_38255cd5f6",
+                  "service_tier": null
+                }
+              }
             }
           }
         }
@@ -2381,48 +2391,50 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 374,
-            "output_tokens": 67,
-            "total_tokens": 441,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "tool_calls",
-          "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
-          "provider": "openrouter",
           "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 374,
-              "completion_tokens": 67,
-              "total_tokens": 441,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.001605,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00067,
-                "upstream_inference_cost": 0.001605,
-                "upstream_inference_prompt_cost": 0.000935
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
+          "meta": {
+            "provider": "openrouter",
             "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+            "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
+            "usage": {
+              "input_tokens": 374,
+              "output_tokens": 67,
+              "total_tokens": 441,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 374,
+                "completion_tokens": 67,
+                "total_tokens": 441,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cost": 0.001605,
+                "cost_details": {
+                  "upstream_inference_completions_cost": 0.00067,
+                  "upstream_inference_cost": 0.001605,
+                  "upstream_inference_prompt_cost": 0.000935
+                },
+                "is_byok": false
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
+              "model": "openai/gpt-4o",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "provider": "OpenAI",
+                "system_fingerprint": "fp_38255cd5f6",
+                "service_tier": null
+              }
             }
           }
         }
@@ -2710,47 +2722,51 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 464,
-            "output_tokens": 31,
-            "total_tokens": 495,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
-          "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 464,
-              "completion_tokens": 31,
-              "total_tokens": 495,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o",
+              "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
+              "usage": {
+                "input_tokens": 464,
+                "output_tokens": 31,
+                "total_tokens": 495,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.00147,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00031,
-                "upstream_inference_cost": 0.00147,
-                "upstream_inference_prompt_cost": 0.00116
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 464,
+                  "completion_tokens": 31,
+                  "total_tokens": 495,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.00147,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.00031,
+                    "upstream_inference_cost": 0.00147,
+                    "upstream_inference_prompt_cost": 0.00116
+                  },
+                  "is_byok": false
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
+                "model": "openai/gpt-4o",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "provider": "OpenAI",
+                  "system_fingerprint": "fp_38255cd5f6",
+                  "service_tier": null
+                }
+              }
             }
           }
         }
@@ -2973,48 +2989,50 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 464,
-            "output_tokens": 31,
-            "total_tokens": 495,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "tool_calls",
-          "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
-          "provider": "openrouter",
           "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 464,
-              "completion_tokens": 31,
-              "total_tokens": 495,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.00147,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00031,
-                "upstream_inference_cost": 0.00147,
-                "upstream_inference_prompt_cost": 0.00116
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
+          "meta": {
+            "provider": "openrouter",
             "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+            "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
+            "usage": {
+              "input_tokens": 464,
+              "output_tokens": 31,
+              "total_tokens": 495,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 464,
+                "completion_tokens": 31,
+                "total_tokens": 495,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cost": 0.00147,
+                "cost_details": {
+                  "upstream_inference_completions_cost": 0.00031,
+                  "upstream_inference_cost": 0.00147,
+                  "upstream_inference_prompt_cost": 0.00116
+                },
+                "is_byok": false
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
+              "model": "openai/gpt-4o",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "provider": "OpenAI",
+                "system_fingerprint": "fp_38255cd5f6",
+                "service_tier": null
+              }
             }
           }
         }
@@ -3345,47 +3363,51 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 519,
-            "output_tokens": 31,
-            "total_tokens": 550,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
-          "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 519,
-              "completion_tokens": 31,
-              "total_tokens": 550,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o",
+              "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
+              "usage": {
+                "input_tokens": 519,
+                "output_tokens": 31,
+                "total_tokens": 550,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.0016075,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00031,
-                "upstream_inference_cost": 0.0016075,
-                "upstream_inference_prompt_cost": 0.0012975
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 519,
+                  "completion_tokens": 31,
+                  "total_tokens": 550,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.0016075,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.00031,
+                    "upstream_inference_cost": 0.0016075,
+                    "upstream_inference_prompt_cost": 0.0012975
+                  },
+                  "is_byok": false
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
+                "model": "openai/gpt-4o",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "provider": "OpenAI",
+                  "system_fingerprint": "fp_38255cd5f6",
+                  "service_tier": null
+                }
+              }
             }
           }
         }
@@ -3594,48 +3616,50 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 519,
-            "output_tokens": 31,
-            "total_tokens": 550,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "tool_calls",
-          "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
-          "provider": "openrouter",
           "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 519,
-              "completion_tokens": 31,
-              "total_tokens": 550,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.0016075,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00031,
-                "upstream_inference_cost": 0.0016075,
-                "upstream_inference_prompt_cost": 0.0012975
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
+          "meta": {
+            "provider": "openrouter",
             "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+            "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
+            "usage": {
+              "input_tokens": 519,
+              "output_tokens": 31,
+              "total_tokens": 550,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 519,
+                "completion_tokens": 31,
+                "total_tokens": 550,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cost": 0.0016075,
+                "cost_details": {
+                  "upstream_inference_completions_cost": 0.00031,
+                  "upstream_inference_cost": 0.0016075,
+                  "upstream_inference_prompt_cost": 0.0012975
+                },
+                "is_byok": false
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
+              "model": "openai/gpt-4o",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "provider": "OpenAI",
+                "system_fingerprint": "fp_38255cd5f6",
+                "service_tier": null
+              }
             }
           }
         }
@@ -3997,47 +4021,51 @@
               "text": "All tools executed successfully: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           ],
-          "usage": {
-            "input_tokens": 580,
-            "output_tokens": 26,
-            "total_tokens": 606,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
-          "finish_reason": "stop",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 580,
-              "completion_tokens": 26,
-              "total_tokens": 606,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o",
+              "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
+              "usage": {
+                "input_tokens": 580,
+                "output_tokens": 26,
+                "total_tokens": 606,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.00171,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00026,
-                "upstream_inference_cost": 0.00171,
-                "upstream_inference_prompt_cost": 0.00145
-              },
-              "is_byok": false
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 580,
+                  "completion_tokens": 26,
+                  "total_tokens": 606,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.00171,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.00026,
+                    "upstream_inference_cost": 0.00171,
+                    "upstream_inference_prompt_cost": 0.00145
+                  },
+                  "is_byok": false
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
+                "model": "openai/gpt-4o",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "provider": "OpenAI",
+                  "system_fingerprint": "fp_38255cd5f6",
+                  "service_tier": null
+                }
+              }
             }
           }
         }
@@ -4252,48 +4280,50 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 580,
-            "output_tokens": 26,
-            "total_tokens": 606,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
-          "provider": "openrouter",
           "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 580,
-              "completion_tokens": 26,
-              "total_tokens": 606,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.00171,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00026,
-                "upstream_inference_cost": 0.00171,
-                "upstream_inference_prompt_cost": 0.00145
-              },
-              "is_byok": false
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
+          "meta": {
+            "provider": "openrouter",
             "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+            "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
+            "usage": {
+              "input_tokens": 580,
+              "output_tokens": 26,
+              "total_tokens": 606,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 580,
+                "completion_tokens": 26,
+                "total_tokens": 606,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cost": 0.00171,
+                "cost_details": {
+                  "upstream_inference_completions_cost": 0.00026,
+                  "upstream_inference_cost": 0.00171,
+                  "upstream_inference_prompt_cost": 0.00145
+                },
+                "is_byok": false
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
+              "model": "openai/gpt-4o",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "provider": "OpenAI",
+                "system_fingerprint": "fp_38255cd5f6",
+                "service_tier": null
+              }
             }
           }
         }

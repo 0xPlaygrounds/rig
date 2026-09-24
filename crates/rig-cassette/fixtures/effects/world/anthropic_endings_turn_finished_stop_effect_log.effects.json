@@ -134,52 +134,56 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 633,
-            "output_tokens": 69,
-            "total_tokens": 702,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcX7mf24drvqe8KZ8zK",
-          "provider_request_id": "req_011CfLcX7JsPWbjD8beg7nAu",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_017bUskDRxk7xe48cih6VyJ2",
-                "input": {
-                  "x": 17,
-                  "y": 25
-                },
-                "name": "add",
-                "type": "tool_use"
-              }
-            ],
-            "id": "msg_011CfLcX7mf24drvqe8KZ8zK",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcX7mf24drvqe8KZ8zK",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcX7JsPWbjD8beg7nAu",
+              "usage": {
+                "input_tokens": 633,
+                "output_tokens": 69,
+                "total_tokens": 702,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 633,
-              "output_tokens": 69,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_017bUskDRxk7xe48cih6VyJ2",
+                    "input": {
+                      "x": 17,
+                      "y": 25
+                    },
+                    "name": "add",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcX7mf24drvqe8KZ8zK",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 633,
+                  "output_tokens": 69,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

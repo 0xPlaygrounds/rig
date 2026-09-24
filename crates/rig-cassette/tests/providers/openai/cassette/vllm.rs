@@ -53,7 +53,7 @@ async fn responses_api_accepts_null_metadata() {
                 .completion(request)
                 .await
                 .expect("vLLM Responses API completion with null metadata should deserialize");
-            let reply = ProviderResponse::deserialize(&response.raw)
+            let reply = ProviderResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized responses_api::CompletionResponse");
 
             assert!(

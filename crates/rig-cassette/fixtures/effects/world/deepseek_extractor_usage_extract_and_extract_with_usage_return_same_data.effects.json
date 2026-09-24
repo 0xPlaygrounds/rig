@@ -145,58 +145,62 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 448,
-            "output_tokens": 88,
-            "total_tokens": 536,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 15
-          },
-          "response_id": "8100a836-9559-4369-9daa-854fa1e366ec",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
-                      "index": 0,
-                      "type": "function"
-                    }
-                  ]
-                }
-              }
-            ],
-            "created": 0,
-            "id": "8100a836-9559-4369-9daa-854fa1e366ec",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 88,
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "8100a836-9559-4369-9daa-854fa1e366ec",
+              "usage": {
+                "input_tokens": 448,
+                "output_tokens": 88,
+                "total_tokens": 536,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 15
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 448,
-              "prompt_tokens": 448,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "total_tokens": 536
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                            "name": "submit"
+                          },
+                          "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "8100a836-9559-4369-9daa-854fa1e366ec",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 88,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 15
+                  },
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 448,
+                  "prompt_tokens": 448,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 536
+                }
+              }
             }
           }
         }
@@ -298,58 +302,62 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 448,
-            "output_tokens": 108,
-            "total_tokens": 556,
-            "cached_input_tokens": 256,
-            "reasoning_tokens": 35
-          },
-          "response_id": "41bb4c5f-7fd8-44c2-953e-b28a1d1248a9",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "reasoning_content": "The user provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n\nExtract: name = Bob Johnson, age = 55, profession = retired teacher.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_00_OfRYult9tHWb6aarmSLj5473",
-                      "index": 0,
-                      "type": "function"
-                    }
-                  ]
-                }
-              }
-            ],
-            "created": 0,
-            "id": "41bb4c5f-7fd8-44c2-953e-b28a1d1248a9",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 108,
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "41bb4c5f-7fd8-44c2-953e-b28a1d1248a9",
+              "usage": {
+                "input_tokens": 448,
+                "output_tokens": 108,
+                "total_tokens": 556,
+                "cached_input_tokens": 256,
                 "reasoning_tokens": 35
               },
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 192,
-              "prompt_tokens": 448,
-              "prompt_tokens_details": {
-                "cached_tokens": 256
-              },
-              "total_tokens": 556
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "The user provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n\nExtract: name = Bob Johnson, age = 55, profession = retired teacher.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                            "name": "submit"
+                          },
+                          "id": "call_00_OfRYult9tHWb6aarmSLj5473",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "41bb4c5f-7fd8-44c2-953e-b28a1d1248a9",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 108,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 35
+                  },
+                  "prompt_cache_hit_tokens": 256,
+                  "prompt_cache_miss_tokens": 192,
+                  "prompt_tokens": 448,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 256
+                  },
+                  "total_tokens": 556
+                }
+              }
             }
           }
         }

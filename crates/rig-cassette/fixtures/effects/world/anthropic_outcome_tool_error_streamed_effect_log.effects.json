@@ -257,32 +257,36 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 611,
-            "output_tokens": 69,
-            "total_tokens": 680,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
-          "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 69,
-              "input_tokens": 611,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
+          "end": {
+            "finish_reason": "tool_calls",
             "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
-            "model": "claude-sonnet-4-6"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
+              "usage": {
+                "input_tokens": 611,
+                "output_tokens": 69,
+                "total_tokens": 680,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 69,
+                  "input_tokens": 611,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "tool_use",
+                "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
+                "model": "claude-sonnet-4-6"
+              }
+            }
           }
         }
       },
@@ -369,32 +373,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 611,
-            "output_tokens": 69,
-            "total_tokens": 680,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
-          "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
             "usage": {
-              "output_tokens": 69,
               "input_tokens": 611,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 69,
+              "total_tokens": 680,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
-            "model": "claude-sonnet-4-6"
+            "raw": {
+              "usage": {
+                "output_tokens": 69,
+                "input_tokens": 611,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "tool_use",
+              "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
+              "model": "claude-sonnet-4-6"
+            }
           }
         }
       ],
@@ -531,32 +537,36 @@
               "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!"
             }
           ],
-          "usage": {
-            "input_tokens": 697,
-            "output_tokens": 30,
-            "total_tokens": 727,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
-          "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 30,
-              "input_tokens": 697,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
+          "end": {
+            "finish_reason": "stop",
             "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
-            "model": "claude-sonnet-4-6"
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
+              "usage": {
+                "input_tokens": 697,
+                "output_tokens": 30,
+                "total_tokens": 727,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "output_tokens": 30,
+                  "input_tokens": 697,
+                  "cache_creation_input_tokens": 0,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                  },
+                  "cache_read_input_tokens": 0
+                },
+                "stop_reason": "end_turn",
+                "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
+                "model": "claude-sonnet-4-6"
+              }
+            }
           }
         }
       },
@@ -682,32 +692,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 697,
-            "output_tokens": 30,
-            "total_tokens": 727,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
-          "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
+          "meta": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
             "usage": {
-              "output_tokens": 30,
               "input_tokens": 697,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+              "output_tokens": 30,
+              "total_tokens": 727,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0
             },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
-            "model": "claude-sonnet-4-6"
+            "raw": {
+              "usage": {
+                "output_tokens": 30,
+                "input_tokens": 697,
+                "cache_creation_input_tokens": 0,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "cache_read_input_tokens": 0
+              },
+              "stop_reason": "end_turn",
+              "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
+              "model": "claude-sonnet-4-6"
+            }
           }
         }
       ],

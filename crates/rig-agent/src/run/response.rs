@@ -6,7 +6,7 @@
 //! assert!(response.output().is_empty());
 //! ```
 
-use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
+use rig_core::completion::{CompletionEnd, FinishReason, Usage};
 use rig_core::error::ProviderError;
 use rig_core::id::{MessageId, RequestId, ResponseId};
 use rig_core::message::{AssistantContent, Message};
@@ -36,47 +36,22 @@ pub struct CompletionCall {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
     /// This attempt's provider response payload, as defined by
-    /// [`rig_core::completion::CompletionResponse::raw`]. A stream without a
+    /// [`rig_core::response::ResponseMeta::raw`]. A stream without a
     /// terminal response produces no completion-call entry.
     pub raw: serde_json::Value,
 }
 
 impl CompletionCall {
-    /// Create details for one completion request in an agent run, carrying
-    /// the provider's own response `raw` (see [`Self::raw`]); identity
-    /// metadata starts unset and is attached with [`Self::with_identity`].
-    pub fn new(call_index: usize, usage: Usage, raw: serde_json::Value) -> Self {
+    /// The record of call `call_index`, whose attempt ended with `end`.
+    pub fn new(call_index: usize, end: &CompletionEnd) -> Self {
         Self {
             call_index,
-            usage,
-            message_id: None,
-            response_id: None,
-            provider_request_id: None,
-            finish_reason: None,
-            raw,
-        }
-    }
-
-    /// Attach the response identity metadata this call's attempt reported.
-    pub fn with_identity(mut self, identity: ResponseIdentity) -> Self {
-        self.message_id = identity.message_id;
-        self.response_id = identity.response_id;
-        self.provider_request_id = identity.provider_request_id;
-        self
-    }
-
-    /// Attach the terminal finish reason reported by this attempt.
-    pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        self.finish_reason = finish_reason;
-        self
-    }
-
-    /// This call's identity metadata as one [`ResponseIdentity`] carrier.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: self.message_id.clone(),
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
+            usage: end.meta.usage,
+            message_id: end.message_id.clone(),
+            response_id: end.meta.response_id.clone(),
+            provider_request_id: end.meta.provider_request_id.clone(),
+            finish_reason: end.finish_reason.clone(),
+            raw: end.meta.raw.clone(),
         }
     }
 }

@@ -137,54 +137,58 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-1"
-                },
-                "provider": {
-                  "call_id": "call-1"
-                },
-                "function": {
-                  "name": "multiply",
-                  "arguments": {
-                    "x": 2,
-                    "y": 3
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-1"
+                    },
+                    "provider": {
+                      "call_id": "call-1"
+                    },
+                    "function": {
+                      "name": "multiply",
+                      "arguments": {
+                        "x": 2,
+                        "y": 3
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
+                  },
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-2"
+                    },
+                    "provider": {
+                      "call_id": "call-2"
+                    },
+                    "function": {
+                      "name": "add",
+                      "arguments": {
+                        "x": 2,
+                        "y": 3
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
-              },
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-2"
-                },
-                "provider": {
-                  "call_id": "call-2"
-                },
-                "function": {
-                  "name": "add",
-                  "arguments": {
-                    "x": 2,
-                    "y": 3
-                  }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }

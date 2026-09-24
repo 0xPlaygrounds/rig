@@ -1508,7 +1508,7 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                 assert_eq!(roles, [Role::User, Role::Assistant], "the turn is history");
                 if matches!(fault, Fault::Filtered { .. }) {
                     let finish = match &log.records[0].outcome {
-                        Ok(Outcome::Completion(response)) => response.finish_reason.clone(),
+                        Ok(Outcome::Completion(response)) => response.end.finish_reason.clone(),
                         other => panic!("{}: a completion record, not {other:?}", cell.name),
                     };
                     assert_eq!(

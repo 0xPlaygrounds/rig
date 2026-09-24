@@ -83,118 +83,122 @@
               "text": "Rust is a systems programming language that provides performance comparable to C/C++ while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime rules checked at compile time. Memory safety matters because it prevents crashes, undefined behavior, and security vulnerabilities (e.g., buffer overflows, use-after-free, data races), making software more reliable and secure."
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 240,
-            "total_tokens": 277,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "message_id": "msg_0098948a08cb4b90006ab2b291fc2087d09627a94adcf08c02",
-          "response_id": "resp_0098948a08cb4b90006ab2b28f304087d09410c6118548a63f",
-          "provider_request_id": "req_8fb5e2d401a048c18ba3c4ac0d3356ab",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_0098948a08cb4b90006ab2b28f304087d09410c6118548a63f",
-            "incomplete_details": null,
-            "instructions": "You are a concise assistant. Answer directly.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrKTsXLsZXKJ6AwPHZy-XztjZggJ-oz65IzUn_6mYLAo4oQLFM44Y-eEqoiJo645L_GVMt5_TFHyaAJCFXOJXh4JkAi2QsSQqxc3QlIK5-7EITI0a_mmh5mbz-3Gs1gBYOwSRHcOn6NaDMdX9tvvO2KEy7FrmzmYqiT5FAoxDeZ4R6qAo5ucfKX8hctB7tW_3-qPDCTH9qyWn_NqFrlHqthMCztmvV02cJsdgR3ZuIQxYvh85p5vUd9bndndrdK49PK1emmrp2JevjPGDOWEnm8R4NfurP8JlOTP5adA_xT6zTOH7Opk_pgVko2Iapxxkw85vximXD-bkemrh0rJUldXT1xtk0d6n3Ngtd8RcWLROxbpFCYcwN6N0J9pO0S0Z5n3JUnz8gU3Nkof7MZtBZAfQ27k6Q4VZi6IM1ky60GemQj8Dsj4428cooHalkf6vFshxiorvcKwWg1ctzy2QUa-kQnRf7PhSkAMxoUPEVQ7xvPa3c7QK8MDOD1duTMTR7wOh9vsTVz3aFzxkIhwP8oXqsa8R1ecnRR3zyJG8UwSS5aOB5kz1eHRn4U7Xa8F19_P844BB5oIe7CSlvlXjPgLzRKZfhpVV7k48fij50rcLcgu3p37817oc92kbmj-k_XL2qcJAN-Bkc-sXZUnXK7eDveWKZJ6hCBc-46YhtrptD-u0eKx5k_JK0heglTgJY2BLbchGSufo4BxriWQdy5bBJjObBVO0FkU-fo8GHuLk-dNEXqAwSzve6iZMjhUtGfLz-LIE8x8i5fSJIuTs59k4wAt6B-vH6g0DFwcU1ZyInTTvZUsXXVNxpQer3U4Au7eS7wTlnPg1Odi3WKaPJZw2MXqDxz2EaLB5hacROawxZyWtz178imHG8_S39ey2fu_1iAShY-be3hiI4kV1vazANfygTiC0XfSGAkxRq_NXW4EKR4IE_-6pVwWpIav7nzrTbLbwODZGnL48hRws3rucJOCCswiv6MwGN2InX2xXY56QAqfqs1-NVb4ejQInbPRpvkJ2ad4fapXNdRlI3dz-2Mtbxr9cR5UdVy38WarjFDt4bboTQp6UOd1TJy2slpA70HGXm8roWteww_RhJ0I3mPem4qTQX9D-s9o2mbbVWHwOb3A3vgmzbdeZIpbHyMi4HqO65SzzSImsyEsfCEn1U1S4PF1n0XHpuNffA23v_7NO2W5nRWTfxs0UQj53lLQhj3gkiQB5ssIfjOBTqIoMAlrkEl5p-5LEwd6Y3cIkYfrlxw3LhNeqvCrFyczgPAN6-MGTJO6lW-ZGlWYCKdgJo2ZFpHh06OWuLsDgy5whjgpOlgVIMDc1nj38G4kgG6fHjhlmjWtgQ_ADYBcJcYDucFHE--psUQ3tDSimGFMVbV7y5IQLtfVEAbCWY70Fu1K3aMcuT4EQAnTm79QYYmOD3hgnUGi_aEQbvrG0jWTPafW7vWOdBT63SkWftB_f-Bb9tWXTJkhOYSmdn2kgaKALe4vqG1Bv8UMASvrtLF1oQW1LhD4fUhH_ZTnVN6qYg09ZOUtE8P3P57eWOGSciltI0Zgu_S7nGMhMu3EUJpUjjuF8K_jvyzs__zFA0M5846-0RrraXOoHsPlxk9XYpOZmblEPNbIKBKic2nlrlhK78l-G-aSI_t5U86DqovDhBgzW1KLJcTaxxVSAZ1SThgld06lqTLrpgIYjAdO0jxZDX-tgOl_R-j-fxVz5ADMgDKejx1rpEiQxHwFLkxM8lL5_wpJ3nrGBco2zqbd1ITohFs92ZuDwtZwmljY-jkHavW-XOw8ok3feUDU11Oc3BWrcCOkJHGo_XSuY7uBafc5lyDkSDye_uOLRPCjCrBmj25h7wtFF39zZ94wRXBV02OrAICSTkDfmBkLAHTqkaJyJVO-cUyIeGuWuoQp2s5G1gBI1hT-4InOVlsOgTw4J2m-zvVnudFNyEf2Ox7aFHehy0Ym9WWuTAz4-U-O6YpYX1oJGROVfNEx1mcDJTkKShZxQs2TkOp6pMlrAgf_L3yBtNHvHLqEkytn--uLUkG5XokEyo8A6E4vxTxBxk4wVuISHbBzphdEyvRybbG0GQxbH8S_bg9MJsyqkq4Wd0JMTCATZGNRi01vQDH0RDRRCyDV1TWdV32pGH_eVphCIVFVeXOjtIVHFcQMYGY4DugGiRrKC4mxYqT-R0Er1ZUwLE7vEBudSKG6JOxEedEtx_58pR8poQbQzo0UEk1QYTudlppQikoc6oQJ5Aa4np18xCQ1QXViWPAXnontcc9prJGWAii9lQWHJG2NDoglG3qfWrj23p3c16aouMseEYZH-_4F8KI1q06FwMZdgytCQvj61ou9qXhqP1a-yD56cpSHAmTsXGixW5kAPBRH8kUU2evBt7XzO1pbbm6GLJLLm6SxHWs=",
-                "id": "rs_0098948a08cb4b90006ab2b28fdaa487d0b207cfa473c976ab",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "Rust is a systems programming language that provides performance comparable to C/C++ while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime rules checked at compile time. Memory safety matters because it prevents crashes, undefined behavior, and security vulnerabilities (e.g., buffer overflows, use-after-free, data races), making software more reliable and secure.",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_0098948a08cb4b90006ab2b291fc2087d09627a94adcf08c02",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 37,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 240,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_0098948a08cb4b90006ab2b291fc2087d09627a94adcf08c02",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_0098948a08cb4b90006ab2b28f304087d09410c6118548a63f",
+              "provider_request_id": "req_8fb5e2d401a048c18ba3c4ac0d3356ab",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 240,
+                "total_tokens": 277,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 128
               },
-              "total_tokens": 277
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_0098948a08cb4b90006ab2b28f304087d09410c6118548a63f",
+                "incomplete_details": null,
+                "instructions": "You are a concise assistant. Answer directly.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrKTsXLsZXKJ6AwPHZy-XztjZggJ-oz65IzUn_6mYLAo4oQLFM44Y-eEqoiJo645L_GVMt5_TFHyaAJCFXOJXh4JkAi2QsSQqxc3QlIK5-7EITI0a_mmh5mbz-3Gs1gBYOwSRHcOn6NaDMdX9tvvO2KEy7FrmzmYqiT5FAoxDeZ4R6qAo5ucfKX8hctB7tW_3-qPDCTH9qyWn_NqFrlHqthMCztmvV02cJsdgR3ZuIQxYvh85p5vUd9bndndrdK49PK1emmrp2JevjPGDOWEnm8R4NfurP8JlOTP5adA_xT6zTOH7Opk_pgVko2Iapxxkw85vximXD-bkemrh0rJUldXT1xtk0d6n3Ngtd8RcWLROxbpFCYcwN6N0J9pO0S0Z5n3JUnz8gU3Nkof7MZtBZAfQ27k6Q4VZi6IM1ky60GemQj8Dsj4428cooHalkf6vFshxiorvcKwWg1ctzy2QUa-kQnRf7PhSkAMxoUPEVQ7xvPa3c7QK8MDOD1duTMTR7wOh9vsTVz3aFzxkIhwP8oXqsa8R1ecnRR3zyJG8UwSS5aOB5kz1eHRn4U7Xa8F19_P844BB5oIe7CSlvlXjPgLzRKZfhpVV7k48fij50rcLcgu3p37817oc92kbmj-k_XL2qcJAN-Bkc-sXZUnXK7eDveWKZJ6hCBc-46YhtrptD-u0eKx5k_JK0heglTgJY2BLbchGSufo4BxriWQdy5bBJjObBVO0FkU-fo8GHuLk-dNEXqAwSzve6iZMjhUtGfLz-LIE8x8i5fSJIuTs59k4wAt6B-vH6g0DFwcU1ZyInTTvZUsXXVNxpQer3U4Au7eS7wTlnPg1Odi3WKaPJZw2MXqDxz2EaLB5hacROawxZyWtz178imHG8_S39ey2fu_1iAShY-be3hiI4kV1vazANfygTiC0XfSGAkxRq_NXW4EKR4IE_-6pVwWpIav7nzrTbLbwODZGnL48hRws3rucJOCCswiv6MwGN2InX2xXY56QAqfqs1-NVb4ejQInbPRpvkJ2ad4fapXNdRlI3dz-2Mtbxr9cR5UdVy38WarjFDt4bboTQp6UOd1TJy2slpA70HGXm8roWteww_RhJ0I3mPem4qTQX9D-s9o2mbbVWHwOb3A3vgmzbdeZIpbHyMi4HqO65SzzSImsyEsfCEn1U1S4PF1n0XHpuNffA23v_7NO2W5nRWTfxs0UQj53lLQhj3gkiQB5ssIfjOBTqIoMAlrkEl5p-5LEwd6Y3cIkYfrlxw3LhNeqvCrFyczgPAN6-MGTJO6lW-ZGlWYCKdgJo2ZFpHh06OWuLsDgy5whjgpOlgVIMDc1nj38G4kgG6fHjhlmjWtgQ_ADYBcJcYDucFHE--psUQ3tDSimGFMVbV7y5IQLtfVEAbCWY70Fu1K3aMcuT4EQAnTm79QYYmOD3hgnUGi_aEQbvrG0jWTPafW7vWOdBT63SkWftB_f-Bb9tWXTJkhOYSmdn2kgaKALe4vqG1Bv8UMASvrtLF1oQW1LhD4fUhH_ZTnVN6qYg09ZOUtE8P3P57eWOGSciltI0Zgu_S7nGMhMu3EUJpUjjuF8K_jvyzs__zFA0M5846-0RrraXOoHsPlxk9XYpOZmblEPNbIKBKic2nlrlhK78l-G-aSI_t5U86DqovDhBgzW1KLJcTaxxVSAZ1SThgld06lqTLrpgIYjAdO0jxZDX-tgOl_R-j-fxVz5ADMgDKejx1rpEiQxHwFLkxM8lL5_wpJ3nrGBco2zqbd1ITohFs92ZuDwtZwmljY-jkHavW-XOw8ok3feUDU11Oc3BWrcCOkJHGo_XSuY7uBafc5lyDkSDye_uOLRPCjCrBmj25h7wtFF39zZ94wRXBV02OrAICSTkDfmBkLAHTqkaJyJVO-cUyIeGuWuoQp2s5G1gBI1hT-4InOVlsOgTw4J2m-zvVnudFNyEf2Ox7aFHehy0Ym9WWuTAz4-U-O6YpYX1oJGROVfNEx1mcDJTkKShZxQs2TkOp6pMlrAgf_L3yBtNHvHLqEkytn--uLUkG5XokEyo8A6E4vxTxBxk4wVuISHbBzphdEyvRybbG0GQxbH8S_bg9MJsyqkq4Wd0JMTCATZGNRi01vQDH0RDRRCyDV1TWdV32pGH_eVphCIVFVeXOjtIVHFcQMYGY4DugGiRrKC4mxYqT-R0Er1ZUwLE7vEBudSKG6JOxEedEtx_58pR8poQbQzo0UEk1QYTudlppQikoc6oQJ5Aa4np18xCQ1QXViWPAXnontcc9prJGWAii9lQWHJG2NDoglG3qfWrj23p3c16aouMseEYZH-_4F8KI1q06FwMZdgytCQvj61ou9qXhqP1a-yD56cpSHAmTsXGixW5kAPBRH8kUU2evBt7XzO1pbbm6GLJLLm6SxHWs=",
+                    "id": "rs_0098948a08cb4b90006ab2b28fdaa487d0b207cfa473c976ab",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "Rust is a systems programming language that provides performance comparable to C/C++ while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime rules checked at compile time. Memory safety matters because it prevents crashes, undefined behavior, and security vulnerabilities (e.g., buffer overflows, use-after-free, data races), making software more reliable and secure.",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_0098948a08cb4b90006ab2b291fc2087d09627a94adcf08c02",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 37,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 240,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 128
+                  },
+                  "total_tokens": 277
+                },
+                "user": null
+              }
+            }
           }
         }
       },

@@ -49,7 +49,7 @@
 //! | unary | `agent`, `tools`, `extractor`, `structured_output`, and every matrix's blocking cells |
 //! | streaming | `streaming`, `streaming_tools`, `permission_control` |
 //! | `CompletionResponse::raw` | `raw_capture_matrix` |
-//! | `StreamFinal::raw` | `raw_stream_capture_matrix`, `streaming_tools`'s `raw_*` cells |
+//! | `CompletionEnd::raw` | `raw_stream_capture_matrix`, `streaming_tools`'s `raw_*` cells |
 //!
 //! ## Everything else
 //!

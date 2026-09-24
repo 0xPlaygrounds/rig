@@ -61,42 +61,46 @@
               "text": "ready"
             }
           ],
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 1,
-            "total_tokens": 23,
-            "cached_input_tokens": 0
-          },
-          "response_id": "e2ad1fc1-fea4-46a9-b7e7-f5ac97f0a4ea",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "ready",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "e2ad1fc1-fea4-46a9-b7e7-f5ac97f0a4ea",
+              "usage": {
+                "input_tokens": 22,
+                "output_tokens": 1,
+                "total_tokens": 23,
+                "cached_input_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "ready",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "e2ad1fc1-fea4-46a9-b7e7-f5ac97f0a4ea",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 1,
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 22,
+                  "prompt_tokens": 22,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 23
                 }
               }
-            ],
-            "created": 0,
-            "id": "e2ad1fc1-fea4-46a9-b7e7-f5ac97f0a4ea",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 1,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 22,
-              "prompt_tokens": 22,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "total_tokens": 23
             }
           }
         }

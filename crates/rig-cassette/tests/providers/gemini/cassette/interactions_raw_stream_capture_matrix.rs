@@ -7,7 +7,7 @@
 //! record from the `interaction.completed` event — the API's own
 //! [`StreamingCompletionResponse`], carrying the finished interaction, its
 //! usage and the model version — and serializes it onto the terminal
-//! [`rig::streaming::StreamFinal::raw`] it yields as `StreamEvent::Final`.
+//! [`rig::completion::CompletionEnd::raw`] it yields as `StreamEvent::Final`.
 //! There is no opt-in and nothing about it reaches the wire; `raw` is
 //! `Value::Null` only on a terminal constructed without a provider stream
 //! behind it, never because capture "was not requested".
@@ -33,12 +33,13 @@
 //! and it is what the decoder's terminal record is built from.
 
 use futures::StreamExt;
+use rig::completion::CompletionEnd;
 use rig::completion::{CompletionModel as _, FinishReason};
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::interactions_api::Interactions;
 use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -62,7 +63,7 @@ fn request(model: &Model) -> rig::completion::CompletionRequest {
 async fn stream_to_terminal(
     model: &Model,
     request: rig::completion::CompletionRequest,
-) -> StreamFinal {
+) -> CompletionEnd {
     let mut stream = model.stream(request).await.expect("stream should open");
     let mut terminal = None;
     let mut text = String::new();
@@ -143,7 +144,7 @@ async fn raw_roundtrips_streaming_completion_response() {
             let model = client.map_wire(|config| config.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
-            let raw = &terminal.raw;
+            let raw = &terminal.meta.raw;
 
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into the Interactions streaming terminal type");
@@ -154,17 +155,20 @@ async fn raw_roundtrips_streaming_completion_response() {
             );
 
             // The typed value agrees with the normalized terminal next to it.
-            assert_eq!(typed.model_version.as_deref(), terminal.model.as_deref());
+            assert_eq!(
+                typed.model_version.as_deref(),
+                terminal.meta.model.as_deref()
+            );
             assert_eq!(
                 typed
                     .interaction
                     .as_ref()
                     .map(|interaction| interaction.id.as_str()),
-                terminal.response_id.as_deref()
+                terminal.meta.response_id.as_deref()
             );
             assert_eq!(
                 typed.usage.as_ref().and_then(|usage| usage.total_tokens),
-                terminal.usage.total_tokens
+                terminal.meta.usage.total_tokens
             );
             *sink.lock().expect("observation lock") = Some(raw.clone());
         },
@@ -200,7 +204,7 @@ async fn raw_exposes_terminal_only_fields() {
             let model = client.map_wire(|config| config.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
-            let raw = &terminal.raw;
+            let raw = &terminal.meta.raw;
             *sink.lock().expect("observation lock") = Some(raw.clone());
 
             // The normalized terminal provably lacks these: `object` has no
@@ -208,9 +212,9 @@ async fn raw_exposes_terminal_only_fields() {
             // vocabulary.
             let mut normalized =
                 serde_json::to_value(&terminal).expect("normalized terminal serializes");
-            normalized
+            normalized["meta"]
                 .as_object_mut()
-                .expect("terminal is an object")
+                .expect("the terminal's metadata is an object")
                 .remove("raw");
             assert!(!contains_key(&normalized, "object"));
             assert!(!contains_key(&normalized, "status"));

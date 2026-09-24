@@ -105,40 +105,44 @@
               "text": "The number 2 to the power of 20 is 1,048,576."
             }
           ],
-          "usage": {
-            "input_tokens": 25,
-            "output_tokens": 30,
-            "total_tokens": 164,
-            "tool_use_prompt_tokens": 75,
-            "reasoning_tokens": 34
-          },
-          "response_id": "lnizarrwCKOez7IPveCJ8QQ",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 25,
-              "candidatesTokenCount": 30,
-              "totalTokenCount": 164,
-              "thoughtsTokenCount": 34,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 25
-                }
-              ],
-              "toolUsePromptTokenCount": 75,
-              "toolUsePromptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 75
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "lnizarrwCKOez7IPveCJ8QQ"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "lnizarrwCKOez7IPveCJ8QQ",
+              "usage": {
+                "input_tokens": 25,
+                "output_tokens": 30,
+                "total_tokens": 164,
+                "tool_use_prompt_tokens": 75,
+                "reasoning_tokens": 34
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 25,
+                  "candidatesTokenCount": 30,
+                  "totalTokenCount": 164,
+                  "thoughtsTokenCount": 34,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 25
+                    }
+                  ],
+                  "toolUsePromptTokenCount": 75,
+                  "toolUsePromptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 75
+                    }
+                  ]
+                },
+                "finish_reason": "STOP",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "lnizarrwCKOez7IPveCJ8QQ"
+              }
+            }
           }
         }
       },
@@ -176,40 +180,42 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 25,
-            "output_tokens": 30,
-            "total_tokens": 164,
-            "tool_use_prompt_tokens": 75,
-            "reasoning_tokens": 34
-          },
           "finish_reason": "stop",
-          "response_id": "lnizarrwCKOez7IPveCJ8QQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 25,
-              "candidatesTokenCount": 30,
-              "totalTokenCount": 164,
-              "thoughtsTokenCount": 34,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 25
-                }
-              ],
-              "toolUsePromptTokenCount": 75,
-              "toolUsePromptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 75
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "lnizarrwCKOez7IPveCJ8QQ",
+            "usage": {
+              "input_tokens": 25,
+              "output_tokens": 30,
+              "total_tokens": 164,
+              "tool_use_prompt_tokens": 75,
+              "reasoning_tokens": 34
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "lnizarrwCKOez7IPveCJ8QQ"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 25,
+                "candidatesTokenCount": 30,
+                "totalTokenCount": 164,
+                "thoughtsTokenCount": 34,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 25
+                  }
+                ],
+                "toolUsePromptTokenCount": 75,
+                "toolUsePromptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 75
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "lnizarrwCKOez7IPveCJ8QQ"
+            }
           }
         }
       ],

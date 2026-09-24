@@ -144,7 +144,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // Log probabilities stay provider-native: the normalized response
             // models none, so the blocking control reads them off the reply
             // document the driver keeps on `raw`.
-            let document = model.completion(request).await?.raw;
+            let document = model.completion(request).await?.end.meta.raw;
             Observation {
                 logprobs: document["choices"][0]["logprobs"].clone(),
                 finish_reason: document["choices"][0]["finish_reason"].clone(),
@@ -159,7 +159,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
                 }
             }
             let terminal = terminal.context("raw stream should carry a terminal response")?;
-            let serialized = terminal.raw;
+            let serialized = terminal.meta.raw;
             Observation {
                 logprobs: serialized["logprobs"].clone(),
                 finish_reason: serialized["finish_reason"].clone(),

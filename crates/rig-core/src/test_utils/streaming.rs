@@ -2,9 +2,11 @@
 
 use crate::error::ProviderError;
 use crate::{
-    completion::Usage,
+    completion::{CompletionEnd, FinishReason, Usage},
+    id::{MessageId, ModelName, ProviderName, RequestId, ResponseId},
     message::ReasoningContent,
-    streaming::{StreamFinal, ToolCallEnd, UnparseableToolInput},
+    response::ResponseMeta,
+    streaming::{StreamEvent, ToolCallEnd, UnparseableToolInput},
 };
 
 use crate::operation::AdapterOutput;
@@ -12,13 +14,82 @@ use crate::operation::AdapterOutput;
 /// Provider descriptor name reported by the test doubles.
 pub const MOCK_PROVIDER: &str = "mock";
 
+/// The mock provider's terminal record: what a script says its reply ended
+/// with. The mock plays its own transport, so a script names the provider
+/// and the transport request id too. [`Self::into_end`] completes it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MockFinal {
+    /// The tokens the reply reports.
+    pub usage: Usage,
+    /// Why the reply ended, before the fold reconciles it with the calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
+    /// The assistant message id the record names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<MessageId>,
+    /// The response id the record names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<ResponseId>,
+    /// The transport request id the mock's transport reports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<RequestId>,
+    /// The provider the reply is attributed to.
+    pub provider: String,
+    /// The issuer of the reply's reasoning, when it is not the provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_issuer: Option<String>,
+    /// The model the record names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelName>,
+    /// Scripted provider data, nested under `raw` in the mock's terminal
+    /// document.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
+}
+
+impl MockFinal {
+    /// A record attributed to `provider`, reporting `usage` and scripted
+    /// provider data `raw`, and nothing else.
+    pub fn new(provider: impl Into<String>, usage: Usage, raw: serde_json::Value) -> Self {
+        Self {
+            usage,
+            finish_reason: None,
+            message_id: None,
+            response_id: None,
+            provider_request_id: None,
+            provider: provider.into(),
+            reasoning_issuer: None,
+            model: None,
+            raw,
+        }
+    }
+
+    /// The terminal record as the reply's [`CompletionEnd`], whose `raw` is
+    /// the record in the mock's document layout. Fails when the scripted
+    /// provider or reasoning issuer is empty.
+    pub fn into_end(self) -> Result<CompletionEnd, ProviderError> {
+        let raw = super::document::mock_terminal_document(&self)?;
+        Ok(CompletionEnd {
+            finish_reason: self.finish_reason,
+            message_id: self.message_id,
+            reasoning_issuer: self.reasoning_issuer.map(ProviderName::new).transpose()?,
+            meta: ResponseMeta {
+                model: self.model,
+                response_id: self.response_id,
+                provider_request_id: self.provider_request_id,
+                usage: self.usage,
+                raw,
+                ..ResponseMeta::new(ProviderName::new(self.provider)?)
+            },
+        })
+    }
+}
+
 /// Build the terminal record the mock model yields, carrying `usage`.
-pub fn mock_final(usage: Usage) -> StreamFinal {
-    // The document is replaced with the whole scripted record in the mock's
-    // document layout when the fixture is interpreted (see `apply`); until
-    // then it names the mock as its origin the way a real terminal names its
-    // provider.
-    StreamFinal::new(
+pub fn mock_final(usage: Usage) -> MockFinal {
+    // The scripted data names the mock as its origin the way a real terminal
+    // names its provider.
+    MockFinal::new(
         MOCK_PROVIDER,
         usage,
         serde_json::json!({ "provider": MOCK_PROVIDER }),
@@ -39,7 +110,7 @@ fn fixture_additional_params(
 }
 
 /// Build a terminal record whose usage has only `total_tokens` set.
-pub fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
+pub fn mock_final_with_total_tokens(total_tokens: u64) -> MockFinal {
     mock_final(Usage {
         total_tokens: Some(total_tokens),
         ..Default::default()
@@ -85,7 +156,7 @@ pub enum MockStreamEvent {
     /// Provider-native output item that Rig does not model.
     Unknown(serde_json::Value),
     /// Final raw response carrying optional usage.
-    FinalResponse(StreamFinal),
+    FinalResponse(MockFinal),
     /// Stream error.
     Error(MockError),
 }
@@ -330,10 +401,7 @@ impl MockStreamEvent {
             }
             Self::MessageId(id) => out.message_id(id),
             Self::Unknown(value) => out.unknown(value.into()),
-            Self::FinalResponse(mut response) => {
-                response.raw = super::document::mock_terminal_document(&response)?;
-                out.final_record(response);
-            }
+            Self::FinalResponse(record) => out.push(Ok(StreamEvent::Final(record.into_end()?))),
             Self::Error(error) => out.error(error.into_completion_error()),
         }
         Ok(())

@@ -72,21 +72,25 @@
               "text": "ready"
             }
           ],
-          "usage": {
-            "total_tokens": 1
-          },
-          "provider": "mock",
-          "raw": {
-            "usage": {
-              "total_tokens": 1
-            },
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {
+                "total_tokens": 1
+              },
+              "raw": {
+                "usage": {
+                  "total_tokens": 1
+                },
+                "finish_reason": null,
+                "message_id": null,
+                "response_id": null,
+                "provider": "mock",
+                "model": null,
+                "raw": {
+                  "provider": "mock"
+                }
+              }
             }
           }
         }
@@ -109,21 +113,23 @@
         },
         {
           "event": "final",
-          "usage": {
-            "total_tokens": 1
-          },
-          "provider": "mock",
-          "raw": {
+          "meta": {
+            "provider": "mock",
             "usage": {
               "total_tokens": 1
             },
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
             "raw": {
-              "provider": "mock"
+              "usage": {
+                "total_tokens": 1
+              },
+              "finish_reason": null,
+              "message_id": null,
+              "response_id": null,
+              "provider": "mock",
+              "model": null,
+              "raw": {
+                "provider": "mock"
+              }
             }
           }
         }

@@ -97,9 +97,13 @@ fn a_format_two_checkpoint_migrates_its_rig_core_values() {
                     "Ok": {
                         "outcome": "completion",
                         "choice": [{ "type": "text", "text": "ready" }],
-                        "usage": {},
-                        "provider": "mock",
-                        "raw": { "message_id": null }
+                        "end": {
+                            "meta": {
+                                "provider": "mock",
+                                "usage": {},
+                                "raw": { "message_id": null }
+                            }
+                        }
                     }
                 },
                 "rig_ecs::agent::MaxTokens": null

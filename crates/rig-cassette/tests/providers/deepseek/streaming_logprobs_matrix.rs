@@ -131,7 +131,7 @@ async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation
     let observation = match cell.transport {
         Transport::Blocking => {
             let response = model.completion(request).await?;
-            let choice = response.raw["choices"]
+            let choice = response.end.meta.raw["choices"]
                 .as_array()
                 .and_then(|choices| choices.first())
                 .context("blocking response should carry a choice")?;
@@ -149,7 +149,7 @@ async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation
                 }
             }
             let terminal = terminal.context("raw stream should carry a terminal response")?;
-            let serialized = terminal.raw;
+            let serialized = terminal.meta.raw;
             Observation {
                 logprobs: serialized["logprobs"].clone(),
                 finish_reason: serialized["finish_reason"].clone(),

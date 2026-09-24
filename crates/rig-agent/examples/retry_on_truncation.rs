@@ -25,10 +25,13 @@ use rig_agent::{
         ModelTurnFinished, MultiTurnStreamItem, RequestPatch,
     },
     completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason, Usage},
-    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse},
+    streaming::{BlockId, StreamEvent, StreamingCompletionResponse},
 };
+use rig_core::completion::CompletionEnd;
 use rig_core::error::ProviderError;
+use rig_core::id::ProviderName;
 use rig_core::message::AssistantContent;
+use rig_core::response::ResponseMeta;
 
 /// The full answer costs this many output tokens; anything less is truncated.
 const ANSWER_COST: u64 = 40;
@@ -62,13 +65,15 @@ impl CompletionModel for BudgetedModel {
     ) -> Result<CompletionResponse, ProviderError> {
         let (text, reason) = Self::answer_under(request.max_tokens);
         Ok(CompletionResponse {
-            finish_reason: Some(reason),
-            ..CompletionResponse::new(
-                vec![AssistantContent::text(text)],
-                Usage::default(),
-                "budgeted",
-                serde_json::json!({}),
-            )
+            choice: vec![AssistantContent::text(text)],
+            end: CompletionEnd {
+                finish_reason: Some(reason),
+                ..CompletionEnd::new(ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..ResponseMeta::new(ProviderName::new("budgeted")?)
+                })
+            },
         })
     }
 
@@ -83,9 +88,13 @@ impl CompletionModel for BudgetedModel {
             "budgeted",
             Box::pin(stream::iter([
                 Ok(StreamEvent::text(BlockId::wire("text-1"), text)),
-                Ok(StreamEvent::Final(StreamFinal {
+                Ok(StreamEvent::Final(CompletionEnd {
                     finish_reason: Some(reason),
-                    ..StreamFinal::new("budgeted", Usage::default(), serde_json::json!({}))
+                    ..CompletionEnd::new(ResponseMeta {
+                        usage: Usage::default(),
+                        raw: serde_json::json!({}),
+                        ..ResponseMeta::new(ProviderName::new("budgeted")?)
+                    })
                 })),
             ])),
         ))
@@ -127,7 +136,7 @@ impl AgentHook for GrowCapOnTruncation {
         _ctx: &HookContext,
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        let reason = event.finish_reason;
+        let reason = event.end.finish_reason.as_ref();
         println!(
             "  turn {} · cap {:?} · stopped: {:?}",
             event.turn, event.max_tokens, reason

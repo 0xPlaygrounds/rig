@@ -60,7 +60,10 @@ fn request() -> CompletionRequest {
 /// framing, exactly as `encode` decides it.
 fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
     let wire = wire();
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(mode));
+    let mut driver = WireDriver::<Completion, _>::new(
+        &crate::id::ProviderName::new(wire.name()).expect("a provider name"),
+        wire.decoder(mode),
+    );
     match mode {
         Mode::Streaming => {
             let mut framer = crate::http_client::framing::SseFramer::new();
@@ -97,26 +100,32 @@ fn the_same_turn_folds_identically_whether_it_was_buffered_or_streamed() {
     let streamed = fold(STREAMED, Mode::Streaming);
 
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
+    assert_eq!(buffered.end.meta.model, streamed.end.meta.model);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
-    assert_eq!(buffered.message_id, streamed.message_id);
-    assert_eq!(buffered.provider_request_id, streamed.provider_request_id);
+    assert_eq!(buffered.end.message_id, streamed.end.message_id);
+    assert_eq!(
+        buffered.end.meta.provider_request_id,
+        streamed.end.meta.provider_request_id
+    );
     assert_eq!(
         buffered.choice.first(),
         Some(&AssistantContent::text("parity probe"))
     );
-    assert_eq!(buffered.usage.output_tokens, Some(6));
-    assert_eq!(buffered.usage.input_tokens, Some(14));
+    assert_eq!(buffered.end.meta.usage.output_tokens, Some(6));
+    assert_eq!(buffered.end.meta.usage.input_tokens, Some(14));
 }
 
 #[test]
 fn the_buffered_reply_is_one_frame_whose_terminal_is_unconditional() {
     let wire = wire();
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(Mode::Unary));
+    let mut driver = WireDriver::<Completion, _>::new(
+        &crate::id::ProviderName::new(wire.name()).expect("a provider name"),
+        wire.decoder(Mode::Unary),
+    );
     driver.push(WireFrame::Text(UNARY.to_owned()));
     let items: Vec<_> = driver.drain().collect();
     assert!(

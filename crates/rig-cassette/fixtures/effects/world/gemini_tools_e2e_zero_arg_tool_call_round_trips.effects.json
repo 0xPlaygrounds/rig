@@ -120,50 +120,54 @@
               "signature": "CqcBAWkUfRO/7lpJU1z+UsaRAXcmsIx29hrS5M1Ct47JnG65LqfWmXYYbp5zH66jBaCKvlCRbdlfPyqZHfiGMAaL51ylRcIqyw8BzW4EgMEjMD9ynaPNo3s65RViEx0UEdOL74snR8x60eBAEPq8mx0dp43dVH52NS0oZ6+426Z7kNHLXiwYQ2huRzFSOO2wH4iyGVnYMilHzthw/mk3fz+55PnV7yCxdIs="
             }
           ],
-          "usage": {
-            "input_tokens": 58,
-            "output_tokens": 8,
-            "total_tokens": 98,
-            "reasoning_tokens": 32
-          },
-          "response_id": "D6yyapuUNuPCqtsPj9ak6Ak",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "D6yyapuUNuPCqtsPj9ak6Ak",
+              "usage": {
+                "input_tokens": 58,
+                "output_tokens": 8,
+                "total_tokens": 98,
+                "reasoning_tokens": 32
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {},
+                            "name": "ping"
+                          },
+                          "thoughtSignature": "CqcBAWkUfRO/7lpJU1z+UsaRAXcmsIx29hrS5M1Ct47JnG65LqfWmXYYbp5zH66jBaCKvlCRbdlfPyqZHfiGMAaL51ylRcIqyw8BzW4EgMEjMD9ynaPNo3s65RViEx0UEdOL74snR8x60eBAEPq8mx0dp43dVH52NS0oZ6+426Z7kNHLXiwYQ2huRzFSOO2wH4iyGVnYMilHzthw/mk3fz+55PnV7yCxdIs="
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "D6yyapuUNuPCqtsPj9ak6Ak",
+                "usageMetadata": {
+                  "candidatesTokenCount": 8,
+                  "promptTokenCount": 58,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {},
-                        "name": "ping"
-                      },
-                      "thoughtSignature": "CqcBAWkUfRO/7lpJU1z+UsaRAXcmsIx29hrS5M1Ct47JnG65LqfWmXYYbp5zH66jBaCKvlCRbdlfPyqZHfiGMAaL51ylRcIqyw8BzW4EgMEjMD9ynaPNo3s65RViEx0UEdOL74snR8x60eBAEPq8mx0dp43dVH52NS0oZ6+426Z7kNHLXiwYQ2huRzFSOO2wH4iyGVnYMilHzthw/mk3fz+55PnV7yCxdIs="
+                      "modality": "TEXT",
+                      "tokenCount": 58
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "D6yyapuUNuPCqtsPj9ak6Ak",
-            "usageMetadata": {
-              "candidatesTokenCount": 8,
-              "promptTokenCount": 58,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 58
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 32,
+                  "totalTokenCount": 98
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 32,
-              "totalTokenCount": 98
+              }
             }
           }
         }
@@ -277,43 +281,47 @@
               "text": "The ping tool returned the marker: `pong-crimson-7423`."
             }
           ],
-          "usage": {
-            "input_tokens": 87,
-            "output_tokens": 18,
-            "total_tokens": 105
-          },
-          "response_id": "EKyyaszIItW0qtsPg8SUqQU",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "EKyyaszIItW0qtsPg8SUqQU",
+              "usage": {
+                "input_tokens": 87,
+                "output_tokens": 18,
+                "total_tokens": 105
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The ping tool returned the marker: `pong-crimson-7423`."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "EKyyaszIItW0qtsPg8SUqQU",
+                "usageMetadata": {
+                  "candidatesTokenCount": 18,
+                  "promptTokenCount": 87,
+                  "promptTokensDetails": [
                     {
-                      "text": "The ping tool returned the marker: `pong-crimson-7423`."
+                      "modality": "TEXT",
+                      "tokenCount": 87
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "EKyyaszIItW0qtsPg8SUqQU",
-            "usageMetadata": {
-              "candidatesTokenCount": 18,
-              "promptTokenCount": 87,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 87
+                  "serviceTier": "standard",
+                  "totalTokenCount": 105
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 105
+              }
             }
           }
         }

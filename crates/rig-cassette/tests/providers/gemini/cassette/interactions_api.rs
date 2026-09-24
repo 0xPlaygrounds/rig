@@ -54,14 +54,14 @@ async fn basic_interaction_returns_id() {
             // `previous_interaction_id`), not an assistant message id: it is
             // on the interaction document `raw` carries, and the decoder
             // reports that very value as the response id.
-            let document = Interaction::deserialize(&response.raw)
+            let document = Interaction::deserialize(&response.end.meta.raw)
                 .expect("raw is the Interactions API's own document");
             assert!(
                 !document.id.is_empty(),
                 "interactions api should return an interaction id"
             );
             assert_eq!(
-                response.response_id.as_deref(),
+                response.end.meta.response_id.as_deref(),
                 Some(document.id.as_str()),
                 "the continuation handle is what the normalized response names"
             );
@@ -95,6 +95,8 @@ async fn followup_with_previous_interaction_id() {
             // decoder reports as the response id; it is what
             // `previous_interaction_id` echoes back.
             let interaction_id = initial
+                .end
+                .meta
                 .response_id
                 .clone()
                 .expect("expected an interaction id");
@@ -148,7 +150,7 @@ async fn google_search_tool_interaction() {
                 .await
                 .expect("search completion should succeed");
 
-            let document = Interaction::deserialize(&response.raw)
+            let document = Interaction::deserialize(&response.end.meta.raw)
                 .expect("raw is the Interactions API's own document");
             assert!(
                 !document.google_search_exchanges().is_empty(),
@@ -202,6 +204,8 @@ async fn tool_result_roundtrip() {
             // reports as the response id, and the same response supplies the
             // tool call — so this still costs one interaction.
             let interaction_id = initial
+                .end
+                .meta
                 .response_id
                 .clone()
                 .expect("expected an interaction id");
@@ -257,7 +261,7 @@ async fn streaming_interaction() {
                         ..
                     } => text.push_str(&delta),
                     StreamEvent::Final(response) => {
-                        saw_usage = response.usage.is_reported();
+                        saw_usage = response.meta.usage.is_reported();
                     }
                     _ => {}
                 }
@@ -297,8 +301,8 @@ async fn streaming_final_metadata_exposes_model_version() {
                     } => text.push_str(&delta),
                     StreamEvent::Final(response) => {
                         final_response_count += 1;
-                        saw_usage = response.usage.is_reported();
-                        final_model_version = response.model.clone();
+                        saw_usage = response.meta.usage.is_reported();
+                        final_model_version = response.meta.model.clone();
                     }
                     _ => {}
                 }
@@ -354,7 +358,7 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
             let response = rig::completion::CompletionModel::completion(&model, request)
                 .await
                 .expect("completion should succeed");
-            let usage = response.usage;
+            let usage = response.end.meta.usage;
 
             assert!(
                 usage.reasoning_tokens.is_some_and(|n| n > 0),

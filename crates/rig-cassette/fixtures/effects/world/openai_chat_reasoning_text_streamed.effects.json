@@ -580,39 +580,43 @@
               "text": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities."
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 136,
-            "total_tokens": 173,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
-          "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 37,
-              "completion_tokens": 136,
-              "total_tokens": 173,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 64
-              }
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "2EN",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
+              "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 136,
+                "total_tokens": 173,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 64
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 37,
+                  "completion_tokens": 136,
+                  "total_tokens": 173,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 64
+                  }
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
+                "model": "gpt-5-mini-2025-08-07",
+                "additional_params": {
+                  "created": 0,
+                  "obfuscation": "2EN",
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "system_fingerprint": null
+                }
+              }
             }
           }
         }
@@ -1131,39 +1135,41 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 136,
-            "total_tokens": 173,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
-          "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 37,
-              "completion_tokens": 136,
-              "total_tokens": 173,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 64
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
+          "meta": {
+            "provider": "openai",
             "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "2EN",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+            "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
+            "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
+            "usage": {
+              "input_tokens": 37,
+              "output_tokens": 136,
+              "total_tokens": 173,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 64
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 37,
+                "completion_tokens": 136,
+                "total_tokens": 173,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 64
+                }
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
+              "model": "gpt-5-mini-2025-08-07",
+              "additional_params": {
+                "created": 0,
+                "obfuscation": "2EN",
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "system_fingerprint": null
+              }
             }
           }
         }

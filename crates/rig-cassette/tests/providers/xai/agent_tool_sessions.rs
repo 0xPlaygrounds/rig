@@ -419,22 +419,25 @@ fn assert_raw_response_metadata(raw: &responses_api::CompletionResponse) {
 fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
     assert_nonempty_response(
         response
+            .end
+            .meta
             .model
             .as_deref()
             .expect("normalized xAI response should report the provider model"),
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(rig::completion::FinishReason::Stop),
         "xAI `status: completed` should normalize to a stop finish reason"
     );
     assert!(
         response
+            .end
             .message_id
             .as_deref()
             .is_some_and(|id| id.starts_with("msg_")),
         "xAI Responses message id should be preserved, got {:?}",
-        response.message_id
+        response.end.message_id
     );
 }
 
@@ -597,7 +600,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .build();
 
             let response = model.completion(request).await?;
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+            let raw = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);
             let text = assistant_text_response(&response.choice)
@@ -605,9 +608,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
             anyhow::ensure!(
-                response.usage.input_tokens.is_some_and(|n| n > 0) && response.usage.output_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.input_tokens.is_some_and(|n| n > 0) && response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated on long-history replay: {:?}",
-                response.usage
+                response.end.meta.usage
             );
             assert_response_metadata(&response);
 
@@ -716,7 +719,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 .build();
 
             let response = model.completion(request).await?;
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+            let raw = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
 
             anyhow::ensure!(
@@ -740,12 +743,12 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 "xAI reasoning response should preserve a reasoning content block"
             );
             anyhow::ensure!(
-                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "core usage should preserve xAI reasoning tokens: {:?}",
-                response.usage
+                response.end.meta.usage
             );
             anyhow::ensure!(
-                response.usage.reasoning_tokens == raw_reasoning_tokens
+                response.end.meta.usage.reasoning_tokens == raw_reasoning_tokens
                     && raw_reasoning_tokens.is_some_and(|n| n > 0),
                 "usage reasoning tokens should match raw provider details"
             );
@@ -808,7 +811,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 .build();
 
             let response = model.completion(request).await?;
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+            let raw = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);
             let text = assistant_text_response(&response.choice)

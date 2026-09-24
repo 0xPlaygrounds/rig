@@ -17,7 +17,7 @@ use crate::support::{assert_contains_any_case_insensitive, assistant_text_respon
 /// returned. These cells fall back to it when rig's normalized choice holds
 /// no assistant text, and one request carries both views.
 fn provider_text(response: &RigCompletionResponse) -> Option<String> {
-    let reply = CompletionResponse::deserialize(&response.raw)
+    let reply = CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
     let text: String = reply
         .content

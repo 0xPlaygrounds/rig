@@ -150,52 +150,56 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 605,
-            "output_tokens": 69,
-            "total_tokens": 674,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcgMMDYkzdY44gsUjgX",
-          "provider_request_id": "req_011CfLcgLugAouHSUhEdtd7c",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_013Un7NLWGUujNDzfdmfREoa",
-                "input": {
-                  "x": 2,
-                  "y": 3
-                },
-                "name": "add",
-                "type": "tool_use"
-              }
-            ],
-            "id": "msg_011CfLcgMMDYkzdY44gsUjgX",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcgMMDYkzdY44gsUjgX",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcgLugAouHSUhEdtd7c",
+              "usage": {
+                "input_tokens": 605,
+                "output_tokens": 69,
+                "total_tokens": 674,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 605,
-              "output_tokens": 69,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_013Un7NLWGUujNDzfdmfREoa",
+                    "input": {
+                      "x": 2,
+                      "y": 3
+                    },
+                    "name": "add",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcgMMDYkzdY44gsUjgX",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 605,
+                  "output_tokens": 69,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }
@@ -331,44 +335,48 @@
               "text": "The result of 2 + 3 is **5**."
             }
           ],
-          "usage": {
-            "input_tokens": 687,
-            "output_tokens": 17,
-            "total_tokens": 704,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcgQykxhgirh4sZW34D",
-          "provider_request_id": "req_011CfLcgQVEW8aTAU5d6w95F",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "The result of 2 + 3 is **5**.",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcgQykxhgirh4sZW34D",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcgQykxhgirh4sZW34D",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcgQVEW8aTAU5d6w95F",
+              "usage": {
+                "input_tokens": 687,
+                "output_tokens": 17,
+                "total_tokens": 704,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 687,
-              "output_tokens": 17,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The result of 2 + 3 is **5**.",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcgQykxhgirh4sZW34D",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 687,
+                  "output_tokens": 17,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

@@ -70,6 +70,7 @@ async fn loads_and_generates_with_a_real_local_model()
         stream
             .response
             .ok_or_else(|| std::io::Error::other("real model stream omitted final metadata"))?
+            .meta
             .raw,
     )?;
     if streamed_text != response.text || final_response.text != streamed_text {
@@ -93,8 +94,18 @@ async fn loads_and_generates_with_a_real_local_model()
     if normalized_text.is_empty() {
         return Err(std::io::Error::other("normalized completion returned empty text").into());
     }
-    if normalized.usage.input_tokens.is_none_or(|n| n == 0)
-        || normalized.usage.output_tokens.is_none_or(|n| n == 0)
+    if normalized
+        .end
+        .meta
+        .usage
+        .input_tokens
+        .is_none_or(|n| n == 0)
+        || normalized
+            .end
+            .meta
+            .usage
+            .output_tokens
+            .is_none_or(|n| n == 0)
     {
         return Err(std::io::Error::other("normalized completion returned zero usage").into());
     }

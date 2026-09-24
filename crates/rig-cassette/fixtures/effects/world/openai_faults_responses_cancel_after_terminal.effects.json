@@ -1657,40 +1657,44 @@
               "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages."
             }
           ],
-          "usage": {
-            "input_tokens": 32,
-            "output_tokens": 364,
-            "total_tokens": 396,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-          "provider_request_id": "req_e6d807d301384958abbb64c43868f444",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 32,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 364,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-2024-08-06",
+              "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
+              "provider_request_id": "req_e6d807d301384958abbb64c43868f444",
+              "usage": {
+                "input_tokens": 32,
+                "output_tokens": 364,
+                "total_tokens": 396,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 396
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-            "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-            "model": "gpt-4o-2024-08-06"
+              "raw": {
+                "usage": {
+                  "input_tokens": 32,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 364,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 396
+                },
+                "reasoning_metadata": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
+                "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
+                "model": "gpt-4o-2024-08-06"
+              }
+            }
           }
         }
       },
@@ -4615,40 +4619,42 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 32,
-            "output_tokens": 364,
-            "total_tokens": 396,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-          "provider_request_id": "req_e6d807d301384958abbb64c43868f444",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-4o-2024-08-06",
+            "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
+            "provider_request_id": "req_e6d807d301384958abbb64c43868f444",
             "usage": {
               "input_tokens": 32,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 364,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "total_tokens": 396,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 32,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 364,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 396
               },
-              "total_tokens": 396
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-            "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-            "model": "gpt-4o-2024-08-06"
+              "reasoning_metadata": {
+                "context": null,
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
+              "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
+              "model": "gpt-4o-2024-08-06"
+            }
           }
         }
       ],

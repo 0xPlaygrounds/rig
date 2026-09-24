@@ -431,7 +431,7 @@ async fn witnessed_success_matches_the_unwitnessed_run() {
             .iter()
             .rev()
             .find_map(|event| match event {
-                rig::streaming::StreamEvent::Final(final_event) => Some(final_event.usage),
+                rig::streaming::StreamEvent::Final(final_event) => Some(final_event.meta.usage),
                 _ => None,
             })
             .expect("the terminal record's usage");

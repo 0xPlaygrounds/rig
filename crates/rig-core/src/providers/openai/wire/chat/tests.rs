@@ -87,12 +87,12 @@ async fn a_recorded_text_turn_folds_alike_from_both_reply_shapes() {
     .await;
 
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.end.meta.model, streamed.end.meta.model);
 
     // The fixture, so a change in the recorded bytes cannot make the
     // agreement vacuous.
@@ -100,11 +100,14 @@ async fn a_recorded_text_turn_folds_alike_from_both_reply_shapes() {
         buffered.choice.first(),
         Some(&AssistantContent::text("pong"))
     );
-    assert_eq!(buffered.usage.input_tokens, Some(15));
-    assert_eq!(buffered.usage.output_tokens, Some(1));
-    assert_eq!(buffered.usage.total_tokens, Some(16));
-    assert_eq!(buffered.finish_reason.clone(), Some(FinishReason::Stop));
-    assert_eq!(buffered.model.as_deref(), Some("gpt-4.1-nano-2025-04-14"));
+    assert_eq!(buffered.end.meta.usage.input_tokens, Some(15));
+    assert_eq!(buffered.end.meta.usage.output_tokens, Some(1));
+    assert_eq!(buffered.end.meta.usage.total_tokens, Some(16));
+    assert_eq!(buffered.end.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(
+        buffered.end.meta.model.as_deref(),
+        Some("gpt-4.1-nano-2025-04-14")
+    );
 }
 
 #[tokio::test]
@@ -118,10 +121,10 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     )
     .await;
 
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
 
     // The unary body delivers the call whole and the stream delivers it in
@@ -174,10 +177,10 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     assert_eq!(call.function.name, "ping");
     assert_eq!(call.function.arguments, serde_json::json!({}));
     assert_eq!(
-        buffered.finish_reason.clone(),
+        buffered.end.finish_reason.clone(),
         Some(FinishReason::ToolCalls)
     );
-    assert_eq!(buffered.usage.output_tokens, Some(10));
+    assert_eq!(buffered.end.meta.usage.output_tokens, Some(10));
 }
 
 /// A streamed request genuinely sends different bytes, which is why `encode`
@@ -268,8 +271,8 @@ async fn the_done_sentinel_emits_the_deferred_terminal() {
     assert_eq!(folded.choice.first(), Some(&AssistantContent::text("hi")));
     // No chunk reported a reason, so the record carries none — the sentinel
     // is the completion signal, not a fabricated `stop`.
-    assert_eq!(folded.finish_reason.clone(), None);
-    assert_eq!(folded.response_id.as_deref(), Some("chatcmpl-1"));
+    assert_eq!(folded.end.finish_reason.clone(), None);
+    assert_eq!(folded.end.meta.response_id.as_deref(), Some("chatcmpl-1"));
 }
 
 /// A stream that reaches EOF with neither `[DONE]` nor a finish reason is
@@ -445,7 +448,8 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
     // `serde::Deserialize` in scope at the call site, which is the trait-bound
     // error this spelling avoids.
     let record: StreamingCompletionResponse<ChatUsage> =
-        serde_json::from_value(folded.raw.clone()).expect("the terminal record reads back");
+        serde_json::from_value(folded.end.meta.raw.clone())
+            .expect("the terminal record reads back");
 
     let usage = record.usage.expect("the stream carried usage");
     assert_eq!(usage.openai.prompt_tokens, 15);
@@ -470,8 +474,11 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
     );
 
     // And the normalized view agrees with it.
-    assert_eq!(folded.usage.input_tokens, Some(15));
-    assert_eq!(folded.model.as_deref(), Some("gpt-4.1-nano-2025-04-14"));
+    assert_eq!(folded.end.meta.usage.input_tokens, Some(15));
+    assert_eq!(
+        folded.end.meta.model.as_deref(),
+        Some("gpt-4.1-nano-2025-04-14")
+    );
 }
 
 /// A unary reply carrying `reasoning_content` beside text must fold through
@@ -541,10 +548,10 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
         "the two shapes of one turn produce the same reasoning block"
     );
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
     assert_eq!(
         buffered.choice.last(),
@@ -577,7 +584,8 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
         .expect("the stream produced a terminal record");
 
     let record: StreamingCompletionResponse<ChatUsage> =
-        serde_json::from_value(folded.raw.clone()).expect("the terminal record reads back");
+        serde_json::from_value(folded.end.meta.raw.clone())
+            .expect("the terminal record reads back");
     let additional = serde_json::Value::from(
         record
             .additional_params
@@ -637,16 +645,20 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
 
     // The whole turn, not just its first frame.
     assert_eq!(folded.choice.first(), Some(&AssistantContent::text("pong")));
-    assert_eq!(folded.usage.input_tokens, Some(7));
-    assert_eq!(folded.usage.total_tokens, Some(8));
-    assert_eq!(folded.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(folded.end.meta.usage.input_tokens, Some(7));
+    assert_eq!(folded.end.meta.usage.total_tokens, Some(8));
+    assert_eq!(folded.end.finish_reason.clone(), Some(FinishReason::Stop));
     // The body's own id, never the transport request id.
-    assert_eq!(folded.response_id.as_deref(), Some("78385058-uuid"));
+    assert_eq!(
+        folded.end.meta.response_id.as_deref(),
+        Some("78385058-uuid")
+    );
 
     // The terminator's envelope is the one the record carries: last frame
     // wins, which is what `AdditionalParams::merge` does for a scalar.
     let record: StreamingCompletionResponse<ChatUsage> =
-        serde_json::from_value(folded.raw.clone()).expect("the terminal record reads back");
+        serde_json::from_value(folded.end.meta.raw.clone())
+            .expect("the terminal record reads back");
     let additional = serde_json::Value::from(
         record
             .additional_params
@@ -720,9 +732,9 @@ async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
         "the text delivered beside the calls survives: {:?}",
         folded.choice
     );
-    assert_eq!(folded.usage.output_tokens, Some(20));
-    assert_eq!(folded.usage.input_tokens, Some(165));
-    assert_eq!(folded.finish_reason.clone(), Some(FinishReason::Length));
+    assert_eq!(folded.end.meta.usage.output_tokens, Some(20));
+    assert_eq!(folded.end.meta.usage.input_tokens, Some(165));
+    assert_eq!(folded.end.finish_reason.clone(), Some(FinishReason::Length));
 }
 
 /// The tolerance is scoped to the budget, not to bad JSON in general.
@@ -784,7 +796,7 @@ async fn valid_arguments_survive_a_length_truncated_turn() {
         call.function.arguments,
         serde_json::json!({"unexpected": 1})
     );
-    assert_eq!(folded.finish_reason.clone(), Some(FinishReason::Length));
+    assert_eq!(folded.end.finish_reason.clone(), Some(FinishReason::Length));
 }
 
 /// Mira's gateway can answer a chat request with a bare JSON string instead
@@ -808,9 +820,9 @@ async fn a_gateway_may_answer_with_a_bare_string() {
         Some(&AssistantContent::text("the whole answer"))
     );
     // No metadata and no terminal reason: that is what the gateway sent.
-    assert_eq!(response.finish_reason.clone(), None);
-    assert_eq!(response.usage, crate::completion::Usage::default());
-    assert_eq!(response.response_id, None);
+    assert_eq!(response.end.finish_reason.clone(), None);
+    assert_eq!(response.end.meta.usage, crate::completion::Usage::default());
+    assert_eq!(response.end.meta.response_id, None);
 
     // Only the dialects measured to do it are tolerant; elsewhere a bare
     // string is still an unmodeled frame, which the classifier warn-skips
@@ -876,12 +888,16 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
             "{reason}: {:?}",
             response.choice
         );
-        assert_eq!(response.finish_reason.clone(), Some(expected), "{reason}");
+        assert_eq!(
+            response.end.finish_reason.clone(),
+            Some(expected),
+            "{reason}"
+        );
         // Raising would have thrown these away, which is the whole reason
         // the cut-short turn is kept.
-        assert_eq!(response.usage.input_tokens, Some(900), "{reason}");
-        assert_eq!(response.usage.output_tokens, Some(32), "{reason}");
-        assert_eq!(response.usage.total_tokens, Some(932), "{reason}");
+        assert_eq!(response.end.meta.usage.input_tokens, Some(900), "{reason}");
+        assert_eq!(response.end.meta.usage.output_tokens, Some(32), "{reason}");
+        assert_eq!(response.end.meta.usage.total_tokens, Some(932), "{reason}");
     }
 }
 

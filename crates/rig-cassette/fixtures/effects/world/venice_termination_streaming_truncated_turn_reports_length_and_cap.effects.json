@@ -202,31 +202,35 @@
               "text": "Maple trees are known for their vibrant fall foliage, which can range from"
             }
           ],
-          "usage": {
-            "input_tokens": 978,
-            "output_tokens": 16,
-            "total_tokens": 994
-          },
-          "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
-          "finish_reason": "length",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 978,
-              "completion_tokens": 16,
-              "total_tokens": 994
-            },
+          "end": {
             "finish_reason": "length",
-            "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0000956875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
+              "usage": {
+                "input_tokens": 978,
+                "output_tokens": 16,
+                "total_tokens": 994
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 978,
+                  "completion_tokens": 16,
+                  "total_tokens": 994
+                },
+                "finish_reason": "length",
+                "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0000956875
+                  }
+                }
               }
             }
           }
@@ -370,31 +374,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 978,
-            "output_tokens": 16,
-            "total_tokens": 994
-          },
           "finish_reason": "length",
-          "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
             "usage": {
-              "prompt_tokens": 978,
-              "completion_tokens": 16,
+              "input_tokens": 978,
+              "output_tokens": 16,
               "total_tokens": 994
             },
-            "finish_reason": "length",
-            "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0000956875
+            "raw": {
+              "usage": {
+                "prompt_tokens": 978,
+                "completion_tokens": 16,
+                "total_tokens": 994
+              },
+              "finish_reason": "length",
+              "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0000956875
+                }
               }
             }
           }

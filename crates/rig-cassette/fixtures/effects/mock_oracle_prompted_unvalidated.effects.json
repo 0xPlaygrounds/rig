@@ -63,20 +63,24 @@
               "text": "not an object"
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "text",
-                "text": "not an object"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "text",
+                    "text": "not an object"
+                  }
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }

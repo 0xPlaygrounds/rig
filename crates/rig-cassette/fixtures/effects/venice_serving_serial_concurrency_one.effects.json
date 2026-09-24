@@ -136,31 +136,35 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1154,
-            "output_tokens": 16,
-            "total_tokens": 1170
-          },
-          "response_id": "chatcmpl-RwlnmBNbQUiuRLNxcTTCY7Ih",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1154,
-              "completion_tokens": 16,
-              "total_tokens": 1170
-            },
+          "end": {
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RwlnmBNbQUiuRLNxcTTCY7Ih",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001121875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RwlnmBNbQUiuRLNxcTTCY7Ih",
+              "usage": {
+                "input_tokens": 1154,
+                "output_tokens": 16,
+                "total_tokens": 1170
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1154,
+                  "completion_tokens": 16,
+                  "total_tokens": 1170
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "chatcmpl-RwlnmBNbQUiuRLNxcTTCY7Ih",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0001121875
+                  }
+                }
               }
             }
           }
@@ -341,31 +345,35 @@
               "text": "The current signals are crimson-harbor and silver-orchard."
             }
           ],
-          "usage": {
-            "input_tokens": 1214,
-            "output_tokens": 15,
-            "total_tokens": 1229
-          },
-          "response_id": "chatcmpl-RHaWk8dw2j4kr2bFT35PuB2o",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1214,
-              "completion_tokens": 15,
-              "total_tokens": 1229
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RHaWk8dw2j4kr2bFT35PuB2o",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00011756249999999999
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RHaWk8dw2j4kr2bFT35PuB2o",
+              "usage": {
+                "input_tokens": 1214,
+                "output_tokens": 15,
+                "total_tokens": 1229
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1214,
+                  "completion_tokens": 15,
+                  "total_tokens": 1229
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RHaWk8dw2j4kr2bFT35PuB2o",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.00011756249999999999
+                  }
+                }
               }
             }
           }

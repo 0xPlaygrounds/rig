@@ -381,42 +381,46 @@
               "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities."
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 134,
-            "total_tokens": 171,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-          "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "input_tokens": 37,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 134,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+              "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 134,
+                "total_tokens": 171,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 64
               },
-              "total_tokens": 171
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "low",
-              "mode": "standard",
-              "summary": "detailed"
-            },
-            "reasoning_context": "current_turn",
-            "status": "completed",
-            "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-            "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-            "model": "gpt-5-mini-2025-08-07"
+              "raw": {
+                "usage": {
+                  "input_tokens": 37,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 134,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 64
+                  },
+                  "total_tokens": 171
+                },
+                "reasoning_metadata": {
+                  "context": "current_turn",
+                  "effort": "low",
+                  "mode": "standard",
+                  "summary": "detailed"
+                },
+                "reasoning_context": "current_turn",
+                "status": "completed",
+                "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+                "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+                "model": "gpt-5-mini-2025-08-07"
+              }
+            }
           }
         }
       },
@@ -936,42 +940,44 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 134,
-            "total_tokens": 171,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
           "finish_reason": "stop",
           "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-          "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+            "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
             "usage": {
               "input_tokens": 37,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 134,
-              "output_tokens_details": {
-                "reasoning_tokens": 64
+              "total_tokens": 171,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 64
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 37,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 134,
+                "output_tokens_details": {
+                  "reasoning_tokens": 64
+                },
+                "total_tokens": 171
               },
-              "total_tokens": 171
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "low",
-              "mode": "standard",
-              "summary": "detailed"
-            },
-            "reasoning_context": "current_turn",
-            "status": "completed",
-            "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-            "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-            "model": "gpt-5-mini-2025-08-07"
+              "reasoning_metadata": {
+                "context": "current_turn",
+                "effort": "low",
+                "mode": "standard",
+                "summary": "detailed"
+              },
+              "reasoning_context": "current_turn",
+              "status": "completed",
+              "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+              "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+              "model": "gpt-5-mini-2025-08-07"
+            }
           }
         }
       ],

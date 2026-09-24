@@ -108,11 +108,12 @@ async fn request_id_survives_into_streamed_terminal() {
             let terminal = terminal.expect("stream should yield a terminal record");
             assert!(
                 terminal
+                    .meta
                     .provider_request_id
                     .as_deref()
                     .is_some_and(|id| !id.trim().is_empty()),
                 "the AWS request id must reach the streamed terminal, got {:?}",
-                terminal.provider_request_id
+                terminal.meta.provider_request_id
             );
         },
     )

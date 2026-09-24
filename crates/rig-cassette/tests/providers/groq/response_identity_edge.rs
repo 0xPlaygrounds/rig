@@ -24,11 +24,13 @@ async fn blocking_response_carries_identity() -> Result<()> {
                 .await?;
             anyhow::ensure!(
                 response
+                    .end
+                    .meta
                     .provider_request_id
                     .as_deref()
                     .is_some_and(|id| !id.trim().is_empty()),
                 "Groq sends x-request-id, so provider_request_id must be populated; got {:?}",
-                response.provider_request_id
+                response.end.meta.provider_request_id
             );
             Ok::<_, anyhow::Error>(())
         },
@@ -58,12 +60,13 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
             let terminal = terminal.expect("stream should yield a terminal record");
             anyhow::ensure!(
                 terminal
+                    .meta
                     .provider_request_id
                     .as_deref()
                     .is_some_and(|id| !id.trim().is_empty()),
                 "blocking/streaming parity: the SSE connection's x-request-id \
                  reaches the terminal; got {:?}",
-                terminal.provider_request_id
+                terminal.meta.provider_request_id
             );
             Ok::<_, anyhow::Error>(())
         },

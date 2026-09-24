@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on ChatGPT's streaming `/responses`
-//! path ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! path ([`CompletionEnd::raw`](rig::completion::CompletionEnd::raw)).
 //!
 //! # The feature
 //!
@@ -10,11 +10,11 @@
 //! the terminal `response.completed` event's usage, status, ids and model —
 //! serialized with `serde_json::to_value`. It is the terminal record only, and
 //! nothing about it is sent to ChatGPT. `raw == Value::Null` means only that a
-//! `StreamFinal` was built by hand without a provider terminal behind it,
+//! `CompletionEnd` was built by hand without a provider terminal behind it,
 //! which no cell here can produce.
 //!
 //! The terminal record spells the provider's `status` (`completed`), which
-//! the normalized [`StreamFinal`](rig::streaming::StreamFinal) folds into a
+//! the normalized [`CompletionEnd`](rig::completion::CompletionEnd) folds into a
 //! finish reason and does not carry; cell 2 reads it back through `raw`.
 //!
 //! # Matrix
@@ -108,7 +108,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     .await;
 
     let terminal = captured.take();
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     // The Responses stream's terminal record is its own type, so this is the
     // Responses contract's round trip, not `chat::assert_terminal_round_trips`,
     // which speaks the chat-completions terminal.
@@ -151,7 +151,7 @@ async fn stream_raw_exposes_terminal_status() {
     let terminal = captured.take();
     assert_normalized_lacks(&stream_normalized_without_raw(&terminal), &["status"]);
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let recorded = recorded_terminal_response(scenario);
     assert_eq!(
         recorded["status"],

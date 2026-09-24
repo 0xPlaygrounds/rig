@@ -62,7 +62,7 @@
 //! witness whether `stop_sequence` is skipped when `None`.
 //!
 //! Cells 25–26 assert the adjacent surfaces that share the same terminal
-//! construction still behave: rig's normalized [`StreamFinal`] deliberately has
+//! construction still behave: rig's normalized [`CompletionEnd`] deliberately has
 //! no `stop_sequence` (it is provider-specific and lives on the raw record), so
 //! those cells pin the normalized shape rather than the new field.
 
@@ -136,7 +136,7 @@ async fn raw_terminal(
         }
     }
     let record = terminal.expect("stream should yield a terminal record");
-    serde_json::from_value(record.raw).expect("the terminal's raw is the provider record")
+    serde_json::from_value(record.meta.raw).expect("the terminal's raw is the provider record")
 }
 
 /// Anthropic's own blocking reply, read back out of
@@ -150,7 +150,7 @@ async fn provider_response(
         .completion(request)
         .await
         .expect("blocking stop-sequence request should succeed");
-    anthropic::completion::CompletionResponse::deserialize(&response.raw)
+    anthropic::completion::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the serialized anthropic::completion::CompletionResponse")
 }
 
@@ -849,7 +849,7 @@ async fn agent_stream_single_sequence() {
                 .build();
 
             let mut stream = agent.prompt(LIST_PROMPT).stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final): (_, rig::completion::CompletionEnd) =
                 crate::support::collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("agent stream should succeed");

@@ -33,7 +33,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
         .completion(request("hello"))
         .await
         .expect("first scripted turn should succeed");
-    assert_eq!(first.message_id.as_deref(), Some("msg_1"));
+    assert_eq!(first.end.message_id.as_deref(), Some("msg_1"));
     assert!(matches!(
         first.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "first"
@@ -77,15 +77,15 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
         .completion(request("hello"))
         .await
         .expect("first scripted turn should succeed");
-    assert_eq!(scripted.raw, payload);
+    assert_eq!(scripted.end.meta.raw, payload);
 
     let unscripted = model
         .completion(request("hello"))
         .await
         .expect("second scripted turn should succeed");
-    assert_eq!(unscripted.raw, expected_unscripted);
+    assert_eq!(unscripted.end.meta.raw, expected_unscripted);
     assert_eq!(
-        unscripted.raw["choice"][0]["text"],
+        unscripted.end.meta.raw["choice"][0]["text"],
         serde_json::json!("second"),
         "the mock's document is the turn it was scripted with"
     );
@@ -114,7 +114,7 @@ async fn stream_terminal_raw_is_the_scripted_terminal_in_the_mocks_layout() {
         .expect("stream should open");
     while stream.next().await.is_some() {}
     let terminal = stream.response.expect("terminal record");
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let scripted = super::super::streaming::mock_final(Usage {
         input_tokens: Some(1),
         output_tokens: Some(2),
@@ -126,7 +126,7 @@ async fn stream_terminal_raw_is_the_scripted_terminal_in_the_mocks_layout() {
         super::super::mock_terminal_document(&scripted).expect("the mock's document"),
         "the capture is the scripted terminal in the mock's layout, origin document included"
     );
-    assert_eq!(terminal.usage.total_tokens, Some(3));
+    assert_eq!(terminal.meta.usage.total_tokens, Some(3));
 }
 
 #[tokio::test]
@@ -198,7 +198,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
             }
             StreamEvent::Final(response) => {
                 saw_final = matches!(
-                    response.usage,
+                    response.meta.usage,
                     Usage {
                         total_tokens: Some(7),
                         ..

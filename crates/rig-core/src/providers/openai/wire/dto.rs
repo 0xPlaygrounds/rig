@@ -3,10 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::completion::ReportedEnd;
 use crate::json_utils;
 use crate::providers::internal::tool_call_bridge::ToolCallSlot;
 use crate::providers::openai::completion::{Message, Usage, joined_text_parts};
-use crate::streaming::StreamFinal;
 
 /// A streamed tool-call fragment's function half.
 #[derive(Default, Deserialize, Debug, Clone)]
@@ -163,8 +163,8 @@ pub(crate) fn delta_text(delta: &StreamingDelta) -> Option<String> {
     }
 }
 
-/// Chat Completions accounting with dialect-specific fields preserved for
-/// [`StreamFinal::raw`].
+/// Chat Completions accounting with dialect-specific fields preserved in the
+/// terminal record's `raw`.
 // Serde derives a U: Default bound for StreamingCompletionResponse<U>.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ChatUsage {
@@ -301,8 +301,8 @@ impl ChatFrame {
 /// The provider's own terminal record for one chat-completions reply.
 ///
 /// `U` is the accounting: [`ChatUsage`] on the wire path. This is what the
-/// decoder serializes onto [`StreamFinal::raw`], so a caller reaches every
-/// provider field rig does not normalize.
+/// decoder serializes as the terminal record's `raw`, so a caller reaches
+/// every provider field rig does not normalize.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     /// Usage reported on the reply's terminal event; `None` when the reply
@@ -325,9 +325,6 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// Provider-reported model identifier, when the reply emitted one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Driver-supplied transport request ID from `x-request-id`, if reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
     /// Token log probabilities accumulated from all primary-choice chunks.
     ///
     /// This stays provider-native: normalized completions do not model log
@@ -355,7 +352,6 @@ impl<U> StreamingCompletionResponse<U> {
             finish_reason: None,
             response_id: None,
             model: None,
-            provider_request_id: None,
             logprobs: None,
             additional_params: None,
         }
@@ -366,20 +362,13 @@ impl<U> StreamingCompletionResponse<U>
 where
     U: Into<crate::completion::Usage>,
 {
-    /// Normalize usage and terminal metadata under `provider`, retaining `raw`.
-    pub fn into_stream_final(self, provider: &str, raw: serde_json::Value) -> StreamFinal {
-        StreamFinal {
+    /// What this terminal record reports, with `raw` as its document.
+    pub fn into_reported(self, raw: serde_json::Value) -> ReportedEnd {
+        ReportedEnd {
             finish_reason: self.finish_reason,
             response_id: self.response_id.and_then(crate::id::ResponseId::non_empty),
-            provider_request_id: self
-                .provider_request_id
-                .and_then(crate::id::RequestId::non_empty),
             model: self.model.and_then(crate::id::ModelName::non_empty),
-            ..StreamFinal::new(
-                provider,
-                self.usage.map(Into::into).unwrap_or_default(),
-                raw,
-            )
+            ..ReportedEnd::new(self.usage.map(Into::into).unwrap_or_default(), raw)
         }
     }
 }

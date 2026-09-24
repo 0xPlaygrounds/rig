@@ -1,12 +1,13 @@
 //! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
 //! through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`StreamingCompletionResponse::snapshot`], the terminal [`CompletionEnd`]
 //! record, usage, and finish reason.
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
+use rig_core::completion::CompletionEnd;
 
 use super::super::{
     CASSETTE_MODEL,
@@ -22,9 +23,9 @@ struct StreamRun {
     reasoning_delta: String,
     reasoning_blocks: Vec<Reasoning>,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
+    finals: Vec<CompletionEnd>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionEnd>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
@@ -110,9 +111,9 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
             "unexpected finish reason"
         );
         assert!(
-            terminal.usage.total_tokens.is_some_and(|n| n > 0),
+            terminal.meta.usage.total_tokens.is_some_and(|n| n > 0),
             "terminal record should carry non-zero usage, got {:?}",
-            terminal.usage
+            terminal.meta.usage
         );
         assert!(
             !run.reasoning_delta.is_empty() || !run.reasoning_blocks.is_empty(),

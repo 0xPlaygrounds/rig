@@ -51,12 +51,12 @@ async fn agent_max_tokens_reaches_generation_config_without_additional_params() 
                 .build();
 
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final): (_, rig::completion::CompletionEnd) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streaming prompt should succeed");
 
-            assert_eq!(provider_final.provider, "gcp.gemini");
+            assert_eq!(provider_final.meta.provider, "gcp.gemini");
         },
     )
     .await;
@@ -270,12 +270,12 @@ async fn streaming_structured_output_without_max_tokens_sends_no_sampling_fields
                 .build();
 
             let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final): (_, rig::completion::CompletionEnd) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streaming structured output should succeed");
 
-            assert_eq!(provider_final.provider, "gcp.gemini");
+            assert_eq!(provider_final.meta.provider, "gcp.gemini");
             // The turn completed on its own rather than being cut short — the
             // condition that, when violated with no content, must now error.
             assert_ne!(

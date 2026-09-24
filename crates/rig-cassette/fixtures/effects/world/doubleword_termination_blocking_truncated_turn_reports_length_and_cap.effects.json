@@ -77,57 +77,61 @@
               "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
             }
           ],
-          "usage": {
-            "input_tokens": 36,
-            "output_tokens": 16,
-            "total_tokens": 52,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_378570a7-7260-4668-995b-62c61731ee8e",
-          "finish_reason": "length",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "length",
-                "index": 0,
-                "message": {
-                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
-                  "refusal": null,
-                  "role": "assistant"
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_378570a7-7260-4668-995b-62c61731ee8e",
-            "model": "Qwen/Qwen3.5-9B",
-            "object": "chat.completion",
-            "system_fingerprint": "vllm-0.23.0-ed3ef83f",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 16,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-9B",
+              "response_id": "resp_378570a7-7260-4668-995b-62c61731ee8e",
+              "usage": {
+                "input_tokens": 36,
+                "output_tokens": 16,
+                "total_tokens": 52,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 36,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 52
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "message": {
+                      "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_378570a7-7260-4668-995b-62c61731ee8e",
+                "model": "Qwen/Qwen3.5-9B",
+                "object": "chat.completion",
+                "system_fingerprint": "vllm-0.23.0-ed3ef83f",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 16,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 36,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 52
+                }
+              }
             }
           }
         }

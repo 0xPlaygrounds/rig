@@ -145,135 +145,139 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 425,
-            "output_tokens": 349,
-            "total_tokens": 774,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 323
-          },
-          "response_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
-          "provider_request_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
-                "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
-                "id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0",
-                "name": "submit",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "required",
-            "tools": [
-              {
-                "description": "Submit the structured data you extracted from the provided text.",
-                "name": "submit",
-                "parameters": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "properties": {
-                    "city": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "state": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "street": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "zip_code": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "title": "Address",
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
+              "provider_request_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
+              "usage": {
                 "input_tokens": 425,
-                "output_tokens": 353
-              },
-              "cost_in_usd_ticks": 12021500,
-              "input_tokens": 425,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 349,
-              "output_tokens_details": {
+                "output_tokens": 349,
+                "total_tokens": 774,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 323
               },
-              "total_tokens": 774
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
+                    "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
+                    "id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "city": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "state": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "street": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "zip_code": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "title": "Address",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 425,
+                    "output_tokens": 353
+                  },
+                  "cost_in_usd_ticks": 12021500,
+                  "input_tokens": 425,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 349,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 323
+                  },
+                  "total_tokens": 774
+                },
+                "user": null
+              }
+            }
           }
         }
       },

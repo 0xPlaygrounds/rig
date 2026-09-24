@@ -161,70 +161,74 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 4466,
-            "output_tokens": 47,
-            "total_tokens": 4513,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDE1b009uky2N9n7AGZ4tPiALsyT",
-          "provider_request_id": "req_570a8ce51f2e4cb9bc7703347bee9948",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"prefix\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "call_8PinSjrrDIVIDxv76YjyMoKG",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"breakpoint\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "call_49gA98gNFV747tugnHxbNJdK",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-mini-2024-07-18",
+              "response_id": "chatcmpl-ERDE1b009uky2N9n7AGZ4tPiALsyT",
+              "provider_request_id": "req_570a8ce51f2e4cb9bc7703347bee9948",
+              "usage": {
+                "input_tokens": 4466,
+                "output_tokens": 47,
+                "total_tokens": 4513,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"topic\": \"prefix\"}",
+                            "name": "lookup_cache_policy"
+                          },
+                          "id": "call_8PinSjrrDIVIDxv76YjyMoKG",
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"topic\": \"breakpoint\"}",
+                            "name": "lookup_cache_policy"
+                          },
+                          "id": "call_49gA98gNFV747tugnHxbNJdK",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDE1b009uky2N9n7AGZ4tPiALsyT",
+                "model": "gpt-4o-mini-2024-07-18",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": "fp_fd0531e57c",
+                "usage": {
+                  "completion_tokens": 47,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 4466,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 4513
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDE1b009uky2N9n7AGZ4tPiALsyT",
-            "model": "gpt-4o-mini-2024-07-18",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": "fp_fd0531e57c",
-            "usage": {
-              "completion_tokens": 47,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 0,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 4466,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 4513
             }
           }
         }
@@ -410,52 +414,56 @@
               "text": "cache probe ready"
             }
           ],
-          "usage": {
-            "input_tokens": 4556,
-            "output_tokens": 4,
-            "total_tokens": 4560,
-            "cached_input_tokens": 4480,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDE2yG4grOtSEbjFR2y8RiUC3htq",
-          "provider_request_id": "req_d3fe2be6de7448169977afbec84c8523",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "annotations": [],
-                  "content": "cache probe ready",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-mini-2024-07-18",
+              "response_id": "chatcmpl-ERDE2yG4grOtSEbjFR2y8RiUC3htq",
+              "provider_request_id": "req_d3fe2be6de7448169977afbec84c8523",
+              "usage": {
+                "input_tokens": 4556,
+                "output_tokens": 4,
+                "total_tokens": 4560,
+                "cached_input_tokens": 4480,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "annotations": [],
+                      "content": "cache probe ready",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDE2yG4grOtSEbjFR2y8RiUC3htq",
+                "model": "gpt-4o-mini-2024-07-18",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": "fp_fd0531e57c",
+                "usage": {
+                  "completion_tokens": 4,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 4556,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 4480
+                  },
+                  "total_tokens": 4560
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDE2yG4grOtSEbjFR2y8RiUC3htq",
-            "model": "gpt-4o-mini-2024-07-18",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": "fp_fd0531e57c",
-            "usage": {
-              "completion_tokens": 4,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 0,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 4556,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 4480
-              },
-              "total_tokens": 4560
             }
           }
         }

@@ -306,61 +306,65 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 347,
-                "output_tokens": 221,
-                "total_tokens": 568,
-                "cached_input_tokens": 332
-              },
-              "response_id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM",
-              "finish_reason": "tool_calls",
-              "provider": "llamacpp",
-              "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "message": {
-                      "content": "",
-                      "reasoning_content": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
-                            "name": "submit"
-                          },
-                          "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g",
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "llamacpp",
+                  "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                  "response_id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM",
+                  "usage": {
+                    "input_tokens": 347,
+                    "output_tokens": 221,
+                    "total_tokens": 568,
+                    "cached_input_tokens": 332
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "message": {
+                          "content": "",
+                          "reasoning_content": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                                "name": "submit"
+                              },
+                              "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g",
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM",
+                    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                    "object": "chat.completion",
+                    "system_fingerprint": "b10964-b29c606e2",
+                    "timings": {
+                      "cache_n": 332,
+                      "predicted_ms": 1870.215,
+                      "predicted_n": 221,
+                      "predicted_per_second": 117.63353411238815,
+                      "predicted_per_token_ms": 8.500977272727273,
+                      "prompt_ms": 32.424,
+                      "prompt_n": 15,
+                      "prompt_per_second": 462.620281273131,
+                      "prompt_per_token_ms": 2.1616
+                    },
+                    "usage": {
+                      "completion_tokens": 221,
+                      "prompt_tokens": 347,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 332
+                      },
+                      "total_tokens": 568
                     }
                   }
-                ],
-                "created": 0,
-                "id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM",
-                "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-                "object": "chat.completion",
-                "system_fingerprint": "b10964-b29c606e2",
-                "timings": {
-                  "cache_n": 332,
-                  "predicted_ms": 1870.215,
-                  "predicted_n": 221,
-                  "predicted_per_second": 117.63353411238815,
-                  "predicted_per_token_ms": 8.500977272727273,
-                  "prompt_ms": 32.424,
-                  "prompt_n": 15,
-                  "prompt_per_second": 462.620281273131,
-                  "prompt_per_token_ms": 2.1616
-                },
-                "usage": {
-                  "completion_tokens": 221,
-                  "prompt_tokens": 347,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 332
-                  },
-                  "total_tokens": 568
                 }
               }
             }

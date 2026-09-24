@@ -14,7 +14,7 @@
 //!         if let Some(response) = event.completion() {
 //!             println!(
 //!                 "message {:?}: {:?} ({:?})",
-//!                 response.message_id, response.choice, response.usage
+//!                 response.end.message_id, response.choice, response.end.meta.usage
 //!             );
 //!         }
 //!         OutcomeAction::proceed()
@@ -28,7 +28,7 @@ use std::{collections::HashMap, future::Future, sync::Arc};
 
 use rig_core::tool::context::TypeMap;
 use rig_core::{
-    completion::FinishReason,
+    completion::CompletionEnd,
     message::{AssistantContent, Message},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -40,7 +40,6 @@ use rig_core::{
 };
 
 use crate::{
-    completion::{ResponseIdentity, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
 };
@@ -420,22 +419,17 @@ pub struct ModelTurnFinished<'a> {
     pub turn: usize,
     /// Canonical assistant content parked for hook acceptance.
     pub content: &'a Vec<AssistantContent>,
-    /// Usage reported for the turn.
-    pub usage: Usage,
-    /// This exact attempt's response identity metadata, the same value the
-    /// preceding completion outcome ([`OutcomeEvent`]) carried. On a retry, this is
-    /// the retried attempt's own identity, never a previous attempt's.
-    pub identity: &'a ResponseIdentity,
-    /// This attempt's normalized terminal reason, or `None` when unreported.
-    /// Unknown reasons retain their spelling in [`FinishReason::Other`].
-    /// A reported `Stop` is reconciled to `ToolCalls` when calls are present.
-    pub finish_reason: Option<&'a FinishReason>,
+    /// How this exact attempt ended, the same record the preceding completion
+    /// outcome ([`OutcomeEvent`]) carried: its usage, ids, and provider
+    /// document. On a retry, this is the retried attempt's own record, never
+    /// a previous attempt's. Its finish reason is normalized and reconciled:
+    /// a reported `Stop` becomes `ToolCalls` when calls are present, and
+    /// unknown reasons retain their spelling in
+    /// [`FinishReason::Other`](rig_core::completion::FinishReason::Other).
+    pub end: &'a CompletionEnd,
     /// This attempt's output-token cap after agent configuration, request
     /// overrides, and completion-call patches. `None` leaves the cap to the provider.
     pub max_tokens: Option<u64>,
-    /// This attempt's decoded provider response, serialized as JSON on both
-    /// streaming and unary surfaces. Hand-constructed responses may use `Null`.
-    pub raw: &'a serde_json::Value,
 }
 
 /// Action for the medium-neutral [`ModelTurnFinished`] event.

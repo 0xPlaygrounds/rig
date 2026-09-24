@@ -551,10 +551,20 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             .iter()
             .any(completion::AssistantContent::is_tool_call);
         Ok(completion::CompletionResponse {
-            finish_reason: finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call)),
-            response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
-            model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
-            ..completion::CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
+            choice,
+            end: completion::CompletionEnd {
+                finish_reason: finish_reason
+                    .map(|reason| reason.reconcile_with_output(has_tool_call)),
+                ..completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
+                    model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
+                    usage,
+                    raw,
+                    ..rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new(
+                        PROVIDER_NAME,
+                    )?)
+                })
+            },
         })
     }
 }

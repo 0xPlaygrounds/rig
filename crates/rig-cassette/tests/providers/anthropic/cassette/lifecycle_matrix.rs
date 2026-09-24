@@ -54,12 +54,18 @@ async fn middleware_response_phase_precedes_stream_consumption() {
                 .add_hook(settle_hook)
                 .build();
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-            let (response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (response, provider_final): (_, rig::completion::CompletionEnd) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streaming prompt should succeed");
             assert_nonempty_response(&response);
-            assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
+            assert!(
+                provider_final
+                    .meta
+                    .usage
+                    .total_tokens
+                    .is_some_and(|n| n > 0)
+            );
         },
     )
     .await;
@@ -120,7 +126,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
                 .prompt("What is 9 + 16? Use the add tool, then reply with just the number.")
                 .max_turns(3)
                 .stream();
-            let (response, _final): (_, rig::streaming::StreamFinal) =
+            let (response, _final): (_, rig::completion::CompletionEnd) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streamed tool run should succeed");

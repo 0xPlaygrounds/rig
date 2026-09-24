@@ -61,10 +61,13 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
 
             // Gemini's MAX_TOKENS normalizes to `FinishReason::Length`.
             assert!(
-                matches!(response.finish_reason.clone(), Some(FinishReason::Length)),
+                matches!(
+                    response.end.finish_reason.clone(),
+                    Some(FinishReason::Length)
+                ),
                 "hitting maxOutputTokens should preserve the MAX_TOKENS finish reason, \
                  got {:?}",
-                response.finish_reason.clone()
+                response.end.finish_reason.clone()
             );
             let text: String = response
                 .choice
@@ -80,15 +83,17 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             );
             assert!(
                 response
+                    .end
+                    .meta
                     .model
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"
             );
             assert!(
-                response.usage.output_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should reflect the truncated candidate, got {:?}",
-                response.usage
+                response.end.meta.usage
             );
         },
     )

@@ -7,16 +7,16 @@
 //! envelope fields a particular provider adds (`service_tier`,
 //! `metadata.system_fingerprint`), and its transport id contract.
 
+use rig_core::completion::CompletionEnd;
 use rig_core::completion::{CompletionResponse, FinishReason, Usage};
 use rig_core::providers::openai::responses_api;
-use rig_core::streaming::StreamFinal;
 use serde::Deserialize as _;
 use serde_json::Value;
 
 use crate::support::{assert_matches_recorded_token, assistant_text};
 
 /// The provider-native terminal record a Responses stream's
-/// [`StreamFinal::raw`] holds.
+/// [`CompletionEnd::raw`] holds.
 pub type Terminal = responses_api::streaming::StreamingCompletionResponse;
 
 /// The terminal record `raw` holds, read back and required to be exactly the
@@ -28,8 +28,8 @@ pub type Terminal = responses_api::streaming::StreamingCompletionResponse;
 /// right claim here, unlike the blocking path where `raw` is the reply
 /// document. The returned typed record is the cell's handle on whatever its
 /// dialect keeps beside the shared fields.
-pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
-    let raw = &terminal.raw;
+pub fn assert_terminal_round_trips(terminal: &CompletionEnd) -> Terminal {
+    let raw = &terminal.meta.raw;
     let typed =
         Terminal::deserialize(raw).expect("raw is the Responses terminal record, serialized");
     assert_eq!(
@@ -39,7 +39,7 @@ pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
     );
     assert_eq!(
         typed.response_id.as_deref(),
-        terminal.response_id.as_deref(),
+        terminal.meta.response_id.as_deref(),
         "response id"
     );
     assert_eq!(
@@ -47,10 +47,14 @@ pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
         terminal.message_id.as_deref(),
         "message id"
     );
-    assert_eq!(typed.model.as_deref(), terminal.model.as_deref(), "model");
+    assert_eq!(
+        typed.model.as_deref(),
+        terminal.meta.model.as_deref(),
+        "model"
+    );
     assert_eq!(
         Usage::from(&typed),
-        terminal.usage,
+        terminal.meta.usage,
         "the normalized usage is the terminal event's accounting, normalized"
     );
     typed
@@ -98,33 +102,33 @@ pub fn assert_reproduces_body(
     body: &Value,
     context: &str,
 ) {
-    assert_eq!(response.provider, provider, "{context}: provider");
+    assert_eq!(response.end.meta.provider, provider, "{context}: provider");
     let (message_id, text) = recorded_message(body);
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         body["id"].as_str(),
         &format!("{context}: response id"),
     );
     assert_matches_recorded_token(
-        response.message_id.as_deref(),
+        response.end.message_id.as_deref(),
         Some(message_id),
         &format!("{context}: message id"),
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         body["model"].as_str(),
         "{context}: model"
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(recorded_finish_reason(body)),
         "{context}: finish reason"
     );
     assert_eq!(
         (
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.usage.total_tokens
+            response.end.meta.usage.input_tokens,
+            response.end.meta.usage.output_tokens,
+            response.end.meta.usage.total_tokens
         ),
         (
             body["usage"]["input_tokens"].as_u64(),
@@ -154,12 +158,12 @@ pub fn assert_native_matches_normalized(
     context: &str,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         Some(native.id.as_str()),
         "{context}: native response id"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         Some(native.model.as_str()),
         "{context}: native model"
     );
@@ -169,16 +173,16 @@ pub fn assert_native_matches_normalized(
         "{context}: native status"
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(FinishReason::Stop),
         "{context}: the normalized reason is that status"
     );
     let native_usage = native.usage.as_ref().expect("the reply reports usage");
     assert_eq!(
         (
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.usage.total_tokens
+            response.end.meta.usage.input_tokens,
+            response.end.meta.usage.output_tokens,
+            response.end.meta.usage.total_tokens
         ),
         (
             Some(native_usage.input_tokens),
@@ -200,7 +204,7 @@ pub fn assert_native_matches_normalized(
         })
         .expect("the reply carries a message item");
     assert_eq!(
-        response.message_id.as_deref(),
+        response.end.message_id.as_deref(),
         Some(message.id.as_str()),
         "{context}: native message id"
     );

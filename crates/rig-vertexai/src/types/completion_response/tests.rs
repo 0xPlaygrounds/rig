@@ -310,9 +310,9 @@ fn test_usage_metadata_conversion() {
 
     assert!(completion_response.is_ok());
     let response = completion_response.unwrap();
-    assert_eq!(response.usage.input_tokens, Some(10));
-    assert_eq!(response.usage.output_tokens, Some(20));
-    assert_eq!(response.usage.total_tokens, Some(30));
+    assert_eq!(response.end.meta.usage.input_tokens, Some(10));
+    assert_eq!(response.end.meta.usage.output_tokens, Some(20));
+    assert_eq!(response.end.meta.usage.total_tokens, Some(30));
 }
 
 #[test]
@@ -380,17 +380,31 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
 
     let original: CompletionResponse = raw.try_into().expect("original converts");
     let restored: CompletionResponse = back.try_into().expect("restored converts");
-    assert_eq!(restored.identity(), original.identity());
     assert_eq!(
-        restored.finish_reason.clone(),
-        original.finish_reason.clone()
+        (
+            &restored.end.message_id,
+            &restored.end.meta.response_id,
+            &restored.end.meta.provider_request_id
+        ),
+        (
+            &original.end.message_id,
+            &original.end.meta.response_id,
+            &original.end.meta.provider_request_id
+        )
     );
-    assert_eq!(restored.model, original.model);
-    assert_eq!(restored.usage, original.usage);
-    assert_eq!(restored.choice, original.choice);
-    assert_eq!(restored.model.as_deref(), Some("gemini-2.5-flash-001"));
     assert_eq!(
-        restored.identity().response_id.as_deref(),
+        restored.end.finish_reason.clone(),
+        original.end.finish_reason.clone()
+    );
+    assert_eq!(restored.end.meta.model, original.end.meta.model);
+    assert_eq!(restored.end.meta.usage, original.end.meta.usage);
+    assert_eq!(restored.choice, original.choice);
+    assert_eq!(
+        restored.end.meta.model.as_deref(),
+        Some("gemini-2.5-flash-001")
+    );
+    assert_eq!(
+        restored.end.meta.response_id.as_deref(),
         Some("resp-vertex-1")
     );
 }

@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the chat-completions terminal
+//! [`rig::completion::CompletionEnd::raw`] carries the chat-completions terminal
 //! record the wire's decoder assembled, serialized — and it carries it whole:
 //! a dialect's own usage fields ride along beside the OpenAI-compatible ones
 //! that [`chat::Terminal`] models. Capture is always on: there is
@@ -31,11 +31,12 @@
 //! for `lookup_city` (and that the recorded request forced the call), so a
 //! recording that stopped calling fails instead of covering nothing.
 
+use rig::completion::CompletionEnd;
 use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
-use rig::streaming::{StreamEvent, StreamFinal};
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::DEFAULT_MODEL;
@@ -87,7 +88,7 @@ fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 /// terminal record.
 struct ToolStreamObservation {
     tool_calls: Vec<rig::message::ToolCall>,
-    terminal: Option<StreamFinal>,
+    terminal: Option<CompletionEnd>,
 }
 
 async fn collect_tool_calls_and_terminal(
@@ -189,7 +190,7 @@ async fn stream_raw_round_trips_terminal_type() {
     // Mistral contracts `mistral-correlation-id`; the recorded header is the
     // premise.
     assert_contracted_request_id(
-        terminal.provider_request_id.as_deref(),
+        terminal.meta.provider_request_id.as_deref(),
         recorded_request_id(SCENARIO).as_deref(),
         REQUEST_ID_HEADER,
     );
@@ -225,11 +226,11 @@ async fn stream_raw_exposes_terminal_service_tier() {
         .as_u64()
         .expect("terminal usage reports prompt_tokens");
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(raw["usage"]["service_tier"], json!(recorded_tier));
     assert_eq!(raw["usage"]["prompt_tokens"], json!(recorded_prompt_tokens));
     // The normalized terminal has no slot for the tier.
-    let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
+    let normalized_usage = serde_json::to_value(terminal.meta.usage).expect("usage serializes");
     assert_normalized_lacks(&normalized_usage, &["service_tier"]);
 }
 
@@ -266,7 +267,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
     let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
     chat::assert_terminal_reproduces_frame(terminal, PROVIDER, &frame, "the recorded frame");
     assert_contracted_request_id(
-        terminal.provider_request_id.as_deref(),
+        terminal.meta.provider_request_id.as_deref(),
         recorded_request_id(SCENARIO).as_deref(),
         REQUEST_ID_HEADER,
     );
@@ -292,7 +293,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
     // The normalized terminal reports ToolCalls, and raw's own finish reason
     // agrees once mapped through the terminal type.
     assert_eq!(terminal.finish_reason, Some(FinishReason::ToolCalls));
-    assert_eq!(terminal.raw["finish_reason"], json!("tool_calls"));
+    assert_eq!(terminal.meta.raw["finish_reason"], json!("tool_calls"));
     // The stream yielded exactly the recorded call, with object arguments.
     assert_eq!(observation.tool_calls.len(), 1, "one streamed tool call");
     let call = &observation.tool_calls[0];
@@ -305,8 +306,8 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
     );
     // raw is the terminal record only: no frame content rides on it.
     assert!(
-        terminal.raw.get("choices").is_none() && terminal.raw.get("tool_calls").is_none(),
+        terminal.meta.raw.get("choices").is_none() && terminal.meta.raw.get("tool_calls").is_none(),
         "the terminal raw carries no frame content: {}",
-        terminal.raw
+        terminal.meta.raw
     );
 }

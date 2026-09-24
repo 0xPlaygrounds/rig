@@ -130,54 +130,58 @@
               "signature": "EqMCCqACAWkUfROX0jglIwefW8kynFaLn3X690yF1fsj+Vho4jnQY6JFMe7wq/7ReMWWcqzQnjq7sdqDHDkI6NvOEGJStlrWfJxecv3PnwPrf80KzDQK6lTasmOgi99lSBkZvJwqu1bXQvdQKGMmLKirOFkVTbjw0hsN4RoYCo+DunugZTHgIVYy6QOkarY+YuS+S06umicA3FhOeFsxQpcpvFgeXNJzHyiVlXJ3tUXLEJpVJm6E6ksvlnMWcG58ukrFID45M7HkDndk7BkFoAn18VB6jFCJR27aomAneTvJSfEOI79QNf/XTeZNkJW/PwPBXe7kupwBzXFv1cUZV1QHq4aYGwwEd7zVuC3299zgaK6l/ZJ2zhHljGifpIjRq0/JZ7eC"
             }
           ],
-          "usage": {
-            "input_tokens": 120,
-            "output_tokens": 18,
-            "total_tokens": 198,
-            "reasoning_tokens": 60
-          },
-          "response_id": "S6yyavSfGt-dz7IP843ywAQ",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "S6yyavSfGt-dz7IP843ywAQ",
+              "usage": {
+                "input_tokens": 120,
+                "output_tokens": 18,
+                "total_tokens": 198,
+                "reasoning_tokens": 60
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 17,
+                              "y": 25
+                            },
+                            "id": "call_197859",
+                            "name": "add"
+                          },
+                          "thoughtSignature": "EqMCCqACAWkUfROX0jglIwefW8kynFaLn3X690yF1fsj+Vho4jnQY6JFMe7wq/7ReMWWcqzQnjq7sdqDHDkI6NvOEGJStlrWfJxecv3PnwPrf80KzDQK6lTasmOgi99lSBkZvJwqu1bXQvdQKGMmLKirOFkVTbjw0hsN4RoYCo+DunugZTHgIVYy6QOkarY+YuS+S06umicA3FhOeFsxQpcpvFgeXNJzHyiVlXJ3tUXLEJpVJm6E6ksvlnMWcG58ukrFID45M7HkDndk7BkFoAn18VB6jFCJR27aomAneTvJSfEOI79QNf/XTeZNkJW/PwPBXe7kupwBzXFv1cUZV1QHq4aYGwwEd7zVuC3299zgaK6l/ZJ2zhHljGifpIjRq0/JZ7eC"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3-flash-preview",
+                "responseId": "S6yyavSfGt-dz7IP843ywAQ",
+                "usageMetadata": {
+                  "candidatesTokenCount": 18,
+                  "promptTokenCount": 120,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 17,
-                          "y": 25
-                        },
-                        "id": "call_197859",
-                        "name": "add"
-                      },
-                      "thoughtSignature": "EqMCCqACAWkUfROX0jglIwefW8kynFaLn3X690yF1fsj+Vho4jnQY6JFMe7wq/7ReMWWcqzQnjq7sdqDHDkI6NvOEGJStlrWfJxecv3PnwPrf80KzDQK6lTasmOgi99lSBkZvJwqu1bXQvdQKGMmLKirOFkVTbjw0hsN4RoYCo+DunugZTHgIVYy6QOkarY+YuS+S06umicA3FhOeFsxQpcpvFgeXNJzHyiVlXJ3tUXLEJpVJm6E6ksvlnMWcG58ukrFID45M7HkDndk7BkFoAn18VB6jFCJR27aomAneTvJSfEOI79QNf/XTeZNkJW/PwPBXe7kupwBzXFv1cUZV1QHq4aYGwwEd7zVuC3299zgaK6l/ZJ2zhHljGifpIjRq0/JZ7eC"
+                      "modality": "TEXT",
+                      "tokenCount": 120
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-3-flash-preview",
-            "responseId": "S6yyavSfGt-dz7IP843ywAQ",
-            "usageMetadata": {
-              "candidatesTokenCount": 18,
-              "promptTokenCount": 120,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 120
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 60,
+                  "totalTokenCount": 198
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 60,
-              "totalTokenCount": 198
+              }
             }
           }
         }

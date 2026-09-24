@@ -93,56 +93,60 @@
               "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech\",\n  \"summary\": \"Monthly gathering for Rust enthusiasts in Seattle to discuss projects, learn, and network. All skill levels welcome. Pizza and drinks provided. Bring a laptop if you want to code along. Topics may include Rust 2026 updates, async programming, and web assembly. Organized by local Rustaceans. Free to attend, but RSVP required for headcount. Held at a local tech co-working space in downtown Seattle. Occurs on the fourth Tuesday of every month, 6:30 PM to 9:00 PM. Check Meetup.com for exact dates and location details. Follow @SeattleRust on Twitter for updates.\"\n}"
             }
           ],
-          "usage": {
-            "input_tokens": 981,
-            "output_tokens": 161,
-            "total_tokens": 1142
-          },
-          "response_id": "chatcmpl-R4Pi3ODcWRQhy51IEVvtXaEB",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech\",\n  \"summary\": \"Monthly gathering for Rust enthusiasts in Seattle to discuss projects, learn, and network. All skill levels welcome. Pizza and drinks provided. Bring a laptop if you want to code along. Topics may include Rust 2026 updates, async programming, and web assembly. Organized by local Rustaceans. Free to attend, but RSVP required for headcount. Held at a local tech co-working space in downtown Seattle. Occurs on the fourth Tuesday of every month, 6:30 PM to 9:00 PM. Check Meetup.com for exact dates and location details. Follow @SeattleRust on Twitter for updates.\"\n}",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": []
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-R4Pi3ODcWRQhy51IEVvtXaEB",
+              "usage": {
+                "input_tokens": 981,
+                "output_tokens": 161,
+                "total_tokens": 1142
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech\",\n  \"summary\": \"Monthly gathering for Rust enthusiasts in Seattle to discuss projects, learn, and network. All skill levels welcome. Pizza and drinks provided. Bring a laptop if you want to code along. Topics may include Rust 2026 updates, async programming, and web assembly. Organized by local Rustaceans. Free to attend, but RSVP required for headcount. Held at a local tech co-working space in downtown Seattle. Occurs on the fourth Tuesday of every month, 6:30 PM to 9:00 PM. Check Meetup.com for exact dates and location details. Follow @SeattleRust on Twitter for updates.\"\n}",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": []
+                    }
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00013221875
+                },
+                "created": 0,
+                "id": "chatcmpl-R4Pi3ODcWRQhy51IEVvtXaEB",
+                "model": "mistral-small-3-2-24b-instruct",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 161,
+                  "prompt_tokens": 981,
+                  "total_tokens": 1142
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.00013221875
-            },
-            "created": 0,
-            "id": "chatcmpl-R4Pi3ODcWRQhy51IEVvtXaEB",
-            "model": "mistral-small-3-2-24b-instruct",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 161,
-              "prompt_tokens": 981,
-              "total_tokens": 1142
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }

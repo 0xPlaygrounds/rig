@@ -388,8 +388,8 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                         .await
                         .expect("a cached-content request should succeed");
                     reads.push((
-                        response.usage.input_tokens.unwrap_or(0),
-                        response.usage.cached_input_tokens.unwrap_or(0),
+                        response.end.meta.usage.input_tokens.unwrap_or(0),
+                        response.end.meta.usage.cached_input_tokens.unwrap_or(0),
                     ));
                 }
 
@@ -532,7 +532,7 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
                 .await
                 .expect("second small request should succeed");
 
-            let first_input = first.usage.input_tokens.unwrap_or(0);
+            let first_input = first.end.meta.usage.input_tokens.unwrap_or(0);
             assert!(
                 first_input < GEMINI_CACHE_SUPPORT.min_cacheable_tokens as u64,
                 "this probe is supposed to sit *below* the {}-token minimum, but billed {} — \
@@ -541,12 +541,12 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
                 first_input
             );
             assert_eq!(
-                second.usage.cached_input_tokens.unwrap_or(0),
+                second.end.meta.usage.cached_input_tokens.unwrap_or(0),
                 0,
                 "a prefix below the documented minimum must not cache; if Gemini started caching \
                  it, the minimum in GEMINI_CACHE_SUPPORT is wrong and every other cell's padding \
                  needs revisiting. usage: {:?}",
-                second.usage
+                second.end.meta.usage
             );
         },
     )
@@ -581,8 +581,8 @@ async fn changing_temperature_still_hits() {
             .await
             .expect("second request should succeed");
 
-            let cached = hotter.usage.cached_input_tokens.unwrap_or(0);
-            let input = hotter.usage.input_tokens.unwrap_or(0);
+            let cached = hotter.end.meta.usage.cached_input_tokens.unwrap_or(0);
+            let input = hotter.end.meta.usage.input_tokens.unwrap_or(0);
             let ratio = cached as f64 / input as f64;
             assert!(
                 ratio >= GEMINI_CACHE_SUPPORT.hit_ratio_floor,
@@ -591,8 +591,8 @@ async fn changing_temperature_still_hits() {
                  should warn users that per-request sampling changes cost them their cache.\nwarm: \
                  {:?}\nhot: {:?}",
                 ratio * 100.0,
-                warm.usage,
-                hotter.usage
+                warm.end.meta.usage,
+                hotter.end.meta.usage
             );
         },
     )
@@ -635,11 +635,11 @@ async fn changing_the_system_instruction_misses() {
             .expect("mutated request should succeed");
 
             assert_eq!(
-                after.usage.cached_input_tokens.unwrap_or(0),
+                after.end.meta.usage.cached_input_tokens.unwrap_or(0),
                 0,
                 "a changed system instruction is a different prefix and must not hit the previous \
                  entry. usage: {:?}",
-                after.usage
+                after.end.meta.usage
             );
         },
     )

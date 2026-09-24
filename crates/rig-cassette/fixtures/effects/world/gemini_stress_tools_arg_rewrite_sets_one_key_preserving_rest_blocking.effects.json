@@ -147,53 +147,57 @@
               "signature": "CrcBAWkUfRNdki2WIw3bzZ6Ys/4D+GUxUOUpbsLey+R7jDRl0x/zgapgnqRK9urtDHGon9TCpC6sr7s0rGS0dYV71AU8SuLZ22kjSVkD84jKkjVO4kb2Mw4XknYspnVnz7C139J86D0w1hk9PAcjQogYDiEh5CQ+SrZQHIvVcwFFmTcRFzEGDT06E5+ykS2B/HsHn+4LTGSZZpGFfa0BPMPK3oKaJ2WLmWXEuATMTRFr1kl+bCA3bOhk"
             }
           ],
-          "usage": {
-            "input_tokens": 86,
-            "output_tokens": 18,
-            "total_tokens": 152,
-            "reasoning_tokens": 48
-          },
-          "response_id": "l66yaqCpA8LRz7IP-vqGKA",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "l66yaqCpA8LRz7IP-vqGKA",
+              "usage": {
+                "input_tokens": 86,
+                "output_tokens": 18,
+                "total_tokens": 152,
+                "reasoning_tokens": 48
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 3,
+                              "y": 4
+                            },
+                            "name": "add"
+                          },
+                          "thoughtSignature": "CrcBAWkUfRNdki2WIw3bzZ6Ys/4D+GUxUOUpbsLey+R7jDRl0x/zgapgnqRK9urtDHGon9TCpC6sr7s0rGS0dYV71AU8SuLZ22kjSVkD84jKkjVO4kb2Mw4XknYspnVnz7C139J86D0w1hk9PAcjQogYDiEh5CQ+SrZQHIvVcwFFmTcRFzEGDT06E5+ykS2B/HsHn+4LTGSZZpGFfa0BPMPK3oKaJ2WLmWXEuATMTRFr1kl+bCA3bOhk"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "l66yaqCpA8LRz7IP-vqGKA",
+                "usageMetadata": {
+                  "candidatesTokenCount": 18,
+                  "promptTokenCount": 86,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 3,
-                          "y": 4
-                        },
-                        "name": "add"
-                      },
-                      "thoughtSignature": "CrcBAWkUfRNdki2WIw3bzZ6Ys/4D+GUxUOUpbsLey+R7jDRl0x/zgapgnqRK9urtDHGon9TCpC6sr7s0rGS0dYV71AU8SuLZ22kjSVkD84jKkjVO4kb2Mw4XknYspnVnz7C139J86D0w1hk9PAcjQogYDiEh5CQ+SrZQHIvVcwFFmTcRFzEGDT06E5+ykS2B/HsHn+4LTGSZZpGFfa0BPMPK3oKaJ2WLmWXEuATMTRFr1kl+bCA3bOhk"
+                      "modality": "TEXT",
+                      "tokenCount": 86
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "l66yaqCpA8LRz7IP-vqGKA",
-            "usageMetadata": {
-              "candidatesTokenCount": 18,
-              "promptTokenCount": 86,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 86
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 48,
+                  "totalTokenCount": 152
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 48,
-              "totalTokenCount": 152
+              }
             }
           }
         }
@@ -322,43 +326,47 @@
               "text": "The result of adding 3 and 4 is 104."
             }
           ],
-          "usage": {
-            "input_tokens": 119,
-            "output_tokens": 15,
-            "total_tokens": 134
-          },
-          "response_id": "l66yaum5Jsifz7IP1MroGQ",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "l66yaum5Jsifz7IP1MroGQ",
+              "usage": {
+                "input_tokens": 119,
+                "output_tokens": 15,
+                "total_tokens": 134
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The result of adding 3 and 4 is 104."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "l66yaum5Jsifz7IP1MroGQ",
+                "usageMetadata": {
+                  "candidatesTokenCount": 15,
+                  "promptTokenCount": 119,
+                  "promptTokensDetails": [
                     {
-                      "text": "The result of adding 3 and 4 is 104."
+                      "modality": "TEXT",
+                      "tokenCount": 119
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "l66yaum5Jsifz7IP1MroGQ",
-            "usageMetadata": {
-              "candidatesTokenCount": 15,
-              "promptTokenCount": 119,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 119
+                  "serviceTier": "standard",
+                  "totalTokenCount": 134
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 134
+              }
             }
           }
         }

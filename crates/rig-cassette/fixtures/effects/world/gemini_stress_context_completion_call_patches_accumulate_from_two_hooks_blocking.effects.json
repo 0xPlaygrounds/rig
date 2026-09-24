@@ -135,46 +135,50 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 130,
-            "output_tokens": 18,
-            "total_tokens": 208,
-            "reasoning_tokens": 60
-          },
-          "response_id": "dq6yaqf5PMqnmtkP7pfe-AE",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "dq6yaqf5PMqnmtkP7pfe-AE",
+              "usage": {
+                "input_tokens": 130,
+                "output_tokens": 18,
+                "total_tokens": 208,
+                "reasoning_tokens": 60
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
+                          "thoughtSignature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "dq6yaqf5PMqnmtkP7pfe-AE",
+                "usageMetadata": {
+                  "candidatesTokenCount": 18,
+                  "promptTokenCount": 130,
+                  "promptTokensDetails": [
                     {
-                      "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
-                      "thoughtSignature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
+                      "modality": "TEXT",
+                      "tokenCount": 130
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "dq6yaqf5PMqnmtkP7pfe-AE",
-            "usageMetadata": {
-              "candidatesTokenCount": 18,
-              "promptTokenCount": 130,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 130
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 60,
+                  "totalTokenCount": 208
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 60,
-              "totalTokenCount": 208
+              }
             }
           }
         }

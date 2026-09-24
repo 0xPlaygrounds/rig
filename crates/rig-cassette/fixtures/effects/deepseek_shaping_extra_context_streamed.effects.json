@@ -71,34 +71,38 @@
               "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
             }
           ],
-          "usage": {
-            "input_tokens": 55,
-            "output_tokens": 15,
-            "total_tokens": 70,
-            "cached_input_tokens": 0
-          },
-          "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 55,
-              "completion_tokens": 15,
-              "total_tokens": 70,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 55
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
-            "model": "deepseek-flash",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+              "usage": {
+                "input_tokens": 55,
+                "output_tokens": 15,
+                "total_tokens": 70,
+                "cached_input_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 55,
+                  "completion_tokens": 15,
+                  "total_tokens": 70,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 55
+                },
+                "finish_reason": "stop",
+                "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+                "model": "deepseek-flash",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+                }
+              }
             }
           }
         }
@@ -233,34 +237,36 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 55,
-            "output_tokens": 15,
-            "total_tokens": 70,
-            "cached_input_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 55,
-              "completion_tokens": 15,
-              "total_tokens": 70,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 55
-            },
-            "finish_reason": "stop",
-            "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+          "meta": {
+            "provider": "deepseek",
             "model": "deepseek-flash",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+            "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 15,
+              "total_tokens": 70,
+              "cached_input_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 55,
+                "completion_tokens": 15,
+                "total_tokens": 70,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 55
+              },
+              "finish_reason": "stop",
+              "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+              "model": "deepseek-flash",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+              }
             }
           }
         }

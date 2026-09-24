@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! [`rig::completion::CompletionEnd::raw`] carries the decoder's own terminal
 //! record — for Venice the shared chat-completions
 //! [`StreamingCompletionResponse`], whose accounting is [`ChatUsage`] —
 //! serialized. That is a serialization rather than the socket's bytes, so the
@@ -79,7 +79,7 @@ async fn stream_raw_round_trips_terminal_type() {
     let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
     chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
     // Venice contracts no id header, so `None` is the documented outcome.
-    assert_no_request_id(terminal.provider_request_id.as_deref(), "Venice");
+    assert_no_request_id(terminal.meta.provider_request_id.as_deref(), "Venice");
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
 }
@@ -115,7 +115,7 @@ async fn stream_raw_exposes_terminal_cost() {
         "exactly the terminal frame carries cost"
     );
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(
         raw["additional_params"]["cost"]["usd"],
         json!(recorded_cost)

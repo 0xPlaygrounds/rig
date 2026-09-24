@@ -1,10 +1,8 @@
 //! Native run-owned entry storage and lifecycle observers for provider parity.
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
-use rig::{
-    effect::EffectKind,
-    streaming::{StreamEvent, StreamFinal},
-};
+use rig::completion::CompletionEnd;
+use rig::{effect::EffectKind, streaming::StreamEvent};
 use rig_ecs::{
     agent::{Cursor, MessageParts, Run, RunResult, Settled, Turn},
     bus::{PendingEffect, RigSchedule, Seq, Streamed},
@@ -171,7 +169,7 @@ pub(crate) fn install(ecs: &mut EcsAgent, probe: LifecycleProbe) {
         ),
     );
 }
-pub(crate) fn provider_final(ecs: &mut EcsAgent) -> StreamFinal {
+pub(crate) fn provider_final(ecs: &mut EcsAgent) -> CompletionEnd {
     let mut streams = ecs.app.world_mut().query::<(&Seq, &Streamed)>();
     streams
         .iter(ecs.app.world())

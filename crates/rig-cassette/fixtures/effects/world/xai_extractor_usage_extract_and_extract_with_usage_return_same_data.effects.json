@@ -134,121 +134,125 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 408,
-            "output_tokens": 177,
-            "total_tokens": 585,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 157
-          },
-          "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
-          "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
-                "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
-                "id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0",
-                "name": "submit",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "required",
-            "tools": [
-              {
-                "description": "Submit the structured data you extracted from the provided text.",
-                "name": "submit",
-                "parameters": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "properties": {
-                    "age": {
-                      "format": "uint8",
-                      "maximum": 255,
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "profession": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "title": "Person",
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+              "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+              "usage": {
                 "input_tokens": 408,
-                "output_tokens": 181
-              },
-              "cost_in_usd_ticks": 7509000,
-              "input_tokens": 408,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 177,
-              "output_tokens_details": {
+                "output_tokens": 177,
+                "total_tokens": 585,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 157
               },
-              "total_tokens": 585
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                    "id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "age": {
+                          "format": "uint8",
+                          "maximum": 255,
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "profession": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "title": "Person",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 408,
+                    "output_tokens": 181
+                  },
+                  "cost_in_usd_ticks": 7509000,
+                  "input_tokens": 408,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 177,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 157
+                  },
+                  "total_tokens": 585
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -349,132 +353,136 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 408,
-            "output_tokens": 218,
-            "total_tokens": 626,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 198
-          },
-          "response_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
-          "provider_request_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_08c8041e-9ca8-9fcb-8bee-ff65d347a213",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
-                "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
-                "id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0",
-                "name": "submit",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "required",
-            "tools": [
-              {
-                "description": "Submit the structured data you extracted from the provided text.",
-                "name": "submit",
-                "parameters": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "properties": {
-                    "age": {
-                      "format": "uint8",
-                      "maximum": 255,
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "profession": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "title": "Person",
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+              "provider_request_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+              "usage": {
                 "input_tokens": 408,
-                "output_tokens": 222
-              },
-              "cost_in_usd_ticks": 8534000,
-              "input_tokens": 408,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 218,
-              "output_tokens_details": {
+                "output_tokens": 218,
+                "total_tokens": 626,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 198
               },
-              "total_tokens": 626
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
+                    "id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "age": {
+                          "format": "uint8",
+                          "maximum": 255,
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "profession": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "title": "Person",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 408,
+                    "output_tokens": 222
+                  },
+                  "cost_in_usd_ticks": 8534000,
+                  "input_tokens": 408,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 218,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 198
+                  },
+                  "total_tokens": 626
+                },
+                "user": null
+              }
+            }
           }
         }
       },

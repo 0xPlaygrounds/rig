@@ -78,10 +78,13 @@ async fn raw_round_trips_openai_type() {
     .expect("raw_round_trips_openai_type should replay from its cassette");
     let response = sink.take();
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = openai::CompletionResponse::deserialize(raw)
         .expect("raw is the shared OpenAI CompletionResponse Doubleword parses into");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
 
     // `raw` is the document Doubleword sent, not a re-serialization of
     // `typed`: these usage fields have no home on the shared type and reach
@@ -120,7 +123,7 @@ async fn raw_exposes_object() {
         .as_str()
         .expect("Doubleword tags every completion with an object");
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(raw["object"], json!(recorded_object));
     // The normalized view has no slot for the tag.
     let normalized = serde_json::to_value(&response).expect("response serializes");
@@ -165,13 +168,13 @@ async fn normalized_fields_match_raw_renormalized() {
     chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
     // Doubleword contracts no request-id header, so `None` is the documented
     // outcome rather than an id to compare.
-    assert_no_request_id(response.provider_request_id.as_deref(), PROVIDER);
+    assert_no_request_id(response.end.meta.provider_request_id.as_deref(), PROVIDER);
 
     // The other half: the provider-native fields of the captured payload are
     // the ones the decoder normalized. There is one mapping now, so this pins
     // it against the wire's own vocabulary rather than against a copy of
     // itself.
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
+    let typed = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is the shared OpenAI type");
     chat::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
 }

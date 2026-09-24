@@ -163,71 +163,75 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 387,
-            "output_tokens": 99,
-            "total_tokens": 486,
-            "cached_input_tokens": 0
-          },
-          "response_id": "95ac7207-d0a7-4b54-a061-4a7478cc9824",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 0}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_00_1O9LrfZvBDKRtlS7IOIE8445",
-                      "index": 0,
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 1}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_01_J5vg1Hn0dOi1YnZai4zr7254",
-                      "index": 1,
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 2}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_02_dXOcxQ2hsIqEhKuMH4Pd0795",
-                      "index": 2,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "95ac7207-d0a7-4b54-a061-4a7478cc9824",
+              "usage": {
+                "input_tokens": 387,
+                "output_tokens": 99,
+                "total_tokens": 486,
+                "cached_input_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"slot\": 0}",
+                            "name": "checkpoint_batch"
+                          },
+                          "id": "call_00_1O9LrfZvBDKRtlS7IOIE8445",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"slot\": 1}",
+                            "name": "checkpoint_batch"
+                          },
+                          "id": "call_01_J5vg1Hn0dOi1YnZai4zr7254",
+                          "index": 1,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"slot\": 2}",
+                            "name": "checkpoint_batch"
+                          },
+                          "id": "call_02_dXOcxQ2hsIqEhKuMH4Pd0795",
+                          "index": 2,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "95ac7207-d0a7-4b54-a061-4a7478cc9824",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 99,
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 387,
+                  "prompt_tokens": 387,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 486
                 }
               }
-            ],
-            "created": 0,
-            "id": "95ac7207-d0a7-4b54-a061-4a7478cc9824",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 99,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 387,
-              "prompt_tokens": 387,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "total_tokens": 486
             }
           }
         }
@@ -483,42 +487,46 @@
               "text": "checkpoint-complete"
             }
           ],
-          "usage": {
-            "input_tokens": 527,
-            "output_tokens": 4,
-            "total_tokens": 531,
-            "cached_input_tokens": 384
-          },
-          "response_id": "56c0aad0-e55c-4797-8cca-bc34240b14de",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "checkpoint-complete",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "56c0aad0-e55c-4797-8cca-bc34240b14de",
+              "usage": {
+                "input_tokens": 527,
+                "output_tokens": 4,
+                "total_tokens": 531,
+                "cached_input_tokens": 384
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "checkpoint-complete",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "56c0aad0-e55c-4797-8cca-bc34240b14de",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 4,
+                  "prompt_cache_hit_tokens": 384,
+                  "prompt_cache_miss_tokens": 143,
+                  "prompt_tokens": 527,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 384
+                  },
+                  "total_tokens": 531
                 }
               }
-            ],
-            "created": 0,
-            "id": "56c0aad0-e55c-4797-8cca-bc34240b14de",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 4,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 143,
-              "prompt_tokens": 527,
-              "prompt_tokens_details": {
-                "cached_tokens": 384
-              },
-              "total_tokens": 531
             }
           }
         }

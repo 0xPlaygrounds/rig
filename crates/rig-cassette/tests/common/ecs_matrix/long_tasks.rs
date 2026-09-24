@@ -249,7 +249,7 @@ pub(crate) fn assert_world(
             .iter()
             .filter(|record| record.scope.as_deref() == Some(scope.as_str()))
             .filter_map(|record| match &record.outcome {
-                Ok(Outcome::Completion(response)) => Some(response.usage),
+                Ok(Outcome::Completion(response)) => Some(response.end.meta.usage),
                 _ => None,
             })
             .collect();
@@ -290,7 +290,7 @@ pub(crate) fn assert_world(
         .records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Outcome::Completion(response)) => Some(response.usage),
+            Ok(Outcome::Completion(response)) => Some(response.end.meta.usage),
             _ => None,
         })
         .collect();

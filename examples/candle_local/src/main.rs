@@ -34,9 +34,9 @@ async fn main() -> anyhow::Result<()> {
         .build();
 
     // The local generation metrics printed below (throughput, prefill time,
-    // time-to-first-token) are Candle's own — Rig's normalized `StreamFinal`
+    // time-to-first-token) are Candle's own — Rig's normalized `CompletionEnd`
     // carries usage and a finish reason, not these. The provider's terminal
-    // record rides along serialized on `StreamFinal::raw`, so they stay
+    // record rides along serialized on `CompletionEnd::raw`, so they stay
     // reachable by deserializing it back into Candle's own type.
     let mut stream = model.stream(request).await?;
     let mut final_response = None;
@@ -57,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let raw: CandleCompletionResponse = serde_json::from_value(
         final_response
             .context("Candle stream ended without final metadata")?
+            .meta
             .raw,
     )?;
     println!(

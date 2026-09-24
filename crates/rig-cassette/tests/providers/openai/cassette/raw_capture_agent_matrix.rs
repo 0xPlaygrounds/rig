@@ -55,7 +55,7 @@ use rig::agent::{
     AgentBuilder, AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem,
     OutcomeAction, OutcomeEvent,
 };
-use rig::completion::ResponseIdentity;
+use rig::completion::CompletionEnd;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -145,7 +145,7 @@ impl Route {
     }
 }
 
-type Seen = Arc<Mutex<Vec<(ResponseIdentity, Value)>>>;
+type Seen = Arc<Mutex<Vec<(CompletionEnd, Value)>>>;
 
 /// One `CompletionResponse` observation: which driver fired it, whether the
 /// canonical content carried a tool call, the attempt's identity and `raw`.
@@ -153,7 +153,9 @@ type Seen = Arc<Mutex<Vec<(ResponseIdentity, Value)>>>;
 struct ResponseSeen {
     streaming: bool,
     tool_call: bool,
-    identity: ResponseIdentity,
+    message_id: Option<rig::id::MessageId>,
+    response_id: Option<rig::id::ResponseId>,
+    provider_request_id: Option<rig::id::RequestId>,
     raw: Value,
 }
 
@@ -169,7 +171,7 @@ impl RawProbe {
     fn completion_responses(&self) -> Vec<ResponseSeen> {
         self.completion_responses.lock().expect("probe").clone()
     }
-    fn turns(&self) -> Vec<(ResponseIdentity, Value)> {
+    fn turns(&self) -> Vec<(CompletionEnd, Value)> {
         self.turns.lock().expect("probe").clone()
     }
 }
@@ -188,8 +190,10 @@ impl AgentHook for RawProbe {
                     .choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                identity: response.identity(),
-                raw: response.raw.clone(),
+                message_id: response.end.message_id.clone(),
+                response_id: response.end.meta.response_id.clone(),
+                provider_request_id: response.end.meta.provider_request_id.clone(),
+                raw: response.end.meta.raw.clone(),
             });
         OutcomeAction::proceed()
     }
@@ -202,7 +206,7 @@ impl AgentHook for RawProbe {
         self.turns
             .lock()
             .expect("probe")
-            .push((event.identity.clone(), event.raw.clone()));
+            .push((event.end.clone(), event.end.meta.raw.clone()));
         ModelTurnAction::continue_run()
     }
 }
@@ -315,7 +319,7 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should succeed") {
                     MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(terminal)) => {
-                        observation.finals.push(terminal.raw.clone())
+                        observation.finals.push(terminal.meta.raw.clone())
                     }
                     MultiTurnStreamItem::CompletionCall(call) => {
                         observation.stream_calls.push(call.raw.clone());
@@ -441,7 +445,7 @@ fn assert_blocking_hooks_see_raw(
         "{scenario}: CompletionResponse hook sees the call's raw"
     );
     assert_eq!(
-        responses[0].identity.response_id, observation.calls[0].response_id,
+        responses[0].response_id, observation.calls[0].response_id,
         "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();
@@ -451,7 +455,7 @@ fn assert_blocking_hooks_see_raw(
         "{scenario}: ModelTurnFinished hook sees the call's raw"
     );
     assert_eq!(
-        turns[0].0.response_id, observation.calls[0].response_id,
+        turns[0].0.meta.response_id, observation.calls[0].response_id,
         "{scenario}: hook and record agree on the attempt"
     );
 }
@@ -482,7 +486,7 @@ fn assert_streamed_hooks_see_raw(
         "{scenario}: CompletionResponse hook sees the terminal's raw"
     );
     assert_eq!(
-        responses[0].identity.response_id, observation.calls[0].response_id,
+        responses[0].response_id, observation.calls[0].response_id,
         "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();

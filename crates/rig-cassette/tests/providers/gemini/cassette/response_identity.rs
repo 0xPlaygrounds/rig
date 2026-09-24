@@ -25,7 +25,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
                 .expect("completion should succeed");
 
             assert_eq!(
-                response.provider_request_id, None,
+                response.end.meta.provider_request_id, None,
                 "Gemini reports no request-id header; None is the documented outcome"
             );
         },
@@ -54,7 +54,7 @@ async fn streaming_request_id_is_none_by_design() {
             }
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_eq!(
-                terminal.provider_request_id, None,
+                terminal.meta.provider_request_id, None,
                 "blocking/streaming parity for the None provider"
             );
         },
@@ -86,7 +86,7 @@ async fn agent_run_reports_none_identity() {
 
             let turns = probe.turn_identities();
             assert_eq!(turns.len(), 1);
-            assert_eq!(turns[0].provider_request_id, None);
+            assert_eq!(turns[0].meta.provider_request_id, None);
             assert_eq!(
                 response.completion_calls[0].provider_request_id, None,
                 "Gemini reports no request-id header; None is the documented outcome"
@@ -122,7 +122,7 @@ async fn streamed_agent_run_reports_none_identity() {
 
             let turns = probe.turn_identities();
             assert_eq!(turns.len(), 1);
-            assert_eq!(turns[0].provider_request_id, None);
+            assert_eq!(turns[0].meta.provider_request_id, None);
         },
     )
     .await;

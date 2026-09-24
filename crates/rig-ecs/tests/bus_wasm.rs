@@ -31,6 +31,7 @@ use std::{
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
+    completion::CompletionEnd,
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
     },
@@ -38,7 +39,6 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     serve::{Dispatch, Reply, Serve, ServingPolicy},
-    streaming::StreamFinal,
 };
 use rig_ecs::bus::{BusPlugin, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed};
 use wasm_bindgen_test::wasm_bindgen_test;
@@ -71,12 +71,19 @@ impl Serve for BrowserModel {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
                 self.served.set(self.served.get() + 1);
-                let response = CompletionResponse::new(
-                    vec![AssistantContent::text("hello from the browser")],
-                    Usage::default(),
-                    "browser",
-                    serde_json::json!({ "provider": "browser" }),
-                );
+                let response = rig_core::completion::CompletionResponse {
+                    choice: vec![AssistantContent::text("hello from the browser")],
+                    end: rig_core::completion::CompletionEnd::new(
+                        rig_core::response::ResponseMeta {
+                            usage: Usage::default(),
+                            raw: serde_json::json!({ "provider": "browser" }),
+                            ..rig_core::response::ResponseMeta::new(
+                                rig_core::id::ProviderName::new("browser")
+                                    .expect("a provider name"),
+                            )
+                        },
+                    ),
+                };
                 Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             EffectKind::Completion { stream: true, .. } => {
@@ -94,10 +101,15 @@ impl Serve for BrowserModel {
                         }
                     }
                     let _ = out
-                        .finish(StreamFinal::new(
-                            "browser",
-                            Usage::default(),
-                            serde_json::json!({ "provider": "browser" }),
+                        .finish(rig_core::completion::CompletionEnd::new(
+                            rig_core::response::ResponseMeta {
+                                usage: Usage::default(),
+                                raw: serde_json::json!({ "provider": "browser" }),
+                                ..rig_core::response::ResponseMeta::new(
+                                    rig_core::id::ProviderName::new("browser")
+                                        .expect("a provider name"),
+                                )
+                            },
                         ))
                         .await;
                 })
@@ -351,10 +363,14 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let (release, wait) = futures::channel::oneshot::channel::<()>();
         let mut stream = Reply::written(move |writer| async move {
             writer
-                .finish(StreamFinal::new(
-                    "local",
-                    Usage::default(),
-                    serde_json::json!({ "provider": "local" }),
+                .finish(rig_core::completion::CompletionEnd::new(
+                    rig_core::response::ResponseMeta {
+                        usage: Usage::default(),
+                        raw: serde_json::json!({ "provider": "local" }),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("local").expect("a provider name"),
+                        )
+                    },
                 ))
                 .await
                 .unwrap();

@@ -108,12 +108,16 @@ impl Serve for Latched {
         } else {
             vec![call("c-two", "add", serde_json::json!({"x": 2, "y": 0}))]
         };
-        rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(CompletionResponse {
             choice,
-            Usage::default(),
-            "latched",
-            serde_json::json!({}),
-        ))))
+            end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("latched").expect("a provider name"),
+                )
+            }),
+        })))
     }
 }
 
@@ -254,12 +258,19 @@ fn answer_coincident_models(
         commands
             .entity(entity)
             .insert(rig_ecs::bus::WorldOutcome::new(Ok(Outcome::Completion(
-                CompletionResponse::new(
+                CompletionResponse {
                     choice,
-                    Usage::default(),
-                    "coincident",
-                    serde_json::json!({}),
-                ),
+                    end: rig_core::completion::CompletionEnd::new(
+                        rig_core::response::ResponseMeta {
+                            usage: Usage::default(),
+                            raw: serde_json::json!({}),
+                            ..rig_core::response::ResponseMeta::new(
+                                rig_core::id::ProviderName::new("coincident")
+                                    .expect("a provider name"),
+                            )
+                        },
+                    ),
+                },
             ))));
     }
 }

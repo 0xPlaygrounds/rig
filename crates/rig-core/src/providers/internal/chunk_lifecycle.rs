@@ -3,12 +3,14 @@
 //! text, and tool events. This module is not a stable public API.
 //!
 //! ```
+//! use rig_core::id::ProviderName;
 //! use rig_core::operation::AdapterOutput;
 //! use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 //! use rig_core::streaming::MintKind;
 //! let mut lifecycle = MintedReasoningLifecycle::new(MintKind::Reasoning);
-//! let mut output = AdapterOutput::new();
+//! let mut output = AdapterOutput::new(ProviderName::new("example")?);
 //! lifecycle.emit_chunk(ChunkParts { reasoning: Some("Thinking".into()), ..Default::default() }, &mut output);
+//! # Ok::<(), rig_core::id::EmptyId>(())
 //! ```
 
 use crate::operation::AdapterOutput;

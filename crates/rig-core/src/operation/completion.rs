@@ -10,13 +10,14 @@
 //! assert_eq!(output.len(), 3);
 //! ```
 
-use crate::completion::{CompletionRequest, CompletionResponse};
+use crate::completion::{CompletionEnd, CompletionRequest, CompletionResponse, ReportedEnd};
 use crate::error::ProviderError;
+use crate::id::{ProviderName, RequestId};
 use crate::streaming::{
     Absorbed, BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, FoldStep, MintKind,
-    StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd, UnknownPayload,
+    StreamEvent, SyntheticIds, ToolCallEnd, UnknownPayload,
 };
-use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
+use crate::telemetry::{GenAiOperation, Recorded, SpanBuilder};
 use crate::wire::{Fold, Operation, Reply, Sink};
 
 /// Generating an assistant turn, unary or streamed.
@@ -64,15 +65,6 @@ impl Operation for Completion {
         request.model.as_deref()
     }
 
-    fn stamp_request_id(event: &mut Self::Event, request_id: &Option<crate::id::RequestId>) {
-        // The terminal's own id wins: it saw the reply that carried it.
-        if let StreamEvent::Final(terminal) = event
-            && terminal.provider_request_id.is_none()
-        {
-            terminal.provider_request_id = request_id.clone();
-        }
-    }
-
     fn span(
         provider: &str,
         model: Option<&str>,
@@ -91,34 +83,28 @@ impl Operation for Completion {
             .build()
     }
 
-    // Both prefer the response identity, falling back to the message identity.
-    fn record(span: &tracing::Span, response: &Self::Response) {
-        span.record_response(
-            response
-                .response_id
-                .as_deref()
-                .or(response.message_id.as_deref()),
-            response.model.as_deref(),
-            &response.usage,
-        );
+    fn recorded(response: &Self::Response) -> Option<Recorded<'_>> {
+        Some(response.end.recorded())
     }
 
-    fn record_event(span: &tracing::Span, event: &Self::Event) {
-        if let StreamEvent::Final(terminal) = event {
-            span.record_response(
-                terminal
-                    .response_id
-                    .as_deref()
-                    .or(terminal.message_id.as_deref()),
-                terminal.model.as_deref(),
-                &terminal.usage,
-            );
+    fn recorded_event(event: &Self::Event) -> Option<Recorded<'_>> {
+        match event {
+            StreamEvent::Final(terminal) => Some(terminal.recorded()),
+            _ => None,
         }
     }
 }
 
 impl Sink<Completion> for AdapterOutput {
     type Laws = Laws;
+
+    fn for_reply(provider: &ProviderName) -> Self {
+        Self::new(provider.clone())
+    }
+
+    fn set_request_id(&mut self, request_id: Option<RequestId>) {
+        AdapterOutput::set_request_id(self, request_id);
+    }
 
     fn push(&mut self, item: Result<StreamEvent, ProviderError>) {
         AdapterOutput::push(self, item);
@@ -148,10 +134,8 @@ impl Sink<Completion> for AdapterOutput {
 #[derive(Default)]
 pub struct CompletionFold {
     accumulator: BlockAccumulator,
-    terminal: Option<StreamFinal>,
+    terminal: Option<crate::completion::CompletionEnd>,
     message_id: Option<crate::id::MessageId>,
-    /// Only written by the fold step; the response's provider is the wire's.
-    provider: String,
 }
 
 impl Fold<Completion> for CompletionFold {
@@ -160,8 +144,6 @@ impl Fold<Completion> for CompletionFold {
             accumulator: &mut self.accumulator,
             response: &mut self.terminal,
             message_id: &mut self.message_id,
-            provider: &mut self.provider,
-            provider_from_terminal: false,
         };
         match crate::streaming::absorb(step, event) {
             Absorbed::Yield(_) | Absorbed::Skip => Ok(()),
@@ -171,28 +153,32 @@ impl Fold<Completion> for CompletionFold {
         }
     }
 
+    /// The response to a buffered reply. Its metadata is the driver's facts
+    /// about the reply, the whole reply document as `raw` among them, and
+    /// what the terminal record reported; a reply without a terminal record
+    /// reports nothing beyond the driver's facts.
     fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
-        // The buffered reply's document is the response's `raw`, not the
-        // terminal record's: the wire decoded the whole body at once.
-        let issuer = self
-            .terminal
-            .as_ref()
-            .map_or(reply.provider.to_string(), |terminal| {
-                terminal.issuer().to_owned()
-            });
-        let mut response = crate::streaming::fold_finish(
+        let terminal = match self.terminal {
+            Some(terminal) => CompletionEnd {
+                meta: reply.meta(
+                    terminal.meta.model,
+                    terminal.meta.response_id,
+                    terminal.meta.usage,
+                ),
+                ..terminal
+            },
+            None => CompletionEnd {
+                finish_reason: None,
+                message_id: None,
+                reasoning_issuer: None,
+                meta: reply.meta(None, None, crate::completion::Usage::default()),
+            },
+        };
+        Ok(crate::streaming::fold_finish(
             self.accumulator,
-            self.terminal.as_ref(),
+            terminal,
             self.message_id,
-            reply.provider.into_string(),
-            &issuer,
-            reply.raw,
-        );
-        // The terminal's own id wins; the reply headers only fill a gap.
-        if response.provider_request_id.is_none() {
-            response.provider_request_id = reply.provider_request_id;
-        }
-        Ok(response)
+        ))
     }
 }
 
@@ -200,8 +186,14 @@ impl Fold<Completion> for CompletionFold {
 /// Helpers open unseen tool and reasoning keys before deltas. Bare text uses
 /// an active key, minting a new one after non-text block events other than
 /// message starts. Frame-classification errors are handled by the driver.
-#[derive(Debug, Default)]
-pub struct AdapterOutput {
+///
+/// A decoder's output belongs to one reply: its [`Attribution`] holds the
+/// driver's facts about it and completes the decoder's terminal record with
+/// them. An unattributed output (`A = ()`) relays records that are already
+/// complete, as a bus handler does.
+#[derive(Debug)]
+pub struct AdapterOutput<A = Attribution> {
+    attribution: A,
     items: Vec<Result<StreamEvent, ProviderError>>,
     /// Minter for text blocks opened by a bare text delta.
     text_ids: Option<SyntheticIds>,
@@ -225,19 +217,78 @@ pub struct AdapterOutput {
     opened: std::collections::HashSet<BlockId>,
 }
 
+/// The driver's facts about one reply: the provider that answered and, once
+/// the headers arrived, the transport request id.
+#[derive(Debug, Clone)]
+pub struct Attribution {
+    provider: ProviderName,
+    request_id: Option<RequestId>,
+}
+
 impl AdapterOutput {
-    /// An empty output buffer.
-    pub fn new() -> Self {
-        Self::default()
+    /// An empty output buffer for a reply from `provider`.
+    pub fn new(provider: ProviderName) -> Self {
+        Self::with(
+            Attribution {
+                provider,
+                request_id: None,
+            },
+            false,
+        )
     }
 
+    /// An empty output for the same reply, to assemble events in before they
+    /// join this one.
+    pub fn scratch(&self) -> Self {
+        Self::with(self.attribution.clone(), false)
+    }
+
+    /// Record the reply's transport request id, once its headers arrived.
+    /// Every terminal record written after carries it.
+    pub fn set_request_id(&mut self, request_id: Option<RequestId>) {
+        self.attribution.request_id = request_id;
+    }
+
+    /// The provider's terminal record, completed with the provider and the
+    /// transport request id; the driver stops consuming after it.
+    pub fn final_record(&mut self, record: ReportedEnd) {
+        let end = record.complete(
+            self.attribution.provider.clone(),
+            self.attribution.request_id.clone(),
+        );
+        self.push(Ok(StreamEvent::Final(end)));
+    }
+}
+
+impl AdapterOutput<()> {
     /// An output that closes the blocks it opened itself at their boundary
     /// and at [`close_active_blocks`](Self::close_active_blocks): what a
-    /// bus handler writes through, where nothing else will close them.
+    /// bus handler writes through, where nothing else will close them. Its
+    /// terminal record arrives complete, pushed as an event.
     pub fn self_closing() -> Self {
+        Self::with((), true)
+    }
+
+    /// An output that relays a reply whose terminal record is already
+    /// complete.
+    pub fn relay() -> Self {
+        Self::with((), false)
+    }
+}
+
+impl<A> AdapterOutput<A> {
+    fn with(attribution: A, self_closing: bool) -> Self {
         Self {
-            self_closing: true,
-            ..Self::default()
+            attribution,
+            items: Vec::new(),
+            text_ids: None,
+            active_text: None,
+            reasoning_ids: None,
+            active_reasoning: None,
+            auto_text: None,
+            auto_reasoning: None,
+            self_closing,
+            opened: std::collections::HashSet::new(),
         }
     }
 
@@ -646,11 +697,6 @@ impl AdapterOutput {
             id: BlockId::wire(id),
             kind: BlockKind::Message,
         }));
-    }
-
-    /// The provider's terminal record; the driver stops consuming after it.
-    pub fn final_record(&mut self, record: StreamFinal) {
-        self.push(Ok(StreamEvent::Final(record)));
     }
 
     /// An unmodeled provider item on the passthrough channel.

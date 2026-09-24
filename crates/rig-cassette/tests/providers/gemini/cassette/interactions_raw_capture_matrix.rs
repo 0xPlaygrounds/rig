@@ -104,7 +104,7 @@ async fn raw_roundtrips_interaction() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = &response.raw;
+            let raw = &response.end.meta.raw;
 
             let typed = Interaction::deserialize(raw)
                 .expect("raw must deserialize into the Interactions API's Interaction");
@@ -112,18 +112,21 @@ async fn raw_roundtrips_interaction() {
             // One decoder folded the normalized response out of these very
             // bytes, so every field it kept must be the one the document
             // carries — `raw` is additive, never a divergent second view.
-            assert_eq!(typed.model.as_deref(), response.model.as_deref());
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+            assert_eq!(typed.model.as_deref(), response.end.meta.model.as_deref());
+            assert_eq!(
+                Some(typed.id.as_str()),
+                response.end.meta.response_id.as_deref()
+            );
             assert_eq!(
                 typed
                     .usage
                     .as_ref()
                     .and_then(|usage| usage.total_input_tokens),
-                response.usage.input_tokens
+                response.end.meta.usage.input_tokens
             );
             assert_eq!(
                 typed.usage.as_ref().and_then(|usage| usage.total_tokens),
-                response.usage.total_tokens
+                response.end.meta.usage.total_tokens
             );
             assert!(
                 matches!(typed.status, Some(InteractionStatus::Completed)),
@@ -131,7 +134,7 @@ async fn raw_roundtrips_interaction() {
                 typed.status
             );
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::Stop),
                 "and `completed` reaches the caller as rig's Stop"
             );
@@ -160,7 +163,7 @@ async fn raw_exposes_lifecycle_fields() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = &response.raw;
+            let raw = &response.end.meta.raw;
             *sink.lock().expect("observation lock") = Some(raw.clone());
 
             // The normalized response provably lacks these: `object` and `steps`
@@ -170,7 +173,7 @@ async fn raw_exposes_lifecycle_fields() {
             assert!(!json_contains_key(&normalized, "object"));
             assert!(!json_contains_key(&normalized, "steps"));
             assert!(!json_contains_key(&normalized, "status"));
-            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+            assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
         },
     )
     .await;

@@ -449,31 +449,35 @@
               "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
             }
           ],
-          "usage": {
-            "input_tokens": 978,
-            "output_tokens": 16,
-            "total_tokens": 994
-          },
-          "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
-          "finish_reason": "length",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 978,
-              "completion_tokens": 16,
-              "total_tokens": 994
-            },
+          "end": {
             "finish_reason": "length",
-            "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0000956875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
+              "usage": {
+                "input_tokens": 978,
+                "output_tokens": 16,
+                "total_tokens": 994
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 978,
+                  "completion_tokens": 16,
+                  "total_tokens": 994
+                },
+                "finish_reason": "length",
+                "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0000956875
+                  }
+                }
               }
             }
           }
@@ -617,31 +621,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 978,
-            "output_tokens": 16,
-            "total_tokens": 994
-          },
           "finish_reason": "length",
-          "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
             "usage": {
-              "prompt_tokens": 978,
-              "completion_tokens": 16,
+              "input_tokens": 978,
+              "output_tokens": 16,
               "total_tokens": 994
             },
-            "finish_reason": "length",
-            "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0000956875
+            "raw": {
+              "usage": {
+                "prompt_tokens": 978,
+                "completion_tokens": 16,
+                "total_tokens": 994
+              },
+              "finish_reason": "length",
+              "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0000956875
+                }
               }
             }
           }
@@ -686,31 +692,35 @@
               "text": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap."
             }
           ],
-          "usage": {
-            "input_tokens": 978,
-            "output_tokens": 44,
-            "total_tokens": 1022
-          },
-          "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 978,
-              "completion_tokens": 44,
-              "total_tokens": 1022
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001026875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
+              "usage": {
+                "input_tokens": 978,
+                "output_tokens": 44,
+                "total_tokens": 1022
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 978,
+                  "completion_tokens": 44,
+                  "total_tokens": 1022
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0001026875
+                  }
+                }
               }
             }
           }
@@ -1070,31 +1080,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 978,
-            "output_tokens": 44,
-            "total_tokens": 1022
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
             "usage": {
-              "prompt_tokens": 978,
-              "completion_tokens": 44,
+              "input_tokens": 978,
+              "output_tokens": 44,
               "total_tokens": 1022
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001026875
+            "raw": {
+              "usage": {
+                "prompt_tokens": 978,
+                "completion_tokens": 44,
+                "total_tokens": 1022
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0001026875
+                }
               }
             }
           }

@@ -50,15 +50,20 @@ async fn manual_prompt_caching_reuses_tool_cache() {
             )
             .await;
             assert_response_contains_cache_probe(&first, CACHE_PROBE_RESPONSE);
-            assert_cache_created_or_read(&first.usage, "first prompt-cached request");
+            assert_cache_created_or_read(&first.end.meta.usage, "first prompt-cached request");
 
             let second =
                 send_cache_probe(model, CACHE_PROBE_PROMPT, cache_probe_preamble(), tools).await;
             assert_response_contains_cache_probe(&second, CACHE_PROBE_RESPONSE);
             assert!(
-                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
+                second
+                    .end
+                    .meta
+                    .usage
+                    .cached_input_tokens
+                    .is_some_and(|n| n > 0),
                 "second prompt-cached request should read cached tokens, got usage: {:?}",
-                second.usage
+                second.end.meta.usage
             );
         },
     )
@@ -121,7 +126,10 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
             )
             .await;
             assert_response_contains_cache_probe(&first, AUTOMATIC_CACHE_PROBE_RESPONSE);
-            assert_cache_created_or_read(&first.usage, "first prompt+automatic cached request");
+            assert_cache_created_or_read(
+                &first.end.meta.usage,
+                "first prompt+automatic cached request",
+            );
 
             let second = send_cache_probe(
                 model,
@@ -132,9 +140,14 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
             .await;
             assert_response_contains_cache_probe(&second, AUTOMATIC_CACHE_PROBE_RESPONSE);
             assert!(
-                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
+                second
+                    .end
+                    .meta
+                    .usage
+                    .cached_input_tokens
+                    .is_some_and(|n| n > 0),
                 "second prompt+automatic cached request should read cached tokens, got usage: {:?}",
-                second.usage
+                second.end.meta.usage
             );
         },
     )
@@ -308,7 +321,7 @@ async fn send_matrix_raw_probe(
         .completion(builder.build())
         .await
         .expect("matrix Anthropic request should succeed");
-    anthropic::completion::CompletionResponse::deserialize(&response.raw)
+    anthropic::completion::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the serialized anthropic::completion::CompletionResponse")
 }
 
@@ -359,7 +372,7 @@ async fn send_matrix_streaming_probe(
                 ..
             } => text.push_str(&delta),
             StreamEvent::Final(response) => {
-                usage = Some(response.usage);
+                usage = Some(response.meta.usage);
             }
             _ => {}
         }
@@ -1321,7 +1334,7 @@ async fn static_prefix_with_explicit_tool_marker_at_marker_limit() {
                 .expect("request at the 4-marker limit should succeed");
             let text = response_text(&response);
             assert_text_contains_cache_probe(&text, CACHE_PROBE_RESPONSE);
-            assert_cache_created_or_read(&response.usage, "marker-budget-limit request");
+            assert_cache_created_or_read(&response.end.meta.usage, "marker-budget-limit request");
         },
     )
     .await;
@@ -1408,7 +1421,7 @@ async fn send_streaming_cache_probe(
                 ..
             } => text.push_str(&delta),
             StreamEvent::Final(response) => {
-                usage = Some(response.usage);
+                usage = Some(response.meta.usage);
             }
             _ => {}
         }

@@ -33,7 +33,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 
-            let document = CompletionResponse::deserialize(&response.raw)
+            let document = CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is the Responses API's own response");
             let service_tier = document
                 .additional_parameters

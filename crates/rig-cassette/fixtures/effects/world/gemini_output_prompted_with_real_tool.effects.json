@@ -150,54 +150,58 @@
               "signature": "EsgFCsUFAWkUfRP1Vgc+TKxnGxY+9I6wKZevb490m30CsMWwSdKryYnzAe06DrQodRQvN4KT2Io2zQ8Gt/y1/vB94Mr9yRV/1LDpYgMjtoSwLiIWpwoc8n9DqjFtVQG0VT7FBEG+Jnwn0rdodWPsdzBKCiQoLRKKWzW4+mqsrKUfPey9c56NTBzpTV4BbmsgcRWiv1JkPYwkufZ8vym3K1y5tKYgHkguHukRlWJpxrpGrSd7FZY8eSy2tncy44dUUn0IK9e4Z/uP79rb4m/AjEJKLksFfF4ULRHLAwOoh9+WjdzwR7s+DXQCSMgk69Xpb0BN94xzLmSGyAJhgBIBEqOaK18wZI264PSXUnljEgfDt+bR5MLcur9A/Zbo79K/N8tGWFRSVQ5cLeyDt8DKWjWHaw9jkN0FbZtkyQB3EOlgqJ55STllweokE1Fh9PsMA9cSuTbg6Ffwnz1zkVRw2hd3sgtJi6P+Zwc02M6w+TMTB1ZUoDWBrNzCWHwcTs4zxjkCAkd2umjY+CSLK+9yFpxZw96JWc1h0Lm98QE0wc7vtBBiaGKGzeUO1BzYSWZzU+ecwQ6bhJeZyky90nO86akYqhXr5tUQ1lFtLGIL2ZtlV9wL8fwrhSlSOdZPSKQwpaJPPTRmQyKfctrPNJRXGMEEyHMjyTeYNnLuhS5Np9Kwh2PIsfVayPgiH7nqq9wIhDgs1X74j243J7zktkMNb8fzzivD/PKv1MQDtFNhPejp+0GsF7DppjGbwO/1sxxlnYoNMuT4gjBASepxZ6yzKEeoceEQR4LmXBGRv+n+QTPYC4t3nydWYpQ3C+2YNWtUjsd1FX+dnNGreuN2ARqdsoS8K21HXY/1405QVNuklkgVvdH6eWCQLhChYXPjfF1z9cwqloFX7p5mgkXONyDC67o5lC/RaPTrFsoXtCKZbTSvHfbMRQiBGyrh5Q=="
             }
           ],
-          "usage": {
-            "input_tokens": 197,
-            "output_tokens": 18,
-            "total_tokens": 408,
-            "reasoning_tokens": 193
-          },
-          "response_id": "la2yaov7I863qtsP7u7L0AE",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "la2yaov7I863qtsP7u7L0AE",
+              "usage": {
+                "input_tokens": 197,
+                "output_tokens": 18,
+                "total_tokens": 408,
+                "reasoning_tokens": 193
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 17,
+                              "y": 25
+                            },
+                            "id": "call_391688",
+                            "name": "add"
+                          },
+                          "thoughtSignature": "EsgFCsUFAWkUfRP1Vgc+TKxnGxY+9I6wKZevb490m30CsMWwSdKryYnzAe06DrQodRQvN4KT2Io2zQ8Gt/y1/vB94Mr9yRV/1LDpYgMjtoSwLiIWpwoc8n9DqjFtVQG0VT7FBEG+Jnwn0rdodWPsdzBKCiQoLRKKWzW4+mqsrKUfPey9c56NTBzpTV4BbmsgcRWiv1JkPYwkufZ8vym3K1y5tKYgHkguHukRlWJpxrpGrSd7FZY8eSy2tncy44dUUn0IK9e4Z/uP79rb4m/AjEJKLksFfF4ULRHLAwOoh9+WjdzwR7s+DXQCSMgk69Xpb0BN94xzLmSGyAJhgBIBEqOaK18wZI264PSXUnljEgfDt+bR5MLcur9A/Zbo79K/N8tGWFRSVQ5cLeyDt8DKWjWHaw9jkN0FbZtkyQB3EOlgqJ55STllweokE1Fh9PsMA9cSuTbg6Ffwnz1zkVRw2hd3sgtJi6P+Zwc02M6w+TMTB1ZUoDWBrNzCWHwcTs4zxjkCAkd2umjY+CSLK+9yFpxZw96JWc1h0Lm98QE0wc7vtBBiaGKGzeUO1BzYSWZzU+ecwQ6bhJeZyky90nO86akYqhXr5tUQ1lFtLGIL2ZtlV9wL8fwrhSlSOdZPSKQwpaJPPTRmQyKfctrPNJRXGMEEyHMjyTeYNnLuhS5Np9Kwh2PIsfVayPgiH7nqq9wIhDgs1X74j243J7zktkMNb8fzzivD/PKv1MQDtFNhPejp+0GsF7DppjGbwO/1sxxlnYoNMuT4gjBASepxZ6yzKEeoceEQR4LmXBGRv+n+QTPYC4t3nydWYpQ3C+2YNWtUjsd1FX+dnNGreuN2ARqdsoS8K21HXY/1405QVNuklkgVvdH6eWCQLhChYXPjfF1z9cwqloFX7p5mgkXONyDC67o5lC/RaPTrFsoXtCKZbTSvHfbMRQiBGyrh5Q=="
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3-flash-preview",
+                "responseId": "la2yaov7I863qtsP7u7L0AE",
+                "usageMetadata": {
+                  "candidatesTokenCount": 18,
+                  "promptTokenCount": 197,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 17,
-                          "y": 25
-                        },
-                        "id": "call_391688",
-                        "name": "add"
-                      },
-                      "thoughtSignature": "EsgFCsUFAWkUfRP1Vgc+TKxnGxY+9I6wKZevb490m30CsMWwSdKryYnzAe06DrQodRQvN4KT2Io2zQ8Gt/y1/vB94Mr9yRV/1LDpYgMjtoSwLiIWpwoc8n9DqjFtVQG0VT7FBEG+Jnwn0rdodWPsdzBKCiQoLRKKWzW4+mqsrKUfPey9c56NTBzpTV4BbmsgcRWiv1JkPYwkufZ8vym3K1y5tKYgHkguHukRlWJpxrpGrSd7FZY8eSy2tncy44dUUn0IK9e4Z/uP79rb4m/AjEJKLksFfF4ULRHLAwOoh9+WjdzwR7s+DXQCSMgk69Xpb0BN94xzLmSGyAJhgBIBEqOaK18wZI264PSXUnljEgfDt+bR5MLcur9A/Zbo79K/N8tGWFRSVQ5cLeyDt8DKWjWHaw9jkN0FbZtkyQB3EOlgqJ55STllweokE1Fh9PsMA9cSuTbg6Ffwnz1zkVRw2hd3sgtJi6P+Zwc02M6w+TMTB1ZUoDWBrNzCWHwcTs4zxjkCAkd2umjY+CSLK+9yFpxZw96JWc1h0Lm98QE0wc7vtBBiaGKGzeUO1BzYSWZzU+ecwQ6bhJeZyky90nO86akYqhXr5tUQ1lFtLGIL2ZtlV9wL8fwrhSlSOdZPSKQwpaJPPTRmQyKfctrPNJRXGMEEyHMjyTeYNnLuhS5Np9Kwh2PIsfVayPgiH7nqq9wIhDgs1X74j243J7zktkMNb8fzzivD/PKv1MQDtFNhPejp+0GsF7DppjGbwO/1sxxlnYoNMuT4gjBASepxZ6yzKEeoceEQR4LmXBGRv+n+QTPYC4t3nydWYpQ3C+2YNWtUjsd1FX+dnNGreuN2ARqdsoS8K21HXY/1405QVNuklkgVvdH6eWCQLhChYXPjfF1z9cwqloFX7p5mgkXONyDC67o5lC/RaPTrFsoXtCKZbTSvHfbMRQiBGyrh5Q=="
+                      "modality": "TEXT",
+                      "tokenCount": 197
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-3-flash-preview",
-            "responseId": "la2yaov7I863qtsP7u7L0AE",
-            "usageMetadata": {
-              "candidatesTokenCount": 18,
-              "promptTokenCount": 197,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 197
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 193,
+                  "totalTokenCount": 408
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 193,
-              "totalTokenCount": 408
+              }
             }
           }
         }
@@ -337,46 +341,50 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 419,
-            "output_tokens": 22,
-            "total_tokens": 529,
-            "reasoning_tokens": 88
-          },
-          "response_id": "l62yavndH8-O6dkPzcrF8Ac",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "l62yavndH8-O6dkPzcrF8Ac",
+              "usage": {
+                "input_tokens": 419,
+                "output_tokens": 22,
+                "total_tokens": 529,
+                "reasoning_tokens": 88
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "{\"category\":\"Technology\",\"summary\":\"The sum is 42.\",\"title\":\"Seattle Rust Meetup\"}",
+                          "thoughtSignature": "EqkDCqYDAWkUfRMJKdb1/GvZxRSVQx5qnpAzl6SAlZPSDC3sQEZCJ81l7jDyliEbZfGa9BrliBABq8gI8kLQxEJ9IgxsLFTx3dAZW7kIsJ8u73cVFWo9n59dnLD6hASoD3OCAPcypmuZQw7O5jeQKxFhwir3J7GIWJs0KurmzdN0qj9MOZNhMxu2jmmHZaZbDPfrdZ+7h0x8SYwsEl7XxQGHGL1vZr4BZpn9SrK3gUapUJfUA/ytz9+Kh2Ip3fbOisoxkeFU+5qX+2cEQoTvhV8jbNuVGuMIalaej5Yyaolxif13j5PgPqQdyZyq6oy++mWtpSlgCJBsMh44Z43FmIOWl2RBuD3g7p8mfRyxAw7BXQU9Sg+NcjuuV+Bz+nnieqY8uI6iAzHjWiFfKGMqOUOtkv/JQxbH53Ci60Gc9BwMDks8B6O2n+KyYyPo1PMrmflxdLHaeTQ8ydtUwqlDp4HruAZa0yRlu1hRhtzBo6gcoFvsYoFzvxykOPql1SLG5mQ0POovjnT/Go9TXVF8jtV8Ofq073dmwh9iVDOo16/iwucuFlH+PdpwDpM="
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3-flash-preview",
+                "responseId": "l62yavndH8-O6dkPzcrF8Ac",
+                "usageMetadata": {
+                  "candidatesTokenCount": 22,
+                  "promptTokenCount": 419,
+                  "promptTokensDetails": [
                     {
-                      "text": "{\"category\":\"Technology\",\"summary\":\"The sum is 42.\",\"title\":\"Seattle Rust Meetup\"}",
-                      "thoughtSignature": "EqkDCqYDAWkUfRMJKdb1/GvZxRSVQx5qnpAzl6SAlZPSDC3sQEZCJ81l7jDyliEbZfGa9BrliBABq8gI8kLQxEJ9IgxsLFTx3dAZW7kIsJ8u73cVFWo9n59dnLD6hASoD3OCAPcypmuZQw7O5jeQKxFhwir3J7GIWJs0KurmzdN0qj9MOZNhMxu2jmmHZaZbDPfrdZ+7h0x8SYwsEl7XxQGHGL1vZr4BZpn9SrK3gUapUJfUA/ytz9+Kh2Ip3fbOisoxkeFU+5qX+2cEQoTvhV8jbNuVGuMIalaej5Yyaolxif13j5PgPqQdyZyq6oy++mWtpSlgCJBsMh44Z43FmIOWl2RBuD3g7p8mfRyxAw7BXQU9Sg+NcjuuV+Bz+nnieqY8uI6iAzHjWiFfKGMqOUOtkv/JQxbH53Ci60Gc9BwMDks8B6O2n+KyYyPo1PMrmflxdLHaeTQ8ydtUwqlDp4HruAZa0yRlu1hRhtzBo6gcoFvsYoFzvxykOPql1SLG5mQ0POovjnT/Go9TXVF8jtV8Ofq073dmwh9iVDOo16/iwucuFlH+PdpwDpM="
+                      "modality": "TEXT",
+                      "tokenCount": 419
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-3-flash-preview",
-            "responseId": "l62yavndH8-O6dkPzcrF8Ac",
-            "usageMetadata": {
-              "candidatesTokenCount": 22,
-              "promptTokenCount": 419,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 419
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 88,
+                  "totalTokenCount": 529
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 88,
-              "totalTokenCount": 529
+              }
             }
           }
         }

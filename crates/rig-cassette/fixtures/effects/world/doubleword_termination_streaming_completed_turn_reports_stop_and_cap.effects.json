@@ -101,45 +101,49 @@
               "text": "cedar"
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 3,
-            "total_tokens": 40,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
-          "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 37,
-              "completion_tokens": 3,
-              "total_tokens": 40,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-9B",
+              "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 3,
+                "total_tokens": 40,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
-            "model": "Qwen/Qwen3.5-9B",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 37,
+                  "completion_tokens": 3,
+                  "total_tokens": 40,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0
+                },
+                "finish_reason": "stop",
+                "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
+                "model": "Qwen/Qwen3.5-9B",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+                }
+              }
             }
           }
         }
@@ -170,45 +174,47 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 3,
-            "total_tokens": 40,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 37,
-              "completion_tokens": 3,
-              "total_tokens": 40,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
+          "meta": {
+            "provider": "doubleword",
             "model": "Qwen/Qwen3.5-9B",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+            "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
+            "usage": {
+              "input_tokens": 37,
+              "output_tokens": 3,
+              "total_tokens": 40,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 37,
+                "completion_tokens": 3,
+                "total_tokens": 40,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "cache_write_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "cache_creation": {
+                  "ephemeral_1h_input_tokens": 0,
+                  "ephemeral_24h_input_tokens": 0,
+                  "ephemeral_5m_input_tokens": 0
+                },
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              },
+              "finish_reason": "stop",
+              "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
+              "model": "Qwen/Qwen3.5-9B",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+              }
             }
           }
         }

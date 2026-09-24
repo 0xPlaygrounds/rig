@@ -529,39 +529,43 @@
               "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red"
             }
           ],
-          "usage": {
-            "input_tokens": 30,
-            "output_tokens": 16,
-            "total_tokens": 46,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
-          "provider_request_id": "req_657f280864444acab2ddf9574d4220ec",
-          "finish_reason": "length",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 30,
-              "completion_tokens": 16,
-              "total_tokens": 46,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
+          "end": {
             "finish_reason": "length",
-            "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
-            "model": "gpt-4o-mini-2024-07-18",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "1fTf7unpjY",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d9f006541a"
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-mini-2024-07-18",
+              "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
+              "provider_request_id": "req_657f280864444acab2ddf9574d4220ec",
+              "usage": {
+                "input_tokens": 30,
+                "output_tokens": 16,
+                "total_tokens": 46,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 30,
+                  "completion_tokens": 16,
+                  "total_tokens": 46,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  }
+                },
+                "finish_reason": "length",
+                "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
+                "model": "gpt-4o-mini-2024-07-18",
+                "additional_params": {
+                  "created": 0,
+                  "obfuscation": "1fTf7unpjY",
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "system_fingerprint": "fp_d9f006541a"
+                }
+              }
             }
           }
         }
@@ -704,39 +708,41 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 30,
-            "output_tokens": 16,
-            "total_tokens": 46,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "length",
-          "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
-          "provider_request_id": "req_657f280864444acab2ddf9574d4220ec",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 30,
-              "completion_tokens": 16,
-              "total_tokens": 46,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "length",
-            "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
+          "meta": {
+            "provider": "openai",
             "model": "gpt-4o-mini-2024-07-18",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "1fTf7unpjY",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d9f006541a"
+            "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
+            "provider_request_id": "req_657f280864444acab2ddf9574d4220ec",
+            "usage": {
+              "input_tokens": 30,
+              "output_tokens": 16,
+              "total_tokens": 46,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 30,
+                "completion_tokens": 16,
+                "total_tokens": 46,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                }
+              },
+              "finish_reason": "length",
+              "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
+              "model": "gpt-4o-mini-2024-07-18",
+              "additional_params": {
+                "created": 0,
+                "obfuscation": "1fTf7unpjY",
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "system_fingerprint": "fp_d9f006541a"
+              }
             }
           }
         }
@@ -780,39 +786,43 @@
               "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup."
             }
           ],
-          "usage": {
-            "input_tokens": 30,
-            "output_tokens": 38,
-            "total_tokens": 68,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
-          "provider_request_id": "req_7fd0e6f8118342719947fd6475c3733b",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 30,
-              "completion_tokens": 38,
-              "total_tokens": 68,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
-            "model": "gpt-4o-mini-2024-07-18",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "5ypxEgz79L",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d9f006541a"
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-mini-2024-07-18",
+              "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
+              "provider_request_id": "req_7fd0e6f8118342719947fd6475c3733b",
+              "usage": {
+                "input_tokens": 30,
+                "output_tokens": 38,
+                "total_tokens": 68,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 30,
+                  "completion_tokens": 38,
+                  "total_tokens": 68,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  }
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
+                "model": "gpt-4o-mini-2024-07-18",
+                "additional_params": {
+                  "created": 0,
+                  "obfuscation": "5ypxEgz79L",
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "system_fingerprint": "fp_d9f006541a"
+                }
+              }
             }
           }
         }
@@ -1131,39 +1141,41 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 30,
-            "output_tokens": 38,
-            "total_tokens": 68,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
-          "provider_request_id": "req_7fd0e6f8118342719947fd6475c3733b",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 30,
-              "completion_tokens": 38,
-              "total_tokens": 68,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
+          "meta": {
+            "provider": "openai",
             "model": "gpt-4o-mini-2024-07-18",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "5ypxEgz79L",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d9f006541a"
+            "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
+            "provider_request_id": "req_7fd0e6f8118342719947fd6475c3733b",
+            "usage": {
+              "input_tokens": 30,
+              "output_tokens": 38,
+              "total_tokens": 68,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 30,
+                "completion_tokens": 38,
+                "total_tokens": 68,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                }
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
+              "model": "gpt-4o-mini-2024-07-18",
+              "additional_params": {
+                "created": 0,
+                "obfuscation": "5ypxEgz79L",
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "system_fingerprint": "fp_d9f006541a"
+              }
             }
           }
         }

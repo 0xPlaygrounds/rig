@@ -9,8 +9,8 @@
 
 use serde_json::{Map, Value, json};
 
+use super::streaming::MockFinal;
 use crate::completion::{AssistantContent, FinishReason, Usage};
-use crate::streaming::StreamFinal;
 
 /// A unary turn's document.
 pub(super) fn turn(
@@ -34,7 +34,7 @@ pub(super) fn turn(
 
 /// The document the mock reports as the `raw` of a streamed turn's terminal
 /// `record`: the record in the mock's own layout.
-pub fn mock_terminal_document(record: &StreamFinal) -> Result<Value, serde_json::Error> {
+pub fn mock_terminal_document(record: &MockFinal) -> Result<Value, serde_json::Error> {
     let mut document = Map::new();
     document.insert("usage".into(), serde_json::to_value(record.usage)?);
     document.insert(

@@ -70,56 +70,60 @@
               "text": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common sources of security vulnerabilities and software crashes."
             }
           ],
-          "usage": {
-            "input_tokens": 1008,
-            "output_tokens": 55,
-            "total_tokens": 1063
-          },
-          "response_id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common sources of security vulnerabilities and software crashes.",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": null
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "response_id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd",
+              "usage": {
+                "input_tokens": 1008,
+                "output_tokens": 55,
+                "total_tokens": 1063
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common sources of security vulnerabilities and software crashes.",
+                      "name": null,
+                      "reasoning_content": null,
+                      "role": "assistant",
+                      "tool_calls": null
+                    }
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0006461
+                },
+                "created": 0,
+                "id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "usage": {
+                  "completion_tokens": 55,
+                  "prompt_tokens": 1008,
+                  "total_tokens": 1063
+                },
+                "venice_parameters": {
+                  "disable_thinking": true,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
                 }
               }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.0006461
-            },
-            "created": 0,
-            "id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "usage": {
-              "completion_tokens": 55,
-              "prompt_tokens": 1008,
-              "total_tokens": 1063
-            },
-            "venice_parameters": {
-              "disable_thinking": true,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
             }
           }
         }

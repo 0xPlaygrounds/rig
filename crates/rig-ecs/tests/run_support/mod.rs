@@ -69,12 +69,19 @@ impl Serve for Capturing {
         match kind {
             EffectKind::Completion { request, .. } => {
                 self.requests.lock().expect("requests").push(request);
-                let response = CompletionResponse::new(
-                    vec![AssistantContent::text(&self.answer)],
-                    Usage::default(),
-                    "capturing",
-                    serde_json::json!({ "provider": "capturing" }),
-                );
+                let response = CompletionResponse {
+                    choice: vec![AssistantContent::text(&self.answer)],
+                    end: rig_core::completion::CompletionEnd::new(
+                        rig_core::response::ResponseMeta {
+                            usage: Usage::default(),
+                            raw: serde_json::json!({ "provider": "capturing" }),
+                            ..rig_core::response::ResponseMeta::new(
+                                rig_core::id::ProviderName::new("capturing")
+                                    .expect("a provider name"),
+                            )
+                        },
+                    ),
+                };
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
@@ -275,12 +282,19 @@ impl Serve for Scripted {
                     .expect("turns")
                     .pop_front()
                     .unwrap_or_else(|| vec![AssistantContent::text("done")]);
-                let response = CompletionResponse::new(
+                let response = CompletionResponse {
                     choice,
-                    Usage::default(),
-                    "scripted",
-                    serde_json::json!({}),
-                );
+                    end: rig_core::completion::CompletionEnd::new(
+                        rig_core::response::ResponseMeta {
+                            usage: Usage::default(),
+                            raw: serde_json::json!({}),
+                            ..rig_core::response::ResponseMeta::new(
+                                rig_core::id::ProviderName::new("scripted")
+                                    .expect("a provider name"),
+                            )
+                        },
+                    ),
+                };
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(

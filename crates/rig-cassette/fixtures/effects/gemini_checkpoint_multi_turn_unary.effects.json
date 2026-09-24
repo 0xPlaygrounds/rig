@@ -113,49 +113,53 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 141,
-            "output_tokens": 15,
-            "total_tokens": 156
-          },
-          "response_id": "n3izatCCA8Hfz7IPzaqI-A8",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "n3izatCCA8Hfz7IPzaqI-A8",
+              "usage": {
+                "input_tokens": 141,
+                "output_tokens": 15,
+                "total_tokens": 156
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "token": "start"
+                            },
+                            "name": "checkpoint_step"
+                          }
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "n3izatCCA8Hfz7IPzaqI-A8",
+                "usageMetadata": {
+                  "candidatesTokenCount": 15,
+                  "promptTokenCount": 141,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "token": "start"
-                        },
-                        "name": "checkpoint_step"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 141
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izatCCA8Hfz7IPzaqI-A8",
-            "usageMetadata": {
-              "candidatesTokenCount": 15,
-              "promptTokenCount": 141,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 141
+                  "serviceTier": "standard",
+                  "totalTokenCount": 156
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 156
+              }
             }
           }
         }
@@ -293,49 +297,53 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 191,
-            "output_tokens": 19,
-            "total_tokens": 210
-          },
-          "response_id": "n3izaq7jGoqsz7IP3-jl0Ac",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "n3izaq7jGoqsz7IP3-jl0Ac",
+              "usage": {
+                "input_tokens": 191,
+                "output_tokens": 19,
+                "total_tokens": 210
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "token": "cobalt-17"
+                            },
+                            "name": "checkpoint_step"
+                          }
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "n3izaq7jGoqsz7IP3-jl0Ac",
+                "usageMetadata": {
+                  "candidatesTokenCount": 19,
+                  "promptTokenCount": 191,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "token": "cobalt-17"
-                        },
-                        "name": "checkpoint_step"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 191
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izaq7jGoqsz7IP3-jl0Ac",
-            "usageMetadata": {
-              "candidatesTokenCount": 19,
-              "promptTokenCount": 191,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 191
+                  "serviceTier": "standard",
+                  "totalTokenCount": 210
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 210
+              }
             }
           }
         }
@@ -514,49 +522,53 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 245,
-            "output_tokens": 19,
-            "total_tokens": 264
-          },
-          "response_id": "n3izaq2eLpasz7IPuuXM-AE",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "n3izaq2eLpasz7IPuuXM-AE",
+              "usage": {
+                "input_tokens": 245,
+                "output_tokens": 19,
+                "total_tokens": 264
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "token": "orchard-29"
+                            },
+                            "name": "checkpoint_step"
+                          }
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "n3izaq2eLpasz7IPuuXM-AE",
+                "usageMetadata": {
+                  "candidatesTokenCount": 19,
+                  "promptTokenCount": 245,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "token": "orchard-29"
-                        },
-                        "name": "checkpoint_step"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 245
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izaq2eLpasz7IPuuXM-AE",
-            "usageMetadata": {
-              "candidatesTokenCount": 19,
-              "promptTokenCount": 245,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 245
+                  "serviceTier": "standard",
+                  "totalTokenCount": 264
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 264
+              }
             }
           }
         }
@@ -776,49 +788,53 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 299,
-            "output_tokens": 19,
-            "total_tokens": 318
-          },
-          "response_id": "oHizaubWA9Tjz7IPwrvp4Ac",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "oHizaubWA9Tjz7IPwrvp4Ac",
+              "usage": {
+                "input_tokens": 299,
+                "output_tokens": 19,
+                "total_tokens": 318
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "token": "harbor-43"
+                            },
+                            "name": "checkpoint_step"
+                          }
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "oHizaubWA9Tjz7IPwrvp4Ac",
+                "usageMetadata": {
+                  "candidatesTokenCount": 19,
+                  "promptTokenCount": 299,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "token": "harbor-43"
-                        },
-                        "name": "checkpoint_step"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 299
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "oHizaubWA9Tjz7IPwrvp4Ac",
-            "usageMetadata": {
-              "candidatesTokenCount": 19,
-              "promptTokenCount": 299,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 299
+                  "serviceTier": "standard",
+                  "totalTokenCount": 318
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 318
+              }
             }
           }
         }
@@ -1070,43 +1086,47 @@
               "text": "checkpoint-complete"
             }
           ],
-          "usage": {
-            "input_tokens": 348,
-            "output_tokens": 3,
-            "total_tokens": 351
-          },
-          "response_id": "oHizav-NGrKgz7IPu_6giAg",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "oHizav-NGrKgz7IPu_6giAg",
+              "usage": {
+                "input_tokens": 348,
+                "output_tokens": 3,
+                "total_tokens": 351
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "checkpoint-complete"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "oHizav-NGrKgz7IPu_6giAg",
+                "usageMetadata": {
+                  "candidatesTokenCount": 3,
+                  "promptTokenCount": 348,
+                  "promptTokensDetails": [
                     {
-                      "text": "checkpoint-complete"
+                      "modality": "TEXT",
+                      "tokenCount": 348
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "oHizav-NGrKgz7IPu_6giAg",
-            "usageMetadata": {
-              "candidatesTokenCount": 3,
-              "promptTokenCount": 348,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 348
+                  "serviceTier": "standard",
+                  "totalTokenCount": 351
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 351
+              }
             }
           }
         }

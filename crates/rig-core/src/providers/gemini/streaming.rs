@@ -4,9 +4,7 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, GenerateContentResponse, Part, PartKind, UsageMetadata,
     map_finish_reason,
 };
-use super::completion::{
-    PROVIDER_NAME, blocked_prompt_error, function_call_finish_reason_error, part_kind_name,
-};
+use super::completion::{blocked_prompt_error, function_call_finish_reason_error, part_kind_name};
 use crate::error::ProviderError;
 use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
@@ -303,7 +301,7 @@ impl Decoder<Completion> for GenerateContentDecoder {
             }
         };
         let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
-        out.final_record(streaming::StreamFinal {
+        out.final_record(crate::completion::ReportedEnd {
             finish_reason,
             response_id: native
                 .response_id
@@ -311,7 +309,7 @@ impl Decoder<Completion> for GenerateContentDecoder {
             model: native
                 .model_version
                 .and_then(crate::id::ModelName::non_empty),
-            ..streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
+            ..crate::completion::ReportedEnd::new(usage, raw)
         });
     }
 

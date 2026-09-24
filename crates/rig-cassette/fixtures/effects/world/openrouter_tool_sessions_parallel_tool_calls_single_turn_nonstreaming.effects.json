@@ -166,82 +166,86 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 157,
-            "output_tokens": 45,
-            "total_tokens": 202,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
-          "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": null,
-                  "reasoning": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_iQcZJOsBb7eb834rq0hyuJEI",
-                      "index": 0,
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_B2tEwlopa4FIVqJtadPwpzQL",
-                      "index": 1,
-                      "type": "function"
-                    }
-                  ]
-                },
-                "native_finish_reason": "tool_calls"
-              }
-            ],
-            "created": 0,
-            "id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
-            "model": "openai/gpt-4o",
-            "object": "chat.completion",
-            "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_24e955c341",
-            "usage": {
-              "completion_tokens": 45,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o",
+              "response_id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
+              "usage": {
+                "input_tokens": 157,
+                "output_tokens": 45,
+                "total_tokens": 202,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.0008425,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00045,
-                "upstream_inference_cost": 0.0008425,
-                "upstream_inference_prompt_cost": 0.0003925
-              },
-              "is_byok": false,
-              "prompt_tokens": 157,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 202
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": null,
+                      "reasoning": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{}",
+                            "name": "lookup_harbor_label"
+                          },
+                          "id": "call_iQcZJOsBb7eb834rq0hyuJEI",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{}",
+                            "name": "lookup_orchard_label"
+                          },
+                          "id": "call_B2tEwlopa4FIVqJtadPwpzQL",
+                          "index": 1,
+                          "type": "function"
+                        }
+                      ]
+                    },
+                    "native_finish_reason": "tool_calls"
+                  }
+                ],
+                "created": 0,
+                "id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
+                "model": "openai/gpt-4o",
+                "object": "chat.completion",
+                "provider": "OpenAI",
+                "service_tier": null,
+                "system_fingerprint": "fp_24e955c341",
+                "usage": {
+                  "completion_tokens": 45,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.0008425,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.00045,
+                    "upstream_inference_cost": 0.0008425,
+                    "upstream_inference_prompt_cost": 0.0003925
+                  },
+                  "is_byok": false,
+                  "prompt_tokens": 157,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 202
+                }
+              }
             }
           }
         }
@@ -424,62 +428,66 @@
               "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\"."
             }
           ],
-          "usage": {
-            "input_tokens": 225,
-            "output_tokens": 23,
-            "total_tokens": 248,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
-          "finish_reason": "stop",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
-                  "reasoning": null,
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "native_finish_reason": "stop"
-              }
-            ],
-            "created": 0,
-            "id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
-            "model": "openai/gpt-4o",
-            "object": "chat.completion",
-            "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_24e955c341",
-            "usage": {
-              "completion_tokens": 23,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openrouter",
+              "model": "openai/gpt-4o",
+              "response_id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
+              "usage": {
+                "input_tokens": 225,
+                "output_tokens": 23,
+                "total_tokens": 248,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.0007925,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00023,
-                "upstream_inference_cost": 0.0007925,
-                "upstream_inference_prompt_cost": 0.0005625
-              },
-              "is_byok": false,
-              "prompt_tokens": 225,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 248
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
+                      "reasoning": null,
+                      "refusal": null,
+                      "role": "assistant"
+                    },
+                    "native_finish_reason": "stop"
+                  }
+                ],
+                "created": 0,
+                "id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
+                "model": "openai/gpt-4o",
+                "object": "chat.completion",
+                "provider": "OpenAI",
+                "service_tier": null,
+                "system_fingerprint": "fp_24e955c341",
+                "usage": {
+                  "completion_tokens": 23,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 0
+                  },
+                  "cost": 0.0007925,
+                  "cost_details": {
+                    "upstream_inference_completions_cost": 0.00023,
+                    "upstream_inference_cost": 0.0007925,
+                    "upstream_inference_prompt_cost": 0.0005625
+                  },
+                  "is_byok": false,
+                  "prompt_tokens": 225,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 248
+                }
+              }
             }
           }
         }

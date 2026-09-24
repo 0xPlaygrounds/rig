@@ -2,6 +2,7 @@ use super::super::policy::InvalidToolCallAction;
 use super::super::response::PromptError;
 use super::super::{AgentRun, AgentRunStep};
 use super::*;
+use rig_core::completion::Usage;
 use rig_core::message::{Text, ToolResultContent, UserContent};
 use rig_core::streaming::{ToolCallEnd, UnparseableToolInput};
 use rig_core::test_utils::mock_final;
@@ -83,7 +84,11 @@ fn tool_call_item(id: &str, name: &str) -> StreamEvent {
 }
 
 fn final_item() -> StreamEvent {
-    StreamEvent::Final(mock_final(Usage::default()))
+    StreamEvent::Final(
+        mock_final(Usage::default())
+            .into_end()
+            .expect("a mock terminal record"),
+    )
 }
 
 fn name_delta(id: &str, name: &str) -> StreamEvent {
@@ -815,13 +820,8 @@ fn streamed_run_completes_a_tool_roundtrip() {
         total_tokens: Some(12),
         ..Usage::default()
     };
-    run.record_streamed_completion_call(
-        usage,
-        rig_core::completion::ResponseIdentity::default(),
-        None,
-        serde_json::json!({}),
-    )
-    .expect("record should succeed");
+    run.record_streamed_completion_call(&attempt_end(usage, None, serde_json::json!({})))
+        .expect("record should succeed");
     let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
     run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice, Some("mock")))
         .expect("streamed_turn should succeed");
@@ -843,12 +843,11 @@ fn streamed_run_completes_a_tool_roundtrip() {
         panic!("expected CallModel");
     };
     let asm = assembler();
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::json!({}),
-    )
+    ))
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::text("done")];
     run.streamed_turn(asm.finish(None, &final_choice, Some("mock")))
@@ -909,12 +908,11 @@ fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
     asm.resolve_pending_invalid(&resolution);
 
     // Usage from the drained stream is recorded after the rollback.
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::json!({}),
-    )
+    ))
     .expect("record after rollback should succeed");
 
     // The rollback appended the partial assistant turn and feedback.
@@ -985,12 +983,11 @@ fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
             skipped_tool_result: None
         }
     ));
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::json!({}),
-    )
+    ))
     .expect("completion call should be recorded");
     assert_eq!(run.completion_calls().len(), 1);
 
@@ -1109,23 +1106,21 @@ fn streamed_completion_call_record_requires_a_model_call() {
     // even though the machine is in its initial PreparingRequest state.
     let mut run = AgentRun::new("hello");
     let err = run
-        .record_streamed_completion_call(
+        .record_streamed_completion_call(&attempt_end(
             Usage::default(),
-            rig_core::completion::ResponseIdentity::default(),
             None,
             serde_json::json!({}),
-        )
+        ))
         .expect_err("recording before any model call must be rejected");
     assert!(matches!(err, PromptError::PromptCancelled { .. }));
 
     // The run stays drivable.
     run.next_step().expect("next_step should still succeed");
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::json!({}),
-    )
+    ))
     .expect("recording during a pending model call succeeds");
 }
 
@@ -1139,12 +1134,11 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
         .expect("ingest should succeed");
     asm.ingest(&completed_tool_call(tool_call("tc_1", "add"), iid_for("b")))
         .expect("ingest should succeed");
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::json!({}),
-    )
+    ))
     .expect("record should succeed");
 
     let final_choice = vec![
@@ -1169,12 +1163,11 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
 /// Record the turn's completion call the way a driver does from the
 /// stream's terminal record, for tests that feed a hand-assembled turn.
 fn record_terminal(run: &mut AgentRun) {
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        Default::default(),
         None,
         json!({"origin": "hand-built terminal"}),
-    )
+    ))
     .expect("the turn's completion call records while the model call is pending");
 }
 
@@ -1204,20 +1197,18 @@ fn streamed_completion_call_is_recorded_once_per_turn() {
     let mut run = AgentRun::new("hello");
     run.next_step().expect("next_step");
 
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::json!({}),
-    )
+    ))
     .expect("first record succeeds");
     let err = run
-        .record_streamed_completion_call(
+        .record_streamed_completion_call(&attempt_end(
             Usage::default(),
-            rig_core::completion::ResponseIdentity::default(),
             None,
             serde_json::json!({}),
-        )
+        ))
         .expect_err("second record for the same turn must be rejected");
     assert!(matches!(err, PromptError::PromptCancelled { .. }));
     assert_eq!(run.completion_calls().len(), 1);
@@ -1231,12 +1222,11 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
     let mut asm = assembler();
     asm.ingest(&tool_call_item("tc_1", "add"))
         .expect("ingest should succeed");
-    run.record_streamed_completion_call(
+    run.record_streamed_completion_call(&attempt_end(
         Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::json!({}),
-    )
+    ))
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
     run.streamed_turn(asm.finish(None, &final_choice, Some("mock")))
@@ -1514,12 +1504,11 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
                     results[1].content,
                     vec![ToolResultContent::text("use add instead")]
                 );
-                run.record_streamed_completion_call(
+                run.record_streamed_completion_call(&attempt_end(
                     Usage::default(),
-                    Default::default(),
                     None,
                     serde_json::json!({}),
-                )
+                ))
                 .unwrap();
                 assert!(matches!(
                     run.next_step().unwrap(),
@@ -1958,4 +1947,23 @@ fn streamed_reasoning_records_the_stream_issuer() {
             .iter()
             .all(|issuer| issuer.as_deref() == Some("anthropic"))
     );
+}
+
+/// A streamed attempt's terminal record reporting `usage`, `finish_reason`,
+/// and `raw`, attributed to the mock provider.
+fn attempt_end(
+    usage: rig_core::completion::Usage,
+    finish_reason: Option<rig_core::completion::FinishReason>,
+    raw: serde_json::Value,
+) -> rig_core::completion::CompletionEnd {
+    rig_core::completion::CompletionEnd {
+        finish_reason,
+        ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+            usage,
+            raw,
+            ..rig_core::response::ResponseMeta::new(
+                rig_core::id::ProviderName::new("mock").expect("a provider name"),
+            )
+        })
+    }
 }

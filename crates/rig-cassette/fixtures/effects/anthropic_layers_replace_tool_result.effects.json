@@ -131,52 +131,56 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 633,
-            "output_tokens": 69,
-            "total_tokens": 702,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcYJsRFQQuZPUy9cVMZ",
-          "provider_request_id": "req_011CfLcYJKBck5x58jbi5i2x",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6",
-                "input": {
-                  "x": 17,
-                  "y": 25
-                },
-                "name": "add",
-                "type": "tool_use"
-              }
-            ],
-            "id": "msg_011CfLcYJsRFQQuZPUy9cVMZ",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcYJsRFQQuZPUy9cVMZ",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcYJKBck5x58jbi5i2x",
+              "usage": {
+                "input_tokens": 633,
+                "output_tokens": 69,
+                "total_tokens": 702,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 633,
-              "output_tokens": 69,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6",
+                    "input": {
+                      "x": 17,
+                      "y": 25
+                    },
+                    "name": "add",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcYJsRFQQuZPUy9cVMZ",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 633,
+                  "output_tokens": 69,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }
@@ -309,44 +313,48 @@
               "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42"
             }
           ],
-          "usage": {
-            "input_tokens": 715,
-            "output_tokens": 56,
-            "total_tokens": 771,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcYSBDJ6yWenPvX9Ndk",
-          "provider_request_id": "req_011CfLcYRjRDvxTEwZ6zJCZJ",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcYSBDJ6yWenPvX9Ndk",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcYSBDJ6yWenPvX9Ndk",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcYRjRDvxTEwZ6zJCZJ",
+              "usage": {
+                "input_tokens": 715,
+                "output_tokens": 56,
+                "total_tokens": 771,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 715,
-              "output_tokens": 56,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcYSBDJ6yWenPvX9Ndk",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 715,
+                  "output_tokens": 56,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

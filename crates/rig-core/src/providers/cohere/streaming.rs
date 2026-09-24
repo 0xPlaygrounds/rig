@@ -7,14 +7,15 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
+use crate::completion::ReportedEnd;
 use crate::id::ResponseId;
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::providers::cohere::completion::{
-    AssistantContent, CompletionResponse, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
+    AssistantContent, CompletionResponse, FinishReason, Usage, map_finish_reason,
 };
 use crate::providers::internal::wire;
-use crate::streaming::{BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
+use crate::streaming::{BlockId, MintKind, ToolCallEnd, UnparseableToolInput};
 use crate::wire::WireFrame;
 use serde::{Deserialize, Serialize};
 
@@ -128,7 +129,7 @@ pub struct MessageEndDelta {
 }
 
 /// Cohere's terminal stream record: the `message-end` payload as rig parsed
-/// it, serialized onto [`StreamFinal::raw`] by the adapter's terminal
+/// it, serialized as the terminal record's `raw` by the adapter's terminal
 /// mapping.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
@@ -239,7 +240,7 @@ impl ChatDecoder {
                 let key = crate::streaming::non_empty_id(id)
                     .map_or_else(|| self.tool_ids.mint(), BlockId::wire);
                 self.current_tool_call = Some(key.clone());
-                let mut tool_events = AdapterOutput::new();
+                let mut tool_events = out.scratch();
                 tool_events.tool_name(&key, name);
                 // `tool-call-start` may carry initial argument text; on the
                 // wire it is empty, but any payload must still enter assembly.
@@ -368,10 +369,10 @@ impl ChatDecoder {
         };
         // Cohere's `/v2/chat` reports no model identifier in either mode, so
         // the normalized `model` stays unset.
-        out.final_record(StreamFinal {
+        out.final_record(ReportedEnd {
             finish_reason: native.finish_reason.as_ref().map(map_finish_reason),
             response_id: native.message_id.and_then(ResponseId::non_empty),
-            ..StreamFinal::new(PROVIDER_NAME, recorded_usage, raw)
+            ..ReportedEnd::new(recorded_usage, raw)
         });
     }
 }

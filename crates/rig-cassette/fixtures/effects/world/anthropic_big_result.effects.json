@@ -367,53 +367,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1095,
-            "output_tokens": 56,
-            "total_tokens": 1151,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZze7NZocrRq4fsBAn",
-          "provider_request_id": "req_011CfLcZyryjs5FZsefPtmz1",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "I'll start by following the protocol to understand the crate structure and identify the failing test.",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcZze7NZocrRq4fsBAn",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcZyryjs5FZsefPtmz1",
+              "usage": {
+                "input_tokens": 1095,
+                "output_tokens": 56,
+                "total_tokens": 1151,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01PUtZ2PafqW2FP1GjRpEsXR",
-                "input": {},
-                "name": "list_files",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "I'll start by following the protocol to understand the crate structure and identify the failing test.",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01PUtZ2PafqW2FP1GjRpEsXR",
+                    "input": {},
+                    "name": "list_files",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcZze7NZocrRq4fsBAn",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1095,
+                  "output_tokens": 56,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcZze7NZocrRq4fsBAn",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1095,
-              "output_tokens": 56,
-              "service_tier": "standard"
             }
           }
         }
@@ -602,55 +606,59 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1190,
-            "output_tokens": 65,
-            "total_tokens": 1255,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLca4odv2pCygj4zCn45",
-          "provider_request_id": "req_011CfLca4MrHE5D838WkJsp3",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me read the README.md:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLca4odv2pCygj4zCn45",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLca4MrHE5D838WkJsp3",
+              "usage": {
+                "input_tokens": 1190,
+                "output_tokens": 65,
+                "total_tokens": 1255,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_019CX7QXMMKTit1Y3PnsECTH",
-                "input": {
-                  "path": "README.md"
-                },
-                "name": "read_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me read the README.md:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_019CX7QXMMKTit1Y3PnsECTH",
+                    "input": {
+                      "path": "README.md"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLca4odv2pCygj4zCn45",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1190,
+                  "output_tokens": 65,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLca4odv2pCygj4zCn45",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1190,
-              "output_tokens": 65,
-              "service_tier": "standard"
             }
           }
         }
@@ -887,55 +895,59 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1339,
-            "output_tokens": 66,
-            "total_tokens": 1405,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLca9VAnEVmwnMqxQDph",
-          "provider_request_id": "req_011CfLca995xH6rMnrdZibPz",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me read the test file:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLca9VAnEVmwnMqxQDph",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLca995xH6rMnrdZibPz",
+              "usage": {
+                "input_tokens": 1339,
+                "output_tokens": 66,
+                "total_tokens": 1405,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_011sRtXPd1G6kU65vdD6jAAM",
-                "input": {
-                  "path": "tests/basic.rs"
-                },
-                "name": "read_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me read the test file:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_011sRtXPd1G6kU65vdD6jAAM",
+                    "input": {
+                      "path": "tests/basic.rs"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLca9VAnEVmwnMqxQDph",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1339,
+                  "output_tokens": 66,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLca9VAnEVmwnMqxQDph",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1339,
-              "output_tokens": 66,
-              "service_tier": "standard"
             }
           }
         }
@@ -1220,55 +1232,59 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1515,
-            "output_tokens": 67,
-            "total_tokens": 1582,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaDnduGNngMQE414z9",
-          "provider_request_id": "req_011CfLcaDS3yNPEUsn6VomNT",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me read the main library file:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcaDnduGNngMQE414z9",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcaDS3yNPEUsn6VomNT",
+              "usage": {
+                "input_tokens": 1515,
+                "output_tokens": 67,
+                "total_tokens": 1582,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01Y6Te88mM9sUGDwvDA1S7Ec",
-                "input": {
-                  "path": "src/lib.rs"
-                },
-                "name": "read_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me read the main library file:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01Y6Te88mM9sUGDwvDA1S7Ec",
+                    "input": {
+                      "path": "src/lib.rs"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcaDnduGNngMQE414z9",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1515,
+                  "output_tokens": 67,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcaDnduGNngMQE414z9",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1515,
-              "output_tokens": 67,
-              "service_tier": "standard"
             }
           }
         }
@@ -1599,53 +1615,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1634,
-            "output_tokens": 49,
-            "total_tokens": 1683,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaHnjWmHz5pxvpoZgA",
-          "provider_request_id": "req_011CfLcaHGyay6K9AreyDXvm",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me run the tests to see which one fails:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcaHnjWmHz5pxvpoZgA",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcaHGyay6K9AreyDXvm",
+              "usage": {
+                "input_tokens": 1634,
+                "output_tokens": 49,
+                "total_tokens": 1683,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_014YrJotp56CCMhmCJZxerYy",
-                "input": {},
-                "name": "run_tests",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me run the tests to see which one fails:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_014YrJotp56CCMhmCJZxerYy",
+                    "input": {},
+                    "name": "run_tests",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcaHnjWmHz5pxvpoZgA",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 1634,
+                  "output_tokens": 49,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcaHnjWmHz5pxvpoZgA",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 1634,
-              "output_tokens": 49,
-              "service_tier": "standard"
             }
           }
         }
@@ -2024,55 +2044,59 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 23376,
-            "output_tokens": 113,
-            "total_tokens": 23489,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaMPHm5Jcsv1GpV7dw",
-          "provider_request_id": "req_011CfLcaLwFG4oz5TThbgY7g",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "The test shows that `days_in_year()` is returning 360 but should return 365. I need to fix the return value in src/lib.rs. Let me also check the calendar.rs file to see if there are any issues there:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcaMPHm5Jcsv1GpV7dw",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcaLwFG4oz5TThbgY7g",
+              "usage": {
+                "input_tokens": 23376,
+                "output_tokens": 113,
+                "total_tokens": 23489,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01Ak7tQHb3G5gZrqtiYSomxG",
-                "input": {
-                  "path": "src/calendar.rs"
-                },
-                "name": "read_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The test shows that `days_in_year()` is returning 360 but should return 365. I need to fix the return value in src/lib.rs. Let me also check the calendar.rs file to see if there are any issues there:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01Ak7tQHb3G5gZrqtiYSomxG",
+                    "input": {
+                      "path": "src/calendar.rs"
+                    },
+                    "name": "read_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcaMPHm5Jcsv1GpV7dw",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 23376,
+                  "output_tokens": 113,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcaMPHm5Jcsv1GpV7dw",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 23376,
-              "output_tokens": 113,
-              "service_tier": "standard"
             }
           }
         }
@@ -2500,56 +2524,60 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 23530,
-            "output_tokens": 171,
-            "total_tokens": 23701,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaVCqVhQH3DEAVhGxf",
-          "provider_request_id": "req_011CfLcaUmYEg8SorqEsCqtg",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "I can see two issues:\n1. `days_in_year()` returns 360 but should return 365\n2. `days_in_week()` returns 8 but should return 7\n\nLet me fix src/lib.rs first:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcaVCqVhQH3DEAVhGxf",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcaUmYEg8SorqEsCqtg",
+              "usage": {
+                "input_tokens": 23530,
+                "output_tokens": 171,
+                "total_tokens": 23701,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01SktLZmsTJNm71KyhRf4daT",
-                "input": {
-                  "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
-                  "path": "src/lib.rs"
-                },
-                "name": "write_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "I can see two issues:\n1. `days_in_year()` returns 360 but should return 365\n2. `days_in_week()` returns 8 but should return 7\n\nLet me fix src/lib.rs first:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01SktLZmsTJNm71KyhRf4daT",
+                    "input": {
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                      "path": "src/lib.rs"
+                    },
+                    "name": "write_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcaVCqVhQH3DEAVhGxf",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 23530,
+                  "output_tokens": 171,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcaVCqVhQH3DEAVhGxf",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 23530,
-              "output_tokens": 171,
-              "service_tier": "standard"
             }
           }
         }
@@ -3023,53 +3051,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 23724,
-            "output_tokens": 56,
-            "total_tokens": 23780,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcae96RkuuiXmUoobmj",
-          "provider_request_id": "req_011CfLcadfpStR6gTzipb9gT",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me run the tests to see if the first test passes and check the second one:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcae96RkuuiXmUoobmj",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcadfpStR6gTzipb9gT",
+              "usage": {
+                "input_tokens": 23724,
+                "output_tokens": 56,
+                "total_tokens": 23780,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_018NU6oB3DV7CXfNzVdTEYfi",
-                "input": {},
-                "name": "run_tests",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me run the tests to see if the first test passes and check the second one:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_018NU6oB3DV7CXfNzVdTEYfi",
+                    "input": {},
+                    "name": "run_tests",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcae96RkuuiXmUoobmj",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 23724,
+                  "output_tokens": 56,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcae96RkuuiXmUoobmj",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 23724,
-              "output_tokens": 56,
-              "service_tier": "standard"
             }
           }
         }
@@ -3592,56 +3624,60 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 45482,
-            "output_tokens": 146,
-            "total_tokens": 45628,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaivL4eQ8Z4nenj69V",
-          "provider_request_id": "req_011CfLcaiRp6vnK1EqVLSVZF",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Good! The first test now passes. Now I need to fix the second test by correcting `days_in_week()` in src/calendar.rs to return 7 instead of 8:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcaivL4eQ8Z4nenj69V",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcaiRp6vnK1EqVLSVZF",
+              "usage": {
+                "input_tokens": 45482,
+                "output_tokens": 146,
+                "total_tokens": 45628,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_012AhMSvDzK4GuUTQwaP9PSp",
-                "input": {
-                  "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
-                  "path": "src/calendar.rs"
-                },
-                "name": "write_file",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Good! The first test now passes. Now I need to fix the second test by correcting `days_in_week()` in src/calendar.rs to return 7 instead of 8:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_012AhMSvDzK4GuUTQwaP9PSp",
+                    "input": {
+                      "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
+                      "path": "src/calendar.rs"
+                    },
+                    "name": "write_file",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcaivL4eQ8Z4nenj69V",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 45482,
+                  "output_tokens": 146,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcaivL4eQ8Z4nenj69V",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 45482,
-              "output_tokens": 146,
-              "service_tier": "standard"
             }
           }
         }
@@ -4210,53 +4246,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 45651,
-            "output_tokens": 50,
-            "total_tokens": 45701,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcauBUKr7GLvhNRDruU",
-          "provider_request_id": "req_011CfLcathCk3JN6nscQp4af",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Now let me run the tests again to verify both tests pass:",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcauBUKr7GLvhNRDruU",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcathCk3JN6nscQp4af",
+              "usage": {
+                "input_tokens": 45651,
+                "output_tokens": 50,
+                "total_tokens": 45701,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01CssFVuFQokEERw2xp4QRpY",
-                "input": {},
-                "name": "run_tests",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Now let me run the tests again to verify both tests pass:",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01CssFVuFQokEERw2xp4QRpY",
+                    "input": {},
+                    "name": "run_tests",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcauBUKr7GLvhNRDruU",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 45651,
+                  "output_tokens": 50,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcauBUKr7GLvhNRDruU",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 45651,
-              "output_tokens": 50,
-              "service_tier": "standard"
             }
           }
         }
@@ -4857,44 +4897,48 @@
               "text": "Perfect! Both tests now pass. The test suite is complete and successful.\n\ndone"
             }
           ],
-          "usage": {
-            "input_tokens": 67290,
-            "output_tokens": 20,
-            "total_tokens": 67310,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcaz7tddJPyo8a1mNMh",
-          "provider_request_id": "req_011CfLcayfMHVieVWCnieKuD",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Perfect! Both tests now pass. The test suite is complete and successful.\n\ndone",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcaz7tddJPyo8a1mNMh",
-            "model": "claude-haiku-4-5-20251001",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcaz7tddJPyo8a1mNMh",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-haiku-4-5-20251001",
+              "provider_request_id": "req_011CfLcayfMHVieVWCnieKuD",
+              "usage": {
+                "input_tokens": 67290,
+                "output_tokens": 20,
+                "total_tokens": 67310,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "not_available",
-              "input_tokens": 67290,
-              "output_tokens": 20,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Perfect! Both tests now pass. The test suite is complete and successful.\n\ndone",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcaz7tddJPyo8a1mNMh",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "not_available",
+                  "input_tokens": 67290,
+                  "output_tokens": 20,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

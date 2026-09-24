@@ -77,7 +77,7 @@ async fn raw_round_trips_responses_type() {
     .expect("raw_round_trips_responses_type should replay from its cassette");
     let response = sink.take();
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = responses_api::CompletionResponse::deserialize(raw)
         .expect("raw is the Responses CompletionResponse xAI parses into");
     // `raw` is the reply document, so the typed view's fields are the
@@ -86,12 +86,15 @@ async fn raw_round_trips_responses_type() {
     assert_eq!(Some(typed.model.as_str()), raw["model"].as_str());
     assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
     assert_eq!(raw["status"], json!("completed"));
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
     // The transport id is not part of the reply document, so the capture
     // never carries it — it lives on the normalized response only.
     assert!(raw.get("provider_request_id").is_none());
     assert_eq!(typed.provider_request_id, None);
-    assert!(response.provider_request_id.is_some());
+    assert!(response.end.meta.provider_request_id.is_some());
 
     let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_eq!(response_body["object"], json!("response"));
@@ -124,7 +127,7 @@ async fn raw_exposes_status_and_service_tier() {
         .as_str()
         .expect("xAI reports metadata.system_fingerprint");
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(raw["status"], json!(recorded_status));
     assert_eq!(raw["service_tier"], json!(recorded_tier));
     assert_matches_recorded_token(
@@ -160,7 +163,7 @@ async fn normalized_fields_match_raw_renormalized() {
     responses::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
     // xAI contracts `x-request-id`; the recorded header is the premise.
     assert_contracted_request_id(
-        response.provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         recorded_request_id(SCENARIO).as_deref(),
         REQUEST_ID_HEADER,
     );
@@ -168,7 +171,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // The normalized fields are the mapping of the provider-native fields in
     // the response's own `raw`: one decoder reads that document once, and
     // this pins what it read rather than a second copy of the mapping.
-    let typed = responses_api::CompletionResponse::deserialize(&response.raw)
+    let typed = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is the Responses type");
     responses::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
 }

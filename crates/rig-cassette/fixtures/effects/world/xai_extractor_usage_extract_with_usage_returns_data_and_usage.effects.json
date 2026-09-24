@@ -132,132 +132,136 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 408,
-            "output_tokens": 269,
-            "total_tokens": 677,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 250
-          },
-          "response_id": "4d909b70-9a22-9434-8254-23a700f02443",
-          "provider_request_id": "4d909b70-9a22-9434-8254-23a700f02443",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "4d909b70-9a22-9434-8254-23a700f02443",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_4d909b70-9a22-9434-8254-23a700f02443",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "Extracting structured data from the text.\n\nExtracted name, age, and profession. Preparing to call the submit function.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
-                "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
-                "id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0",
-                "name": "submit",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "required",
-            "tools": [
-              {
-                "description": "Submit the structured data you extracted from the provided text.",
-                "name": "submit",
-                "parameters": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "properties": {
-                    "age": {
-                      "format": "uint8",
-                      "maximum": 255,
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "profession": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "title": "Person",
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "4d909b70-9a22-9434-8254-23a700f02443",
+              "provider_request_id": "4d909b70-9a22-9434-8254-23a700f02443",
+              "usage": {
                 "input_tokens": 408,
-                "output_tokens": 273
-              },
-              "cost_in_usd_ticks": 9809000,
-              "input_tokens": 408,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 269,
-              "output_tokens_details": {
+                "output_tokens": 269,
+                "total_tokens": 677,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 250
               },
-              "total_tokens": 677
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "4d909b70-9a22-9434-8254-23a700f02443",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_4d909b70-9a22-9434-8254-23a700f02443",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Extracting structured data from the text.\n\nExtracted name, age, and profession. Preparing to call the submit function.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
+                    "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
+                    "id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "age": {
+                          "format": "uint8",
+                          "maximum": 255,
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "profession": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "title": "Person",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 408,
+                    "output_tokens": 273
+                  },
+                  "cost_in_usd_ticks": 9809000,
+                  "input_tokens": 408,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 269,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 250
+                  },
+                  "total_tokens": 677
+                },
+                "user": null
+              }
+            }
           }
         }
       },

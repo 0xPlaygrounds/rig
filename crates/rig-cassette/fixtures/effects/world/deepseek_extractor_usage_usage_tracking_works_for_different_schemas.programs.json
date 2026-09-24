@@ -313,58 +313,62 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 446,
-                "output_tokens": 115,
-                "total_tokens": 561,
-                "cached_input_tokens": 256,
-                "reasoning_tokens": 45
-              },
-              "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "",
-                      "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
-                            "name": "submit"
-                          },
-                          "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
-                          "index": 0,
-                          "type": "function"
-                        }
-                      ]
-                    }
-                  }
-                ],
-                "created": 0,
-                "id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 115,
-                  "completion_tokens_details": {
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e",
+                  "usage": {
+                    "input_tokens": 446,
+                    "output_tokens": 115,
+                    "total_tokens": 561,
+                    "cached_input_tokens": 256,
                     "reasoning_tokens": 45
                   },
-                  "prompt_cache_hit_tokens": 256,
-                  "prompt_cache_miss_tokens": 190,
-                  "prompt_tokens": 446,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 256
-                  },
-                  "total_tokens": 561
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "",
+                          "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                                "name": "submit"
+                              },
+                              "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "created": 0,
+                    "id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 115,
+                      "completion_tokens_details": {
+                        "reasoning_tokens": 45
+                      },
+                      "prompt_cache_hit_tokens": 256,
+                      "prompt_cache_miss_tokens": 190,
+                      "prompt_tokens": 446,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 256
+                      },
+                      "total_tokens": 561
+                    }
+                  }
                 }
               }
             }

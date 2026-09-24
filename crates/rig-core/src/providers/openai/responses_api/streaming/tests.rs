@@ -113,7 +113,8 @@ fn reasoning_text_done_emits_nothing() {
     }))
     .expect("reasoning text done event should deserialize");
 
-    let mut emitted = AdapterOutput::new();
+    let mut emitted =
+        AdapterOutput::new(crate::id::ProviderName::new("openai").expect("a provider name"));
     accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict(), &mut emitted);
     assert!(
         emitted.is_empty(),
@@ -272,6 +273,7 @@ fn stream_events_from_sse_body(
     initial_usage: Option<ResponsesUsage>,
 ) -> Result<Vec<StreamEvent>, ProviderError> {
     let mut driver: WireDriver<Completion, _> = WireDriver::new(
+        &crate::id::ProviderName::new(provider).expect("a provider name"),
         ResponsesDecoder::new(provider, ResponsesStreamOptions::strict())
             .with_envelope_repair()
             .with_initial_usage(initial_usage),
@@ -330,13 +332,13 @@ async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
 }
 
 /// The provider-native terminal record, recovered from the serialized
-/// `StreamFinal::raw` the stream's terminal carries.
+/// `CompletionEnd::raw` the stream's terminal carries.
 async fn final_response_from_event(event: serde_json::Value) -> super::StreamingCompletionResponse {
     let mut stream = responses_stream_of(&[event]).await;
 
     while let Some(item) = stream.next().await {
         if let StreamEvent::Final(response) = item.expect("completed stream should not error") {
-            return serde_json::from_value(response.raw)
+            return serde_json::from_value(response.meta.raw)
                 .expect("the raw terminal record is the provider's own type");
         }
     }
@@ -345,7 +347,7 @@ async fn final_response_from_event(event: serde_json::Value) -> super::Streaming
 }
 
 /// The normalized terminal record, as `stream` exposes it.
-async fn stream_final_from_event(event: serde_json::Value) -> crate::streaming::StreamFinal {
+async fn stream_final_from_event(event: serde_json::Value) -> crate::completion::CompletionEnd {
     let mut stream = responses_stream_of(&[event]).await;
 
     while let Some(item) = stream.next().await {
@@ -890,9 +892,9 @@ async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_r
         final_response.finish_reason,
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(final_response.usage.input_tokens, Some(10));
-    assert_eq!(final_response.usage.output_tokens, Some(5));
-    assert_eq!(final_response.usage.total_tokens, Some(15));
+    assert_eq!(final_response.meta.usage.input_tokens, Some(10));
+    assert_eq!(final_response.meta.usage.output_tokens, Some(5));
+    assert_eq!(final_response.meta.usage.total_tokens, Some(15));
 }
 
 /// A multi-block reasoning done item (summaries + `encrypted_content`)
@@ -2191,7 +2193,7 @@ fn terminal_body_message_text_merges_when_no_delta_delivered_it() {
         ["from body"],
         "text stated only in the terminal body must reach the choice once"
     );
-    assert_eq!(response.message_id.as_deref(), Some("msg_body_1"));
+    assert_eq!(response.end.message_id.as_deref(), Some("msg_body_1"));
 }
 
 /// The other half of that boundary: a terminal restating text the deltas
@@ -2376,8 +2378,8 @@ async fn terminal_record_normalizes_into_the_stream_final() {
 
     let final_response = stream_final_from_event(event).await;
 
-    assert_eq!(final_response.provider, "openai");
-    assert_eq!(final_response.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(final_response.meta.provider, "openai");
+    assert_eq!(final_response.meta.model.as_deref(), Some("gpt-5.4"));
     // The assistant message ID (`msg_...`), never the response ID
     // (`resp_123`) that the same event carries.
     assert_eq!(final_response.message_id.as_deref(), Some("msg_stream_1"));
@@ -2385,9 +2387,9 @@ async fn terminal_record_normalizes_into_the_stream_final() {
         final_response.finish_reason,
         Some(crate::completion::FinishReason::Stop)
     );
-    assert_eq!(final_response.usage.input_tokens, Some(10));
-    assert_eq!(final_response.usage.output_tokens, Some(5));
-    assert_eq!(final_response.usage.total_tokens, Some(15));
+    assert_eq!(final_response.meta.usage.input_tokens, Some(10));
+    assert_eq!(final_response.meta.usage.output_tokens, Some(5));
+    assert_eq!(final_response.meta.usage.total_tokens, Some(15));
 }
 
 #[tokio::test]
@@ -2528,7 +2530,7 @@ async fn done_sentinel_is_ignored_without_debug_parse_noise() {
     let mut final_usage = None;
     while let Some(item) = stream.next().await {
         if let StreamEvent::Final(response) = item.expect("stream should complete successfully") {
-            final_usage = Some(response.usage);
+            final_usage = Some(response.meta.usage);
         }
     }
 

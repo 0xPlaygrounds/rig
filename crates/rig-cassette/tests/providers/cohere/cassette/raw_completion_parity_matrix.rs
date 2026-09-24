@@ -73,35 +73,43 @@ async fn raw_try_into_matches_completion() {
 
     // Across two live requests: everything the contract names, except that
     // each request gets its own generation id.
-    assert_eq!(first.finish_reason.clone(), second.finish_reason.clone());
-    assert_eq!(first.model, second.model);
     assert_eq!(
-        first.model, None,
+        first.end.finish_reason.clone(),
+        second.end.finish_reason.clone()
+    );
+    assert_eq!(first.end.meta.model, second.end.meta.model);
+    assert_eq!(
+        first.end.meta.model, None,
         "Cohere's /v2/chat payload names no model"
     );
-    assert_eq!(first.provider, second.provider);
+    assert_eq!(first.end.meta.provider, second.end.meta.provider);
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
-    assert_eq!(first.usage.input_tokens, second.usage.input_tokens);
-    let first_identity = first.identity();
-    let second_identity = second.identity();
+    assert_eq!(
+        first.end.meta.usage.input_tokens,
+        second.end.meta.usage.input_tokens
+    );
+    let first_identity = &first.end;
+    let second_identity = &second.end;
     assert_eq!(first_identity.message_id, second_identity.message_id);
     assert_eq!(
-        first_identity.provider_request_id, None,
+        first_identity.meta.provider_request_id, None,
         "Cohere has no adopted request-id header, so the driver reports None by design"
     );
     assert_eq!(
-        second_identity.provider_request_id, None,
+        second_identity.meta.provider_request_id, None,
         "and so does the second reply — the same seam, the same header set"
     );
     assert!(
         first_identity
+            .meta
             .response_id
             .as_deref()
             .is_some_and(|id| !id.is_empty())
     );
     assert!(
         second_identity
+            .meta
             .response_id
             .as_deref()
             .is_some_and(|id| !id.is_empty())
@@ -111,11 +119,11 @@ async fn raw_try_into_matches_completion() {
     // says what the normalized response says. There is one mapping now, so
     // the honest assertion is provider-native field against normalized
     // field, not a second normalization compared with the first.
-    let typed =
-        CompletionResponse::deserialize(&second.raw).expect("captured raw is Cohere's own type");
+    let typed = CompletionResponse::deserialize(&second.end.meta.raw)
+        .expect("captured raw is Cohere's own type");
     assert_eq!(
         Some(typed.id.as_str()),
-        second.identity().response_id.as_deref(),
+        second.end.meta.response_id.as_deref(),
         "the payload's generation id is the response id"
     );
     assert_eq!(
@@ -124,7 +132,7 @@ async fn raw_try_into_matches_completion() {
         "the recorded turn completed naturally in Cohere's vocabulary"
     );
     assert_eq!(
-        second.finish_reason.clone(),
+        second.end.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and the decoder maps COMPLETE onto a natural stop"
     );
@@ -135,7 +143,7 @@ async fn raw_try_into_matches_completion() {
             .and_then(|usage| usage.tokens.as_ref())
             .and_then(|tokens| tokens.input_tokens)
             .map(|tokens| tokens as u64),
-        second.usage.input_tokens,
+        second.end.meta.usage.input_tokens,
         "and reports the same input tokens"
     );
 

@@ -139,34 +139,38 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-1"
-                },
-                "provider": {
-                  "call_id": "call-1"
-                },
-                "function": {
-                  "name": "lookup",
-                  "arguments": {
-                    "q": "What is the capital of France?"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-1"
+                    },
+                    "provider": {
+                      "call_id": "call-1"
+                    },
+                    "function": {
+                      "name": "lookup",
+                      "arguments": {
+                        "q": "What is the capital of France?"
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }
@@ -318,20 +322,24 @@
               "text": "Paris"
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "text",
-                "text": "Paris"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "text",
+                    "text": "Paris"
+                  }
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }

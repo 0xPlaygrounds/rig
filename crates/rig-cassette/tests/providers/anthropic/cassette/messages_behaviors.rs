@@ -33,7 +33,7 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 .expect("a truncated response should still convert, not error");
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::Length),
                 "hitting max_tokens should preserve the max_tokens stop reason"
             );
@@ -51,11 +51,13 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
             );
             assert!(
                 response
+                    .end
+                    .meta
                     .usage
                     .output_tokens
                     .is_some_and(|n| n > 0 && n <= 64),
                 "output tokens should reflect the truncation cap, got {:?}",
-                response.usage
+                response.end.meta.usage
             );
         },
     )

@@ -131,61 +131,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 349,
-            "output_tokens": 239,
-            "total_tokens": 588,
-            "cached_input_tokens": 332
-          },
-          "response_id": "chatcmpl-PFBpwcOesZkR5Z4feuGCdUwjyi0UiVXU",
-          "finish_reason": "tool_calls",
-          "provider": "llamacpp",
-          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "content": "",
-                  "reasoning_content": "Okay, let's see. The user provided a sentence: \"Jane Smith is a 45 year old data scientist.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Jane Smith. The age is 45, so that's straightforward. The profession is data scientist. The submit function requires name, age, and profession. All three are present in the text. The age is given as 45, which is an integer. The profession is \"data scientist\" as a string. So I should map those directly. There's no ambiguity here, so the tool call should include all three fields with the values from the text. I need to make sure the age is in uint8 format, which 45 is. The name is a string, and the profession is a string. So the JSON should have those values. No other fields are needed since the user didn't mention anything else. Alright, that's all.\n",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"name\": \"Jane Smith\", \"age\": 45, \"profession\": \"data scientist\"}",
-                        "name": "submit"
-                      },
-                      "id": "eqs7nhCXbzzCYIQxuMbuzLHiYVpebVYE",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "llamacpp",
+              "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+              "response_id": "chatcmpl-PFBpwcOesZkR5Z4feuGCdUwjyi0UiVXU",
+              "usage": {
+                "input_tokens": 349,
+                "output_tokens": 239,
+                "total_tokens": 588,
+                "cached_input_tokens": 332
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "Okay, let's see. The user provided a sentence: \"Jane Smith is a 45 year old data scientist.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Jane Smith. The age is 45, so that's straightforward. The profession is data scientist. The submit function requires name, age, and profession. All three are present in the text. The age is given as 45, which is an integer. The profession is \"data scientist\" as a string. So I should map those directly. There's no ambiguity here, so the tool call should include all three fields with the values from the text. I need to make sure the age is in uint8 format, which 45 is. The name is a string, and the profession is a string. So the JSON should have those values. No other fields are needed since the user didn't mention anything else. Alright, that's all.\n",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"name\": \"Jane Smith\", \"age\": 45, \"profession\": \"data scientist\"}",
+                            "name": "submit"
+                          },
+                          "id": "eqs7nhCXbzzCYIQxuMbuzLHiYVpebVYE",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-PFBpwcOesZkR5Z4feuGCdUwjyi0UiVXU",
+                "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                "object": "chat.completion",
+                "system_fingerprint": "b10964-b29c606e2",
+                "timings": {
+                  "cache_n": 332,
+                  "predicted_ms": 2058.365,
+                  "predicted_n": 239,
+                  "predicted_per_second": 115.625751506657,
+                  "predicted_per_token_ms": 8.64859243697479,
+                  "prompt_ms": 34.124,
+                  "prompt_n": 17,
+                  "prompt_per_second": 498.18309694056967,
+                  "prompt_per_token_ms": 2.007294117647059
+                },
+                "usage": {
+                  "completion_tokens": 239,
+                  "prompt_tokens": 349,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 332
+                  },
+                  "total_tokens": 588
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-PFBpwcOesZkR5Z4feuGCdUwjyi0UiVXU",
-            "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-            "object": "chat.completion",
-            "system_fingerprint": "b10964-b29c606e2",
-            "timings": {
-              "cache_n": 332,
-              "predicted_ms": 2058.365,
-              "predicted_n": 239,
-              "predicted_per_second": 115.625751506657,
-              "predicted_per_token_ms": 8.64859243697479,
-              "prompt_ms": 34.124,
-              "prompt_n": 17,
-              "prompt_per_second": 498.18309694056967,
-              "prompt_per_token_ms": 2.007294117647059
-            },
-            "usage": {
-              "completion_tokens": 239,
-              "prompt_tokens": 349,
-              "prompt_tokens_details": {
-                "cached_tokens": 332
-              },
-              "total_tokens": 588
             }
           }
         }

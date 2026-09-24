@@ -1,5 +1,5 @@
 //! Parity matrix for the typed escape hatch: the provider-native reply rig
-//! hands back in `CompletionResponse::raw` / `StreamFinal::raw` must tell the
+//! hands back in `CompletionResponse::raw` / `CompletionEnd::raw` must tell the
 //! same story as the normalized response delivered with it, and both must be
 //! what the fixture recorded.
 //!
@@ -41,16 +41,15 @@
 //! and that the recorded stop reason is the one the cell is about — a
 //! recording that lost either would make the parity claim vacuous.
 
+use rig::completion::CompletionEnd;
 use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-    ResponseIdentity, Usage,
+    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, Usage,
 };
 use rig::driver::Bound;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::StreamFinal;
 use rig::tool::Tool;
 use serde::Deserialize;
 
@@ -86,7 +85,9 @@ fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
 /// The comparable part of one exchange's result: what both must agree on.
 #[derive(Debug, Clone, PartialEq)]
 struct Reported {
-    identity: ResponseIdentity,
+    message_id: Option<rig::id::MessageId>,
+    response_id: Option<rig::id::ResponseId>,
+    provider_request_id: Option<rig::id::RequestId>,
     finish_reason: Option<FinishReason>,
     model: Option<String>,
     usage: Usage,
@@ -95,19 +96,23 @@ struct Reported {
 impl Reported {
     fn from_completion(response: &RigCompletionResponse) -> Self {
         Self {
-            identity: response.identity(),
-            finish_reason: response.finish_reason.clone(),
-            model: response.model.clone().map(String::from),
-            usage: response.usage,
+            message_id: response.end.message_id.clone(),
+            response_id: response.end.meta.response_id.clone(),
+            provider_request_id: response.end.meta.provider_request_id.clone(),
+            finish_reason: response.end.finish_reason.clone(),
+            model: response.end.meta.model.clone().map(String::from),
+            usage: response.end.meta.usage,
         }
     }
 
-    fn from_terminal(terminal: &StreamFinal) -> Self {
+    fn from_terminal(terminal: &CompletionEnd) -> Self {
         Self {
-            identity: terminal.identity(),
+            message_id: terminal.message_id.clone(),
+            response_id: terminal.meta.response_id.clone(),
+            provider_request_id: terminal.meta.provider_request_id.clone(),
             finish_reason: terminal.finish_reason.clone(),
-            model: terminal.model.clone().map(String::from),
-            usage: terminal.usage,
+            model: terminal.meta.model.clone().map(String::from),
+            usage: terminal.meta.usage,
         }
     }
 }
@@ -128,12 +133,12 @@ fn assert_route_parity(first: &Reported, second: &Reported, expected: FinishReas
     );
     // Both exchanges populate the same identity *fields*; the values are
     // per-exchange and pinned against their own fixture below.
-    assert!(first.identity.message_id.is_some());
-    assert!(second.identity.message_id.is_some());
-    assert!(first.identity.provider_request_id.is_some());
-    assert!(second.identity.provider_request_id.is_some());
-    assert_eq!(first.identity.response_id, None);
-    assert_eq!(second.identity.response_id, None);
+    assert!(first.message_id.is_some());
+    assert!(second.message_id.is_some());
+    assert!(first.provider_request_id.is_some());
+    assert!(second.provider_request_id.is_some());
+    assert_eq!(first.response_id, None);
+    assert_eq!(second.response_id, None);
 }
 
 /// Pin each exchange's identity and output usage to *its own* recorded
@@ -179,13 +184,13 @@ fn assert_identity_matches_fixture(
 
     let observed_request_ids: Vec<_> = reported
         .iter()
-        .map(|reported| reported.identity.provider_request_id.clone())
+        .map(|reported| reported.provider_request_id.clone())
         .collect();
     assert_ids_match_recording(&observed_request_ids, &request_ids, scenario);
 
     let observed_message_ids: Vec<_> = reported
         .iter()
-        .map(|reported| reported.identity.message_id.clone())
+        .map(|reported| reported.message_id.clone())
         .collect();
     assert_ids_match_recording(&observed_message_ids, &recorded_message_ids, scenario);
 
@@ -291,11 +296,11 @@ fn assert_blocking_parity(
 /// rather than a body field, so it reaches the caller only on the normalized
 /// identity.
 fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported) {
-    let typed = anthropic::completion::CompletionResponse::deserialize(&response.raw)
+    let typed = anthropic::completion::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is Anthropic's reply document, which the provider type reads");
     assert_eq!(
         Some(typed.id.as_str()),
-        reported.identity.message_id.as_deref(),
+        reported.message_id.as_deref(),
         "the normalized message id is the document's"
     );
     assert_eq!(Some(typed.model.as_str()), reported.model.as_deref());
@@ -309,7 +314,7 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
         "the transport id is a header, not part of the reply document"
     );
     assert!(
-        reported.identity.provider_request_id.is_some(),
+        reported.provider_request_id.is_some(),
         "the normalized response carries the transport id instead"
     );
 }
@@ -323,7 +328,7 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
 async fn capture_terminal_pair(
     client: Bound<Anthropic>,
     build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
-    sink: Observed<(StreamFinal, StreamFinal)>,
+    sink: Observed<(CompletionEnd, CompletionEnd)>,
 ) {
     let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
@@ -349,16 +354,16 @@ async fn capture_terminal_pair(
 /// Streamed twin of [`assert_blocking_parity`].
 fn assert_streamed_parity(
     scenario: &str,
-    (normalized, second_record): (StreamFinal, StreamFinal),
+    (normalized, second_record): (CompletionEnd, CompletionEnd),
     expected: FinishReason,
     stop_reason: &str,
 ) {
     let typed: anthropic::streaming::StreamingCompletionResponse =
-        serde_json::from_value(second_record.raw.clone())
+        serde_json::from_value(second_record.meta.raw.clone())
             .expect("the terminal's raw is the provider record");
     assert_eq!(
         typed.usage.input_tokens.map(|n| n as u64),
-        second_record.usage.input_tokens,
+        second_record.meta.usage.input_tokens,
         "the raw record and the normalized record agree on usage"
     );
 

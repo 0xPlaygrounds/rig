@@ -106,45 +106,49 @@
               "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
             }
           ],
-          "usage": {
-            "input_tokens": 68,
-            "output_tokens": 27,
-            "total_tokens": 175,
-            "reasoning_tokens": 80
-          },
-          "response_id": "oXizaoHIJ7yCz7IPvIfHuAM",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "oXizaoHIJ7yCz7IPvIfHuAM",
+              "usage": {
+                "input_tokens": 68,
+                "output_tokens": 27,
+                "total_tokens": 175,
+                "reasoning_tokens": 80
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "oXizaoHIJ7yCz7IPvIfHuAM",
+                "usageMetadata": {
+                  "candidatesTokenCount": 27,
+                  "promptTokenCount": 68,
+                  "promptTokensDetails": [
                     {
-                      "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+                      "modality": "TEXT",
+                      "tokenCount": 68
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "oXizaoHIJ7yCz7IPvIfHuAM",
-            "usageMetadata": {
-              "candidatesTokenCount": 27,
-              "promptTokenCount": 68,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 68
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 80,
+                  "totalTokenCount": 175
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 80,
-              "totalTokenCount": 175
+              }
             }
           }
         }

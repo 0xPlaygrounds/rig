@@ -1345,10 +1345,14 @@ fn scripted_turn() -> Vec<StreamEvent> {
             },
             block: None,
         },
-        StreamEvent::Final(crate::streaming::StreamFinal::new(
-            "test",
-            crate::completion::Usage::default(),
-            serde_json::json!({}),
+        StreamEvent::Final(crate::completion::CompletionEnd::new(
+            crate::response::ResponseMeta {
+                usage: crate::completion::Usage::default(),
+                raw: serde_json::json!({}),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("test").expect("a provider name"),
+                )
+            },
         )),
     ]
 }

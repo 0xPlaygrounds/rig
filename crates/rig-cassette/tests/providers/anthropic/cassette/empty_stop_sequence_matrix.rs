@@ -156,7 +156,7 @@ async fn raw_normalize_empty_stop_sequence() {
                 .completion(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
                 .expect("empty stop-sequence request should succeed");
-            let raw = CompletionResponse::deserialize(&response.raw)
+            let raw = CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
 
             assert!(raw.content.is_empty(), "premise: the turn carried nothing");
@@ -187,7 +187,7 @@ async fn completion_empty_stop_sequence() {
             .expect("`completion` must not turn a completed turn into an error");
 
             assert!(response.choice.is_empty());
-            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+            assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
         },
     )
     .await;
@@ -549,17 +549,17 @@ async fn identity_survives_empty_stop() {
             .expect("empty stop turn should succeed");
 
             // Everything the discarded error used to take with it.
-            assert!(response.message_id.is_some(), "message id must survive");
+            assert!(response.end.message_id.is_some(), "message id must survive");
             assert!(
-                response.provider_request_id.is_some(),
+                response.end.meta.provider_request_id.is_some(),
                 "transport request id must survive — it is what Anthropic support asks for"
             );
             assert!(
-                response.usage.input_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.input_tokens.is_some_and(|n| n > 0),
                 "usage must survive"
             );
             *sink.lock().expect("model sink should not be poisoned") =
-                response.model.map(String::from);
+                response.end.meta.model.map(String::from);
         },
     )
     .await;
@@ -602,7 +602,7 @@ async fn finish_reason_is_stop_on_empty_stop() {
             .expect("empty stop turn should succeed");
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::Stop),
                 "a stop-sequence stop is a natural termination, not a failure"
             );

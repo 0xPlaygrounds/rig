@@ -1,11 +1,14 @@
 use bytes::Bytes;
 
+use crate::completion::CompletionEnd;
 use crate::completion::{CompletionRequest, Message};
+use crate::id::ProviderName;
 use crate::message::{AssistantContent, Reasoning};
 use crate::providers::anthropic::wire::Anthropic;
 use crate::providers::gemini::Gemini;
 use crate::providers::gemini::completion::GenerateContent;
 use crate::providers::openai::wire::{DEEPSEEK, OPENROUTER, OpenAI};
+use crate::response::ResponseMeta;
 use crate::test_utils::RecordingHttpClient;
 use crate::wire::{HasCompletion, Wire};
 
@@ -183,12 +186,18 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
 #[test]
 fn a_stream_stamps_its_reasoning_with_the_terminal_issuer() {
     use crate::message::AssistantContent;
-    use crate::streaming::{StreamFinal, stamp_reasoning};
+    use crate::streaming::stamp_reasoning;
 
-    let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
-        .with_reasoning_issuer("anthropic");
+    let terminal = CompletionEnd {
+        reasoning_issuer: Some(ProviderName::new("anthropic").expect("a provider name")),
+        ..CompletionEnd::new(ResponseMeta::new(
+            ProviderName::new("aws_bedrock").expect("a provider name"),
+        ))
+    };
     assert_eq!(terminal.issuer(), "anthropic");
-    let bare = StreamFinal::new("openai", Default::default(), serde_json::Value::Null);
+    let bare = CompletionEnd::new(ResponseMeta::new(
+        ProviderName::new("openai").expect("a provider name"),
+    ));
     assert_eq!(bare.issuer(), "openai");
 
     let choice = stamp_reasoning(
@@ -208,7 +217,7 @@ fn a_stream_stamps_its_reasoning_with_the_terminal_issuer() {
     assert_eq!(issuers, ["anthropic", "gcp.gemini"]);
 
     let json = serde_json::to_value(&terminal).expect("serializes");
-    let back: StreamFinal = serde_json::from_value(json).expect("loads");
+    let back: CompletionEnd = serde_json::from_value(json).expect("loads");
     assert_eq!(
         back.issuer(),
         "anthropic",
@@ -218,18 +227,23 @@ fn a_stream_stamps_its_reasoning_with_the_terminal_issuer() {
 
 #[tokio::test]
 async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
-    use crate::streaming::{StreamEvent, StreamFinal, StreamingCompletionResponse};
+    use crate::streaming::{StreamEvent, StreamingCompletionResponse};
     use futures::StreamExt;
 
     type Items = Vec<Result<StreamEvent, crate::error::ProviderError>>;
-    let terminal = || StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null);
+    let terminal = || CompletionEnd {
+        reasoning_issuer: Some(ProviderName::new("anthropic").expect("a provider name")),
+        ..CompletionEnd::new(ResponseMeta::new(
+            ProviderName::new("aws_bedrock").expect("a provider name"),
+        ))
+    };
 
     // A provider that opens its own stream knows the issuer up front.
     let mut stream = StreamingCompletionResponse::stream(
         "aws_bedrock",
-        Box::pin(futures::stream::iter(vec![Ok(StreamEvent::Final(
-            terminal().with_reasoning_issuer("anthropic"),
-        ))] as Items)),
+        Box::pin(futures::stream::iter(
+            vec![Ok(StreamEvent::Final(terminal()))] as Items,
+        )),
     )
     .with_reasoning_issuer("anthropic");
     assert_eq!(
@@ -249,7 +263,7 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
     // A stream rebuilt from bus events is opened under a handler label: the
     // issuer is unknown until its terminal names it.
     let events: crate::streaming::StreamEvents = Box::pin(futures::stream::iter(vec![Ok(
-        StreamEvent::Final(terminal().with_reasoning_issuer("anthropic")),
+        StreamEvent::Final(terminal()),
     )]));
     let mut rebuilt = StreamingCompletionResponse::from_events("default", events);
     assert_eq!(rebuilt.reasoning_issuer(), None);

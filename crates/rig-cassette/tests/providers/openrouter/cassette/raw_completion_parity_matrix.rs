@@ -61,12 +61,12 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 /// dialect naming no id header reports no transport id.
 fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, context: &str) {
     chat::assert_reproduces_body(response, PROVIDER, body, context);
-    let identity = response.identity();
+    let identity = &response.end;
     assert_eq!(
         identity.message_id, None,
         "{context}: chat has no message id"
     );
-    assert_no_request_id(identity.provider_request_id.as_deref(), "OpenRouter");
+    assert_no_request_id(identity.meta.provider_request_id.as_deref(), "OpenRouter");
 }
 
 // ================================================================
@@ -103,7 +103,7 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     // Same response, two views: the document `raw` carries, read back as the
     // chat-completions reply the decoder mapped from, reports the fields the
     // decoder reported.
-    let native = openai::CompletionResponse::deserialize(&second.raw)
+    let native = openai::CompletionResponse::deserialize(&second.end.meta.raw)
         .expect("raw is the chat-completions reply OpenRouter serves");
     chat::assert_native_matches_normalized(&second, &native, "the typed view of raw");
 
@@ -111,7 +111,7 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     // document, and it is where the gateway's own finish-reason spelling
     // survives — the shared type requires the word, the normalized response
     // maps it away.
-    let typed = openrouter::CompletionResponse::deserialize(&second.raw)
+    let typed = openrouter::CompletionResponse::deserialize(&second.end.meta.raw)
         .expect("raw is OpenRouter's own completion response");
     assert_eq!(
         typed.choices[0].finish_reason.as_deref(),
@@ -120,14 +120,17 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     );
 
     // Where the wire makes the two turns equal, the two turns agree.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
-    assert_eq!(second.finish_reason.clone(), first.finish_reason.clone());
+    assert_eq!(second.end.meta.provider, first.end.meta.provider);
+    assert_eq!(second.end.meta.model, first.end.meta.model);
     assert_eq!(
-        second.identity().provider_request_id,
-        first.identity().provider_request_id
+        second.end.finish_reason.clone(),
+        first.end.finish_reason.clone()
     );
-    assert_eq!(second.identity().message_id, first.identity().message_id);
+    assert_eq!(
+        second.end.meta.provider_request_id,
+        first.end.meta.provider_request_id
+    );
+    assert_eq!(second.end.message_id, first.end.message_id);
 }
 
 // ================================================================
@@ -154,8 +157,11 @@ async fn no_request_id_contract_holds_on_both_turns() {
     // There is no header to read, so neither turn has a transport id and the
     // dialect is where that is stated.
     assert_eq!(OPENROUTER.request_id_header, None);
-    assert_no_request_id(first.provider_request_id.as_deref(), "OpenRouter");
-    assert_no_request_id(second.provider_request_id.as_deref(), "OpenRouter");
-    assert_eq!(first.finish_reason.clone(), second.finish_reason.clone());
-    assert_eq!(first.model, second.model);
+    assert_no_request_id(first.end.meta.provider_request_id.as_deref(), "OpenRouter");
+    assert_no_request_id(second.end.meta.provider_request_id.as_deref(), "OpenRouter");
+    assert_eq!(
+        first.end.finish_reason.clone(),
+        second.end.finish_reason.clone()
+    );
+    assert_eq!(first.end.meta.model, second.end.meta.model);
 }

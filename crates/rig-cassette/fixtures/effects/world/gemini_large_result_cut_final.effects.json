@@ -120,47 +120,51 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 106,
-            "output_tokens": 10,
-            "total_tokens": 116
-          },
-          "response_id": "nHizav_8MpusqtsPsf3xkAY",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "nHizav_8MpusqtsPsf3xkAY",
+              "usage": {
+                "input_tokens": 106,
+                "output_tokens": 10,
+                "total_tokens": 116
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {},
+                            "name": "checkpoint_large"
+                          }
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "nHizav_8MpusqtsPsf3xkAY",
+                "usageMetadata": {
+                  "candidatesTokenCount": 10,
+                  "promptTokenCount": 106,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {},
-                        "name": "checkpoint_large"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 106
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "nHizav_8MpusqtsPsf3xkAY",
-            "usageMetadata": {
-              "candidatesTokenCount": 10,
-              "promptTokenCount": 106,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 106
+                  "serviceTier": "standard",
+                  "totalTokenCount": 116
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 116
+              }
             }
           }
         }
@@ -274,43 +278,47 @@
               "text": "checkpoint-complete"
             }
           ],
-          "usage": {
-            "input_tokens": 33922,
-            "output_tokens": 3,
-            "total_tokens": 33925
-          },
-          "response_id": "nXizavT6B9SDmtkP097woAk",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "nXizavT6B9SDmtkP097woAk",
+              "usage": {
+                "input_tokens": 33922,
+                "output_tokens": 3,
+                "total_tokens": 33925
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "checkpoint-complete"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "nXizavT6B9SDmtkP097woAk",
+                "usageMetadata": {
+                  "candidatesTokenCount": 3,
+                  "promptTokenCount": 33922,
+                  "promptTokensDetails": [
                     {
-                      "text": "checkpoint-complete"
+                      "modality": "TEXT",
+                      "tokenCount": 33922
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "nXizavT6B9SDmtkP097woAk",
-            "usageMetadata": {
-              "candidatesTokenCount": 3,
-              "promptTokenCount": 33922,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 33922
+                  "serviceTier": "standard",
+                  "totalTokenCount": 33925
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 33925
+              }
             }
           }
         }

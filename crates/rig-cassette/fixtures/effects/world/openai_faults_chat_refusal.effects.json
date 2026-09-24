@@ -80,24 +80,28 @@
               "text": "I'm sorry, I can't help."
             }
           ],
-          "usage": {
-            "input_tokens": 10,
-            "output_tokens": 8,
-            "total_tokens": 18
-          },
-          "response_id": "chatcmpl-1",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 10,
-              "completion_tokens": 8,
-              "total_tokens": 18
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-1",
-            "model": "gpt-4o"
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o",
+              "response_id": "chatcmpl-1",
+              "usage": {
+                "input_tokens": 10,
+                "output_tokens": 8,
+                "total_tokens": 18
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 10,
+                  "completion_tokens": 8,
+                  "total_tokens": 18
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-1",
+                "model": "gpt-4o"
+              }
+            }
           }
         }
       },
@@ -127,24 +131,26 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 10,
-            "output_tokens": 8,
-            "total_tokens": 18
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-1",
-          "provider": "openai",
-          "model": "gpt-4o",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_id": "chatcmpl-1",
             "usage": {
-              "prompt_tokens": 10,
-              "completion_tokens": 8,
+              "input_tokens": 10,
+              "output_tokens": 8,
               "total_tokens": 18
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-1",
-            "model": "gpt-4o"
+            "raw": {
+              "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 8,
+                "total_tokens": 18
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-1",
+              "model": "gpt-4o"
+            }
           }
         }
       ],

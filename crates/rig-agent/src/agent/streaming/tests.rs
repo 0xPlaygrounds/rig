@@ -581,7 +581,7 @@ fn streaming_tool_then_text_model() -> MockCompletionModel {
 /// matches.
 fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
     let terminal = mock_final(usage);
-    CompletionCall::new(
+    completion_call(
         call_index,
         usage,
         rig_core::test_utils::mock_terminal_document(&terminal).expect("the mock's document"),
@@ -619,17 +619,19 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     let tool_name = "missing".to_string();
     let advertised = BTreeSet::from([tool_name.clone()]);
     let turn = crate::agent::run::ModelTurn::new(
-        None,
-        vec![AssistantContent::ToolCall(
-            rig_core::message::ToolCall::new(
-                rig_core::message::ToolCallId::new_or_minted("expected_call", 0),
-                rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
-            ),
-        )],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![AssistantContent::ToolCall(
+                rig_core::message::ToolCall::new(
+                    rig_core::message::ToolCallId::new_or_minted("expected_call", 0),
+                    rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
+                ),
+            )],
+            Usage::default(),
+            serde_json::json!({"origin": "hand-built test turn"}),
+        ),
         advertised.clone(),
         advertised,
-        serde_json::json!({"origin": "hand-built test turn"}),
     );
     assert!(matches!(
         run.model_response(turn)
@@ -1438,7 +1440,7 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
 
 #[test]
 fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
-    let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
+    let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(completion_call(
         2,
         usage(3, 4),
         serde_json::json!({"id": "resp_2"}),
@@ -1466,13 +1468,13 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
         MultiTurnStreamItem::CompletionCall(call_usage) => {
             assert_eq!(
                 call_usage,
-                CompletionCall::new(2, usage(3, 4), serde_json::json!({"id": "resp_2"}))
+                completion_call(2, usage(3, 4), serde_json::json!({"id": "resp_2"}))
             );
         }
         other => panic!("expected completion call event, got {other:?}"),
     }
 
-    let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
+    let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(completion_call(
         3,
         Usage::default(),
         serde_json::json!({"id": "resp_3"}),
@@ -1498,8 +1500,8 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
         vec![AssistantContent::text("done")],
         usage(3, 4),
         vec![
-            CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
-            CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
+            completion_call(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
+            completion_call(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
         ],
         None,
     );
@@ -4979,7 +4981,7 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
 #[tokio::test]
 async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        rig_core::streaming::StreamFinal {
+        rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Length),
             ..mock_final(Usage::default())
         },
@@ -5031,7 +5033,7 @@ async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
 async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::Text("a partial ans".to_string()),
-        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Length),
             ..mock_final(Usage::default())
         }),
@@ -5078,7 +5080,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
 #[tokio::test]
 async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        rig_core::streaming::StreamFinal {
+        rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::ContentFilter),
             ..mock_final(Usage::default())
         },
@@ -5123,7 +5125,7 @@ async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
 #[tokio::test]
 async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        rig_core::streaming::StreamFinal {
+        rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
             ..mock_final(Usage::default())
         },
@@ -5165,7 +5167,7 @@ async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
 async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thinking hard and never reaching an answer"),
-        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Length),
             ..mock_final(Usage::default())
         }),
@@ -5205,7 +5207,7 @@ async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
 async fn reasoning_only_turn_content_filtered_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("considering something the filter rejects"),
-        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::ContentFilter),
             ..mock_final(Usage::default())
         }),
@@ -5251,7 +5253,7 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("weighing the options"),
         MockStreamEvent::Text("the answer so f".to_string()),
-        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Length),
             ..mock_final(Usage::default())
         }),
@@ -5292,7 +5294,7 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
 async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thought about it, nothing to add"),
-        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Stop),
             ..mock_final(Usage::default())
         }),
@@ -5330,7 +5332,7 @@ async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
 async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("partial thinking worth keeping"),
-        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        MockStreamEvent::FinalResponse(rig_core::test_utils::MockFinal {
             finish_reason: Some(FinishReason::Length),
             ..mock_final(Usage::default())
         }),
@@ -6301,4 +6303,40 @@ async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
             .all(|reasoning| reasoning.replayable_to(rig_core::test_utils::MOCK_PROVIDER)),
         "the issuing provider accepts it: {reasoning:?}"
     );
+}
+
+/// A completion-call record reporting `usage` and `raw` and nothing else.
+fn completion_call(call_index: usize, usage: Usage, raw: serde_json::Value) -> CompletionCall {
+    CompletionCall {
+        call_index,
+        usage,
+        message_id: None,
+        response_id: None,
+        provider_request_id: None,
+        finish_reason: None,
+        raw,
+    }
+}
+
+/// A response carrying `choice`, `usage`, `raw`, and the message id
+/// `message_id`, attributed to the mock provider.
+fn turn_response(
+    message_id: Option<String>,
+    choice: Vec<rig_core::message::AssistantContent>,
+    usage: rig_core::completion::Usage,
+    raw: serde_json::Value,
+) -> rig_core::completion::CompletionResponse {
+    rig_core::completion::CompletionResponse {
+        choice,
+        end: rig_core::completion::CompletionEnd {
+            message_id: message_id.and_then(rig_core::id::MessageId::non_empty),
+            ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage,
+                raw,
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                )
+            })
+        },
+    }
 }

@@ -12,8 +12,9 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::error::ProviderError;
-use crate::id::{MessageId, ModelName, RequestId, ResponseId};
+use crate::id::{MessageId, ModelName, ProviderName, RequestId, ResponseId};
 use crate::message::ToolChoice;
+use crate::response::ResponseMeta;
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
@@ -157,93 +158,131 @@ impl FinishReason {
     }
 }
 
-/// Assistant content and normalized completion metadata. The choice may be
-/// empty, including for truncated or filtered turns. Provider-specific data is
-/// available through [`Self::raw`] without retaining a concrete model type.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A completion: the assistant content and how the reply ended. The choice
+/// may be empty, including for truncated or filtered turns.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionResponse {
     /// Assistant content returned by the provider, possibly empty.
     pub choice: Vec<AssistantContent>,
-    /// Tokens used during prompting and responding
-    pub usage: Usage,
-    /// Provider-issued assistant message ID suitable for replay in
-    /// [`Message::Assistant`]. Response-wide IDs belong in [`Self::response_id`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<MessageId>,
-    /// Provider-issued response ID for telemetry and diagnostics.
-    /// Must not be replayed as an assistant message ID.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<ResponseId>,
-    /// Request identifier from HTTP headers or SDK metadata, not the body's
-    /// message or response ID. `None` when the provider reports none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<RequestId>,
-    /// Why the model stopped generating, when the provider reported it. The
-    /// fold that builds the response reconciles it with the tool calls in
-    /// [`Self::choice`] ([`FinishReason::reconcile_with_output`]).
+    /// The terminal record: why the reply ended and the provider's metadata.
+    pub end: CompletionEnd,
+}
+
+/// How a completion ended: the terminal record a stream closes with, and the
+/// part of a [`CompletionResponse`] beyond its content. Content never rides
+/// here; it arrives as block events or in [`CompletionResponse::choice`].
+///
+/// `meta.raw` has two meanings. For a buffered reply it is the whole reply
+/// document; for a stream it is the terminal event's document, serialized
+/// from the decoder's parsed terminal type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompletionEnd {
+    /// Why the model stopped, when the provider said. The fold that builds a
+    /// response reconciles it with the tool calls the reply carried
+    /// ([`FinishReason::reconcile_with_output`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
-    /// Stable descriptor name of the provider that produced this response, for
-    /// example `"openai"`. Always populated, including for responses derived
-    /// from a stream that ended before its terminal record.
-    pub provider: String,
-    /// Provider-reported model identifier for the response.
-    ///
-    /// This is the model named by the wire response, not the model that was
-    /// requested; it is `None` when the provider reports no identifier.
+    /// The assistant message id, suitable for replay in
+    /// [`Message::Assistant`]. A message block's id takes precedence over
+    /// the terminal record's in a folded response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<MessageId>,
+    /// The service whose reasoning a stream carries, when it is not
+    /// `meta.provider`: a transport or deployment of another provider's
+    /// models. The consumer of the stream records it as its reasoning's
+    /// issuer ([`crate::message::Reasoning::provider`]). A folded
+    /// [`CompletionResponse`] has applied it to every reasoning part and
+    /// leaves it `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_issuer: Option<ProviderName>,
+    /// The provider's metadata.
+    pub meta: ResponseMeta,
+}
+
+impl CompletionEnd {
+    /// A record carrying the provider's metadata and nothing else.
+    pub fn new(meta: ResponseMeta) -> Self {
+        Self {
+            finish_reason: None,
+            message_id: None,
+            reasoning_issuer: None,
+            meta,
+        }
+    }
+
+    /// The issuer this reply's reasoning records: [`Self::reasoning_issuer`]
+    /// when set, otherwise the provider.
+    pub fn issuer(&self) -> &ProviderName {
+        self.reasoning_issuer
+            .as_ref()
+            .unwrap_or(&self.meta.provider)
+    }
+
+    /// What this record tells its operation's span.
+    pub fn recorded(&self) -> crate::telemetry::Recorded<'_> {
+        crate::telemetry::Recorded {
+            meta: &self.meta,
+            message_id: self.message_id.as_ref(),
+        }
+    }
+}
+
+/// What a decoder read off a completion reply's terminal record. The driver
+/// completes it into a [`CompletionEnd`] with the provider and the transport
+/// request id.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReportedEnd {
+    /// Why the model stopped, when the reply said.
+    pub finish_reason: Option<FinishReason>,
+    /// The message id the terminal record names.
+    pub message_id: Option<MessageId>,
+    /// The issuer of the reply's reasoning, when it is not the provider.
+    pub reasoning_issuer: Option<ProviderName>,
+    /// The model the reply names.
     pub model: Option<ModelName>,
-    /// Provider response document for typed inspection through deserialization.
-    /// Parsed wire types may omit unmodeled fields. This data does not override
-    /// normalized fields; callers constructing responses must supply it.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    /// The response id the reply names.
+    pub response_id: Option<ResponseId>,
+    /// The tokens the reply reports.
+    pub usage: Usage,
+    /// The terminal record's document, serialized from the decoder's parsed
+    /// terminal type.
     pub raw: serde_json::Value,
 }
 
-/// Distinct message, response, and transport identifiers for one model call.
-/// Unreported identifiers remain `None`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ResponseIdentity {
-    /// Provider-issued assistant message ID suitable for replay.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<MessageId>,
-    /// Response-wide ID, never replayed as a message ID.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<ResponseId>,
-    /// Transport request ID from HTTP headers or SDK metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<RequestId>,
-}
-
-impl CompletionResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset. `raw` is the provider's own document for this response,
-    /// serialized; see [`Self::raw`].
-    pub fn new(
-        choice: Vec<AssistantContent>,
-        usage: Usage,
-        provider: impl Into<String>,
-        raw: serde_json::Value,
-    ) -> Self {
+impl ReportedEnd {
+    /// A terminal record reporting `usage` and its document `raw`, and
+    /// nothing else.
+    pub fn new(usage: Usage, raw: serde_json::Value) -> Self {
         Self {
-            choice,
-            usage,
-            message_id: None,
-            response_id: None,
-            provider_request_id: None,
             finish_reason: None,
-            provider: provider.into(),
+            message_id: None,
+            reasoning_issuer: None,
             model: None,
+            response_id: None,
+            usage,
             raw,
         }
     }
 
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: self.message_id.clone(),
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
+    /// The terminal record, with the driver's provider and transport request
+    /// id.
+    pub fn complete(
+        self,
+        provider: ProviderName,
+        provider_request_id: Option<RequestId>,
+    ) -> CompletionEnd {
+        CompletionEnd {
+            finish_reason: self.finish_reason,
+            message_id: self.message_id,
+            reasoning_issuer: self.reasoning_issuer,
+            meta: ResponseMeta {
+                provider,
+                model: self.model,
+                response_id: self.response_id,
+                provider_request_id,
+                usage: self.usage,
+                raw: self.raw,
+            },
         }
     }
 }

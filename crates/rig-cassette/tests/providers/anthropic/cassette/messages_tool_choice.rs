@@ -56,7 +56,7 @@ async fn required_maps_to_any_and_forces_tool_use() {
                 "only the provided tool can be called, saw {names:?}"
             );
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::ToolCalls),
                 "a forced tool_use turn should preserve the tool_use stop reason"
             );
@@ -105,7 +105,7 @@ async fn none_suppresses_tool_use() {
                 "model should answer directly without tools, got {text:?}"
             );
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::Stop),
                 "a plain answer should preserve the end_turn stop reason"
             );

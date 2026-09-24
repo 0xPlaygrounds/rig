@@ -42,7 +42,7 @@ async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
     // The census is about what the backend actually returned, so it reads the
     // provider's own payload out of the captured document rather than the
     // normalized view.
-    let reply = openai::CompletionResponse::deserialize(&response.raw)
+    let reply = openai::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw is the shared chat-completions response");
     assert!(!reply.id.is_empty());
     assert_eq!(reply.model, model_name);
@@ -188,7 +188,7 @@ async fn default_qwen_family_streaming() {
                 .expect("the default model stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("the stream should end with a terminal record");
-            assert!(terminal.usage.total_tokens.is_some_and(|n| n > 0));
+            assert!(terminal.meta.usage.total_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;

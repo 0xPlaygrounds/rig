@@ -85,7 +85,7 @@ async fn raw_is_the_verbatim_response_body() {
     // provider sent is reachable, and the values are the recorded ones. The
     // generated id is compared through the token helper because a recording
     // pass mints a live one while replay serves the scrubbed fixture back.
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_matches_recorded_token(
         raw["id"].as_str(),
         body["id"].as_str(),
@@ -94,7 +94,7 @@ async fn raw_is_the_verbatim_response_body() {
     assert_matches_recorded_document(raw, &body, &["id"], "raw is the provider's document");
     assert_eq!(
         Some(raw["id"].as_str()),
-        Some(response.response_id.as_deref())
+        Some(response.end.meta.response_id.as_deref())
     );
 }
 
@@ -127,7 +127,7 @@ async fn raw_exposes_object_and_citations() {
         "the recorded Perplexity turn carries citations: {body}"
     );
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(raw["object"], json!(recorded_object));
     // The normalized view has no slot for the tag.
     let normalized = serde_json::to_value(&response).expect("response serializes");
@@ -173,11 +173,11 @@ async fn normalized_fields_match_raw_renormalized() {
     // Perplexity contracts no request-id header, so `None` is the documented
     // outcome — its own contract, stated once for the turn rather than per
     // view, because it is a property of the transport and not of the bytes.
-    assert_no_request_id(response.provider_request_id.as_deref(), DIALECT);
+    assert_no_request_id(response.end.meta.provider_request_id.as_deref(), DIALECT);
 
     // One seam, two views: the normalized fields hold against the response's
     // own `raw` exactly as they hold against the fixture bytes, because `raw`
     // *is* those bytes. Capture adds a view; it never changes the mapping.
-    let raw = response.raw.clone();
+    let raw = response.end.meta.raw.clone();
     chat::assert_reproduces_body(&response, PROVIDER, &raw, "the response's own raw");
 }

@@ -62,7 +62,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 .completion(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+            let raw = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is the Responses API reply mistral.rs sent");
             let text = response
                 .choice

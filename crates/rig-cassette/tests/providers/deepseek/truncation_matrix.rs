@@ -252,7 +252,7 @@ async fn assert_blocking_truncation_survives(
 
     // The premise, read off DeepSeek's own view of the very reply the
     // normalized response was decoded from: `raw` is that reply's document.
-    let wire = deepseek::CompletionResponse::deserialize(&response.raw)
+    let wire = deepseek::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw reads back as DeepSeek's own CompletionResponse");
     let choice = wire.choices.first().expect("a reply carries a choice");
     assert_eq!(
@@ -269,7 +269,7 @@ async fn assert_blocking_truncation_survives(
     );
 
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(rig::completion::FinishReason::Length),
         "the surviving turn reports the truncation"
     );
@@ -279,17 +279,17 @@ async fn assert_blocking_truncation_survives(
         response.choice
     );
     assert!(
-        response.usage.total_tokens.is_some_and(|n| n > 0)
-            && response.usage.input_tokens.is_some_and(|n| n > 0),
+        response.end.meta.usage.total_tokens.is_some_and(|n| n > 0)
+            && response.end.meta.usage.input_tokens.is_some_and(|n| n > 0),
         "usage survives the truncated call: {:?}",
-        response.usage
+        response.end.meta.usage
     );
     assert!(
-        response.response_id.is_some(),
+        response.end.meta.response_id.is_some(),
         "the response id survives the truncated call"
     );
     assert!(
-        response.model.is_some(),
+        response.end.meta.model.is_some(),
         "the model name survives the truncated call"
     );
     Ok(())
@@ -333,7 +333,7 @@ async fn assert_streaming_truncation_survives(
     let usage = outcome
         .final_record
         .as_ref()
-        .map(|record| record.usage)
+        .map(|record| record.meta.usage)
         .unwrap_or_default();
     assert!(
         usage.total_tokens.is_some_and(|n| n > 0),
@@ -363,7 +363,7 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
                 ))
                 .await?;
             assert_eq!(
-                normalized.finish_reason.clone(),
+                normalized.end.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length)
             );
             assert!(
@@ -443,7 +443,7 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
             let calls = tool_calls(&normalized.choice);
             assert!(calls.is_empty());
             assert_eq!(
-                normalized.finish_reason.clone(),
+                normalized.end.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length),
                 "the boundary is a `length` turn, not a natural stop"
             );
@@ -535,7 +535,7 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
                 calls[0].function.arguments
             );
             assert_eq!(
-                normalized.finish_reason.clone(),
+                normalized.end.finish_reason.clone(),
                 Some(rig::completion::FinishReason::ToolCalls)
             );
             Ok::<(), anyhow::Error>(())
@@ -753,7 +753,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
             );
             assert_eq!(calls[0].function.arguments, json!({ "team": "platform" }));
             assert_eq!(
-                normalized.finish_reason.clone(),
+                normalized.end.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length)
             );
             Ok::<(), anyhow::Error>(())
@@ -832,7 +832,7 @@ async fn blocking_text_before_a_truncated_call_survives() {
             );
             assert!(tool_calls(&normalized.choice).is_empty());
             assert_eq!(
-                normalized.finish_reason.clone(),
+                normalized.end.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length)
             );
             Ok::<(), anyhow::Error>(())
@@ -919,7 +919,7 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
                 normalized.choice
             );
             assert!(tool_calls(&normalized.choice).is_empty());
-            assert!(normalized.usage.reasoning_tokens.is_some_and(|n| n > 0));
+            assert!(normalized.end.meta.usage.reasoning_tokens.is_some_and(|n| n > 0));
             Ok::<(), anyhow::Error>(())
         },
     )

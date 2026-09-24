@@ -90,50 +90,54 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 29,
-            "output_tokens": 53,
-            "total_tokens": 380,
-            "reasoning_tokens": 298
-          },
-          "response_id": "16-yasemCJ6UmtkPtvmfmAk",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
-                    {
-                      "text": "**My Thoughts on Rust and Memory Safety**\n\nOkay, so I'm thinking about Rust. It's a systems language, aiming for top performance, but the real standout is how it handles memory safety. The key is its ownership system; a completely different approach to memory management compared to languages with garbage collectors. That's why it's so important to focus on how Rust prevents errors like buffer overflows and null pointer dereferences. These are the classic security flaws and crash culprits. I need to make sure to clearly convey that this focus on safety is what sets Rust apart, and that these memory errors are the major sources of vulnerabilities.\n\n\n",
-                      "thought": true
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "16-yasemCJ6UmtkPtvmfmAk",
+              "usage": {
+                "input_tokens": 29,
+                "output_tokens": 53,
+                "total_tokens": 380,
+                "reasoning_tokens": 298
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "**My Thoughts on Rust and Memory Safety**\n\nOkay, so I'm thinking about Rust. It's a systems language, aiming for top performance, but the real standout is how it handles memory safety. The key is its ownership system; a completely different approach to memory management compared to languages with garbage collectors. That's why it's so important to focus on how Rust prevents errors like buffer overflows and null pointer dereferences. These are the classic security flaws and crash culprits. I need to make sure to clearly convey that this focus on safety is what sets Rust apart, and that these memory errors are the major sources of vulnerabilities.\n\n\n",
+                          "thought": true
+                        },
+                        {
+                          "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and null pointer dereferences, which are leading causes of security vulnerabilities and system crashes.",
+                          "thoughtSignature": "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"
+                        }
+                      ],
+                      "role": "model"
                     },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3-flash-preview",
+                "responseId": "16-yasemCJ6UmtkPtvmfmAk",
+                "usageMetadata": {
+                  "candidatesTokenCount": 53,
+                  "promptTokenCount": 29,
+                  "promptTokensDetails": [
                     {
-                      "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and null pointer dereferences, which are leading causes of security vulnerabilities and system crashes.",
-                      "thoughtSignature": "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"
+                      "modality": "TEXT",
+                      "tokenCount": 29
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-3-flash-preview",
-            "responseId": "16-yasemCJ6UmtkPtvmfmAk",
-            "usageMetadata": {
-              "candidatesTokenCount": 53,
-              "promptTokenCount": 29,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 29
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 298,
+                  "totalTokenCount": 380
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 298,
-              "totalTokenCount": 380
+              }
             }
           }
         }

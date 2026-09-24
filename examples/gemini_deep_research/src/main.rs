@@ -114,7 +114,7 @@ async fn poll_until_terminal(
 
     loop {
         let response = model.completion(request.clone()).await?;
-        let interaction: Interaction = serde_json::from_value(response.raw)?;
+        let interaction: Interaction = serde_json::from_value(response.end.meta.raw)?;
         if interaction.is_terminal() {
             return Ok(interaction);
         }
@@ -158,10 +158,11 @@ fn handle_stream_event(state: &mut StreamState, event: StreamEvent) {
         // The terminal record carries the interaction id rig normalizes and,
         // under `interaction`, Gemini's own document for the finished run.
         StreamEvent::Final(final_record) => {
-            if let Some(response_id) = final_record.response_id.as_deref() {
+            if let Some(response_id) = final_record.meta.response_id.as_deref() {
                 state.interaction_id = Some(response_id.to_owned());
             }
             state.interaction = final_record
+                .meta
                 .raw
                 .get("interaction")
                 .cloned()
@@ -262,7 +263,7 @@ async fn main() -> Result<()> {
                 .clone()
                 .map_wire(|gemini| gemini.interaction(interaction_id.as_str()));
             let interaction: Interaction =
-                serde_json::from_value(probe.completion(request.clone()).await?.raw)?;
+                serde_json::from_value(probe.completion(request.clone()).await?.end.meta.raw)?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);
@@ -301,7 +302,7 @@ async fn main() -> Result<()> {
         .await?;
     // rig normalizes the interaction id onto `response_id`, so opening a
     // background run needs no reach into `raw`.
-    let Some(interaction_id) = opened.response_id else {
+    let Some(interaction_id) = opened.end.meta.response_id else {
         println!("No interaction id returned; aborting.");
         return Ok(());
     };

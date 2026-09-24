@@ -125,125 +125,129 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 404,
-            "output_tokens": 203,
-            "total_tokens": 607,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 179
-          },
-          "response_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
-          "provider_request_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_c27e3876-1b04-92ce-8e03-b4620aa3c89e",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "I will extract structured data from the provided text.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
-                "call_id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0",
-                "id": "fc_c27e3876-1b04-92ce-8e03-b4620aa3c89e_0",
-                "name": "submit",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "required",
-            "tools": [
-              {
-                "description": "Submit the structured data you extracted from the provided text.",
-                "name": "submit",
-                "parameters": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "properties": {
-                    "first_name": {
-                      "type": "string"
-                    },
-                    "job": {
-                      "type": "string"
-                    },
-                    "last_name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "first_name",
-                    "last_name",
-                    "job"
-                  ],
-                  "title": "SmokePerson",
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+              "provider_request_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+              "usage": {
                 "input_tokens": 404,
-                "output_tokens": 207
-              },
-              "cost_in_usd_ticks": 8109000,
-              "input_tokens": 404,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 203,
-              "output_tokens_details": {
+                "output_tokens": 203,
+                "total_tokens": 607,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 179
               },
-              "total_tokens": 607
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "I will extract structured data from the provided text.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
+                    "call_id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0",
+                    "id": "fc_c27e3876-1b04-92ce-8e03-b4620aa3c89e_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "first_name": {
+                          "type": "string"
+                        },
+                        "job": {
+                          "type": "string"
+                        },
+                        "last_name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "first_name",
+                        "last_name",
+                        "job"
+                      ],
+                      "title": "SmokePerson",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 404,
+                    "output_tokens": 207
+                  },
+                  "cost_in_usd_ticks": 8109000,
+                  "input_tokens": 404,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 203,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 179
+                  },
+                  "total_tokens": 607
+                },
+                "user": null
+              }
+            }
           }
         }
       },

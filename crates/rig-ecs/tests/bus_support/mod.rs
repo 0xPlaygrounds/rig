@@ -14,6 +14,7 @@ use std::{
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
+    completion::CompletionEnd,
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
     },
@@ -21,7 +22,6 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     serve::{Dispatch, Reply, Serve, ServingPolicy},
-    streaming::StreamFinal,
 };
 use rig_ecs::{
     bus::{BusPlugin, EffectOutcome, PendingEffect},
@@ -152,12 +152,16 @@ impl Serve for MockModel {
                 self.counters.unary_started.fetch_add(1, Ordering::SeqCst);
                 self.counters.hold.wait().await;
                 self.counters.unary_served.fetch_add(1, Ordering::SeqCst);
-                Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
-                    vec![AssistantContent::text(&self.text)],
-                    Usage::default(),
-                    "mock",
-                    serde_json::json!({ "provider": "mock" }),
-                ))))
+                Reply::Outcome(Ok(Outcome::Completion(CompletionResponse {
+                    choice: vec![AssistantContent::text(&self.text)],
+                    end: CompletionEnd::new(rig_core::response::ResponseMeta {
+                        usage: Usage::default(),
+                        raw: serde_json::json!({ "provider": "mock" }),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                        )
+                    }),
+                })))
             }
             EffectKind::Completion { stream: true, .. } => {
                 let counters = self.counters.clone();
@@ -175,11 +179,14 @@ impl Serve for MockModel {
                         let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
                         if sent >= cap {
                             guard.finished = out
-                                .finish(StreamFinal::new(
-                                    "mock",
-                                    Usage::default(),
-                                    serde_json::json!({ "provider": "mock" }),
-                                ))
+                                .finish(CompletionEnd::new(rig_core::response::ResponseMeta {
+                                    usage: Usage::default(),
+                                    raw: serde_json::json!({ "provider": "mock" }),
+                                    ..rig_core::response::ResponseMeta::new(
+                                        rig_core::id::ProviderName::new("mock")
+                                            .expect("a provider name"),
+                                    )
+                                }))
                                 .await
                                 .is_ok();
                             return;

@@ -98,44 +98,48 @@
               "text": "The dominant non-background color of the image is bright red."
             }
           ],
-          "usage": {
-            "input_tokens": 82,
-            "output_tokens": 16,
-            "total_tokens": 98,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZZfhFjHqodoLFSQZv",
-          "provider_request_id": "req_011CfLcZZ9S5EbXVVFRAxtXX",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "The dominant non-background color of the image is bright red.",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcZZfhFjHqodoLFSQZv",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcZZfhFjHqodoLFSQZv",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcZZ9S5EbXVVFRAxtXX",
+              "usage": {
+                "input_tokens": 82,
+                "output_tokens": 16,
+                "total_tokens": 98,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 82,
-              "output_tokens": 16,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The dominant non-background color of the image is bright red.",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcZZfhFjHqodoLFSQZv",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 82,
+                  "output_tokens": 16,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

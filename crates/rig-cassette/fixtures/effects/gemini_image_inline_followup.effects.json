@@ -104,50 +104,54 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1115,
-            "output_tokens": 9,
-            "total_tokens": 1177,
-            "reasoning_tokens": 53
-          },
-          "response_id": "W2GzavWdO4qsz7IP3-jl0Ac",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "W2GzavWdO4qsz7IP3-jl0Ac",
+              "usage": {
+                "input_tokens": 1115,
+                "output_tokens": 9,
+                "total_tokens": 1177,
+                "reasoning_tokens": 53
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The dominant non-background color is red.",
+                          "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3-flash-preview",
+                "responseId": "W2GzavWdO4qsz7IP3-jl0Ac",
+                "usageMetadata": {
+                  "candidatesTokenCount": 9,
+                  "promptTokenCount": 1115,
+                  "promptTokensDetails": [
                     {
-                      "text": "The dominant non-background color is red.",
-                      "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
+                      "modality": "IMAGE",
+                      "tokenCount": 1089
+                    },
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 26
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-3-flash-preview",
-            "responseId": "W2GzavWdO4qsz7IP3-jl0Ac",
-            "usageMetadata": {
-              "candidatesTokenCount": 9,
-              "promptTokenCount": 1115,
-              "promptTokensDetails": [
-                {
-                  "modality": "IMAGE",
-                  "tokenCount": 1089
-                },
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 26
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 53,
+                  "totalTokenCount": 1177
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 53,
-              "totalTokenCount": 1177
+              }
             }
           }
         }
@@ -326,50 +330,54 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1142,
-            "output_tokens": 7,
-            "total_tokens": 1214,
-            "reasoning_tokens": 65
-          },
-          "response_id": "XWGzaubYIp_jz7IP7qHS4AE",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_id": "XWGzaubYIp_jz7IP7qHS4AE",
+              "usage": {
+                "input_tokens": 1142,
+                "output_tokens": 7,
+                "total_tokens": 1214,
+                "reasoning_tokens": 65
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The image contained a red square.",
+                          "thoughtSignature": "Ev0CCvoCAWkUfRMChDv+Lk8J3b1qRW7BRk3+3aCDVXup04sZqgAV2phs0uH/qkI3F4D7fL0gcYEOpl4tt4AjKEOSWjuIViYrFDTM0ZcfsCATyWyENEOutcBS/sJG8vD1lliSssFhH5Ma5fusMntdFO+FFs5ywlaD5G9KKmE6TwHkNy3Eb8mhDUtdwAB8I3nd0FvhMQyCO9MsVaMU2wsDdgD68ehy5WsIg84tZSTD44YTrHZm6eErTOWtMN77AqbRX7LxEwpmtsBoLZyulrnQHI1HdVEnzv0IhzNzITu7/Qk6RwcaItmmauzjnKdHXoyJjNGb8XEtS76LvH2hmHAjLmE6sEm3pByBt5+oBgk475RPdhy6gF3kPpP5/d+AI++IlT09SVeFDxjEsrnnxSJ8bOzgU8mI1SyTxCsDVUAegfKDqb1PasNrc16FWDen3i5Va7EGetPi4QILS/DW1hI9QENMTvnPccreYYnOQCQjJQaIsHUuRpTveYCsUDAUPR65"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-3-flash-preview",
+                "responseId": "XWGzaubYIp_jz7IP7qHS4AE",
+                "usageMetadata": {
+                  "candidatesTokenCount": 7,
+                  "promptTokenCount": 1142,
+                  "promptTokensDetails": [
                     {
-                      "text": "The image contained a red square.",
-                      "thoughtSignature": "Ev0CCvoCAWkUfRMChDv+Lk8J3b1qRW7BRk3+3aCDVXup04sZqgAV2phs0uH/qkI3F4D7fL0gcYEOpl4tt4AjKEOSWjuIViYrFDTM0ZcfsCATyWyENEOutcBS/sJG8vD1lliSssFhH5Ma5fusMntdFO+FFs5ywlaD5G9KKmE6TwHkNy3Eb8mhDUtdwAB8I3nd0FvhMQyCO9MsVaMU2wsDdgD68ehy5WsIg84tZSTD44YTrHZm6eErTOWtMN77AqbRX7LxEwpmtsBoLZyulrnQHI1HdVEnzv0IhzNzITu7/Qk6RwcaItmmauzjnKdHXoyJjNGb8XEtS76LvH2hmHAjLmE6sEm3pByBt5+oBgk475RPdhy6gF3kPpP5/d+AI++IlT09SVeFDxjEsrnnxSJ8bOzgU8mI1SyTxCsDVUAegfKDqb1PasNrc16FWDen3i5Va7EGetPi4QILS/DW1hI9QENMTvnPccreYYnOQCQjJQaIsHUuRpTveYCsUDAUPR65"
+                      "modality": "IMAGE",
+                      "tokenCount": 1089
+                    },
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 53
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-3-flash-preview",
-            "responseId": "XWGzaubYIp_jz7IP7qHS4AE",
-            "usageMetadata": {
-              "candidatesTokenCount": 7,
-              "promptTokenCount": 1142,
-              "promptTokensDetails": [
-                {
-                  "modality": "IMAGE",
-                  "tokenCount": 1089
-                },
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 53
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 65,
+                  "totalTokenCount": 1214
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 65,
-              "totalTokenCount": 1214
+              }
             }
           }
         }

@@ -143,14 +143,14 @@ async fn a_unary_body_and_the_stream_of_the_same_turn_fold_alike() {
     let streamed = folded_stream(openai(), &sse).await;
 
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
-    assert_eq!(buffered.model, streamed.model);
-    assert_eq!(buffered.message_id, streamed.message_id);
-    assert_eq!(buffered.response_id, streamed.response_id);
+    assert_eq!(buffered.end.meta.model, streamed.end.meta.model);
+    assert_eq!(buffered.end.message_id, streamed.end.message_id);
+    assert_eq!(buffered.end.meta.response_id, streamed.end.meta.response_id);
     assert_eq!(
         text_of(&buffered),
         Some("stream identity probe".to_owned()),
@@ -169,10 +169,10 @@ async fn a_unary_tool_turn_and_its_stream_fold_alike() {
     let streamed = folded_stream(openai(), &sse).await;
 
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
     assert!(
         buffered
@@ -196,12 +196,12 @@ async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
     let streamed = folded_stream(wire, &sse).await;
 
     assert_eq!(buffered.choice, streamed.choice);
-    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.end.meta.usage, streamed.end.meta.usage);
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
-    assert_eq!(buffered.provider, "chatgpt");
+    assert_eq!(buffered.end.meta.provider, "chatgpt");
     assert!(
         buffered
             .choice
@@ -404,14 +404,14 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
         let response = folded_unary(chatgpt(), body).await;
 
         let typed: crate::providers::openai::responses_api::CompletionResponse =
-            serde_json::from_value(response.raw.clone())
+            serde_json::from_value(response.end.meta.raw.clone())
                 .expect("raw must deserialize back into the wire type");
         assert_eq!(
             serde_json::to_value(&typed).expect("re-serialize"),
-            response.raw,
+            response.end.meta.raw,
             "{case}: the capture must be exactly what the wire type serializes to"
         );
-        assert_eq!(response.raw["service_tier"], "default", "{case}");
+        assert_eq!(response.end.meta.raw["service_tier"], "default", "{case}");
         assert_eq!(typed.id, "resp_chatgpt_raw", "{case}");
 
         assert_eq!(
@@ -419,9 +419,9 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
             vec![message::AssistantContent::text("hi")],
             "{case}: the deltas are the content"
         );
-        assert_eq!(response.usage.total_tokens, Some(2), "{case}");
+        assert_eq!(response.end.meta.usage.total_tokens, Some(2), "{case}");
         assert_eq!(
-            response.identity().response_id.as_deref(),
+            response.end.meta.response_id.as_deref(),
             Some("resp_chatgpt_raw"),
             "{case}"
         );

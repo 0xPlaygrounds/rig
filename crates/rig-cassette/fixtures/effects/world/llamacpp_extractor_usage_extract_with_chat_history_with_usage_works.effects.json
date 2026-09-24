@@ -142,61 +142,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 366,
-            "output_tokens": 184,
-            "total_tokens": 550,
-            "cached_input_tokens": 197
-          },
-          "response_id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
-          "finish_reason": "tool_calls",
-          "provider": "llamacpp",
-          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "content": "",
-                  "reasoning_content": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
-                        "name": "submit"
-                      },
-                      "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "llamacpp",
+              "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+              "response_id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
+              "usage": {
+                "input_tokens": 366,
+                "output_tokens": 184,
+                "total_tokens": 550,
+                "cached_input_tokens": 197
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                            "name": "submit"
+                          },
+                          "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
+                "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                "object": "chat.completion",
+                "system_fingerprint": "b10964-b29c606e2",
+                "timings": {
+                  "cache_n": 197,
+                  "predicted_ms": 1557.517,
+                  "predicted_n": 184,
+                  "predicted_per_second": 117.49470471269333,
+                  "predicted_per_token_ms": 8.511021857923497,
+                  "prompt_ms": 111.114,
+                  "prompt_n": 169,
+                  "prompt_per_second": 1520.9604550281692,
+                  "prompt_per_token_ms": 0.6574792899408284
+                },
+                "usage": {
+                  "completion_tokens": 184,
+                  "prompt_tokens": 366,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 197
+                  },
+                  "total_tokens": 550
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
-            "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-            "object": "chat.completion",
-            "system_fingerprint": "b10964-b29c606e2",
-            "timings": {
-              "cache_n": 197,
-              "predicted_ms": 1557.517,
-              "predicted_n": 184,
-              "predicted_per_second": 117.49470471269333,
-              "predicted_per_token_ms": 8.511021857923497,
-              "prompt_ms": 111.114,
-              "prompt_n": 169,
-              "prompt_per_second": 1520.9604550281692,
-              "prompt_per_token_ms": 0.6574792899408284
-            },
-            "usage": {
-              "completion_tokens": 184,
-              "prompt_tokens": 366,
-              "prompt_tokens_details": {
-                "cached_tokens": 197
-              },
-              "total_tokens": 550
             }
           }
         }

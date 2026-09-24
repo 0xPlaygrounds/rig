@@ -89,44 +89,48 @@
               "text": "Rust is a systems programming language designed for performance, reliability, and productivity, featuring a unique ownership system that enforces memory safety at compile time without a garbage collector. Memory safety matters because violations—such as buffer overflows, use-after-free errors, and data races—are among the most common sources of critical security vulnerabilities and crashes in software."
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 76,
-            "total_tokens": 113,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcVY2rRabZr3Mm84jvc",
-          "provider_request_id": "req_011CfLcVX15vC8YXcLqSRjwF",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "Rust is a systems programming language designed for performance, reliability, and productivity, featuring a unique ownership system that enforces memory safety at compile time without a garbage collector. Memory safety matters because violations—such as buffer overflows, use-after-free errors, and data races—are among the most common sources of critical security vulnerabilities and crashes in software.",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcVY2rRabZr3Mm84jvc",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcVY2rRabZr3Mm84jvc",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcVX15vC8YXcLqSRjwF",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 76,
+                "total_tokens": 113,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 37,
-              "output_tokens": 76,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "Rust is a systems programming language designed for performance, reliability, and productivity, featuring a unique ownership system that enforces memory safety at compile time without a garbage collector. Memory safety matters because violations—such as buffer overflows, use-after-free errors, and data races—are among the most common sources of critical security vulnerabilities and crashes in software.",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcVY2rRabZr3Mm84jvc",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 37,
+                  "output_tokens": 76,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

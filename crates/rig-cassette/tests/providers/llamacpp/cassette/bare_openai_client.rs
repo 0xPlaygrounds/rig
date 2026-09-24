@@ -298,10 +298,10 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .await
                 .expect("completions api request should succeed");
             assert_eq!(
-                response.provider, "openai",
+                response.end.meta.provider, "openai",
                 "the `OPENAI` dialect names itself, whatever server answered"
             );
-            let raw_text = response.raw["choices"][0]["message"]["content"]
+            let raw_text = response.end.meta.raw["choices"][0]["message"]["content"]
                 .as_str()
                 .expect("raw response should carry the assistant text");
 

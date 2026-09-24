@@ -139,7 +139,7 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
             // caller reaching past the normalized view reads it.
             let response = model.completion(request(&model, cell)).await?;
             Observation {
-                text: content_text(&response.raw["choices"][0]["message"]["content"]),
+                text: content_text(&response.end.meta.raw["choices"][0]["message"]["content"]),
                 saw_terminal: true,
             }
         }

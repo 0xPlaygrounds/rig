@@ -102,7 +102,7 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+            let raw = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized responses_api::CompletionResponse");
 
             assert_eq!(

@@ -192,136 +192,140 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 104,
-            "output_tokens": 78,
-            "total_tokens": 182,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_032374c574f90381006ab2b2d5403c87d0aac7953bf65307e6",
-          "provider_request_id": "req_64ebf5583844439c81a5d0eab5c4af0b",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_032374c574f90381006ab2b2d5403c87d0aac7953bf65307e6",
-            "incomplete_details": null,
-            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrLWWMVo_fNHpoohToxnQAyN2hYu9Rignl-REz8BlD4AmHA-APDw5QxUXbYN42knNE971LGMK6OfoW4MLCYOhrlfJ57QM45dIOcMg70zb6tPNL5Brr4DCDCgPM-_qcNgoDrPcBaPTO2PAhhjw30QTQpdg1wNtbz5e3DQ447egpmHWkSlvYFvXwpdwbJekK0MfAJcb4qR0qPyV2ort98nSpCeF4H9slFXoUpM4CyZVQErUTMC_102ya5hWRx-qYJT5bB2Hcfb16vpRSptMtpX7XAsq4rHqOpF0s63ETDdn1kLzjkbGiI1tKR7Z64kv82sc9Q-Km9gDN6sgWSHIoXkgDDZM9_0edYGwKsXsINHPLJ-0ZGb2lshxKwg2pykr8rQ4z3m7fA2zHC_tPTjv-KQr5DVfCN9hKaoxsxFlPmEA98CJ-bJs_lwzgZxSTRHH-oQDGowWsf6YAXSahLQGmsR_iUOsEIWGnGImYfBmWOwj7HSbDNCNIr3ZFikjmCRkBWFyuIsIEEnLJWwOfTdn88UA8wvLrPePifYM6_npDkxPgbaSFNF9PZOSHHIfZpwWH3Hhs1oaCQRKk_Wo67HCVaT6pafzni9uApDbhKP5_vZ5sUx1xPAjVJuPiOOYp6T5OSwfjLeXetakc0u0HAlUwMsUWpHnShSZZJIVOj97LJEewkLGBiCjJ-ax4uUop2Aw8Q1X8Sb_QpaQve5qrRCUdNdRLOvAP90RLFLrHcX-9jPEVVcGTZ18s3FNCCwaWdy278DypRLTdCShzC0DnuZLC4y6QhVgjc6EJrf2oqpww1AjFhGfh2r6tFcHHOlTG53GLqJESLAHVYO4XITPiGsn9K8LYOrOdXf06hSKWi-1u7oWYpfpRxSnAL3tuZiLlI5UqMGFai58BGuCDJ03IV63nHhUwBf1C6seihRyP81_RgEHeneEwwqx-gmXqQVmyGX8pXWIZBHOaDQRqinjJD_N9xFw4OhznnOkBD4qTC-nKORZ0akB1iiZNut1kwtgMYFVN9wUPxJ0FXBeU7ur99ZGJsyDA1Oo88JraB8V37kihxxIds72y6G_Xrx-OuMgmR3vYypbBixfyu6kEDcBeR944qOsBLBDjgRYjq9KEBDjFLHbD42cQTAXFr8OgO7R7RiyCDeKMTJSrJjml6rN3aphrxsU2TZTenSGBKNWZwLQYI3Y65_-dJtAo6IiQHUCFz1-vBS2ToMpMUWBqvtrB3Yy9kH-OhBWweqDIzIh9HbpgoBnQvbhaPOnHcecmdxwhr-r4APZOhUPDjvezu389wl6OtQj_ne8C1odCuMyPaU2SWpXRYFttTHcVW1gRpRlEGAU4nwFg9ex_pIgdctaWLgXg2e335_U1fLgTPsT0SVHTz0_oU-sIAL6baIUcP1Y7CsTTNPfoxyNlkWyJ_tkF7bktPeCXQ7GydsZlHlgWDwWf_glUg6R3jXFK_dK6PI43jEMpLc5p6-mx7QZLS_v5xicWzPfjJSfg==",
-                "id": "rs_032374c574f90381006ab2b2d5df0487d0a26627632589e57f",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_MOmp0j5FG5a2shCsVHZZ0W76",
-                "id": "fc_032374c574f90381006ab2b2d6a13487d0a5260c1192986e5a",
-                "name": "add",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Add x and y together",
-                "name": "add",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "x": {
-                      "description": "The first number to add",
-                      "type": "number"
-                    },
-                    "y": {
-                      "description": "The second number to add",
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "x",
-                    "y"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 104,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 78,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_032374c574f90381006ab2b2d5403c87d0aac7953bf65307e6",
+              "provider_request_id": "req_64ebf5583844439c81a5d0eab5c4af0b",
+              "usage": {
+                "input_tokens": 104,
+                "output_tokens": 78,
+                "total_tokens": 182,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 182
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_032374c574f90381006ab2b2d5403c87d0aac7953bf65307e6",
+                "incomplete_details": null,
+                "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrLWWMVo_fNHpoohToxnQAyN2hYu9Rignl-REz8BlD4AmHA-APDw5QxUXbYN42knNE971LGMK6OfoW4MLCYOhrlfJ57QM45dIOcMg70zb6tPNL5Brr4DCDCgPM-_qcNgoDrPcBaPTO2PAhhjw30QTQpdg1wNtbz5e3DQ447egpmHWkSlvYFvXwpdwbJekK0MfAJcb4qR0qPyV2ort98nSpCeF4H9slFXoUpM4CyZVQErUTMC_102ya5hWRx-qYJT5bB2Hcfb16vpRSptMtpX7XAsq4rHqOpF0s63ETDdn1kLzjkbGiI1tKR7Z64kv82sc9Q-Km9gDN6sgWSHIoXkgDDZM9_0edYGwKsXsINHPLJ-0ZGb2lshxKwg2pykr8rQ4z3m7fA2zHC_tPTjv-KQr5DVfCN9hKaoxsxFlPmEA98CJ-bJs_lwzgZxSTRHH-oQDGowWsf6YAXSahLQGmsR_iUOsEIWGnGImYfBmWOwj7HSbDNCNIr3ZFikjmCRkBWFyuIsIEEnLJWwOfTdn88UA8wvLrPePifYM6_npDkxPgbaSFNF9PZOSHHIfZpwWH3Hhs1oaCQRKk_Wo67HCVaT6pafzni9uApDbhKP5_vZ5sUx1xPAjVJuPiOOYp6T5OSwfjLeXetakc0u0HAlUwMsUWpHnShSZZJIVOj97LJEewkLGBiCjJ-ax4uUop2Aw8Q1X8Sb_QpaQve5qrRCUdNdRLOvAP90RLFLrHcX-9jPEVVcGTZ18s3FNCCwaWdy278DypRLTdCShzC0DnuZLC4y6QhVgjc6EJrf2oqpww1AjFhGfh2r6tFcHHOlTG53GLqJESLAHVYO4XITPiGsn9K8LYOrOdXf06hSKWi-1u7oWYpfpRxSnAL3tuZiLlI5UqMGFai58BGuCDJ03IV63nHhUwBf1C6seihRyP81_RgEHeneEwwqx-gmXqQVmyGX8pXWIZBHOaDQRqinjJD_N9xFw4OhznnOkBD4qTC-nKORZ0akB1iiZNut1kwtgMYFVN9wUPxJ0FXBeU7ur99ZGJsyDA1Oo88JraB8V37kihxxIds72y6G_Xrx-OuMgmR3vYypbBixfyu6kEDcBeR944qOsBLBDjgRYjq9KEBDjFLHbD42cQTAXFr8OgO7R7RiyCDeKMTJSrJjml6rN3aphrxsU2TZTenSGBKNWZwLQYI3Y65_-dJtAo6IiQHUCFz1-vBS2ToMpMUWBqvtrB3Yy9kH-OhBWweqDIzIh9HbpgoBnQvbhaPOnHcecmdxwhr-r4APZOhUPDjvezu389wl6OtQj_ne8C1odCuMyPaU2SWpXRYFttTHcVW1gRpRlEGAU4nwFg9ex_pIgdctaWLgXg2e335_U1fLgTPsT0SVHTz0_oU-sIAL6baIUcP1Y7CsTTNPfoxyNlkWyJ_tkF7bktPeCXQ7GydsZlHlgWDwWf_glUg6R3jXFK_dK6PI43jEMpLc5p6-mx7QZLS_v5xicWzPfjJSfg==",
+                    "id": "rs_032374c574f90381006ab2b2d5df0487d0a26627632589e57f",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "call_id": "call_MOmp0j5FG5a2shCsVHZZ0W76",
+                    "id": "fc_032374c574f90381006ab2b2d6a13487d0a5260c1192986e5a",
+                    "name": "add",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Add x and y together",
+                    "name": "add",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "x": {
+                          "description": "The first number to add",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "The second number to add",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 104,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 78,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 182
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -466,136 +470,140 @@
               "text": "42"
             }
           ],
-          "usage": {
-            "input_tokens": 193,
-            "output_tokens": 5,
-            "total_tokens": 198,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_032374c574f90381006ab2b2d7a40087d08ee8f31f092669ee",
-          "response_id": "resp_032374c574f90381006ab2b2d7235487d0bfc524076432ae78",
-          "provider_request_id": "req_afcc65c9dada4032ae1633e524bb7f85",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_032374c574f90381006ab2b2d7235487d0bfc524076432ae78",
-            "incomplete_details": null,
-            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "42",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_032374c574f90381006ab2b2d7a40087d08ee8f31f092669ee",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Add x and y together",
-                "name": "add",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "x": {
-                      "description": "The first number to add",
-                      "type": "number"
-                    },
-                    "y": {
-                      "description": "The second number to add",
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "x",
-                    "y"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 193,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 5,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_032374c574f90381006ab2b2d7a40087d08ee8f31f092669ee",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_032374c574f90381006ab2b2d7235487d0bfc524076432ae78",
+              "provider_request_id": "req_afcc65c9dada4032ae1633e524bb7f85",
+              "usage": {
+                "input_tokens": 193,
+                "output_tokens": 5,
+                "total_tokens": 198,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 198
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_032374c574f90381006ab2b2d7235487d0bfc524076432ae78",
+                "incomplete_details": null,
+                "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "42",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_032374c574f90381006ab2b2d7a40087d08ee8f31f092669ee",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Add x and y together",
+                    "name": "add",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "x": {
+                          "description": "The first number to add",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "The second number to add",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 193,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 5,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 198
+                },
+                "user": null
+              }
+            }
           }
         }
       },

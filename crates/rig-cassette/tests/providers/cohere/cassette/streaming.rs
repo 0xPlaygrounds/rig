@@ -30,7 +30,7 @@ async fn streaming_smoke() {
         // Cassette's `message-end` usage: tokens.{input,output} = 553/64,
         // cached_tokens = 480. `tokens` is the counter rig reports, not
         // `billed_units`, which excludes cached input and understates usage.
-        let usage = provider_final.usage;
+        let usage = provider_final.meta.usage;
         assert_eq!(usage.input_tokens, Some(553));
         assert_eq!(usage.output_tokens, Some(64));
         assert_eq!(usage.total_tokens, Some(553 + 64));

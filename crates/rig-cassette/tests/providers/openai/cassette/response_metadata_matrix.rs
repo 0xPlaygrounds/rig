@@ -120,9 +120,9 @@ async fn assert_blocking_tool_call(client: OpenAiCassette) {
         response.choice
     );
     assert!(
-        response.usage.total_tokens.is_some_and(|n| n > 0),
+        response.end.meta.usage.total_tokens.is_some_and(|n| n > 0),
         "usage must survive, got {:?}",
-        response.usage
+        response.end.meta.usage
     );
 }
 

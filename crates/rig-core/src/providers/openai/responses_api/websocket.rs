@@ -522,7 +522,10 @@ impl ResponsesWebSocketSession {
         &mut self,
     ) -> Result<(CompletionResponse, Vec<StreamEvent>), ProviderError> {
         // Frames arrive incrementally; finish only after a provider terminal event.
-        let mut driver = WireDriver::<Completion, _>::new(self.wire.decoder(Mode::Streaming));
+        let mut driver = WireDriver::<Completion, _>::new(
+            &crate::id::ProviderName::new(self.wire.name())?,
+            self.wire.decoder(Mode::Streaming),
+        );
         let mut events = Vec::new();
         loop {
             let (event, payload) = self.next_event_with_payload().await?;

@@ -1,7 +1,7 @@
 //! Raw provider response capture on xAI's streaming path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the provider-native terminal record
+//! [`rig::completion::CompletionEnd::raw`] carries the provider-native terminal record
 //! behind the stream's `StreamEvent::Final` — for xAI the Responses terminal
 //! [`StreamingCompletionResponse`](rig::providers::openai::responses_api::streaming::StreamingCompletionResponse),
 //! built from the `response.completed` event —
@@ -27,12 +27,12 @@
 //! rather than from a reply body, so neither the premise reader nor
 //! [`assert_terminal_reproduces_event`] is the shared body contract.
 
+use rig::completion::CompletionEnd;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
 use rig::driver::Bound;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
-use rig::streaming::StreamFinal;
 use serde_json::{Value, json};
 
 use super::support::with_xai_cassette_result;
@@ -84,15 +84,15 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
 /// reproduces a *reply body*, while a stream's terminal is reproduced from
 /// one event's envelope, whose status is the event's own claim that the
 /// stream completed.
-fn assert_terminal_reproduces_event(terminal: &StreamFinal, response: &Value) {
-    assert_eq!(terminal.provider, PROVIDER, "provider");
+fn assert_terminal_reproduces_event(terminal: &CompletionEnd, response: &Value) {
+    assert_eq!(terminal.meta.provider, PROVIDER, "provider");
     assert_matches_recorded_token(
-        terminal.response_id.as_deref(),
+        terminal.meta.response_id.as_deref(),
         response["id"].as_str(),
         "response id",
     );
     assert_eq!(
-        terminal.model.as_deref(),
+        terminal.meta.model.as_deref(),
         response["model"].as_str(),
         "model"
     );
@@ -108,9 +108,9 @@ fn assert_terminal_reproduces_event(terminal: &StreamFinal, response: &Value) {
     );
     assert_eq!(
         (
-            terminal.usage.input_tokens,
-            terminal.usage.output_tokens,
-            terminal.usage.total_tokens
+            terminal.meta.usage.input_tokens,
+            terminal.meta.usage.output_tokens,
+            terminal.meta.usage.total_tokens
         ),
         (
             response["usage"]["input_tokens"].as_u64(),
@@ -138,7 +138,7 @@ async fn stream_raw_round_trips_terminal_type() {
 
     let (text, terminal) = sink.take();
     assert!(!text.is_empty());
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     // A streamed terminal has no single reply document behind it, so unlike
     // `CompletionResponse::raw` this capture IS the native record serialized
     // (`terminal_record`) — the round trip back through it must therefore be
@@ -154,16 +154,16 @@ async fn stream_raw_round_trips_terminal_type() {
         raw["usage"]["output_tokens"].as_u64(),
         "the typed view's usage is the capture's usage"
     );
-    assert_eq!(
-        typed.provider_request_id, None,
-        "the transport id is stamped on the normalized terminal, not the native record"
+    assert!(
+        raw.get("provider_request_id").is_none(),
+        "the transport id is on the normalized terminal, not the native record"
     );
 
     let response = recorded_completed_response(SCENARIO);
     assert_terminal_reproduces_event(&terminal, &response);
     // xAI contracts `x-request-id`; the recorded header is the premise.
     assert_contracted_request_id(
-        terminal.provider_request_id.as_deref(),
+        terminal.meta.provider_request_id.as_deref(),
         recorded_request_id(SCENARIO).as_deref(),
         REQUEST_ID_HEADER,
     );
@@ -195,7 +195,7 @@ async fn stream_raw_exposes_terminal_status() {
         .as_u64()
         .expect("the completed event carries output_tokens");
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(raw["status"], json!(recorded_status));
     assert_eq!(raw["usage"]["output_tokens"], json!(recorded_output_tokens));
     // The normalized terminal folds the status into a finish reason and keeps

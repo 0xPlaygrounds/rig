@@ -145,132 +145,136 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 406,
-            "output_tokens": 194,
-            "total_tokens": 600,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 177
-          },
-          "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
-          "provider_request_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "41b2457e-5f07-939d-ad83-e81bc313df73",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "Extracting structured data from the text about Alice.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                "id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0",
-                "name": "submit",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "required",
-            "tools": [
-              {
-                "description": "Submit the structured data you extracted from the provided text.",
-                "name": "submit",
-                "parameters": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "properties": {
-                    "age": {
-                      "format": "uint8",
-                      "maximum": 255,
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "profession": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "title": "Person",
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+              "provider_request_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+              "usage": {
                 "input_tokens": 406,
-                "output_tokens": 197
-              },
-              "cost_in_usd_ticks": 7909000,
-              "input_tokens": 406,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 194,
-              "output_tokens_details": {
+                "output_tokens": 194,
+                "total_tokens": 600,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 177
               },
-              "total_tokens": 600
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Extracting structured data from the text about Alice.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                    "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
+                    "id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "age": {
+                          "format": "uint8",
+                          "maximum": 255,
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "profession": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "title": "Person",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 406,
+                    "output_tokens": 197
+                  },
+                  "cost_in_usd_ticks": 7909000,
+                  "input_tokens": 406,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 194,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 177
+                  },
+                  "total_tokens": 600
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -375,135 +379,139 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 409,
-            "output_tokens": 180,
-            "total_tokens": 589,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 155
-          },
-          "response_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
-          "provider_request_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "Extracting structured address data from the provided text.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
-                "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
-                "id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0",
-                "name": "submit",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "required",
-            "tools": [
-              {
-                "description": "Submit the structured data you extracted from the provided text.",
-                "name": "submit",
-                "parameters": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "properties": {
-                    "city": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "state": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "street": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "zip_code": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "title": "Address",
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+              "provider_request_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+              "usage": {
                 "input_tokens": 409,
-                "output_tokens": 183
-              },
-              "cost_in_usd_ticks": 7596500,
-              "input_tokens": 409,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 180,
-              "output_tokens_details": {
+                "output_tokens": 180,
+                "total_tokens": 589,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 155
               },
-              "total_tokens": 589
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Extracting structured address data from the provided text.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
+                    "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
+                    "id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "city": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "state": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "street": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "zip_code": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "title": "Address",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 409,
+                    "output_tokens": 183
+                  },
+                  "cost_in_usd_ticks": 7596500,
+                  "input_tokens": 409,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 180,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 155
+                  },
+                  "total_tokens": 589
+                },
+                "user": null
+              }
+            }
           }
         }
       },

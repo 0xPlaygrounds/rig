@@ -112,6 +112,7 @@ fn observe_turn(
             .iter()
             .any(|part| matches!(part, AssistantContent::ToolCall(_)));
         let reason = response
+            .end
             .finish_reason
             .clone()
             .map(|reason| reason.reconcile_with_output(has_tool));

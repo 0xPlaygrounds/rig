@@ -216,62 +216,66 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 193,
-            "output_tokens": 37,
-            "total_tokens": 309,
-            "reasoning_tokens": 79
-          },
-          "response_id": "DayyarPoMOXrz7IP08vMyA8",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
-                    {
-                      "functionCall": {
-                        "args": {
-                          "x": 3,
-                          "y": 4
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "DayyarPoMOXrz7IP08vMyA8",
+              "usage": {
+                "input_tokens": 193,
+                "output_tokens": 37,
+                "total_tokens": 309,
+                "reasoning_tokens": 79
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 3,
+                              "y": 4
+                            },
+                            "name": "add"
+                          },
+                          "thoughtSignature": "CuoCAWkUfRNTzZMjgGCw5ZHeBVFN7V/Jlq+ltWoDd5EypbSJ9iXpVm1hOrhXdODbxmOWCAiD4JZzz91JrTCg8/Y8/YxH94oZ7ijDuvTlra9V9arhr9w9v8AjFbJIgZFjyo9aPQWLc6WLf5D3OLKubM5EOsm9NzBARJ0SGHFZbnv00AvfiwsPV6/30o0Ll220dRd1/XCCypSOStx/Ogt1JBDQ/MtDx714oRrXN1sRL9RFeoMp4OgF+8Qjp/qKfRfptjVdMK6GJYi1CZxBzLWEGwMISLZMPLjCuVbxYZqbM47/j/8NYMthUIaXnJuztBMo53cvRvOevad3OEMWnsnQjgOK7pCzJA0LjaJNO6QIySb3UqYY2NcT2XEDIPMf6MzkTaqEfVpn2Op5Cy0cg9CeJMza6f1pbiwX/tReAkWvuXEFVL5EYRc5NcmDjl6LMZlvM32s4nlNp/N+KCB+Nvf3uhfYhW3SDew+8ZGa0EI="
                         },
-                        "name": "add"
-                      },
-                      "thoughtSignature": "CuoCAWkUfRNTzZMjgGCw5ZHeBVFN7V/Jlq+ltWoDd5EypbSJ9iXpVm1hOrhXdODbxmOWCAiD4JZzz91JrTCg8/Y8/YxH94oZ7ijDuvTlra9V9arhr9w9v8AjFbJIgZFjyo9aPQWLc6WLf5D3OLKubM5EOsm9NzBARJ0SGHFZbnv00AvfiwsPV6/30o0Ll220dRd1/XCCypSOStx/Ogt1JBDQ/MtDx714oRrXN1sRL9RFeoMp4OgF+8Qjp/qKfRfptjVdMK6GJYi1CZxBzLWEGwMISLZMPLjCuVbxYZqbM47/j/8NYMthUIaXnJuztBMo53cvRvOevad3OEMWnsnQjgOK7pCzJA0LjaJNO6QIySb3UqYY2NcT2XEDIPMf6MzkTaqEfVpn2Op5Cy0cg9CeJMza6f1pbiwX/tReAkWvuXEFVL5EYRc5NcmDjl6LMZlvM32s4nlNp/N+KCB+Nvf3uhfYhW3SDew+8ZGa0EI="
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 10,
+                              "y": 2
+                            },
+                            "name": "subtract"
+                          }
+                        }
+                      ],
+                      "role": "model"
                     },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "DayyarPoMOXrz7IP08vMyA8",
+                "usageMetadata": {
+                  "candidatesTokenCount": 37,
+                  "promptTokenCount": 193,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 10,
-                          "y": 2
-                        },
-                        "name": "subtract"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 193
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "DayyarPoMOXrz7IP08vMyA8",
-            "usageMetadata": {
-              "candidatesTokenCount": 37,
-              "promptTokenCount": 193,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 193
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 79,
+                  "totalTokenCount": 309
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 79,
-              "totalTokenCount": 309
+              }
             }
           }
         }
@@ -474,43 +478,47 @@
               "text": "The sum of 3 and 4 is 7. The difference of 10 and 2 is 8."
             }
           ],
-          "usage": {
-            "input_tokens": 254,
-            "output_tokens": 25,
-            "total_tokens": 279
-          },
-          "response_id": "Dqyyar_mK7foz7IPx-_ZWQ",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "Dqyyar_mK7foz7IPx-_ZWQ",
+              "usage": {
+                "input_tokens": 254,
+                "output_tokens": 25,
+                "total_tokens": 279
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "The sum of 3 and 4 is 7. The difference of 10 and 2 is 8."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "Dqyyar_mK7foz7IPx-_ZWQ",
+                "usageMetadata": {
+                  "candidatesTokenCount": 25,
+                  "promptTokenCount": 254,
+                  "promptTokensDetails": [
                     {
-                      "text": "The sum of 3 and 4 is 7. The difference of 10 and 2 is 8."
+                      "modality": "TEXT",
+                      "tokenCount": 254
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "Dqyyar_mK7foz7IPx-_ZWQ",
-            "usageMetadata": {
-              "candidatesTokenCount": 25,
-              "promptTokenCount": 254,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 254
+                  "serviceTier": "standard",
+                  "totalTokenCount": 279
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 279
+              }
             }
           }
         }

@@ -64,31 +64,35 @@
               "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
             }
           ],
-          "usage": {
-            "input_tokens": 1050,
-            "output_tokens": 50,
-            "total_tokens": 1100
-          },
-          "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1050,
-              "completion_tokens": 50,
-              "total_tokens": 1100
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001109375
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
+              "usage": {
+                "input_tokens": 1050,
+                "output_tokens": 50,
+                "total_tokens": 1100
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1050,
+                  "completion_tokens": 50,
+                  "total_tokens": 1100
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0001109375
+                  }
+                }
               }
             }
           }
@@ -464,31 +468,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1050,
-            "output_tokens": 50,
-            "total_tokens": 1100
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
             "usage": {
-              "prompt_tokens": 1050,
-              "completion_tokens": 50,
+              "input_tokens": 1050,
+              "output_tokens": 50,
               "total_tokens": 1100
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001109375
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1050,
+                "completion_tokens": 50,
+                "total_tokens": 1100
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0001109375
+                }
               }
             }
           }

@@ -497,7 +497,7 @@ async fn raw_and_normalized_completion(
     request: rig::completion::CompletionRequest,
 ) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
     let normalized = model.completion(request).await?;
-    let raw = openai::CompletionResponse::deserialize(&normalized.raw)
+    let raw = openai::CompletionResponse::deserialize(&normalized.end.meta.raw)
         .map_err(|error| anyhow::anyhow!("captured raw is the shared OpenAI reply: {error}"))?;
     let metadata = RawResponseMetadata::capture(&raw);
     Ok((metadata, normalized))
@@ -523,14 +523,17 @@ fn assert_response_metadata(
         .as_ref()
         .expect("raw response should preserve usage");
     assert!(
-        response.usage.input_tokens.is_some_and(|n| n > 0),
+        response.end.meta.usage.input_tokens.is_some_and(|n| n > 0),
         "usage should include input tokens"
     );
     if let Some(completion_tokens) = raw_usage.completion_tokens {
-        assert_eq!(response.usage.output_tokens, Some(completion_tokens as u64));
+        assert_eq!(
+            response.end.meta.usage.output_tokens,
+            Some(completion_tokens as u64)
+        );
     }
     assert_eq!(
-        response.usage.total_tokens,
+        response.end.meta.usage.total_tokens,
         Some(raw_usage.total_tokens as u64)
     );
     if let Some(queue_time) = raw_usage.queue_time {
@@ -809,7 +812,7 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
                         text_chunks += 1;
                     }
                     StreamEvent::Final(response) => {
-                        final_usage = Some(response.usage);
+                        final_usage = Some(response.meta.usage);
                     }
                     _ => {}
                 }

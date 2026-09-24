@@ -18,6 +18,7 @@ use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 pub use crate::http_client::framing::Framing;
 pub use crate::observe::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict};
 pub use crate::providers::internal::wire::WireEvent;
+pub use crate::telemetry::Recorded;
 
 pub(crate) mod secret;
 
@@ -207,11 +208,6 @@ pub trait Operation: Sized + 'static {
         None
     }
 
-    /// Stamp the transport request id read off the reply's headers onto a
-    /// terminal event. Operations whose events carry no transport id do
-    /// nothing.
-    fn stamp_request_id(_event: &mut Self::Event, _request_id: &Option<crate::id::RequestId>) {}
-
     /// Converts an unmodeled payload to a passthrough event, or skips it with
     /// `None` by default.
     fn unknown(_payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
@@ -234,18 +230,17 @@ pub trait Operation: Sized + 'static {
         tracing::Span::none()
     }
 
-    /// The provider metadata a response carries, which the driver records
-    /// on the operation's span. `None` for operations whose responses carry
-    /// none.
-    fn meta(_response: &Self::Response) -> Option<&crate::response::ResponseMeta> {
+    /// What a response tells the operation's span, which the driver records.
+    /// `None` for operations whose responses carry no provider metadata.
+    fn recorded(_response: &Self::Response) -> Option<Recorded<'_>> {
         None
     }
 
-    /// Record the folded response onto the operation's span.
-    fn record(_span: &tracing::Span, _response: &Self::Response) {}
-
-    /// Records streamed event metadata on the operation span. Defaults to no action.
-    fn record_event(_span: &tracing::Span, _event: &Self::Event) {}
+    /// What a streamed event tells the operation's span: a terminal event's
+    /// metadata. `None` for every other event.
+    fn recorded_event(_event: &Self::Event) -> Option<Recorded<'_>> {
+        None
+    }
 
     /// Adds the provider and request path to a failed reply's error. The
     /// default adds nothing.
@@ -291,10 +286,17 @@ impl Reply {
 ///
 /// The driver drains the sink after every frame, so a decoder never has to
 /// know whether it is feeding a stream or a buffered fold.
-pub trait Sink<Op: Operation>: Default {
+pub trait Sink<Op: Operation> {
     /// Debug-mode sequence laws checked against what the decoder actually
     /// emitted. `()` for operations with no sequence to check.
     type Laws: Default + WasmCompatSend;
+
+    /// A sink for one reply from `provider`.
+    fn for_reply(provider: &crate::id::ProviderName) -> Self;
+
+    /// Record the reply's transport request id, once its headers arrived.
+    /// Operations whose events carry no transport facts ignore it.
+    fn set_request_id(&mut self, _request_id: Option<crate::id::RequestId>) {}
 
     /// Push one event or one in-band error.
     fn push(&mut self, item: Result<Op::Event, ProviderError>);

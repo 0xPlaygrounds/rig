@@ -369,9 +369,9 @@ where
     let span = SpanBuilder::new(provider, request_model, Op::telemetry(false)).build();
     let result = tracing::Instrument::instrument(call, span.clone()).await;
     if let Ok(response) = &result
-        && let Some(meta) = Op::meta(response)
+        && let Some(recorded) = Op::recorded(response)
     {
-        span.record_meta(meta);
+        span.record_meta(recorded);
     }
     result
 }
@@ -760,14 +760,37 @@ pub trait SpanCombinator {
     /// Record a response's ID, model, and token usage on the span.
     fn record_response(&self, response_id: Option<&str>, model: Option<&str>, usage: &Usage);
 
-    /// Record a response's provider metadata: its response id, model and
-    /// usage.
-    fn record_meta(&self, meta: &crate::response::ResponseMeta) {
+    /// Record what a response tells its span: its id (the response id, else
+    /// a completion's message id), model and usage.
+    fn record_meta(&self, recorded: Recorded<'_>) {
         self.record_response(
-            meta.response_id.as_deref(),
-            meta.model.as_deref(),
-            &meta.usage,
+            recorded
+                .meta
+                .response_id
+                .as_deref()
+                .or(recorded.message_id.map(|id| id.as_str())),
+            recorded.meta.model.as_deref(),
+            &recorded.meta.usage,
         );
+    }
+}
+
+/// What a response tells its operation's span: the provider metadata and, for
+/// a completion, the message id that stands in for an unreported response id.
+#[derive(Debug, Clone, Copy)]
+pub struct Recorded<'a> {
+    /// The provider metadata.
+    pub meta: &'a crate::response::ResponseMeta,
+    /// A completion's message id.
+    pub message_id: Option<&'a crate::id::MessageId>,
+}
+
+impl<'a> From<&'a crate::response::ResponseMeta> for Recorded<'a> {
+    fn from(meta: &'a crate::response::ResponseMeta) -> Self {
+        Self {
+            meta,
+            message_id: None,
+        }
     }
 }
 

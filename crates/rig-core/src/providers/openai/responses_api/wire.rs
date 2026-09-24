@@ -276,8 +276,9 @@ pub(crate) fn fold_body(
     use crate::operation::AdapterOutput;
     use crate::wire::{Decoder, Fold, Operation, Reply, Sink};
 
+    let provider_name = crate::id::ProviderName::new(provider)?;
     let reply = Reply {
-        provider: crate::id::ProviderName::new(provider)?,
+        provider: provider_name.clone(),
         raw: serde_json::to_value(&response)?,
         provider_request_id: response
             .provider_request_id
@@ -285,7 +286,7 @@ pub(crate) fn fold_body(
             .and_then(crate::id::RequestId::non_empty),
     };
     let mut decoder = ResponsesDecoder::new(provider, ResponsesStreamOptions::strict());
-    let mut out = AdapterOutput::new();
+    let mut out = AdapterOutput::new(provider_name);
     decoder.interpret(ResponsesEvent::Whole(Box::new(response)), &mut out);
 
     let mut fold = <Completion as Operation>::Fold::default();

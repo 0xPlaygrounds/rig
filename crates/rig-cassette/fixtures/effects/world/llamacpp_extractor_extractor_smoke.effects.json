@@ -125,61 +125,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 298,
-            "output_tokens": 344,
-            "total_tokens": 642,
-            "cached_input_tokens": 0
-          },
-          "response_id": "chatcmpl-DlJeeHan88vya1EgD79KkRyVSDy0NiAp",
-          "finish_reason": "tool_calls",
-          "provider": "llamacpp",
-          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "content": "",
-                  "reasoning_content": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
-                        "name": "submit"
-                      },
-                      "id": "3jMGCwuYjQ0u3LsUWPWvSaiJJJcqzS2i",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "llamacpp",
+              "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+              "response_id": "chatcmpl-DlJeeHan88vya1EgD79KkRyVSDy0NiAp",
+              "usage": {
+                "input_tokens": 298,
+                "output_tokens": 344,
+                "total_tokens": 642,
+                "cached_input_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                            "name": "submit"
+                          },
+                          "id": "3jMGCwuYjQ0u3LsUWPWvSaiJJJcqzS2i",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-DlJeeHan88vya1EgD79KkRyVSDy0NiAp",
+                "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                "object": "chat.completion",
+                "system_fingerprint": "b10964-b29c606e2",
+                "timings": {
+                  "cache_n": 0,
+                  "predicted_ms": 3036.673,
+                  "predicted_n": 344,
+                  "predicted_per_second": 112.95256354569624,
+                  "predicted_per_token_ms": 8.853274052478133,
+                  "prompt_ms": 143.719,
+                  "prompt_n": 298,
+                  "prompt_per_second": 2073.490631023038,
+                  "prompt_per_token_ms": 0.4822785234899329
+                },
+                "usage": {
+                  "completion_tokens": 344,
+                  "prompt_tokens": 298,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 642
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-DlJeeHan88vya1EgD79KkRyVSDy0NiAp",
-            "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
-            "object": "chat.completion",
-            "system_fingerprint": "b10964-b29c606e2",
-            "timings": {
-              "cache_n": 0,
-              "predicted_ms": 3036.673,
-              "predicted_n": 344,
-              "predicted_per_second": 112.95256354569624,
-              "predicted_per_token_ms": 8.853274052478133,
-              "prompt_ms": 143.719,
-              "prompt_n": 298,
-              "prompt_per_second": 2073.490631023038,
-              "prompt_per_token_ms": 0.4822785234899329
-            },
-            "usage": {
-              "completion_tokens": 344,
-              "prompt_tokens": 298,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "total_tokens": 642
             }
           }
         }

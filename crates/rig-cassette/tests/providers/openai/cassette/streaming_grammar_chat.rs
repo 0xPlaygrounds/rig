@@ -1,7 +1,7 @@
 //! Canonical streaming-grammar coverage for the OpenAI **chat-completions**
 //! wire (the compat family's canonical wire), asserted through the
 //! *normalized* path: the aggregated [`StreamingCompletionResponse::choice`],
-//! the terminal [`StreamFinal`] record, usage, IDs, and finish reason — real
+//! the terminal [`CompletionEnd`] record, usage, IDs, and finish reason — real
 //! recorded wire traffic, not synthetic chunks.
 //!
 //! Re-record with:
@@ -15,7 +15,8 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, ToolCall};
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
+use rig_core::completion::CompletionEnd;
 use serde_json::json;
 
 use super::super::support::with_openai_completions_cassette;
@@ -27,9 +28,9 @@ struct StreamRun {
     text: String,
     text_chunks: usize,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
+    finals: Vec<CompletionEnd>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionEnd>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
@@ -87,9 +88,9 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "unexpected finish reason"
     );
     assert!(
-        terminal.usage.total_tokens.is_some_and(|n| n > 0),
+        terminal.meta.usage.total_tokens.is_some_and(|n| n > 0),
         "terminal record should carry non-zero usage, got {:?}",
-        terminal.usage
+        terminal.meta.usage
     );
 }
 

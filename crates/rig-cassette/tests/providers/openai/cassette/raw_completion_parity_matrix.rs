@@ -168,39 +168,41 @@ fn assert_side_matches_fixture(
     let id_prefix = wire.id_prefix();
     let (usage_input_key, usage_output_key) = wire.usage_keys();
     assert_contracted_request_id(
-        response.provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         Some(recorded_request_id),
         REQUEST_ID_HEADER,
     );
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         body["id"].as_str(),
         &format!("{context}: response_id vs the fixture body id"),
     );
     assert!(
         response
+            .end
+            .meta
             .response_id
             .as_deref()
             .is_some_and(|id| id.starts_with(id_prefix)),
         "{context}: response_id should be a {id_prefix} id, got {:?}",
-        response.response_id
+        response.end.meta.response_id
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         body["model"].as_str(),
         "{context}: model"
     );
     assert_eq!(
-        response.usage.input_tokens,
+        response.end.meta.usage.input_tokens,
         body["usage"][usage_input_key].as_u64(),
         "{context}: input tokens"
     );
     assert_eq!(
-        response.usage.output_tokens,
+        response.end.meta.usage.output_tokens,
         body["usage"][usage_output_key].as_u64(),
         "{context}: output tokens"
     );
-    assert_eq!(response.provider, PROVIDER, "{context}: provider");
+    assert_eq!(response.end.meta.provider, PROVIDER, "{context}: provider");
 }
 
 /// The contract: the two routes agree on identity shape, finish reason,
@@ -212,27 +214,36 @@ fn assert_parity(
     expected_finish: FinishReason,
 ) {
     assert_eq!(
-        typed.finish_reason.clone(),
+        typed.end.finish_reason.clone(),
         Some(expected_finish.clone()),
         "{scenario}: typed route finish reason"
     );
     assert_eq!(
-        normalized.finish_reason.clone(),
+        normalized.end.finish_reason.clone(),
         Some(expected_finish),
         "{scenario}: completion() finish reason"
     );
-    assert_eq!(typed.model, normalized.model, "{scenario}: model");
-    assert_eq!(typed.usage, normalized.usage, "{scenario}: usage");
-    assert_eq!(typed.provider, normalized.provider, "{scenario}: provider");
-    let typed_identity = typed.identity();
-    let normalized_identity = normalized.identity();
+    assert_eq!(
+        typed.end.meta.model, normalized.end.meta.model,
+        "{scenario}: model"
+    );
+    assert_eq!(
+        typed.end.meta.usage, normalized.end.meta.usage,
+        "{scenario}: usage"
+    );
+    assert_eq!(
+        typed.end.meta.provider, normalized.end.meta.provider,
+        "{scenario}: provider"
+    );
+    let typed_identity = &typed.end;
+    let normalized_identity = &normalized.end;
     assert!(
-        typed_identity.provider_request_id.is_some()
-            && normalized_identity.provider_request_id.is_some(),
+        typed_identity.meta.provider_request_id.is_some()
+            && normalized_identity.meta.provider_request_id.is_some(),
         "{scenario}: both routes carry the transport request id"
     );
     assert!(
-        typed_identity.response_id.is_some() && normalized_identity.response_id.is_some(),
+        typed_identity.meta.response_id.is_some() && normalized_identity.meta.response_id.is_some(),
         "{scenario}: both routes carry the response id"
     );
     assert_eq!(
@@ -241,7 +252,7 @@ fn assert_parity(
         "{scenario}: both routes agree on whether a message id exists"
     );
     assert_ne!(
-        typed_identity.response_id, normalized_identity.response_id,
+        typed_identity.meta.response_id, normalized_identity.meta.response_id,
         "{scenario}: two live turns are two provider responses"
     );
 }
@@ -263,12 +274,12 @@ fn assert_chat_views_agree(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         Some(reply.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         Some(reply.model.as_str()),
         "{scenario}: model"
     );
@@ -277,12 +288,12 @@ fn assert_chat_views_agree(
         .as_ref()
         .unwrap_or_else(|| panic!("{scenario}: the recorded chat body reports usage"));
     assert_eq!(
-        response.usage.input_tokens,
+        response.end.meta.usage.input_tokens,
         Some(usage.prompt_tokens as u64),
         "{scenario}: input tokens are the provider's `prompt_tokens`"
     );
     assert!(
-        response.raw.get("provider_request_id").is_none(),
+        response.end.meta.raw.get("provider_request_id").is_none(),
         "{scenario}: the transport id is a header, so the reply document has none"
     );
 }
@@ -318,7 +329,7 @@ fn assert_chat_parity(
     }
     // The first reply, read both ways: the provider's own type out of `raw`,
     // then rig's normalized view of the same reply.
-    let reply = openai::CompletionResponse::deserialize(&typed.raw)
+    let reply = openai::CompletionResponse::deserialize(&typed.end.meta.raw)
         .unwrap_or_else(|err| panic!("{scenario}: raw must be the chat wire type: {err}"));
     assert_chat_views_agree(scenario, &reply, &typed);
     assert_side_matches_fixture(
@@ -401,38 +412,41 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     // document's silence is a property of the body, not of the recording.
     let request_ids = recorded_request_ids(SCENARIO, 2);
     assert!(
-        plain.raw.get("provider_request_id").is_none(),
+        plain.end.meta.raw.get("provider_request_id").is_none(),
         "{SCENARIO}: the reply document has no slot for the transport id"
     );
     assert_contracted_request_id(
-        plain.provider_request_id.as_deref(),
+        plain.end.meta.provider_request_id.as_deref(),
         Some(&request_ids[0]),
         REQUEST_ID_HEADER,
     );
     assert_contracted_request_id(
-        normalized.provider_request_id.as_deref(),
+        normalized.end.meta.provider_request_id.as_deref(),
         Some(&request_ids[1]),
         REQUEST_ID_HEADER,
     );
     // Everything else rig reports still matches the reply document.
-    let reply = openai::CompletionResponse::deserialize(&plain.raw)
+    let reply = openai::CompletionResponse::deserialize(&plain.end.meta.raw)
         .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat wire type: {err}"));
     chat::assert_native_matches_normalized(&plain, &reply, SCENARIO);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let first: Value = serde_json::from_str(&bodies[0].1).expect("recorded body should be JSON");
     assert_matches_recorded_token(
-        plain.response_id.as_deref(),
+        plain.end.meta.response_id.as_deref(),
         first["id"].as_str(),
         &format!("{SCENARIO}: plain route response_id"),
     );
-    assert_eq!(plain.model.as_deref(), first["model"].as_str());
+    assert_eq!(plain.end.meta.model.as_deref(), first["model"].as_str());
     assert_eq!(
-        plain.usage.input_tokens,
+        plain.end.meta.usage.input_tokens,
         first["usage"]["prompt_tokens"].as_u64()
     );
-    assert_eq!(plain.finish_reason.clone(), Some(FinishReason::Stop));
-    assert_eq!(normalized.finish_reason.clone(), Some(FinishReason::Stop));
-    assert_eq!(plain.model, normalized.model);
+    assert_eq!(plain.end.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(
+        normalized.end.finish_reason.clone(),
+        Some(FinishReason::Stop)
+    );
+    assert_eq!(plain.end.meta.model, normalized.end.meta.model);
 }
 
 // ---------------------------------------------------------------------------
@@ -448,12 +462,12 @@ fn assert_responses_views_agree(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         Some(reply.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         Some(reply.model.as_str()),
         "{scenario}: model"
     );
@@ -462,12 +476,12 @@ fn assert_responses_views_agree(
         .as_ref()
         .unwrap_or_else(|| panic!("{scenario}: the recorded Responses body reports usage"));
     assert_eq!(
-        response.usage.input_tokens,
+        response.end.meta.usage.input_tokens,
         Some(usage.input_tokens),
         "{scenario}: input tokens"
     );
     assert_eq!(
-        response.usage.output_tokens,
+        response.end.meta.usage.output_tokens,
         Some(usage.output_tokens),
         "{scenario}: output tokens"
     );
@@ -476,7 +490,7 @@ fn assert_responses_views_agree(
         "{scenario}: wire deserialization never fills the transport id"
     );
     assert!(
-        response.raw.get("provider_request_id").is_none(),
+        response.end.meta.raw.get("provider_request_id").is_none(),
         "{scenario}: the transport id is a header, so the reply document has none"
     );
 }
@@ -511,7 +525,7 @@ fn assert_responses_parity(
     }
     // The first reply, read both ways: the provider's own type out of `raw`,
     // then rig's normalized view of the same reply.
-    let reply = openai::responses_api::CompletionResponse::deserialize(&typed.raw)
+    let reply = openai::responses_api::CompletionResponse::deserialize(&typed.end.meta.raw)
         .unwrap_or_else(|err| panic!("{scenario}: raw must be the Responses wire type: {err}"));
     assert_responses_views_agree(scenario, &reply, &typed);
     assert_side_matches_fixture(
@@ -546,10 +560,12 @@ fn assert_responses_parity(
         // The Responses route names the assistant message; both sides do.
         assert!(
             typed
+                .end
                 .message_id
                 .as_deref()
                 .is_some_and(|id| id.starts_with("msg_"))
                 && normalized
+                    .end
                     .message_id
                     .as_deref()
                     .is_some_and(|id| id.starts_with("msg_")),

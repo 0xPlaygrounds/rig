@@ -209,10 +209,10 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // is "provider document vs decoder's choice" rather than two
             // normalizers that could drift.
             let response = model.completion(request(&model, cell)).await?;
-            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
+            let wire = openrouter::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is OpenRouter's own completion response");
             Observation {
-                text: content_text(&response.raw["choices"][0]["message"]["content"]),
+                text: content_text(&response.end.meta.raw["choices"][0]["message"]["content"]),
                 saw_terminal: wire
                     .choices
                     .iter()

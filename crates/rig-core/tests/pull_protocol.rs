@@ -2,6 +2,7 @@
 #![allow(clippy::panic, clippy::indexing_slicing, clippy::unwrap_used)]
 
 use futures::{StreamExt, channel::oneshot, executor::block_on};
+use rig_core::completion::CompletionEnd;
 use rig_core::{
     completion::{CompletionResponse, Usage},
     effect::{
@@ -10,7 +11,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, DocumentSourceKind, Image},
     serve::{Decision, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve, Verdict},
-    streaming::{StreamEvent, StreamFinal},
+    streaming::StreamEvent,
 };
 use serde_json::{Value, json};
 use std::{
@@ -94,11 +95,13 @@ impl Serve for Answer {
         if self.streaming {
             Reply::written(|mut out| async move {
                 out.text("original").await.unwrap();
-                out.finish(StreamFinal::new(
-                    "proof",
-                    Usage::default(),
-                    serde_json::json!({}),
-                ))
+                out.finish(CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("proof").unwrap(),
+                    )
+                }))
                 .await
                 .unwrap();
             })
@@ -262,15 +265,19 @@ impl Serve for ImageAnswer {
         Answer { streaming: false }.descriptor()
     }
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
-        Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
-            vec![AssistantContent::Image(Image {
+        Reply::Outcome(Ok(Outcome::Completion(CompletionResponse {
+            choice: vec![AssistantContent::Image(Image {
                 data: DocumentSourceKind::base64("aW1hZ2U="),
                 ..Image::default()
             })],
-            Usage::default(),
-            "proof",
-            serde_json::json!({}),
-        ))))
+            end: CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("proof").unwrap(),
+                )
+            }),
+        })))
     }
 }
 

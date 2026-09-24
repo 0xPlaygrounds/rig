@@ -89,32 +89,36 @@
               "text": "The sky is blue."
             }
           ],
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 5,
-            "total_tokens": 59,
-            "reasoning_tokens": 26
-          },
-          "response_id": "pnizasvyNpusqtsPsf3xkAY",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 28,
-              "candidatesTokenCount": 5,
-              "totalTokenCount": 59,
-              "thoughtsTokenCount": 26,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 28
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "pnizasvyNpusqtsPsf3xkAY"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "pnizasvyNpusqtsPsf3xkAY",
+              "usage": {
+                "input_tokens": 28,
+                "output_tokens": 5,
+                "total_tokens": 59,
+                "reasoning_tokens": 26
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 28,
+                  "candidatesTokenCount": 5,
+                  "totalTokenCount": 59,
+                  "thoughtsTokenCount": 26,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 28
+                    }
+                  ]
+                },
+                "finish_reason": "STOP",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "pnizasvyNpusqtsPsf3xkAY"
+              }
+            }
           }
         }
       },
@@ -136,32 +140,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 5,
-            "total_tokens": 59,
-            "reasoning_tokens": 26
-          },
           "finish_reason": "stop",
-          "response_id": "pnizasvyNpusqtsPsf3xkAY",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 28,
-              "candidatesTokenCount": 5,
-              "totalTokenCount": 59,
-              "thoughtsTokenCount": 26,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 28
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "pnizasvyNpusqtsPsf3xkAY",
+            "usage": {
+              "input_tokens": 28,
+              "output_tokens": 5,
+              "total_tokens": 59,
+              "reasoning_tokens": 26
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "pnizasvyNpusqtsPsf3xkAY"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 28,
+                "candidatesTokenCount": 5,
+                "totalTokenCount": 59,
+                "thoughtsTokenCount": 26,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 28
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "pnizasvyNpusqtsPsf3xkAY"
+            }
           }
         }
       ],

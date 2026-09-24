@@ -1808,7 +1808,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         .finish()
         .expect("the stream produced a terminal record");
     assert_eq!(
-        streamed.provider, unary.provider,
+        streamed.end.meta.provider, unary.end.meta.provider,
         "the terminal record names the provider"
     );
     assert_eq!(streamed.choice, unary.choice);

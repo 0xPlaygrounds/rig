@@ -16,12 +16,12 @@ use std::sync::Mutex;
 use bevy_app::{App, AppExit};
 use bevy_ecs::prelude::*;
 use rig_core::{
+    completion::CompletionEnd,
     completion::{CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     serve::{Reply, Serve, ServingPolicy},
-    streaming::StreamFinal,
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::{
@@ -65,12 +65,16 @@ impl Serve for Scripted {
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
-                let response = CompletionResponse::new(
-                    self.next(),
-                    Usage::default(),
-                    "scripted",
-                    serde_json::json!({}),
-                );
+                let response = CompletionResponse {
+                    choice: self.next(),
+                    end: CompletionEnd::new(rig_core::response::ResponseMeta {
+                        usage: Usage::default(),
+                        raw: serde_json::json!({}),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("scripted").expect("a provider name"),
+                        )
+                    }),
+                };
                 Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             EffectKind::Completion { stream: true, .. } => {
@@ -99,17 +103,13 @@ impl Serve for Scripted {
                         }
                     }
                     let _ = writer
-                        .finish(StreamFinal {
-                            usage: Usage::default(),
-                            finish_reason: None,
-                            message_id: None,
-                            response_id: None,
-                            provider_request_id: None,
-                            provider: "scripted".to_owned(),
-                            reasoning_issuer: None,
-                            model: None,
+                        .finish(CompletionEnd::new(rig_core::response::ResponseMeta {
                             raw: serde_json::json!({ "provider": "scripted" }),
-                        })
+                            ..rig_core::response::ResponseMeta::new(
+                                rig_core::id::ProviderName::new("scripted")
+                                    .expect("a provider name"),
+                            )
+                        }))
                         .await;
                 })
             }

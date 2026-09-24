@@ -183,162 +183,166 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 210,
-            "output_tokens": 289,
-            "total_tokens": 499,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 256
-          },
-          "response_id": "resp_09f1d21f72e4ccd7006ab2b3fde5a087d0b47fd835610ec1bd",
-          "provider_request_id": "req_e09ff45e4add45469a3d45647e06f2f8",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_09f1d21f72e4ccd7006ab2b3fde5a087d0b47fd835610ec1bd",
-            "incomplete_details": null,
-            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrQBeNOPDDEAYRNpfD3wiNUtfBfNjLwtdOVSBl-_Qq-dEjfBFu_Az4R5B5ZpyT8lmLdMGImHTbTOUUgYQUALcM0wmmfBuMglNH49XnZhlZ8JibEjbg6pTSuR661NTeJr7QHy-BudaezoeZuJ650uTOb9SPcnw5aV5csImEmsb_wa38NCMWFX5k3__mcTvhpOTbNhez0MznPvSnXQraS9hQFOU8sJLcM7E6FBY9sWZFkU9puTPNeRBlLtUrif8ZuBpsv9r4Y07eQstakHhpEFgPRnw0SjRl3QVGGqmFwHUaC3_UvOnyb8KQdAoRXDKj5kC3KQLesNIKlI0kIbr-legp1dEVm-PZhzvdv9fY2iWugJOntUk5k0Xk0lFDc0moStqZYYGchB4WCQkT4bttnoXZeVR_eZ35dwvMwB6RPhRFMuVbvGuFIHqzdJ5JA86vZsCmA5W6i0t9fb9frId3s94eHpDYqeEAN4JTb8BSxkNf2kg1Z2kLyf9ZqVg-ZZkQbzydbyZiN0rkuLdpluNDb5OGoNvXiAGNQYWjktRLdS-aI_zp0OSDjDSX-kZt0Dbdk8_kjsl_mKUE5KZhXVWLOgeaVoSu08-5i9EU0t5RbV2dd-mXILrNJjjioMtZH4UJcOWEsB3BKQJCu7b4XoT8r8gR5tjigcgfG-k-gcusonsokPoXofEwgI_GSaxtNnt8ml3q585HyCkm2fh3-PhuOl4a4Rdg0QR4IUl_b4ypF2WY0jKwBdsgmxYbjVrqldvaNgc7Gr-graJ8v8tesz7b_6913RfVXu03YoWruwghPhzoZPflcg0Vwrrm7jI61vR_MWV9sgYkQQcpTS7ST6bsb3AxeKEbG4nyyvCKiDJv-b09bFALr98s6YKhtRX7WUikPJ19sBONNY_H6twKfelvYxHZtf9j7cvRHLuOF0A6dYLtIQgcoDr-sujS5LfLY8i1LkaZ98O6AtrSRGnNebt_SzW9pMCIDdEKYKvU0sai-rTmHjILz9H5E3r-tFLVLmCxQh755xcLf2ucVfYTZlfYcYpy6vFABlxSffGNYOamnDCsfon-LEVw4StXLzpDDIyZdq8IFzr7xJQwiXZlI85JVDShnBJoQ_rHF9oNlcExEbrsX0RQP6Qj1kQkHUfL5hle7rpiCpCba6tvuzmYMftfRwivIO5iDofkoyvW3zy-F8kyT5iLyVyiK3aP1msO2PcxpV9rO2W53n7Vd4SuBfz3EtquxR2yjgT3ierenCjVZTzpGrov0IBP_sLel3_oeNQt6I4tPLqAFafG_bkrwNgizFILKm2A5cRQm2OoHDK2oK2umC2bvhNdtdpy7hrmHw3sRAyTpeVClPxnkqLBVWC5O599JSg_6vB6rnEFTMPfoPy4URo2k5tLeuLIq7y1cm_SteQ4EpI3a1aOxA2OZUeBkig6S48KRLlgvEl9iV7gODBDDv3mrnw4BhZLEvqrGIOSa6zLoXcEcLZ9HrGE5txJYyxYV8ZzzCijUpPFlxYgmg-tHtCxeh47gdtG2SJ1ge05UMKM9PTe6UuE5wIK090mpedNTH-icZRG-f01-txe81TNOk-QhqfcHZkGpYRcUvEPPVbdrWNW_Ny-uHRT0tBmdGBvNIhF6gNPEfOKuAqDUQ0p4908g_F-wN82RhCmihegfeyTMIS_X2uY_Eu47PlbSl-HxURnHEp1hBYzk66HYo_B9OTPzWkqpx3G5VcYUjON1HN48-AOzruJsu6PZ_sdHse8Pf-inbZTwVVPBlSYQYalmNwxfv1iMY-N3yi31T5u11tZkclrtXN3j7KuD4gOs9PL9ub6gy8l1pwsS6JsqzeK7AgFLOhML9L1-s138Dy7qvyfOIr5RqK-pSzigfCa_e1RMiG1P9qQR6F2ANNiCktmERMiajFMvq828_x8TQPG5e1sUMJrXaw6ZlIC6_ZRNj43S5QfvJty7sjGI-0yvmB2sjFeK8uMDBCYYCIjt_v6gNk_nWDjaTJzoTof85xQMCVOWm4ifsHa-z_-vhq7CguiDc3m7NAGc4UriSBzxeT9yHMcPDKvhBJLaic6W8IQKNqamAZl2q6cG1KcdeqkGgRpSRdWPCAWTaqFK1AlHX1ZCAwF-gdGftsQCs6hYTTcwLp7i2v1sy51nDHA4TIDGx_EdrPDUQkwGrqxgszosB4rYw85FddIP0kDb6cc1XwIMZ7Y7PlpZQWOzbmKxeMxV43INOQhaNZWl0q_LrKqzh6OtjRJfgzaxzlKD4Bq4TZGS3jSLBWQUaaavOqTgJLqWdUWC-mk3kkBccnfCqorYXt7gC52xxYdaT8psCxTNsLZa7f8BrQhuxaOou1EcyS55_NYLhi4fv7L9gFhH421vH0BTw7e-mVr59uQ5r_DWE0KjAnJtv9U3G3BKhektp428gonI_3SrAXwnoBQhc8sr8gsxMvWYDRnIkk5geQIuiNpdiUcmwmCIOT7e1kgfAPymwICO0Jc3olcS5plXQRljdtc8U7HlD1heDIIBYI_6A2W1IFxjplhWBP8MxukqrYr6dnYHDouU0SvU47g9N-FWaltcCwlEmPZuc5BfUKm-WQVS4wcHiy2C9okehFX-asf9iByQzQtOv3RaW-zd77DOyTQQvndwZ8LLtfsRhOB0eLf1x8hlNf6dXvUmT0MTpJATEeXpWQsO_JMPnEVnEVgVmSw6PzQXkFux-cNyM1GrjJXvlygl-Jbl6qpAH5jzAYmuSgXpM3LtnHzwyZ_8yTJQR_6m4lrSz1t3-9z1yCjRr9qiy-A8CZMm1e7pTvwcfpMfx6WeX_wFNdFPIhoY-jh8DrgUghnjK",
-                "id": "rs_09f1d21f72e4ccd7006ab2b3fe4c4487d090def8446370e4fa",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_MiF02gowP1pCM1XgoS3zySKg",
-                "id": "fc_09f1d21f72e4ccd7006ab2b401126c87d081bf1c34ab07df82",
-                "name": "add",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Add x and y together",
-                "name": "add",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "x": {
-                      "description": "The first number to add",
-                      "type": "number"
-                    },
-                    "y": {
-                      "description": "The second number to add",
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "x",
-                    "y"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
-                "name": "final_result",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "category": {
-                      "type": "string"
-                    },
-                    "summary": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "title",
-                    "category",
-                    "summary"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 210,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 289,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_09f1d21f72e4ccd7006ab2b3fde5a087d0b47fd835610ec1bd",
+              "provider_request_id": "req_e09ff45e4add45469a3d45647e06f2f8",
+              "usage": {
+                "input_tokens": 210,
+                "output_tokens": 289,
+                "total_tokens": 499,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 256
               },
-              "total_tokens": 499
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_09f1d21f72e4ccd7006ab2b3fde5a087d0b47fd835610ec1bd",
+                "incomplete_details": null,
+                "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrQBeNOPDDEAYRNpfD3wiNUtfBfNjLwtdOVSBl-_Qq-dEjfBFu_Az4R5B5ZpyT8lmLdMGImHTbTOUUgYQUALcM0wmmfBuMglNH49XnZhlZ8JibEjbg6pTSuR661NTeJr7QHy-BudaezoeZuJ650uTOb9SPcnw5aV5csImEmsb_wa38NCMWFX5k3__mcTvhpOTbNhez0MznPvSnXQraS9hQFOU8sJLcM7E6FBY9sWZFkU9puTPNeRBlLtUrif8ZuBpsv9r4Y07eQstakHhpEFgPRnw0SjRl3QVGGqmFwHUaC3_UvOnyb8KQdAoRXDKj5kC3KQLesNIKlI0kIbr-legp1dEVm-PZhzvdv9fY2iWugJOntUk5k0Xk0lFDc0moStqZYYGchB4WCQkT4bttnoXZeVR_eZ35dwvMwB6RPhRFMuVbvGuFIHqzdJ5JA86vZsCmA5W6i0t9fb9frId3s94eHpDYqeEAN4JTb8BSxkNf2kg1Z2kLyf9ZqVg-ZZkQbzydbyZiN0rkuLdpluNDb5OGoNvXiAGNQYWjktRLdS-aI_zp0OSDjDSX-kZt0Dbdk8_kjsl_mKUE5KZhXVWLOgeaVoSu08-5i9EU0t5RbV2dd-mXILrNJjjioMtZH4UJcOWEsB3BKQJCu7b4XoT8r8gR5tjigcgfG-k-gcusonsokPoXofEwgI_GSaxtNnt8ml3q585HyCkm2fh3-PhuOl4a4Rdg0QR4IUl_b4ypF2WY0jKwBdsgmxYbjVrqldvaNgc7Gr-graJ8v8tesz7b_6913RfVXu03YoWruwghPhzoZPflcg0Vwrrm7jI61vR_MWV9sgYkQQcpTS7ST6bsb3AxeKEbG4nyyvCKiDJv-b09bFALr98s6YKhtRX7WUikPJ19sBONNY_H6twKfelvYxHZtf9j7cvRHLuOF0A6dYLtIQgcoDr-sujS5LfLY8i1LkaZ98O6AtrSRGnNebt_SzW9pMCIDdEKYKvU0sai-rTmHjILz9H5E3r-tFLVLmCxQh755xcLf2ucVfYTZlfYcYpy6vFABlxSffGNYOamnDCsfon-LEVw4StXLzpDDIyZdq8IFzr7xJQwiXZlI85JVDShnBJoQ_rHF9oNlcExEbrsX0RQP6Qj1kQkHUfL5hle7rpiCpCba6tvuzmYMftfRwivIO5iDofkoyvW3zy-F8kyT5iLyVyiK3aP1msO2PcxpV9rO2W53n7Vd4SuBfz3EtquxR2yjgT3ierenCjVZTzpGrov0IBP_sLel3_oeNQt6I4tPLqAFafG_bkrwNgizFILKm2A5cRQm2OoHDK2oK2umC2bvhNdtdpy7hrmHw3sRAyTpeVClPxnkqLBVWC5O599JSg_6vB6rnEFTMPfoPy4URo2k5tLeuLIq7y1cm_SteQ4EpI3a1aOxA2OZUeBkig6S48KRLlgvEl9iV7gODBDDv3mrnw4BhZLEvqrGIOSa6zLoXcEcLZ9HrGE5txJYyxYV8ZzzCijUpPFlxYgmg-tHtCxeh47gdtG2SJ1ge05UMKM9PTe6UuE5wIK090mpedNTH-icZRG-f01-txe81TNOk-QhqfcHZkGpYRcUvEPPVbdrWNW_Ny-uHRT0tBmdGBvNIhF6gNPEfOKuAqDUQ0p4908g_F-wN82RhCmihegfeyTMIS_X2uY_Eu47PlbSl-HxURnHEp1hBYzk66HYo_B9OTPzWkqpx3G5VcYUjON1HN48-AOzruJsu6PZ_sdHse8Pf-inbZTwVVPBlSYQYalmNwxfv1iMY-N3yi31T5u11tZkclrtXN3j7KuD4gOs9PL9ub6gy8l1pwsS6JsqzeK7AgFLOhML9L1-s138Dy7qvyfOIr5RqK-pSzigfCa_e1RMiG1P9qQR6F2ANNiCktmERMiajFMvq828_x8TQPG5e1sUMJrXaw6ZlIC6_ZRNj43S5QfvJty7sjGI-0yvmB2sjFeK8uMDBCYYCIjt_v6gNk_nWDjaTJzoTof85xQMCVOWm4ifsHa-z_-vhq7CguiDc3m7NAGc4UriSBzxeT9yHMcPDKvhBJLaic6W8IQKNqamAZl2q6cG1KcdeqkGgRpSRdWPCAWTaqFK1AlHX1ZCAwF-gdGftsQCs6hYTTcwLp7i2v1sy51nDHA4TIDGx_EdrPDUQkwGrqxgszosB4rYw85FddIP0kDb6cc1XwIMZ7Y7PlpZQWOzbmKxeMxV43INOQhaNZWl0q_LrKqzh6OtjRJfgzaxzlKD4Bq4TZGS3jSLBWQUaaavOqTgJLqWdUWC-mk3kkBccnfCqorYXt7gC52xxYdaT8psCxTNsLZa7f8BrQhuxaOou1EcyS55_NYLhi4fv7L9gFhH421vH0BTw7e-mVr59uQ5r_DWE0KjAnJtv9U3G3BKhektp428gonI_3SrAXwnoBQhc8sr8gsxMvWYDRnIkk5geQIuiNpdiUcmwmCIOT7e1kgfAPymwICO0Jc3olcS5plXQRljdtc8U7HlD1heDIIBYI_6A2W1IFxjplhWBP8MxukqrYr6dnYHDouU0SvU47g9N-FWaltcCwlEmPZuc5BfUKm-WQVS4wcHiy2C9okehFX-asf9iByQzQtOv3RaW-zd77DOyTQQvndwZ8LLtfsRhOB0eLf1x8hlNf6dXvUmT0MTpJATEeXpWQsO_JMPnEVnEVgVmSw6PzQXkFux-cNyM1GrjJXvlygl-Jbl6qpAH5jzAYmuSgXpM3LtnHzwyZ_8yTJQR_6m4lrSz1t3-9z1yCjRr9qiy-A8CZMm1e7pTvwcfpMfx6WeX_wFNdFPIhoY-jh8DrgUghnjK",
+                    "id": "rs_09f1d21f72e4ccd7006ab2b3fe4c4487d090def8446370e4fa",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "call_id": "call_MiF02gowP1pCM1XgoS3zySKg",
+                    "id": "fc_09f1d21f72e4ccd7006ab2b401126c87d081bf1c34ab07df82",
+                    "name": "add",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Add x and y together",
+                    "name": "add",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "x": {
+                          "description": "The first number to add",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "The second number to add",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
+                    "name": "final_result",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "category": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "category",
+                        "summary"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 210,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 289,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 256
+                  },
+                  "total_tokens": 499
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -518,169 +522,173 @@
               "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech Meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42.\"\n}"
             }
           ],
-          "usage": {
-            "input_tokens": 510,
-            "output_tokens": 1136,
-            "total_tokens": 1646,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 1088
-          },
-          "message_id": "msg_09f1d21f72e4ccd7006ab2b40dc60c87d0b528013511029129",
-          "response_id": "resp_09f1d21f72e4ccd7006ab2b40187ec87d094441ab6ada4fb19",
-          "provider_request_id": "req_21fe47f303954dae933818e6b857a248",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_09f1d21f72e4ccd7006ab2b40187ec87d094441ab6ada4fb19",
-            "incomplete_details": null,
-            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrQOE5oStOKMbQ2a4Gp8n_CtVjITky040U_S5Xfrw9lmoA6dmMxarT9vcDEjqgfa7nAd4jQfll8ZkVOaZjpmgZhjt6IBjXzpusYgYwtvzgobIJfVYb5sKd5opdNy0kvVdZUP1iAmuE2QyspMC78XW3ebEfrosgnopDhQrPb78U3GDdtfe21EStkoLAWGzi_5dhgmRaIOaVyeWjREifkqkdhBlR_W5F8-Lq9xHA-xen9mgRvB_RmpiVn3dfngfcOFu6MggyL-7UxhyiMmVgF-R4PieVEK2ro7iwgc8oY5vopmA74RkVqxnSPfz4e9L-T2t7KOE32dphvt1TeYFMpMoMln2yii8cZudyrlj8TVCct-nDhEV-bXxiSO6yXtkZ5RtumOh-UGh1qsC1WsVXslBHPVmtzMgg2mPATH2UloNIvZ4mVtH3VTi2SJZZTVgF42ZaFX0Ze-i5E-Yqhv_E2PPpiCdd4iYkV3xGA_fgDNx7OE17_EdpqJBFBrvbfOCq_jZFqd6OR-otF0YdWGA_-ZgrqSlcCKiawIJ_y78uIdqkjMRhauXPeCYEH_UAphljcPCEwhkeJpVXSLMGi17lEAPzRy1gows85CTXJAXO_BoOIT7-Q7CyO59Wlqpp70-NuVHU1kR9cLsYce-LW6R6MGLItjuMc_AtO0KKJwBlHo-NjBV8QbkqCczXsNfSwVts3VkzqFPOMtMu0adeHRCR6LFrMZOi3UDBUmbZ4TB4ZVnP7ivUHfWMQoLNZmOEvG-Sopn6u9-6h4bsMweQqvwlRaNFAVrzHWyaVeBKRcLXghLYOfj4q3v2b6RyYDvSHSB9nfOEhbOem-HiW6lBbFiqZfV7a2_Ru7XovR8CYMLVlVgdJ3BQbB7D6xVsdxj89UP_x7e7LMSMMomWZI6PZS78kF_ry9OOdDG66eUwvuIGIioP8QWDYWF9WDTAIZQBl3bpvKfiR_hFlYeI8VnrAESjksKh30f44A51VqMs5CF0W0_wV9Z8AdAaIt8IqUK1-kgG-nKA-NyJgL6F-dVZUg6wdFlcMpH4fdlnZnLCCflR3MXvwRun6ojk-QOjh_smjgVWYMJTKoeADYdsKpwfXR709KDJDINiPGfu9bTRWHKPC6sxKJusLQ3zKaiVjkrTY8t17U_CiuyQLoMJcZ9prxuh_NVSYpl-4l06exFaVDZuRsc7FMNToqDo7KSKElD9iAnM8_Nhw7_vMJ73ykHemavPKN4bZok6K_0PADen6t0Ejn-S6vq0ofUhWb5ZEqumhQa_c5yi3WR9atCGj0eHlgsQMJqR_Zw-UX80h2u97TDS4KFNPiFvrvSMKo269nJg3u88K-JBiRUJ_u0ZmVW6tIzeeLS5cfDvTAiIbGVfm1_-WgRid4dv5mZow4_WVNaa43PuX1DeyIbCjl1LLWyvsiU36srAB8-Q3PgrlJzJ8vB6QKSgIOYSL46eLbQ2aGyoYtcztWdFzGjKDf9GW6-_Z4yrcbl8H6uLhTtC0JB31qbS97KTT_lj32pFT1bejC49rsY7m4ny0zWyxErIA2j-RAMOJpoVgnQwGOEVSISaa-8gBRg2zSaIDBH7ZGe9r5iK7OrTX1mWt0kNywXeSh7Px4TetlGvtYx6ykuIJH8DyJ3lfV25PlFgCrpW4Gb-QKLs7A99hfEDJvRcxFxGNzCGeyzl9Zy7diAnC2J_1tKfrm_hj4iGkCHM3Txva_kW8uMmcebnhj1j7ZotCa98YjTl0nA_36CSlWzz5zn3kf3kXJV1bGe18-LGi1Z1uGrufvXklJTUirnZbSWlawGQXAm9BQWDs4C9hyhBZykyM_gDq5zJg7SaERJtplfB47M5VeY2rp_HNbo__lvQ6NNAH61Ucr8p7PRr4Xr5-K018Bev3UQUXMUdCuXmRuQC7UNuHJxh42698KeoDN83sjdsOhS7fjFPsI_bsMnjEreCVwVH2KCCiO3YXvMFouT_bK7b8HLHezoTPvmZt209ZqoApmasYynyxQN8hkqmnTLmU0bpk5emdHf1msrpoZbx1F8jIHHovzXWAipfh_wGObvBCA58skKJlLqmGN7MdXTeeF-GLSta2j2AWzHk5TxVPkFPFdT2itvIG20Ai4kXhhzTLiW7ufnsGt9MVY22MuxMqbFtnBcxedop09mbMHSF-srm6cxrOM7e1r97NU5l5eLAMuiIvNALxCTPH53AnjxsLOH2ohB38yy5EuGYotgTBTLT309eXnrIOJHhXvLoxKPBfpyvtji11c9jl5uVNuZyJgIENuvSqMZ1K3rCD726Bqk6TN0nl6l6C9meotJ9bNfqeuG4D-YLy4YfNOTQaya5SH90LgXtCd0e8zec4GJBQ5iJJH7y2vkGuxJ7ILbEgZxToctXrcugzaTSj8pRfHfsyo9j0sZD36PwqNBtDh14n5AKRaPzxCh5LsXJT7nsSBvEGoZFHjeIhcMUiaeCNXKixaYRgt81lOz-zGe_blIuW0HsFG-P0fyglRkEN5yyFNXr7bAcM8VTcGGDae1pP7nICk_-by0acCbMlxiomsPU1W9q4J0CjZbJ8swpmAQKauKUwwZYHUaD07ib38AejFZCr0TwOmJULiqzTTfqJXCLEdTXdRoTIJQjbQOSy7wrJPiV0xxOhrTu1p0TRoTk7eMMEFSHTP70T9ARZgcly2TngNXITd51dbwKUt2x821Wh19Cl4KWpBf2LJAtrmj-aPn1hm6v0XIa4T6qGXSiNDGPvGn-9fH4gyO109thtJQI-euFC1oUmeVdtRpjPp6ncteiGILva1p2znL5ClLLWiNVrgYMFXNqCKypTgYijMr984lJwaUA7Hd-XU5NiQKm343tZn-aEKPVN-LeaociNhYIQmo3P5_-DBwQ1k2xwQDuxvIafQ73WjK7E3FjOzEXIxVlEfGpdHdTWblq0thHGnPEw9zsmCmgWbnHDc-5bGu38AePrX0J4pp9YDNCE2n6NtX1l-UWk2bCl_gIkePsomnQtfD_t5YoQNdulRTFEYIjO5KxF51jp-W4kXo_diidNPGzdyRMy9lZAKTGZ2v10_htkTG2pikG2B2xwAYzZk3l1L8oMsv1QFt7is9Hx_mn249D3SYv3kgs9n-wQUU5xSO3qogThzyELSLXilN1h7sbiNrx4eMn5ULJSh8QRdhdnXLKgfHRzXJNhFqAY_9CascRZRB9bMpXpwtwQZYWjBh49rKTqzeKUXrHt3BZiQ-KQtAOIdW3CklkI8tWqB1i5D8ADTnzxyEftDMgGU2ckxekAaIj-140Qh0n5dBBtTo8h7cH1cCdpKCSutwfp1udVXgldiYwpoKwOSeiTWKT3O1_tV6e3_VBsYBw9YByEJptIRctX--2uJ2plAqPhN0cdAWjyzd7lx14lt12qgy3QoOQVkDZhWs5QMa1fotnJH71gamwXQKOrNgZAobvgGVQtdVTFrnWKGZuayHsTZqUshJG3on44aWY44sRM96SKIbmmUpk-fZNIJVt6lTncWZ1A1E-llpCy5qZBNc07fG8nCGCnQpsPXv79KOiVrCq3hhtTGTppUQnBMHehNEtto2JqVa-E0crAtbFRFofbZfQV0ChfOH5E6TF5-DvbYJVNw9qV99xd1iRWoqJu9EMXu7PzcqbPxHcD9fvENAmwdB80Ea5AFsO5xh7viylk806HyVWJawPzVAFP7M1mORFu75FiUiM2QavyE7qSGUHZJLnNbO9TnyqON_jKLvNLeuvj9Ycrch28WsWhJBLIpJsaj2pd8YGTTgloaEwS4InW7tuTEAfiDyK-XqRqkMdKQBLf_O_8hqyZllbSROBQeQnkfmhUtComE-gnaJVegpWJQAQ3bdrW-A8q1qttVe6pnmFI3-eeMNea-RFqh3F-CAl5IMqAytLsBG02UTeARbqRc1YoPtM2hVg_DrJFGMdoPfwSD7bxg394Cq7hzf1o9soDi2e3bg5a2DgOAZqA1KENfCqbFAM5rJUWF1hXy74hsDDeS0ESfASWydvHOY4k56nNM9RF9uJKJB2YlhpsBKtN46FgGVSUp2M-cLuxpET1LoR7fzAGzNSopGgCboPeIBpMkgeAWop-sA9QSXN6i4SByCzE153jaJTMO3jjyZefMT9ICwRoK802gcrjmjGF-L-IwC15XCY3hS0W3FycoRis0uoU_sv9gcBnRFiYCedA7d7q4rnzRnB_VOYRN8mKZkv88Tyy29x07JY0EWw8TUVNa2laDWT9l83M5Rdkr4vezkZ1GJ2YStWhLmBLDXoX9Dh11fitUZZCXj66q7HTRMVrFO723h3FJeJP2hdr65SAxlVAIyiangE0y8r7WI-RCPB-YArtBPOSVRcOoLtYRCVIplOuQSchMDlt4un1gODXR7-tZD-uAFWcqPljOTJRZxBSq6V8aLS6LqZDS7ZIS9uVFffG2DdNEeebmkPIVX90VckUiuINB_xGTxpm65Pze9rfCm_R0dMZvIBY0vlo4RqVphIWcCHV4zqGHk07wRtHNQEgMdwsao2eAGKRI8PZwAI_lHKEGaAl1PWw2MCfsyJpv8r_mTW6UUfU-6Y6x-oUiGj5GILKVk0NvcFyTtEIMMJFeWWPcIlq_BRTT-43-HYg7UQ3y4EHnA7LZZJvIZ_RewrDi0KxDoXmQk1WQ90Ug07gR50zLWaDYhC_fk90g1FcPBZ0g77RCH8BzKNDOfzJBYDLeUv2TrShq585W7Fm2j9eFOJ5lF7muMS0VNy-6g1l75o-JaVyV4Za-TBGbsxwmN79my290zzgxqdT5CtxFZYvHvt67UsNH0D5vPDlvZQF13IFACtIRqTfy1ViIRkrSIUHkqFzV8EOn7mFE0531_sNzcmpZaHy3B5s-SRM-jAuZP7uM3rrlpeUnFQlj_S8B6BB6PTFXkt0MLp-GiwoGeo3AAvNbT9uF-RIzaTR6hE4KuYcx7IBbgAjn-rHmUCcIBaS_rr9WGdhk8keEtE96OmDfTTuat9GfOtDJ9Rrv_y9rvud7WfxkYLBZnnqRFNasUs8MztM4AxKajxby4uIxu_fIGLzmwu0wnXrFyI3cjP_5_3I8I1MP8xJapb0hga1NGDtWE9Y3Qguz_9jM8Bi2q1bmZo0k9mIZp6dqvL68odZlPHjEWh9_0fFePsAmB9ojYg8Zt8aw18Us3ztNJCznuTg71CxZyvY1VaMK1-w4YEsCYbr3H_LeJA8s2hIlUCRZx48nPLhnt03GWgMDd088voS-_BPWfMpxQi169sF3ynzvlECZqMsc4LveopdSjvUM0icF3_WMDS1ONZS5ArbcOHxXmxe1nAlsh4cojRcjjLYPQWsQUL5Do_xptkSUVB_U2cD3rguoL9co3JGRIkpQu5DesverMCdVoi5AbA1fE5OrxwUKxai7D9wkI3Zhds1IYS2nIF1oRq2HBX0vDtFhCheQgmkZxurrmTb9iwvWWDpq3gGLTkEGZT6EfEVosD2MX0sIXjCKPctkHYAs_uKnM7m54URVXwbeccCMhkWjNX1dJcKCc9TO3TrG25i6YfnpRwXNyEPqSIDg8qCraeTMsOD0xxyppMyURzoQ49CUNBz4AMp62vhs64pkWwrCoOdH_bJkaS0OBzZbWU75KTnvDU3oE3tTMarLw4LlKZfEwu1SJ0V4Swykziy39Nq88xA40R0xLlZeprOg3DHrALu0tM834L_Hi3hqZtXzIWvSZkpvZiCfN5l0sgtoO2Dt8M-7LIf4961FahtTx3i3CQTYB6jAV8TT6dgxYbaZmp8yHCszs7v9ii7BfyC6glUjOjfklYdTXE8MY_bvItleWcA-ycy0kKOZgYQEKdcTBQ6U1jJ6CTeL1ybw97COYlrXDUeRk-L8sJ6eSXRtyCmmr9_t3SbymdjUe5kWd4O2kTeFgF5sSMW6rogdXrvSALGECLGS7hngmcNE0mAcOLuX_1FkZ_-_3A4KNAIDH3uqds0EWfiUcjPIV1JT2GYnyQoSC9_5rq2PrWadWK6Gb8jXIYW18CoVq5hp2Qwbd1o_h13Cv5vhuNjlG4mNKXkEEB05E7ZO5cxDjl0cBG4frzoW4CFqVvo1320sF4EPrj7bTnFOmF0zAsWcSjR1SzosxqYqiYC8eY0VGmqTqnPVyXFybj0f8j4gowahXngMv4gA3lSNulVftYo9kCOaARn6UYwmpjqfhoKkQ-8UM5zDIYs-xlQTGEnt8h7PqlHFhI8T9yNxn4Ty2HH1QOJlriTNwSgFhntYJ6WK9GuqdcbAXp07spsb86V9LIShSGFoIh-u7zUfBVqcbRvg6jduBR_K1lgBHZ4rhjLGXcntzveOwE9GmrLOh0VuQmG69VLuzaPMWNKPo_6B4FXUz7hLMBZ9DmNp5NuBcKoYgNUVZN5jvvHPN09g51SNTlx3FEkmHVnGiPife4KKmgDnskSOfw5u2gX4pQlyk4Xx-QgQ6N1eN4cWfepr90Rwi3DU2o4ANgvhAQERYCS09v6Ayj2Q4lvuHFwuvcAFG4b1JB3cH-TaORTdtuowf21bDPiL1qlmg1WAFJLRX81XMMLAC-2nCjPZxrSCBk45JDDm8wM3RJ9jKSV3riGsxwHjdfO3frVak1UxkouXQcHoaS0CCTdu1JzCQstpncPEZubdDHQnJGI2bYgUIr5Okb8EoIV8H2zMXEwVxpKpOLo4xSMZ977X2gS1CVGHqB--7jzQNs8g-8I4D6r65GjPyrMBa74Zt_w5j7TBnJtLZS4RiqaLCOI-670PBVcUiwvVNsx7_QQjidJ5ByUXzWmOZK12c4Aq0-ZEzelzAjvdcggXaS2e4QAUE7sK9_OK5GLnmdJv9epIgsZqfH1OxV3NCBqyY_JHQXeaGP0Abjr-Zx6JO9razNdJHZnoo8h9mpSIO4ii31EY14YKNF_m_bvRutrhldwExbs8Q0_EyB9bZ5vGZNSVWe1imgWUtgOh86SneyIRNXKGg8ZdWEoFQEyQiVZXHlMBUkPsqgWbYue7BLu8RNAhTajoLpVpDKxSYAX48yO2znFMBWqSj_5HTGAyvwcJyIiRw-RoXCMhhLw_Ugqso9goGjDQAo3xeY1ZEsYbcBmudz4OlQ6JlTuMV1oLDKr0GWqvNHfcz000mMSullZ2oyd4dCShBtx4bjvsr4CCOGOI3LqIAt8czoppMovX8tnj6m_UODn29uiiserUuk3nQHddBSvEJ1q0uBZpe01fhog1cGvBj0jvH6hWcOjn0hi1MbCbE3QYy0rOQy5UJXbQPQyuSaeNs_gWI8Yx_lBSm-xD5P5DKaIWa5JMK9UVj0Cy8GDdTjSoZn8MOtIBQXcTWGqPpDy6-mD4B81CS8aQJ3h0rBUAzTqxQDtrDx7IkHWAs0dHQSGz8yTDv-pAEQO2vWBuTQyTWSTXEkp72-tC075B7XNT912J4GzYKEBz8jIbjRjNNCrLAbyI_t4R0EuXJBN7q8t7nvRCJVvRHgesdMfy6cwnZ8PAmsZeWhK9DT-EpoSoy7bgr8ViJhgSSK8sfm55EH4tcsroQOMzPr1RpMxwGSQNvRGVh4pJlB8wn73Yp4ILxkB0y1XSyxCMwvEWQgKyiPCiRIL4eFlo3pWhhOMhsWDVaULyqtROR2KH0cGzQeJmt1PKTL0phaHnYc94LgUJ9XxuNdTpUPBpTXWWs4ci5LjeNY05lt4xTf2gpB_Xbvsrij_gC3JyeD_HY85ILlErY1OcksbZ-q6p-tVVyJ0GurELD03kzjsCvYSWt9sHmXRk8MFsqwuag9uJxjAo1ssJDkk-T2-MF_vHHW3jZnEB5d1Tsjo3UrJQxgzPnn-wfpPX_Eo8CLBSOxhZIx8fXfVeMi6fMFgOLMtxqxEsgHv3fjiA18y4c8TosuaWI2_sUmpkJuw4UYsdlw4upWckekyhUDOsMgNld8y-pFdcUO_BY4mWMN3xnmAt4w8wjgBn6frGaAb8p3KASCit6648-j891B2WzzHr2eFbvKUEWGrfRXwXLfoJKAnYBZuw668ck2Nk8Jg_Axuc7So4qidsob3u-0lqeCX1-9lBfjdow4_RP_gHbbt94EUnwSo5OyJlAKEovsIEaC93hTyunA3A9GHXkO4rCZjezFJlS5S8H8cjK_jwnv6ekGxzfqXRle_k7kLBJrPyn_wLrnyr4e58ow5QsfC953HpVmqdO_yMdnM4y-MrSLmXQbwnvbl7EMpoOiE31LUZ9fZYFvVoExCweepsYT8nm-JzUCFa361tPKIXSnBPaE9Z9FdVuW2XLGMW8iDZKl8nwetYoLDf6zqoXIORtKQYs4z5iH8ChdGjpnqYAIA9w8DTeZRKcJKiT_6QayGKlig4oxXFO3OTAq7bpyR4S-ywSKrjtj6zXaPP4sjCwheCtOMyj5Od3yVdq7nNaMgWV1_JCMu3n1MJabBOFz16Milq-1bnpjiZfxe0PrGj7XyJndZ9Vs8GaAFYd90LRVaAfhw4Ad0ZDreB5PgvcSVs6zlATzIu5iO08HsH5V8WPwaYabWoWg2m02ng1o4chv5ZMVl6yBf0LvC0UmtoDuPPEUjeB754Z7k1FvLe8sW5hSnrIwxG68kICjO39u-CI8ChKhCVNyLcaGbx5AwitQd7",
-                "id": "rs_09f1d21f72e4ccd7006ab2b401f84c87d097c8c400ddc6294f",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech Meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42.\"\n}",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_09f1d21f72e4ccd7006ab2b40dc60c87d0b528013511029129",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "none",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Add x and y together",
-                "name": "add",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "x": {
-                      "description": "The first number to add",
-                      "type": "number"
-                    },
-                    "y": {
-                      "description": "The second number to add",
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "x",
-                    "y"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
-                "name": "final_result",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "category": {
-                      "type": "string"
-                    },
-                    "summary": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "title",
-                    "category",
-                    "summary"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 510,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 1136,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_09f1d21f72e4ccd7006ab2b40dc60c87d0b528013511029129",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_09f1d21f72e4ccd7006ab2b40187ec87d094441ab6ada4fb19",
+              "provider_request_id": "req_21fe47f303954dae933818e6b857a248",
+              "usage": {
+                "input_tokens": 510,
+                "output_tokens": 1136,
+                "total_tokens": 1646,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 1088
               },
-              "total_tokens": 1646
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_09f1d21f72e4ccd7006ab2b40187ec87d094441ab6ada4fb19",
+                "incomplete_details": null,
+                "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrQOE5oStOKMbQ2a4Gp8n_CtVjITky040U_S5Xfrw9lmoA6dmMxarT9vcDEjqgfa7nAd4jQfll8ZkVOaZjpmgZhjt6IBjXzpusYgYwtvzgobIJfVYb5sKd5opdNy0kvVdZUP1iAmuE2QyspMC78XW3ebEfrosgnopDhQrPb78U3GDdtfe21EStkoLAWGzi_5dhgmRaIOaVyeWjREifkqkdhBlR_W5F8-Lq9xHA-xen9mgRvB_RmpiVn3dfngfcOFu6MggyL-7UxhyiMmVgF-R4PieVEK2ro7iwgc8oY5vopmA74RkVqxnSPfz4e9L-T2t7KOE32dphvt1TeYFMpMoMln2yii8cZudyrlj8TVCct-nDhEV-bXxiSO6yXtkZ5RtumOh-UGh1qsC1WsVXslBHPVmtzMgg2mPATH2UloNIvZ4mVtH3VTi2SJZZTVgF42ZaFX0Ze-i5E-Yqhv_E2PPpiCdd4iYkV3xGA_fgDNx7OE17_EdpqJBFBrvbfOCq_jZFqd6OR-otF0YdWGA_-ZgrqSlcCKiawIJ_y78uIdqkjMRhauXPeCYEH_UAphljcPCEwhkeJpVXSLMGi17lEAPzRy1gows85CTXJAXO_BoOIT7-Q7CyO59Wlqpp70-NuVHU1kR9cLsYce-LW6R6MGLItjuMc_AtO0KKJwBlHo-NjBV8QbkqCczXsNfSwVts3VkzqFPOMtMu0adeHRCR6LFrMZOi3UDBUmbZ4TB4ZVnP7ivUHfWMQoLNZmOEvG-Sopn6u9-6h4bsMweQqvwlRaNFAVrzHWyaVeBKRcLXghLYOfj4q3v2b6RyYDvSHSB9nfOEhbOem-HiW6lBbFiqZfV7a2_Ru7XovR8CYMLVlVgdJ3BQbB7D6xVsdxj89UP_x7e7LMSMMomWZI6PZS78kF_ry9OOdDG66eUwvuIGIioP8QWDYWF9WDTAIZQBl3bpvKfiR_hFlYeI8VnrAESjksKh30f44A51VqMs5CF0W0_wV9Z8AdAaIt8IqUK1-kgG-nKA-NyJgL6F-dVZUg6wdFlcMpH4fdlnZnLCCflR3MXvwRun6ojk-QOjh_smjgVWYMJTKoeADYdsKpwfXR709KDJDINiPGfu9bTRWHKPC6sxKJusLQ3zKaiVjkrTY8t17U_CiuyQLoMJcZ9prxuh_NVSYpl-4l06exFaVDZuRsc7FMNToqDo7KSKElD9iAnM8_Nhw7_vMJ73ykHemavPKN4bZok6K_0PADen6t0Ejn-S6vq0ofUhWb5ZEqumhQa_c5yi3WR9atCGj0eHlgsQMJqR_Zw-UX80h2u97TDS4KFNPiFvrvSMKo269nJg3u88K-JBiRUJ_u0ZmVW6tIzeeLS5cfDvTAiIbGVfm1_-WgRid4dv5mZow4_WVNaa43PuX1DeyIbCjl1LLWyvsiU36srAB8-Q3PgrlJzJ8vB6QKSgIOYSL46eLbQ2aGyoYtcztWdFzGjKDf9GW6-_Z4yrcbl8H6uLhTtC0JB31qbS97KTT_lj32pFT1bejC49rsY7m4ny0zWyxErIA2j-RAMOJpoVgnQwGOEVSISaa-8gBRg2zSaIDBH7ZGe9r5iK7OrTX1mWt0kNywXeSh7Px4TetlGvtYx6ykuIJH8DyJ3lfV25PlFgCrpW4Gb-QKLs7A99hfEDJvRcxFxGNzCGeyzl9Zy7diAnC2J_1tKfrm_hj4iGkCHM3Txva_kW8uMmcebnhj1j7ZotCa98YjTl0nA_36CSlWzz5zn3kf3kXJV1bGe18-LGi1Z1uGrufvXklJTUirnZbSWlawGQXAm9BQWDs4C9hyhBZykyM_gDq5zJg7SaERJtplfB47M5VeY2rp_HNbo__lvQ6NNAH61Ucr8p7PRr4Xr5-K018Bev3UQUXMUdCuXmRuQC7UNuHJxh42698KeoDN83sjdsOhS7fjFPsI_bsMnjEreCVwVH2KCCiO3YXvMFouT_bK7b8HLHezoTPvmZt209ZqoApmasYynyxQN8hkqmnTLmU0bpk5emdHf1msrpoZbx1F8jIHHovzXWAipfh_wGObvBCA58skKJlLqmGN7MdXTeeF-GLSta2j2AWzHk5TxVPkFPFdT2itvIG20Ai4kXhhzTLiW7ufnsGt9MVY22MuxMqbFtnBcxedop09mbMHSF-srm6cxrOM7e1r97NU5l5eLAMuiIvNALxCTPH53AnjxsLOH2ohB38yy5EuGYotgTBTLT309eXnrIOJHhXvLoxKPBfpyvtji11c9jl5uVNuZyJgIENuvSqMZ1K3rCD726Bqk6TN0nl6l6C9meotJ9bNfqeuG4D-YLy4YfNOTQaya5SH90LgXtCd0e8zec4GJBQ5iJJH7y2vkGuxJ7ILbEgZxToctXrcugzaTSj8pRfHfsyo9j0sZD36PwqNBtDh14n5AKRaPzxCh5LsXJT7nsSBvEGoZFHjeIhcMUiaeCNXKixaYRgt81lOz-zGe_blIuW0HsFG-P0fyglRkEN5yyFNXr7bAcM8VTcGGDae1pP7nICk_-by0acCbMlxiomsPU1W9q4J0CjZbJ8swpmAQKauKUwwZYHUaD07ib38AejFZCr0TwOmJULiqzTTfqJXCLEdTXdRoTIJQjbQOSy7wrJPiV0xxOhrTu1p0TRoTk7eMMEFSHTP70T9ARZgcly2TngNXITd51dbwKUt2x821Wh19Cl4KWpBf2LJAtrmj-aPn1hm6v0XIa4T6qGXSiNDGPvGn-9fH4gyO109thtJQI-euFC1oUmeVdtRpjPp6ncteiGILva1p2znL5ClLLWiNVrgYMFXNqCKypTgYijMr984lJwaUA7Hd-XU5NiQKm343tZn-aEKPVN-LeaociNhYIQmo3P5_-DBwQ1k2xwQDuxvIafQ73WjK7E3FjOzEXIxVlEfGpdHdTWblq0thHGnPEw9zsmCmgWbnHDc-5bGu38AePrX0J4pp9YDNCE2n6NtX1l-UWk2bCl_gIkePsomnQtfD_t5YoQNdulRTFEYIjO5KxF51jp-W4kXo_diidNPGzdyRMy9lZAKTGZ2v10_htkTG2pikG2B2xwAYzZk3l1L8oMsv1QFt7is9Hx_mn249D3SYv3kgs9n-wQUU5xSO3qogThzyELSLXilN1h7sbiNrx4eMn5ULJSh8QRdhdnXLKgfHRzXJNhFqAY_9CascRZRB9bMpXpwtwQZYWjBh49rKTqzeKUXrHt3BZiQ-KQtAOIdW3CklkI8tWqB1i5D8ADTnzxyEftDMgGU2ckxekAaIj-140Qh0n5dBBtTo8h7cH1cCdpKCSutwfp1udVXgldiYwpoKwOSeiTWKT3O1_tV6e3_VBsYBw9YByEJptIRctX--2uJ2plAqPhN0cdAWjyzd7lx14lt12qgy3QoOQVkDZhWs5QMa1fotnJH71gamwXQKOrNgZAobvgGVQtdVTFrnWKGZuayHsTZqUshJG3on44aWY44sRM96SKIbmmUpk-fZNIJVt6lTncWZ1A1E-llpCy5qZBNc07fG8nCGCnQpsPXv79KOiVrCq3hhtTGTppUQnBMHehNEtto2JqVa-E0crAtbFRFofbZfQV0ChfOH5E6TF5-DvbYJVNw9qV99xd1iRWoqJu9EMXu7PzcqbPxHcD9fvENAmwdB80Ea5AFsO5xh7viylk806HyVWJawPzVAFP7M1mORFu75FiUiM2QavyE7qSGUHZJLnNbO9TnyqON_jKLvNLeuvj9Ycrch28WsWhJBLIpJsaj2pd8YGTTgloaEwS4InW7tuTEAfiDyK-XqRqkMdKQBLf_O_8hqyZllbSROBQeQnkfmhUtComE-gnaJVegpWJQAQ3bdrW-A8q1qttVe6pnmFI3-eeMNea-RFqh3F-CAl5IMqAytLsBG02UTeARbqRc1YoPtM2hVg_DrJFGMdoPfwSD7bxg394Cq7hzf1o9soDi2e3bg5a2DgOAZqA1KENfCqbFAM5rJUWF1hXy74hsDDeS0ESfASWydvHOY4k56nNM9RF9uJKJB2YlhpsBKtN46FgGVSUp2M-cLuxpET1LoR7fzAGzNSopGgCboPeIBpMkgeAWop-sA9QSXN6i4SByCzE153jaJTMO3jjyZefMT9ICwRoK802gcrjmjGF-L-IwC15XCY3hS0W3FycoRis0uoU_sv9gcBnRFiYCedA7d7q4rnzRnB_VOYRN8mKZkv88Tyy29x07JY0EWw8TUVNa2laDWT9l83M5Rdkr4vezkZ1GJ2YStWhLmBLDXoX9Dh11fitUZZCXj66q7HTRMVrFO723h3FJeJP2hdr65SAxlVAIyiangE0y8r7WI-RCPB-YArtBPOSVRcOoLtYRCVIplOuQSchMDlt4un1gODXR7-tZD-uAFWcqPljOTJRZxBSq6V8aLS6LqZDS7ZIS9uVFffG2DdNEeebmkPIVX90VckUiuINB_xGTxpm65Pze9rfCm_R0dMZvIBY0vlo4RqVphIWcCHV4zqGHk07wRtHNQEgMdwsao2eAGKRI8PZwAI_lHKEGaAl1PWw2MCfsyJpv8r_mTW6UUfU-6Y6x-oUiGj5GILKVk0NvcFyTtEIMMJFeWWPcIlq_BRTT-43-HYg7UQ3y4EHnA7LZZJvIZ_RewrDi0KxDoXmQk1WQ90Ug07gR50zLWaDYhC_fk90g1FcPBZ0g77RCH8BzKNDOfzJBYDLeUv2TrShq585W7Fm2j9eFOJ5lF7muMS0VNy-6g1l75o-JaVyV4Za-TBGbsxwmN79my290zzgxqdT5CtxFZYvHvt67UsNH0D5vPDlvZQF13IFACtIRqTfy1ViIRkrSIUHkqFzV8EOn7mFE0531_sNzcmpZaHy3B5s-SRM-jAuZP7uM3rrlpeUnFQlj_S8B6BB6PTFXkt0MLp-GiwoGeo3AAvNbT9uF-RIzaTR6hE4KuYcx7IBbgAjn-rHmUCcIBaS_rr9WGdhk8keEtE96OmDfTTuat9GfOtDJ9Rrv_y9rvud7WfxkYLBZnnqRFNasUs8MztM4AxKajxby4uIxu_fIGLzmwu0wnXrFyI3cjP_5_3I8I1MP8xJapb0hga1NGDtWE9Y3Qguz_9jM8Bi2q1bmZo0k9mIZp6dqvL68odZlPHjEWh9_0fFePsAmB9ojYg8Zt8aw18Us3ztNJCznuTg71CxZyvY1VaMK1-w4YEsCYbr3H_LeJA8s2hIlUCRZx48nPLhnt03GWgMDd088voS-_BPWfMpxQi169sF3ynzvlECZqMsc4LveopdSjvUM0icF3_WMDS1ONZS5ArbcOHxXmxe1nAlsh4cojRcjjLYPQWsQUL5Do_xptkSUVB_U2cD3rguoL9co3JGRIkpQu5DesverMCdVoi5AbA1fE5OrxwUKxai7D9wkI3Zhds1IYS2nIF1oRq2HBX0vDtFhCheQgmkZxurrmTb9iwvWWDpq3gGLTkEGZT6EfEVosD2MX0sIXjCKPctkHYAs_uKnM7m54URVXwbeccCMhkWjNX1dJcKCc9TO3TrG25i6YfnpRwXNyEPqSIDg8qCraeTMsOD0xxyppMyURzoQ49CUNBz4AMp62vhs64pkWwrCoOdH_bJkaS0OBzZbWU75KTnvDU3oE3tTMarLw4LlKZfEwu1SJ0V4Swykziy39Nq88xA40R0xLlZeprOg3DHrALu0tM834L_Hi3hqZtXzIWvSZkpvZiCfN5l0sgtoO2Dt8M-7LIf4961FahtTx3i3CQTYB6jAV8TT6dgxYbaZmp8yHCszs7v9ii7BfyC6glUjOjfklYdTXE8MY_bvItleWcA-ycy0kKOZgYQEKdcTBQ6U1jJ6CTeL1ybw97COYlrXDUeRk-L8sJ6eSXRtyCmmr9_t3SbymdjUe5kWd4O2kTeFgF5sSMW6rogdXrvSALGECLGS7hngmcNE0mAcOLuX_1FkZ_-_3A4KNAIDH3uqds0EWfiUcjPIV1JT2GYnyQoSC9_5rq2PrWadWK6Gb8jXIYW18CoVq5hp2Qwbd1o_h13Cv5vhuNjlG4mNKXkEEB05E7ZO5cxDjl0cBG4frzoW4CFqVvo1320sF4EPrj7bTnFOmF0zAsWcSjR1SzosxqYqiYC8eY0VGmqTqnPVyXFybj0f8j4gowahXngMv4gA3lSNulVftYo9kCOaARn6UYwmpjqfhoKkQ-8UM5zDIYs-xlQTGEnt8h7PqlHFhI8T9yNxn4Ty2HH1QOJlriTNwSgFhntYJ6WK9GuqdcbAXp07spsb86V9LIShSGFoIh-u7zUfBVqcbRvg6jduBR_K1lgBHZ4rhjLGXcntzveOwE9GmrLOh0VuQmG69VLuzaPMWNKPo_6B4FXUz7hLMBZ9DmNp5NuBcKoYgNUVZN5jvvHPN09g51SNTlx3FEkmHVnGiPife4KKmgDnskSOfw5u2gX4pQlyk4Xx-QgQ6N1eN4cWfepr90Rwi3DU2o4ANgvhAQERYCS09v6Ayj2Q4lvuHFwuvcAFG4b1JB3cH-TaORTdtuowf21bDPiL1qlmg1WAFJLRX81XMMLAC-2nCjPZxrSCBk45JDDm8wM3RJ9jKSV3riGsxwHjdfO3frVak1UxkouXQcHoaS0CCTdu1JzCQstpncPEZubdDHQnJGI2bYgUIr5Okb8EoIV8H2zMXEwVxpKpOLo4xSMZ977X2gS1CVGHqB--7jzQNs8g-8I4D6r65GjPyrMBa74Zt_w5j7TBnJtLZS4RiqaLCOI-670PBVcUiwvVNsx7_QQjidJ5ByUXzWmOZK12c4Aq0-ZEzelzAjvdcggXaS2e4QAUE7sK9_OK5GLnmdJv9epIgsZqfH1OxV3NCBqyY_JHQXeaGP0Abjr-Zx6JO9razNdJHZnoo8h9mpSIO4ii31EY14YKNF_m_bvRutrhldwExbs8Q0_EyB9bZ5vGZNSVWe1imgWUtgOh86SneyIRNXKGg8ZdWEoFQEyQiVZXHlMBUkPsqgWbYue7BLu8RNAhTajoLpVpDKxSYAX48yO2znFMBWqSj_5HTGAyvwcJyIiRw-RoXCMhhLw_Ugqso9goGjDQAo3xeY1ZEsYbcBmudz4OlQ6JlTuMV1oLDKr0GWqvNHfcz000mMSullZ2oyd4dCShBtx4bjvsr4CCOGOI3LqIAt8czoppMovX8tnj6m_UODn29uiiserUuk3nQHddBSvEJ1q0uBZpe01fhog1cGvBj0jvH6hWcOjn0hi1MbCbE3QYy0rOQy5UJXbQPQyuSaeNs_gWI8Yx_lBSm-xD5P5DKaIWa5JMK9UVj0Cy8GDdTjSoZn8MOtIBQXcTWGqPpDy6-mD4B81CS8aQJ3h0rBUAzTqxQDtrDx7IkHWAs0dHQSGz8yTDv-pAEQO2vWBuTQyTWSTXEkp72-tC075B7XNT912J4GzYKEBz8jIbjRjNNCrLAbyI_t4R0EuXJBN7q8t7nvRCJVvRHgesdMfy6cwnZ8PAmsZeWhK9DT-EpoSoy7bgr8ViJhgSSK8sfm55EH4tcsroQOMzPr1RpMxwGSQNvRGVh4pJlB8wn73Yp4ILxkB0y1XSyxCMwvEWQgKyiPCiRIL4eFlo3pWhhOMhsWDVaULyqtROR2KH0cGzQeJmt1PKTL0phaHnYc94LgUJ9XxuNdTpUPBpTXWWs4ci5LjeNY05lt4xTf2gpB_Xbvsrij_gC3JyeD_HY85ILlErY1OcksbZ-q6p-tVVyJ0GurELD03kzjsCvYSWt9sHmXRk8MFsqwuag9uJxjAo1ssJDkk-T2-MF_vHHW3jZnEB5d1Tsjo3UrJQxgzPnn-wfpPX_Eo8CLBSOxhZIx8fXfVeMi6fMFgOLMtxqxEsgHv3fjiA18y4c8TosuaWI2_sUmpkJuw4UYsdlw4upWckekyhUDOsMgNld8y-pFdcUO_BY4mWMN3xnmAt4w8wjgBn6frGaAb8p3KASCit6648-j891B2WzzHr2eFbvKUEWGrfRXwXLfoJKAnYBZuw668ck2Nk8Jg_Axuc7So4qidsob3u-0lqeCX1-9lBfjdow4_RP_gHbbt94EUnwSo5OyJlAKEovsIEaC93hTyunA3A9GHXkO4rCZjezFJlS5S8H8cjK_jwnv6ekGxzfqXRle_k7kLBJrPyn_wLrnyr4e58ow5QsfC953HpVmqdO_yMdnM4y-MrSLmXQbwnvbl7EMpoOiE31LUZ9fZYFvVoExCweepsYT8nm-JzUCFa361tPKIXSnBPaE9Z9FdVuW2XLGMW8iDZKl8nwetYoLDf6zqoXIORtKQYs4z5iH8ChdGjpnqYAIA9w8DTeZRKcJKiT_6QayGKlig4oxXFO3OTAq7bpyR4S-ywSKrjtj6zXaPP4sjCwheCtOMyj5Od3yVdq7nNaMgWV1_JCMu3n1MJabBOFz16Milq-1bnpjiZfxe0PrGj7XyJndZ9Vs8GaAFYd90LRVaAfhw4Ad0ZDreB5PgvcSVs6zlATzIu5iO08HsH5V8WPwaYabWoWg2m02ng1o4chv5ZMVl6yBf0LvC0UmtoDuPPEUjeB754Z7k1FvLe8sW5hSnrIwxG68kICjO39u-CI8ChKhCVNyLcaGbx5AwitQd7",
+                    "id": "rs_09f1d21f72e4ccd7006ab2b401f84c87d097c8c400ddc6294f",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech Meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42.\"\n}",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_09f1d21f72e4ccd7006ab2b40dc60c87d0b528013511029129",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "none",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Add x and y together",
+                    "name": "add",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "x": {
+                          "description": "The first number to add",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "The second number to add",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
+                    "name": "final_result",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "category": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "category",
+                        "summary"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 510,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 1136,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 1088
+                  },
+                  "total_tokens": 1646
+                },
+                "user": null
+              }
+            }
           }
         }
       },

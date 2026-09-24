@@ -442,7 +442,7 @@ where
     let second = send(model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
     let assistant = Message::Assistant {
-        id: second.message_id.clone().map(String::from),
+        id: second.end.message_id.clone().map(String::from),
         content: second.choice.clone(),
     };
     let follow_up = Message::User {
@@ -457,7 +457,11 @@ where
     .await;
 
     CacheObservation {
-        turns: vec![first.usage, second.usage, third.usage],
+        turns: vec![
+            first.end.meta.usage,
+            second.end.meta.usage,
+            third.end.meta.usage,
+        ],
     }
 }
 
@@ -563,7 +567,7 @@ where
                 delta: Delta::Text { text: delta },
                 ..
             } => text.push_str(&delta),
-            StreamEvent::Final(response) => usage = Some(response.usage),
+            StreamEvent::Final(response) => usage = Some(response.meta.usage),
             _ => {}
         }
     }

@@ -29,14 +29,13 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
-use rig_core::id::{MessageId, RequestId, ResponseId};
 use rig_core::streaming::BlockId;
 
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 
-use rig_core::completion::{Message, ResponseIdentity, Usage};
+use rig_core::completion::{CompletionEnd, Message, Usage};
 pub mod policy;
 pub mod response;
 pub mod streamed;
@@ -168,97 +167,39 @@ pub struct PendingToolCall {
 /// A completed model turn fed back to [`AgentRun::model_response`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelTurn {
-    /// Provider-assigned assistant message ID, when available.
-    pub message_id: Option<String>,
-    /// Provider-assigned response-scoped ID, when available.
-    pub response_id: Option<ResponseId>,
-    /// The provider's transport request id for this attempt, when reported.
-    pub provider_request_id: Option<RequestId>,
-    /// The assistant content returned by the model.
-    pub choice: Vec<AssistantContent>,
-    /// Token usage reported by the provider for this completion request.
-    pub usage: Usage,
+    /// The attempt's response: its content and how it ended.
+    pub response: CompletionResponse,
     /// Executable Rig tools advertised to the provider for this turn.
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
     pub allowed_tool_names: BTreeSet<String>,
-    /// Provider-reported terminal reason for this attempt, when available.
-    pub finish_reason: Option<FinishReason>,
-    /// This attempt's decoded provider response, recorded on its [`CompletionCall`].
-    pub raw: serde_json::Value,
 }
 
 impl ModelTurn {
-    /// Convert a response using the same attempt's prepared tool sets and the
-    /// response's normalized finish reason. `prepared` must describe this call.
-    pub fn from_response(resp: &CompletionResponse, prepared: &prepare::PreparedRequest) -> Self {
-        Self::from_response_parts(
-            resp,
+    /// A turn answering the attempt `prepared` describes.
+    pub fn from_response(
+        response: CompletionResponse,
+        prepared: &prepare::PreparedRequest,
+    ) -> Self {
+        Self::new(
+            response,
             prepared.executable_tool_names.clone(),
             prepared.allowed_tool_names.clone(),
         )
     }
 
-    /// [`from_response`](Self::from_response) for a driver that carries the
-    /// per-turn tool-name sets by value instead of the whole prepared
-    /// request. The sets must originate from the prepared request of the same
-    /// attempt.
-    pub fn from_response_parts(
-        resp: &CompletionResponse,
-        executable_tool_names: BTreeSet<String>,
-        allowed_tool_names: BTreeSet<String>,
-    ) -> Self {
-        Self::new(
-            resp.message_id.clone().map(String::from),
-            resp.choice.clone(),
-            resp.usage,
-            executable_tool_names,
-            allowed_tool_names,
-            resp.raw.clone(),
-        )
-        .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
-        .with_finish_reason(resp.finish_reason.clone())
-    }
-
-    /// Create a model turn from response parts, the tool names advertised
-    /// for the turn, and the provider's own response `raw` (see
-    /// [`Self::raw`]).
+    /// A turn from its response and the tool names advertised for it. The
+    /// sets must originate from the prepared request of the same attempt.
     pub fn new(
-        message_id: Option<String>,
-        choice: Vec<AssistantContent>,
-        usage: Usage,
+        response: CompletionResponse,
         executable_tool_names: BTreeSet<String>,
         allowed_tool_names: BTreeSet<String>,
-        raw: serde_json::Value,
     ) -> Self {
         Self {
-            message_id,
-            response_id: None,
-            provider_request_id: None,
-            choice,
-            usage,
+            response,
             executable_tool_names,
             allowed_tool_names,
-            finish_reason: None,
-            raw,
         }
-    }
-
-    /// Attach the remaining response identity metadata this attempt reported.
-    pub fn with_identity(
-        mut self,
-        response_id: Option<ResponseId>,
-        provider_request_id: Option<RequestId>,
-    ) -> Self {
-        self.response_id = response_id;
-        self.provider_request_id = provider_request_id;
-        self
-    }
-
-    /// Attach the terminal finish reason this attempt reported.
-    pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        self.finish_reason = finish_reason;
-        self
     }
 }
 
@@ -1113,24 +1054,15 @@ impl AgentRun {
             ));
         }
 
-        self.record_completion_call(
-            turn.usage,
-            ResponseIdentity {
-                // The message id is also written into run history below.
-                message_id: turn.message_id.clone().and_then(MessageId::non_empty),
-                response_id: turn.response_id,
-                provider_request_id: turn.provider_request_id,
-            },
-            turn.finish_reason,
-            turn.raw,
-        );
+        self.record_completion_call(&turn.response.end);
 
-        let items: Vec<AssistantContent> = turn.choice.clone();
+        let CompletionResponse { choice, end } = turn.response;
+        let items: Vec<AssistantContent> = choice.clone();
         let has_tool_calls = has_tool_calls(&items);
 
         self.state = RunState::ResolvingToolCalls(ResolvingState {
-            message_id: turn.message_id,
-            original_choice: turn.choice,
+            message_id: end.message_id.map(String::from),
+            original_choice: choice,
             items,
             next_index: 0,
             executable_tool_names: turn.executable_tool_names,
@@ -1154,19 +1086,11 @@ impl AgentRun {
             .filter(|reason| reason.truncated_output())
     }
 
-    fn record_completion_call(
-        &mut self,
-        usage: Usage,
-        identity: ResponseIdentity,
-        finish_reason: Option<FinishReason>,
-        raw: serde_json::Value,
-    ) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage, raw)
-            .with_identity(identity)
-            .with_finish_reason(finish_reason);
+    fn record_completion_call(&mut self, end: &CompletionEnd) -> CompletionCall {
+        let call = CompletionCall::new(self.completion_call_index, end);
         self.completion_call_index += 1;
         self.completion_calls.push(call.clone());
-        self.usage += usage;
+        self.usage += call.usage;
         call
     }
 
@@ -1507,19 +1431,16 @@ impl AgentRun {
         })
     }
 
-    /// Record a streamed attempt's terminal metadata and aggregate its usage.
-    /// All arguments must come from that attempt's final event; do not record a
-    /// stream that ended without one. All-`None` counters mean unreported usage.
+    /// Record a streamed attempt's terminal record and aggregate its usage.
+    /// `end` must be that attempt's final record; do not record a stream that
+    /// ended without one. All-`None` counters mean unreported usage.
     ///
     /// Allowed once while awaiting a model response, or after a streamed rollback
     /// before the next model step. Other states and duplicate records return a
     /// cancellation error. Abandoned streams must still be drained for usage.
     pub fn record_streamed_completion_call(
         &mut self,
-        usage: Usage,
-        identity: ResponseIdentity,
-        finish_reason: Option<FinishReason>,
-        raw: serde_json::Value,
+        end: &CompletionEnd,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
@@ -1535,7 +1456,7 @@ impl AgentRun {
         }
         self.streamed_completion_call_recorded = true;
 
-        Ok(self.record_completion_call(usage, identity, finish_reason, raw))
+        Ok(self.record_completion_call(end))
     }
 
     /// The recovery-hook context for an invalid tool call surfaced

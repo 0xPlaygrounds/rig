@@ -507,12 +507,12 @@ async fn test_completion_response_usage_preserves_cached_and_reasoning_tokens() 
     )
     .await;
 
-    assert_eq!(converted.usage.input_tokens, Some(40));
-    assert_eq!(converted.usage.cached_input_tokens, Some(20));
-    assert_eq!(converted.usage.output_tokens, Some(30));
-    assert_eq!(converted.usage.reasoning_tokens, Some(10));
-    assert_eq!(converted.usage.tool_use_prompt_tokens, Some(12));
-    assert_eq!(converted.usage.total_tokens, Some(100));
+    assert_eq!(converted.end.meta.usage.input_tokens, Some(40));
+    assert_eq!(converted.end.meta.usage.cached_input_tokens, Some(20));
+    assert_eq!(converted.end.meta.usage.output_tokens, Some(30));
+    assert_eq!(converted.end.meta.usage.reasoning_tokens, Some(10));
+    assert_eq!(converted.end.meta.usage.tool_use_prompt_tokens, Some(12));
+    assert_eq!(converted.end.meta.usage.total_tokens, Some(100));
 }
 
 #[test]
@@ -649,9 +649,9 @@ async fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
         converted.choice.first(),
         Some(message::AssistantContent::Text(text)) if text.text == "hi"
     ));
-    assert_eq!(converted.usage.total_tokens, Some(5));
+    assert_eq!(converted.end.meta.usage.total_tokens, Some(5));
     assert_eq!(
-        converted.finish_reason.clone(),
+        converted.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::Other(
             "FINISH_REASON_FUTURE".to_string()
         ))
@@ -689,12 +689,15 @@ async fn test_completion_response_carries_normalized_metadata() {
     )
     .await;
 
-    assert_eq!(converted.provider, PROVIDER_NAME);
-    assert_eq!(converted.model.as_deref(), Some("gemini-2.0-flash-001"));
-    assert_eq!(converted.response_id.as_deref(), Some("resp-meta"));
-    assert_eq!(converted.message_id, None);
+    assert_eq!(converted.end.meta.provider, PROVIDER_NAME);
     assert_eq!(
-        converted.finish_reason.clone(),
+        converted.end.meta.model.as_deref(),
+        Some("gemini-2.0-flash-001")
+    );
+    assert_eq!(converted.end.meta.response_id.as_deref(), Some("resp-meta"));
+    assert_eq!(converted.end.message_id, None);
+    assert_eq!(
+        converted.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::Length)
     );
 }
@@ -710,10 +713,10 @@ async fn test_completion_response_upgrades_stop_to_tool_calls() {
     .await;
 
     assert_eq!(
-        converted.finish_reason.clone(),
+        converted.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
-    assert_eq!(converted.model, None);
+    assert_eq!(converted.end.meta.model, None);
 }
 
 #[test]
@@ -1802,9 +1805,9 @@ fn folded(
 ) {
     (
         response.choice.to_vec(),
-        response.usage,
-        response.finish_reason.clone(),
-        response.model.clone().map(String::from),
+        response.end.meta.usage,
+        response.end.finish_reason.clone(),
+        response.end.meta.model.clone().map(String::from),
     )
 }
 
@@ -1855,11 +1858,11 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_answer() {
         Some(&message::AssistantContent::text("cedar"))
     );
     assert_eq!(
-        buffered.finish_reason.clone(),
+        buffered.end.finish_reason.clone(),
         Some(crate::completion::FinishReason::Stop)
     );
-    assert_eq!(buffered.usage.output_tokens, Some(2));
-    assert_eq!(buffered.usage.total_tokens, Some(24));
+    assert_eq!(buffered.end.meta.usage.output_tokens, Some(2));
+    assert_eq!(buffered.end.meta.usage.total_tokens, Some(24));
 }
 
 /// Gemini hangs `thoughtSignature` on an answer part, and it must return
@@ -1887,8 +1890,8 @@ async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
         vec![message::AssistantContent::text("289"), signed("")]
     );
     assert_eq!(
-        buffered.finish_reason.clone(),
-        streamed.finish_reason.clone()
+        buffered.end.finish_reason.clone(),
+        streamed.end.finish_reason.clone()
     );
 
     // Both replay the signature on the text part that carried it.

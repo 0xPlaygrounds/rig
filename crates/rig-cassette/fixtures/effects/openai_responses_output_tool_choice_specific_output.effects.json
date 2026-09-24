@@ -120,141 +120,145 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 143,
-            "output_tokens": 847,
-            "total_tokens": 990,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 704
-          },
-          "response_id": "resp_0a7d0e794d20778b006ab2b374a85087d09617ae800ee8126c",
-          "provider_request_id": "req_3e60f3ac6a13402dadfdcabc8964db46",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_0a7d0e794d20778b006ab2b374a85087d09617ae800ee8126c",
-            "incomplete_details": null,
-            "instructions": "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrN_P9NAtThJysMYmHl1cuh4h5BzJNZDBaHBDtqjGu_nKHLhGO92V2At56EF0RSdFmz4ED4nYYg2f2uCPG-l3fWFlXI2OkNxfR_msB2cUCu8q-jk-ENBfCYaaK48Ylsyn5vUk2tUytngoU75Z73eL4f0Y7p6z2AIrY00RyExmwKK6T7dck8Rs_1HJ0M21eiM70IUcTpXkl7Er6T9KGaBW-a8GKebOv14igbL_6rengiaGgAEOGUlrR-8ryebYLFB55Zn1K6dCJj80hOjJZsHLT4mFH3AKUzxjIwvpyiapsPzJQXaVgZKJo96AIk5i631eWAwnGI3WeC5LsRDMofFjGrK0n52J6rXKOyZyoYQeRLdxkb9Uij3EAyTzh5_BY44_D9_pPZtwK1J5t7OUfCH7nPR-JQB9VAavF-Re4xH54ofdV5zxKeEIIYnnc-fYKXnTE20taUVkQVmGsQgzKPm1ciQyvn-l8-3J22mmnESuEo9yopVZ8eN_TvgjKajSJwRwDJbiZpV__8n0B_yAF-CM6fvMZqE7Z83AAI7b07983FetKnRV-1B2V_BBt-KFR1pn65eDmqZHM6poKlj76WKhUF2iZjBBLakVeMQY3N6erGQWNsGhNbZK9rKkLymJDeMA1Mdik9IWUNKl7OqD4DNdb0a4OiXaddOd6n4-LMlw9WX4ZHft0XwxCBhj66NI5CI0fZtaPXaJBMzoJVF41HCngm_arPhYdQ0Yj67KVRgY7CBwyzN_1W7zFBgDsFliFRwnNdRHa-KF8dpGaG7wiGUAoToTZImxvosydBk7Me7DQB5f6Nrk3gn3Oldo85O3q0Bh_rFAizu3AHJGGqmOzKbfkpjt4W1n0w3h8f51ccLIewg44kM5A762XVAVBjczm_bK3naOS_VXb0A02N7b61SLYnz2AWYstdiNPUo4JN_w5wzAj-0PA-Njr7q3KAsOz6wyOxF_skFclsOOYuHCjbRE442Ma3VqUk3DXYj6px73JfiXQibq9v-40t1KmQF0T65S-GytKq0N8T76RQOdkxGIQGcZ3msuswTyqv_Er4WHvBmPsVPDgjEhUmSe6RNd2s3S0w9qM20Mf_kupuYQM06f2oSIaJOhza1_YDUaSN66fGmzaakZo2dJDOumDaZNIzi1-lspL7KGVT3eTHDGQL5A9Lt1mHAM2ELEuFQol2i9JW1Yh7yQbJjIL2Xzu0O5CBEFNbFgiBVG_sbm2KOqRV7aDtIxtlbrKW6f9GZSu0gtE89qXKL-ZdFmGjEA_aH5eeu5k3N2nAyk-ve_hf0WSOtmA4yBZNIi8lhzm9Fy-Y_oLLrA6wBN3LBn12zLLdXSljYLcOsTN7Cjc8sk2y1L_vs0vIO0XYnjuh5NNDystvdQRe59XlatzUyddA2e5rBZ7HuZCHTNKIRkp2w07Z0NWgGJ3VHoX8PmY-wPTNR99q2QT3KO49oTnX4WUxWExTtbZgNF56Pp22TvBkdCg9qhYBur-m2skGR5zWFID-Se-Jo8KnqZL8emD1CZcHRFNfcFm329ShM4V5se46g3ed6-dxlwS-F8Z2GvFi-biBnbpuLjN98SjwuC9q0_yoNKwEKW3h0LUmVeZbYXROXmpBFPY2nm6HiyCGXU8DdPeArmAM2VdV0GS1bgkPVFReLi4FVMXfrYwMDXUSBK6_6XKYX_LYDMfb33rK8kK3wc-RtogN7wtA3jEqErKVuPgW9VemETCQysBH7h292cW4UvWLSIIGS_sE1fMBKS_El_6E23XwqijD6_eLQF7B721VoJ1nLiJKEjqhLsfIiR8REN0qRIkMPq9HI4kQxSKPfBIpHNruBtFZWxHjAeLPJKoscv2UjszGGfG-hBlT7hVq49pnWuvxcQh8BMBepnp6yFGv2l07yMbfuJp90NdZ1XfNQXyt0-gaLAVFLExwFPSWj0EX6soCH8w44vQOpX0S4GVqrlCZYxVEDNkebq_Bys4wpsV59AEj04K7bp9Vl_DojOa23ByxBpjhIIoVzHofd9qWV4EWNxDISL4bKK6dpGhVVjGsBz2rJWwdpG_P5dBAg3db1opD-7xalYG2QLheRRBz7icN6yx1LqHDyjeGTgSSuseb6lB5JxJJsp8E60FwPRSpuV0fYHHyRRyADbgz_bIxwsSXIzTWWSqzgW8DzvZ0_VoOnsDtbcqu8AAfQhywkGC1bX4x1Knm0wGys2ndhQ-MbZapVvVh2EMLIOcPa_XGAqKtQQmTjUAojtgQz5sPDJ7PlW4NbBqlb6-armvzbV-Hp0RMKFHszEo59RqOB5wm5smJhYX0IjbA_04pUh91MJRIg3cwrNLkBii2OAntqty5ETkiPEKswUrvDbRDAZmJdoYkM_C6Hgj2M5DpygSVgJxFI38NRV9pog30XCzcPOMrPAMWYz9N6L9L2ZaYv1gg92amu_8pVq9mthGtkLWhqdtvI_eSV7bDGNCdrTgEYikFwrVfoZvN0jb_A_ltaL44_TrtC1hyGa9pU3ASuaHrCNb6a_VIEvs9j-RHLf0Yix6gJaGXuf69Zv2M61F6FcYQJNglGr3ptd-r04li5DR1HZ2pCoSJw2ikPphYlT_zy8Q1f1v8oD5LFm_xOqOvMlwovtvsHVPycbntCN7RvkKq6vBmuiIVRzPH9Ezx8S7zUKjoSYC2VrCAvRPCiZjYbTbeBiQ85QhZeN6MaF7IMhCI0t7hxBk25xPKETJSJ4J-UFwJ0l33SD0uCDbwJuE8Yv8ooOId5Rs7Mbt6PDUi5SS9T5cGexmebRfhH2tcAQbuPxD8UMgi6yg9-OJSTtE-XrUOe-z6xnQd-ZECdH8k8LF4K1W3F8t52kaHmZAOqnQUJ-p8h-TpAUgwCi1YBMiKld_e20MoFCXXxwF9bFEw5hVE429KxLLNN4LTSNviMIonzl2N2GbgbTjwXbUM63B1cUBrXe-45ZLktpcGJZiBNax1wEya6-W8i-azVMShGJuMMINw46OeKhOJtQcCSmXhhEYKdvzJCnsv3OxRxgkKnrkS6k2akrLxWN3gbgh1xeTMalSxignvuwLArDwjZ3___Aijau8AGSdamAFWWiqnWYLRLCBeABqffrcnLdIS-RPTeCMeVwIaCmv83zkdmJdfzLu2xNwoCh7K2COUuQLzuH5goD_QWeTTZHEjC5Jj7kINOdLh4jJaVxJGmWpXjhE4wyD3C8iwYx2RJUkksl7qxYvyE9OsoJFRWr0h0t7RvkZc-tof2zoOawOE4S5Gf_tnkH1iN1G4y1aKVW3tZqrmm9pd5aO3OiQ5AEj8A7gko57I4Vqnrkdf8yQrHITVOEkppl_wUxKXBMBphi9EWbfRD0_nQoStzeGXIdQk__MQi71Dmbq8SUEhWMh4Z6vcsdlAFAVcglzdYSSYdvR3SawqrzQ37d_vb-z7pNpOBEyz_nM8Pq4QIyUKe6pgiHYarl1gMzzKVoiJ1NhxzLKdBR6UifIBZ5jgKcD2U1SCM0oP9B0JNU_CE5iY0Yf0yriwdNHp44JZExryxPXiNBC4Q0hlWXdsbGI6dS--7SsNGHJvB6pW2eZknmN2xUvNlNXEw7s4Doba26pwBiwTs1uVe1TARUzTJfEM2xqgMFXKtdgjGy_TahEmblxQgmEmMW54aGtSj7T4MnfAwCh0J31mioYymRfbSNRK-ryOnAFTSSK_TWHMhZ8pijy8dM_WKamlE1qARbfxZcLdXDeU2p0chqSRLsFZo1UnyUxsa5BRtReWYoBk60Gzg2YtUuVNkP8qWxRzSLmVh2SXI0rEwNa1GqWQdOGBXtVg6Y3hlIymZytdknRzfIXYb2Cn5dzePZHfFmJCl37c__lA_HkP4LZ3XeuPaBiinVc37v0SDDdVvwujNLJ6nKswJcPyMiuVDe5veaHK6KMKx53a0W0IJdIfF3xezIiUKNwbytkbHL9vqpRYUwT8so8-gHnPUoXZFY8Yp6ayEPPz_ngrTxH1_smE6v7sKoPBvWb_D892KPcyRzqWYECGec7hYfBJ8u77sQJpGX5Xl2t1pVAbu_d704smFh1mei7kgmHnwVg_A2tgAJHDJSUOkbA5aNWFUyjWTuPPACKcWmfoaDs_Ox5rEFpUMJqgzMf-P9Pb6bqPmJwMi9LJ_3Ouy-B62ym4COFEIfCEfLHDMTSorZk48iv9xde6Dq4ExVdnJmgLXOIHvJ5q_dQYlSPguLc473b82Ow8v05FKMtE1PPoTHN7m9pvn5c1hofguQWdVheGj2WsLStz18SD_JKIVWDeY9ieJfyy7PYj0TYH87Q0cM_v-RRZb3k9pE-r5fmnWOv4uCgktWfN1J1tOJgVNxKevqnStKZ9kEtwWIMLaX14xTcdIBLEAc4m0q55ob5gQ75ownOZGYVpEFowOP56KbhbLeR2q-4z5nP2O2m5tMESreNRo_AcEBhVgFisvdwZIFN-vpX9kxPbOji165jpI0BVRo6vb-DkdN7-J1EWdUXsRyJzZKhJ3FXOIk5wMDWllqhKQbi2Pq86xqEm7-ZbkZfph9QLTSumSUh09G5pRDsNzRZ078su0RGpoU9AVQMHzEpikcG3HFoUTsT7N7cjIY133x7pBrQWuCPSnsz3hmid8hu-0Oqo0_Fu0OGTyvhEq7vMSZMVytvbcbWP-MAa-lb4imVrKDFZBZjIHItFpVMxhJUpT37reED5RSn-oLErjrBlL2rstDfX1IPdl2jenmHEb7TdWvTxecXFNK8GQBqCsaGEgciLEC-xcH9MZEXjLvX0fEZfLonqq_hJWvqQReD99ncnY7fKmTTeKlSNaQR5W8tAVXMQhdg0pOFJo-jsPpNQ5mIqlYMoeGpJXsOwxNvEX0zk-htlmtB_Sn3yVeYtuRRs15QCHeEhGEi9SmGYpXPK6RUNc8AWLuDcGGaB7ZBSg-IfDyAtGwoLrgmLRtVS4_NJ8VlTGMYcz_rKaezGDCDTroIaz5IdVHkx02SGZsRcL2yuf2hcVF_HAHPyjad5kF2BMQ4yJYd7SfCWCllfoSbYMhv16_exnw_DmB9_OHitX4ScJpWaRzyZZ7HVWPxT1q4k7g5qS0VPJKEJ2btNd-Nrg_nTjZ8PxPq4PL33KnSeAcS1_ulDkeuUHR7ITg6fxSHk_OXMYfiZpwOfeE0jB36JEET0PlW2merH-UQjoC6ipUQxFdA5Ny7vF1yQ840-bjZwEzw2rCOADKgEhGPwSCDAzmnK24aP2fQXxqSMHFZzP5E-ldf8QzvFYzJjkfZpifvXDJY5tytz61X19wJpuX6J6u3mGx2uY6OtpCyK2fL1xf6PEO2uhI6lrLi_ipRW0ZfqesmZldHLYks9-a401_FUVCDybK6XZDip5zUH_dzHq4vn2m9Op-c-HwtGFtHfHuFTLEf2_-PN4CAtyeGjw4ucxewrhcT4ft_Ku0ZHiD7F_BCfyN8yxsOOgE0TFbk5jdL0OU3UdVH7QZLOU9bjYt_r1yOTcYkRSQtQVDVY0qxLMK_CEA1-0RSB2vyxDAgPabysU7WsQMabTc9biaJJUMrBeKUTgVkCZVYyavuSinBDqkksqC3Qksg_H6VcRDoUgdWJC_LNLjw6DDPcdzOXrN6PVpUGFlOB6PD_gJNzLj6bY06o26buW3blHaeXWTdGWe_uLpz1zsJpU",
-                "id": "rs_0a7d0e794d20778b006ab2b3754db887d08cea1ba50768ab4f",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"title\":\"Monthly Seattle Rust Meetup\",\"category\":\"Tech Meetup (Rust)\",\"summary\":\"Monthly Seattle Rust Meetup — 1st Wednesday, 6:30–8:30 PM. Location: central Seattle (Capitol Hill); exact venue posted on RSVP. Agenda: two short technical talks (20 min each), lightning demos, open help/office hours, and networking. Audience: Rust developers and enthusiasts of all levels. RSVP: meetup.com/seattle-rust or contact organizer@seattlerust.org.\"}",
-                "call_id": "call_JMB94Ca1Wd3LMgG0ee1mP9sz",
-                "id": "fc_0a7d0e794d20778b006ab2b37da95087d08d17a68366eff1a5",
-                "name": "final_result",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": {
-              "name": "final_result",
-              "type": "function"
-            },
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
-                "name": "final_result",
-                "output_schema": null,
-                "parameters": {
-                  "properties": {
-                    "category": {
-                      "type": "string"
-                    },
-                    "summary": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "title",
-                    "category",
-                    "summary"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 143,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 847,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_0a7d0e794d20778b006ab2b374a85087d09617ae800ee8126c",
+              "provider_request_id": "req_3e60f3ac6a13402dadfdcabc8964db46",
+              "usage": {
+                "input_tokens": 143,
+                "output_tokens": 847,
+                "total_tokens": 990,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 704
               },
-              "total_tokens": 990
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_0a7d0e794d20778b006ab2b374a85087d09617ae800ee8126c",
+                "incomplete_details": null,
+                "instructions": "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrN_P9NAtThJysMYmHl1cuh4h5BzJNZDBaHBDtqjGu_nKHLhGO92V2At56EF0RSdFmz4ED4nYYg2f2uCPG-l3fWFlXI2OkNxfR_msB2cUCu8q-jk-ENBfCYaaK48Ylsyn5vUk2tUytngoU75Z73eL4f0Y7p6z2AIrY00RyExmwKK6T7dck8Rs_1HJ0M21eiM70IUcTpXkl7Er6T9KGaBW-a8GKebOv14igbL_6rengiaGgAEOGUlrR-8ryebYLFB55Zn1K6dCJj80hOjJZsHLT4mFH3AKUzxjIwvpyiapsPzJQXaVgZKJo96AIk5i631eWAwnGI3WeC5LsRDMofFjGrK0n52J6rXKOyZyoYQeRLdxkb9Uij3EAyTzh5_BY44_D9_pPZtwK1J5t7OUfCH7nPR-JQB9VAavF-Re4xH54ofdV5zxKeEIIYnnc-fYKXnTE20taUVkQVmGsQgzKPm1ciQyvn-l8-3J22mmnESuEo9yopVZ8eN_TvgjKajSJwRwDJbiZpV__8n0B_yAF-CM6fvMZqE7Z83AAI7b07983FetKnRV-1B2V_BBt-KFR1pn65eDmqZHM6poKlj76WKhUF2iZjBBLakVeMQY3N6erGQWNsGhNbZK9rKkLymJDeMA1Mdik9IWUNKl7OqD4DNdb0a4OiXaddOd6n4-LMlw9WX4ZHft0XwxCBhj66NI5CI0fZtaPXaJBMzoJVF41HCngm_arPhYdQ0Yj67KVRgY7CBwyzN_1W7zFBgDsFliFRwnNdRHa-KF8dpGaG7wiGUAoToTZImxvosydBk7Me7DQB5f6Nrk3gn3Oldo85O3q0Bh_rFAizu3AHJGGqmOzKbfkpjt4W1n0w3h8f51ccLIewg44kM5A762XVAVBjczm_bK3naOS_VXb0A02N7b61SLYnz2AWYstdiNPUo4JN_w5wzAj-0PA-Njr7q3KAsOz6wyOxF_skFclsOOYuHCjbRE442Ma3VqUk3DXYj6px73JfiXQibq9v-40t1KmQF0T65S-GytKq0N8T76RQOdkxGIQGcZ3msuswTyqv_Er4WHvBmPsVPDgjEhUmSe6RNd2s3S0w9qM20Mf_kupuYQM06f2oSIaJOhza1_YDUaSN66fGmzaakZo2dJDOumDaZNIzi1-lspL7KGVT3eTHDGQL5A9Lt1mHAM2ELEuFQol2i9JW1Yh7yQbJjIL2Xzu0O5CBEFNbFgiBVG_sbm2KOqRV7aDtIxtlbrKW6f9GZSu0gtE89qXKL-ZdFmGjEA_aH5eeu5k3N2nAyk-ve_hf0WSOtmA4yBZNIi8lhzm9Fy-Y_oLLrA6wBN3LBn12zLLdXSljYLcOsTN7Cjc8sk2y1L_vs0vIO0XYnjuh5NNDystvdQRe59XlatzUyddA2e5rBZ7HuZCHTNKIRkp2w07Z0NWgGJ3VHoX8PmY-wPTNR99q2QT3KO49oTnX4WUxWExTtbZgNF56Pp22TvBkdCg9qhYBur-m2skGR5zWFID-Se-Jo8KnqZL8emD1CZcHRFNfcFm329ShM4V5se46g3ed6-dxlwS-F8Z2GvFi-biBnbpuLjN98SjwuC9q0_yoNKwEKW3h0LUmVeZbYXROXmpBFPY2nm6HiyCGXU8DdPeArmAM2VdV0GS1bgkPVFReLi4FVMXfrYwMDXUSBK6_6XKYX_LYDMfb33rK8kK3wc-RtogN7wtA3jEqErKVuPgW9VemETCQysBH7h292cW4UvWLSIIGS_sE1fMBKS_El_6E23XwqijD6_eLQF7B721VoJ1nLiJKEjqhLsfIiR8REN0qRIkMPq9HI4kQxSKPfBIpHNruBtFZWxHjAeLPJKoscv2UjszGGfG-hBlT7hVq49pnWuvxcQh8BMBepnp6yFGv2l07yMbfuJp90NdZ1XfNQXyt0-gaLAVFLExwFPSWj0EX6soCH8w44vQOpX0S4GVqrlCZYxVEDNkebq_Bys4wpsV59AEj04K7bp9Vl_DojOa23ByxBpjhIIoVzHofd9qWV4EWNxDISL4bKK6dpGhVVjGsBz2rJWwdpG_P5dBAg3db1opD-7xalYG2QLheRRBz7icN6yx1LqHDyjeGTgSSuseb6lB5JxJJsp8E60FwPRSpuV0fYHHyRRyADbgz_bIxwsSXIzTWWSqzgW8DzvZ0_VoOnsDtbcqu8AAfQhywkGC1bX4x1Knm0wGys2ndhQ-MbZapVvVh2EMLIOcPa_XGAqKtQQmTjUAojtgQz5sPDJ7PlW4NbBqlb6-armvzbV-Hp0RMKFHszEo59RqOB5wm5smJhYX0IjbA_04pUh91MJRIg3cwrNLkBii2OAntqty5ETkiPEKswUrvDbRDAZmJdoYkM_C6Hgj2M5DpygSVgJxFI38NRV9pog30XCzcPOMrPAMWYz9N6L9L2ZaYv1gg92amu_8pVq9mthGtkLWhqdtvI_eSV7bDGNCdrTgEYikFwrVfoZvN0jb_A_ltaL44_TrtC1hyGa9pU3ASuaHrCNb6a_VIEvs9j-RHLf0Yix6gJaGXuf69Zv2M61F6FcYQJNglGr3ptd-r04li5DR1HZ2pCoSJw2ikPphYlT_zy8Q1f1v8oD5LFm_xOqOvMlwovtvsHVPycbntCN7RvkKq6vBmuiIVRzPH9Ezx8S7zUKjoSYC2VrCAvRPCiZjYbTbeBiQ85QhZeN6MaF7IMhCI0t7hxBk25xPKETJSJ4J-UFwJ0l33SD0uCDbwJuE8Yv8ooOId5Rs7Mbt6PDUi5SS9T5cGexmebRfhH2tcAQbuPxD8UMgi6yg9-OJSTtE-XrUOe-z6xnQd-ZECdH8k8LF4K1W3F8t52kaHmZAOqnQUJ-p8h-TpAUgwCi1YBMiKld_e20MoFCXXxwF9bFEw5hVE429KxLLNN4LTSNviMIonzl2N2GbgbTjwXbUM63B1cUBrXe-45ZLktpcGJZiBNax1wEya6-W8i-azVMShGJuMMINw46OeKhOJtQcCSmXhhEYKdvzJCnsv3OxRxgkKnrkS6k2akrLxWN3gbgh1xeTMalSxignvuwLArDwjZ3___Aijau8AGSdamAFWWiqnWYLRLCBeABqffrcnLdIS-RPTeCMeVwIaCmv83zkdmJdfzLu2xNwoCh7K2COUuQLzuH5goD_QWeTTZHEjC5Jj7kINOdLh4jJaVxJGmWpXjhE4wyD3C8iwYx2RJUkksl7qxYvyE9OsoJFRWr0h0t7RvkZc-tof2zoOawOE4S5Gf_tnkH1iN1G4y1aKVW3tZqrmm9pd5aO3OiQ5AEj8A7gko57I4Vqnrkdf8yQrHITVOEkppl_wUxKXBMBphi9EWbfRD0_nQoStzeGXIdQk__MQi71Dmbq8SUEhWMh4Z6vcsdlAFAVcglzdYSSYdvR3SawqrzQ37d_vb-z7pNpOBEyz_nM8Pq4QIyUKe6pgiHYarl1gMzzKVoiJ1NhxzLKdBR6UifIBZ5jgKcD2U1SCM0oP9B0JNU_CE5iY0Yf0yriwdNHp44JZExryxPXiNBC4Q0hlWXdsbGI6dS--7SsNGHJvB6pW2eZknmN2xUvNlNXEw7s4Doba26pwBiwTs1uVe1TARUzTJfEM2xqgMFXKtdgjGy_TahEmblxQgmEmMW54aGtSj7T4MnfAwCh0J31mioYymRfbSNRK-ryOnAFTSSK_TWHMhZ8pijy8dM_WKamlE1qARbfxZcLdXDeU2p0chqSRLsFZo1UnyUxsa5BRtReWYoBk60Gzg2YtUuVNkP8qWxRzSLmVh2SXI0rEwNa1GqWQdOGBXtVg6Y3hlIymZytdknRzfIXYb2Cn5dzePZHfFmJCl37c__lA_HkP4LZ3XeuPaBiinVc37v0SDDdVvwujNLJ6nKswJcPyMiuVDe5veaHK6KMKx53a0W0IJdIfF3xezIiUKNwbytkbHL9vqpRYUwT8so8-gHnPUoXZFY8Yp6ayEPPz_ngrTxH1_smE6v7sKoPBvWb_D892KPcyRzqWYECGec7hYfBJ8u77sQJpGX5Xl2t1pVAbu_d704smFh1mei7kgmHnwVg_A2tgAJHDJSUOkbA5aNWFUyjWTuPPACKcWmfoaDs_Ox5rEFpUMJqgzMf-P9Pb6bqPmJwMi9LJ_3Ouy-B62ym4COFEIfCEfLHDMTSorZk48iv9xde6Dq4ExVdnJmgLXOIHvJ5q_dQYlSPguLc473b82Ow8v05FKMtE1PPoTHN7m9pvn5c1hofguQWdVheGj2WsLStz18SD_JKIVWDeY9ieJfyy7PYj0TYH87Q0cM_v-RRZb3k9pE-r5fmnWOv4uCgktWfN1J1tOJgVNxKevqnStKZ9kEtwWIMLaX14xTcdIBLEAc4m0q55ob5gQ75ownOZGYVpEFowOP56KbhbLeR2q-4z5nP2O2m5tMESreNRo_AcEBhVgFisvdwZIFN-vpX9kxPbOji165jpI0BVRo6vb-DkdN7-J1EWdUXsRyJzZKhJ3FXOIk5wMDWllqhKQbi2Pq86xqEm7-ZbkZfph9QLTSumSUh09G5pRDsNzRZ078su0RGpoU9AVQMHzEpikcG3HFoUTsT7N7cjIY133x7pBrQWuCPSnsz3hmid8hu-0Oqo0_Fu0OGTyvhEq7vMSZMVytvbcbWP-MAa-lb4imVrKDFZBZjIHItFpVMxhJUpT37reED5RSn-oLErjrBlL2rstDfX1IPdl2jenmHEb7TdWvTxecXFNK8GQBqCsaGEgciLEC-xcH9MZEXjLvX0fEZfLonqq_hJWvqQReD99ncnY7fKmTTeKlSNaQR5W8tAVXMQhdg0pOFJo-jsPpNQ5mIqlYMoeGpJXsOwxNvEX0zk-htlmtB_Sn3yVeYtuRRs15QCHeEhGEi9SmGYpXPK6RUNc8AWLuDcGGaB7ZBSg-IfDyAtGwoLrgmLRtVS4_NJ8VlTGMYcz_rKaezGDCDTroIaz5IdVHkx02SGZsRcL2yuf2hcVF_HAHPyjad5kF2BMQ4yJYd7SfCWCllfoSbYMhv16_exnw_DmB9_OHitX4ScJpWaRzyZZ7HVWPxT1q4k7g5qS0VPJKEJ2btNd-Nrg_nTjZ8PxPq4PL33KnSeAcS1_ulDkeuUHR7ITg6fxSHk_OXMYfiZpwOfeE0jB36JEET0PlW2merH-UQjoC6ipUQxFdA5Ny7vF1yQ840-bjZwEzw2rCOADKgEhGPwSCDAzmnK24aP2fQXxqSMHFZzP5E-ldf8QzvFYzJjkfZpifvXDJY5tytz61X19wJpuX6J6u3mGx2uY6OtpCyK2fL1xf6PEO2uhI6lrLi_ipRW0ZfqesmZldHLYks9-a401_FUVCDybK6XZDip5zUH_dzHq4vn2m9Op-c-HwtGFtHfHuFTLEf2_-PN4CAtyeGjw4ucxewrhcT4ft_Ku0ZHiD7F_BCfyN8yxsOOgE0TFbk5jdL0OU3UdVH7QZLOU9bjYt_r1yOTcYkRSQtQVDVY0qxLMK_CEA1-0RSB2vyxDAgPabysU7WsQMabTc9biaJJUMrBeKUTgVkCZVYyavuSinBDqkksqC3Qksg_H6VcRDoUgdWJC_LNLjw6DDPcdzOXrN6PVpUGFlOB6PD_gJNzLj6bY06o26buW3blHaeXWTdGWe_uLpz1zsJpU",
+                    "id": "rs_0a7d0e794d20778b006ab2b3754db887d08cea1ba50768ab4f",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"title\":\"Monthly Seattle Rust Meetup\",\"category\":\"Tech Meetup (Rust)\",\"summary\":\"Monthly Seattle Rust Meetup — 1st Wednesday, 6:30–8:30 PM. Location: central Seattle (Capitol Hill); exact venue posted on RSVP. Agenda: two short technical talks (20 min each), lightning demos, open help/office hours, and networking. Audience: Rust developers and enthusiasts of all levels. RSVP: meetup.com/seattle-rust or contact organizer@seattlerust.org.\"}",
+                    "call_id": "call_JMB94Ca1Wd3LMgG0ee1mP9sz",
+                    "id": "fc_0a7d0e794d20778b006ab2b37da95087d08d17a68366eff1a5",
+                    "name": "final_result",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": {
+                  "name": "final_result",
+                  "type": "function"
+                },
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
+                    "name": "final_result",
+                    "output_schema": null,
+                    "parameters": {
+                      "properties": {
+                        "category": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "category",
+                        "summary"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 143,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 847,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 704
+                  },
+                  "total_tokens": 990
+                },
+                "user": null
+              }
+            }
           }
         }
       }

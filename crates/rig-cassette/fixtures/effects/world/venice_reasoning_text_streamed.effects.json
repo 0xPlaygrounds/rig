@@ -6051,31 +6051,35 @@
               "text": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code."
             }
           ],
-          "usage": {
-            "input_tokens": 1006,
-            "output_tokens": 938,
-            "total_tokens": 1944
-          },
-          "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1006,
-              "completion_tokens": 938,
-              "total_tokens": 1944
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0037357
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
+              "usage": {
+                "input_tokens": 1006,
+                "output_tokens": 938,
+                "total_tokens": 1944
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1006,
+                  "completion_tokens": 938,
+                  "total_tokens": 1944
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0037357
+                  }
+                }
               }
             }
           }
@@ -13122,31 +13126,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1006,
-            "output_tokens": 938,
-            "total_tokens": 1944
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
             "usage": {
-              "prompt_tokens": 1006,
-              "completion_tokens": 938,
+              "input_tokens": 1006,
+              "output_tokens": 938,
               "total_tokens": 1944
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0037357
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1006,
+                "completion_tokens": 938,
+                "total_tokens": 1944
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
+              "model": "qwen3-235b-a22b-thinking-2507",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0037357
+                }
               }
             }
           }

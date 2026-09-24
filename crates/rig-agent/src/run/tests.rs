@@ -140,44 +140,32 @@ fn run_step_and_outcome_round_trip_through_serde() {
 }
 
 #[test]
-fn from_response_matches_hand_assembly_field_for_field() {
-    let resp = CompletionResponse {
-        message_id: Some("msg_1".to_string().try_into().expect("a non-empty id")),
-        response_id: Some("chatcmpl_1".to_string().try_into().expect("a non-empty id")),
-        provider_request_id: Some("req_1".to_string().try_into().expect("a non-empty id")),
-        finish_reason: Some(FinishReason::ToolCalls),
-        ..CompletionResponse::new(
-            vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
-            usage(11, 7),
-            "openai",
-            json!({"provider": "payload"}),
-        )
+fn a_completion_call_records_its_attempts_end_field_for_field() {
+    let resp = rig_core::completion::CompletionResponse {
+        choice: vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
+        end: rig_core::completion::CompletionEnd {
+            message_id: Some("msg_1".to_string().try_into().expect("a non-empty id")),
+            finish_reason: Some(FinishReason::ToolCalls),
+            ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                response_id: Some("chatcmpl_1".to_string().try_into().expect("a non-empty id")),
+                provider_request_id: Some("req_1".to_string().try_into().expect("a non-empty id")),
+                usage: usage(11, 7),
+                raw: json!({"provider": "payload"}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("openai").expect("a provider name"),
+                )
+            })
+        },
     };
 
-    let executable = tool_names(&["add"]);
-    let allowed = tool_names(&["add", "final_output"]);
-    let turn = ModelTurn::from_response_parts(&resp, executable.clone(), allowed.clone());
-
-    let expected = ModelTurn::new(
-        resp.message_id.clone().map(String::from),
-        resp.choice.clone(),
-        resp.usage,
-        executable,
-        allowed,
-        resp.raw.clone(),
-    )
-    .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
-    .with_finish_reason(resp.finish_reason.clone());
-
-    assert_eq!(turn.message_id, expected.message_id);
-    assert_eq!(turn.response_id, expected.response_id);
-    assert_eq!(turn.provider_request_id, expected.provider_request_id);
-    assert_eq!(turn.choice, expected.choice);
-    assert_eq!(turn.usage, expected.usage);
-    assert_eq!(turn.executable_tool_names, expected.executable_tool_names);
-    assert_eq!(turn.allowed_tool_names, expected.allowed_tool_names);
-    assert_eq!(turn.finish_reason, expected.finish_reason);
-    assert_eq!(turn.raw, expected.raw);
+    let call = crate::run::response::CompletionCall::new(4, &resp.end);
+    assert_eq!(call.call_index, 4);
+    assert_eq!(call.message_id, resp.end.message_id);
+    assert_eq!(call.response_id, resp.end.meta.response_id);
+    assert_eq!(call.provider_request_id, resp.end.meta.provider_request_id);
+    assert_eq!(call.usage, resp.end.meta.usage);
+    assert_eq!(call.finish_reason, resp.end.finish_reason);
+    assert_eq!(call.raw, resp.end.meta.raw);
 }
 
 fn tool_names(names: &[&str]) -> BTreeSet<String> {
@@ -205,12 +193,14 @@ fn text_turn(text: &str) -> ModelTurn {
 
 fn text_turn_with_raw(text: &str, raw: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
-        None,
-        vec![AssistantContent::text(text)],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![AssistantContent::text(text)],
+            Usage::default(),
+            raw,
+        ),
         tool_names(&["add"]),
         tool_names(&["add"]),
-        raw,
     )
 }
 
@@ -241,12 +231,9 @@ fn tool_call_turn(id: &str, name: &str) -> ModelTurn {
 
 fn tool_call_turn_with_raw(id: &str, name: &str, raw: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
-        None,
-        vec![tool_call(id, name)],
-        Usage::default(),
+        turn_response(None, vec![tool_call(id, name)], Usage::default(), raw),
         tool_names(&["add"]),
         tool_names(&["add"]),
-        raw,
     )
 }
 
@@ -501,12 +488,14 @@ fn parallel_tool_calls_surface_in_emission_order() {
 
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
-        vec![tool_call("call_1", "add"), tool_call("call_2", "add")],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![tool_call("call_1", "add"), tool_call("call_2", "add")],
+            Usage::default(),
+            hand_raw(),
+        ),
         tool_names(&["add"]),
         tool_names(&["add"]),
-        hand_raw(),
     );
     expect_continue(
         run.model_response(turn)
@@ -751,12 +740,14 @@ fn invalid_tool_call_skip_suppresses_all_peer_executions() {
 
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
-        vec![tool_call("call_1", "unknown"), tool_call("call_2", "add")],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![tool_call("call_1", "unknown"), tool_call("call_2", "add")],
+            Usage::default(),
+            hand_raw(),
+        ),
         tool_names(&["add"]),
         tool_names(&["add"]),
-        hand_raw(),
     );
     expect_needs_resolution(
         run.model_response(turn)
@@ -785,12 +776,14 @@ fn id_less_calls_keep_distinct_skip_results() {
 
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
-        vec![id_less_call(0, "unknown"), id_less_call(1, "add")],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![id_less_call(0, "unknown"), id_less_call(1, "add")],
+            Usage::default(),
+            hand_raw(),
+        ),
         tool_names(&["add"]),
         tool_names(&["add"]),
-        hand_raw(),
     );
     expect_needs_resolution(
         run.model_response(turn)
@@ -845,12 +838,14 @@ fn skip_under_tool_choice_none_fails() {
     expect_call_model(&mut run);
     expect_needs_resolution(
         run.model_response(ModelTurn::new(
-            None,
-            vec![tool_call("call_1", "add")],
-            Usage::default(),
+            turn_response(
+                None,
+                vec![tool_call("call_1", "add")],
+                Usage::default(),
+                hand_raw(),
+            ),
             tool_names(&["add"]),
             BTreeSet::new(),
-            hand_raw(),
         ))
         .expect("model_response should succeed"),
     );
@@ -907,13 +902,8 @@ fn out_of_protocol_calls_are_rejected_without_corrupting_state() {
 fn model_response_rejected_after_streamed_completion_call_record() {
     let mut run = AgentRun::new("hello");
     expect_call_model(&mut run);
-    run.record_streamed_completion_call(
-        Usage::default(),
-        ResponseIdentity::default(),
-        None,
-        hand_raw(),
-    )
-    .expect("record should succeed");
+    run.record_streamed_completion_call(&attempt_end(Usage::default(), None, hand_raw()))
+        .expect("record should succeed");
 
     let err = run
         .model_response(text_turn("hi"))
@@ -1170,26 +1160,30 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
 /// tool (the shape Tool output mode produces — see #1928).
 fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
     ModelTurn::new(
-        None,
-        vec![tool_call(id, name)],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![tool_call(id, name)],
+            Usage::default(),
+            hand_raw(),
+        ),
         tool_names(&["add"]),
         tool_names(&["add", name]),
-        hand_raw(),
     )
 }
 
 fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
-        None,
-        vec![AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction::new(name.to_string(), arguments),
-        ))],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![AssistantContent::ToolCall(ToolCall::from_wire(
+                id,
+                ToolFunction::new(name.to_string(), arguments),
+            ))],
+            Usage::default(),
+            hand_raw(),
+        ),
         tool_names(&["add"]),
         tool_names(&["add", name]),
-        hand_raw(),
     )
 }
 
@@ -1292,15 +1286,17 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
     // The model emits a real tool call *and* the output tool in one turn;
     // the output-tool intercept wins and the real call is never executed.
     let turn = ModelTurn::new(
-        None,
-        vec![
-            tool_call("call_1", "add"),
-            tool_call("call_2", "final_result"),
-        ],
-        Usage::default(),
+        turn_response(
+            None,
+            vec![
+                tool_call("call_1", "add"),
+                tool_call("call_2", "final_result"),
+            ],
+            Usage::default(),
+            hand_raw(),
+        ),
         tool_names(&["add"]),
         tool_names(&["add", "final_result"]),
-        hand_raw(),
     );
     expect_continue(
         run.model_response(turn)
@@ -1478,7 +1474,7 @@ fn commit_output_tool_name_pins_the_first_name() {
 
 impl ModelTurn {
     fn with_usage_for_test(mut self, usage: Usage) -> Self {
-        self.usage = usage;
+        self.response.end.meta.usage = usage;
         self
     }
 }
@@ -1499,12 +1495,9 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
     let two_calls = vec![tool_call("c1", "add"), tool_call("c2", "add")];
     let outcome = run
         .model_response(ModelTurn::new(
-            None,
-            two_calls,
-            Usage::default(),
+            turn_response(None, two_calls, Usage::default(), hand_raw()),
             tool_names(&["add"]),
             tool_names(&["add"]),
-            hand_raw(),
         ))
         .expect("model_response");
     expect_continue(outcome);
@@ -1607,12 +1600,7 @@ fn streamed_completion_call_record_carries_raw() {
     let mut run = AgentRun::new("hello");
     expect_call_model(&mut run);
     let call = run
-        .record_streamed_completion_call(
-            usage(3, 4),
-            ResponseIdentity::default(),
-            None,
-            raw.clone(),
-        )
+        .record_streamed_completion_call(&attempt_end(usage(3, 4), None, raw.clone()))
         .expect("record should succeed");
     assert_eq!(call.raw, raw);
     assert_eq!(run.completion_calls()[0].raw, raw);
@@ -1640,30 +1628,12 @@ fn recorded_raw_survives_serde_round_trip() {
     assert_eq!(restored.completion_calls(), run.completion_calls());
 }
 
-/// `ModelTurn` and `CompletionCall` carry `raw` through their serde round
-/// trips, and a record without the key is refused rather than loaded with
-/// a payload invented.
+/// A `CompletionCall` carries `raw` through its serde round trip, and a
+/// record without the key is refused rather than loaded with a payload
+/// invented.
 #[test]
 fn raw_round_trips_and_a_missing_key_is_refused() {
-    let raw = raw_payload("turn");
-    let turn = text_turn_with_raw("hi", raw.clone());
-    let value = serde_json::to_value(&turn).expect("turn should serialize");
-    assert_eq!(value["raw"], raw);
-    let restored: ModelTurn =
-        serde_json::from_value(value.clone()).expect("turn should deserialize");
-    assert_eq!(restored.raw, raw);
-
-    let mut without_raw = value;
-    without_raw
-        .as_object_mut()
-        .expect("turn serializes as an object")
-        .remove("raw")
-        .expect("the raw key was present");
-    let error = serde_json::from_value::<ModelTurn>(without_raw)
-        .expect_err("a turn without a raw key is refused");
-    assert!(error.to_string().contains("raw"), "{error}");
-
-    let call = CompletionCall::new(0, usage(1, 2), raw_payload("call"));
+    let call = completion_call(0, usage(1, 2), raw_payload("call"));
     let mut value = serde_json::to_value(&call).expect("call should serialize");
     assert_eq!(value["raw"], raw_payload("call"));
     let restored: CompletionCall =
@@ -1772,17 +1742,19 @@ fn serde_round_trip_keeps_the_previous_model() {
 fn a_truncated_reasoning_only_turn_commits_nothing() {
     let mut run = AgentRun::new("solve this");
     let _ = expect_call_model(&mut run);
-    let turn = ModelTurn::new(
-        None,
-        vec![AssistantContent::Reasoning(
-            rig_core::message::Reasoning::new("thinking, never answering"),
-        )],
-        Usage::default(),
+    let mut turn = ModelTurn::new(
+        turn_response(
+            None,
+            vec![AssistantContent::Reasoning(
+                rig_core::message::Reasoning::new("thinking, never answering"),
+            )],
+            Usage::default(),
+            hand_raw(),
+        ),
         tool_names(&["add"]),
         tool_names(&["add"]),
-        hand_raw(),
-    )
-    .with_finish_reason(Some(FinishReason::Length));
+    );
+    turn.response.end.finish_reason = Some(FinishReason::Length);
     // The turn is accepted into resolution; the run fails when it is read.
     expect_continue(
         run.model_response(turn)
@@ -1799,4 +1771,59 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
         "the reasoning-only turn is not history: {:?}",
         run.new_messages
     );
+}
+
+/// A completion-call record reporting `usage` and `raw` and nothing else.
+fn completion_call(call_index: usize, usage: Usage, raw: serde_json::Value) -> CompletionCall {
+    CompletionCall {
+        call_index,
+        usage,
+        message_id: None,
+        response_id: None,
+        provider_request_id: None,
+        finish_reason: None,
+        raw,
+    }
+}
+
+/// A streamed attempt's terminal record reporting `usage`, `finish_reason`,
+/// and `raw`, attributed to the mock provider.
+fn attempt_end(
+    usage: rig_core::completion::Usage,
+    finish_reason: Option<rig_core::completion::FinishReason>,
+    raw: serde_json::Value,
+) -> rig_core::completion::CompletionEnd {
+    rig_core::completion::CompletionEnd {
+        finish_reason,
+        ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+            usage,
+            raw,
+            ..rig_core::response::ResponseMeta::new(
+                rig_core::id::ProviderName::new("mock").expect("a provider name"),
+            )
+        })
+    }
+}
+
+/// A response carrying `choice`, `usage`, `raw`, and the message id
+/// `message_id`, attributed to the mock provider.
+fn turn_response(
+    message_id: Option<String>,
+    choice: Vec<rig_core::message::AssistantContent>,
+    usage: rig_core::completion::Usage,
+    raw: serde_json::Value,
+) -> rig_core::completion::CompletionResponse {
+    rig_core::completion::CompletionResponse {
+        choice,
+        end: rig_core::completion::CompletionEnd {
+            message_id: message_id.and_then(rig_core::id::MessageId::non_empty),
+            ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage,
+                raw,
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                )
+            })
+        },
+    }
 }

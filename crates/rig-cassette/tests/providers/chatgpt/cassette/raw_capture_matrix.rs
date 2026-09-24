@@ -123,7 +123,7 @@ async fn raw_round_trips_provider_type() {
     .await;
 
     let response = captured.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = responses_api::CompletionResponse::deserialize(raw)
         .expect("raw must deserialize into responses_api::CompletionResponse");
     // `raw` is the provider's document, so it may carry more than
@@ -143,8 +143,11 @@ async fn raw_round_trips_provider_type() {
 
     // The typed view agrees with the normalized one on what the model
     // said, so raw is a superset, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(response.provider, CHATGPT_PROVIDER);
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
+    assert_eq!(response.end.meta.provider, CHATGPT_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let terminal = recorded_terminal_response(scenario);
@@ -178,7 +181,7 @@ async fn raw_exposes_response_envelope() {
         &["object", "status", "created_at"],
     );
 
-    let raw = response.raw;
+    let raw = response.end.meta.raw;
     let terminal = recorded_terminal_response(scenario);
     for field in ["object", "status", "model"] {
         assert_eq!(
@@ -223,16 +226,19 @@ async fn normalized_fields_equal_raw_renormalized() {
     .await;
 
     let response = captured.take();
-    let from_raw = responses_api::CompletionResponse::deserialize(&response.raw)
+    let from_raw = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("raw must deserialize into responses_api::CompletionResponse");
-    assert_eq!(response.provider, CHATGPT_PROVIDER);
+    assert_eq!(response.end.meta.provider, CHATGPT_PROVIDER);
     responses::assert_native_matches_normalized(&response, &from_raw, "the envelope on raw");
     // Both views here come from the *same* reply, so their ids agree
     // verbatim: the shared contract's token comparison exists for a live
     // value against a scrubbed fixture, and that relaxation does not apply.
-    assert_eq!(response.response_id.as_deref(), Some(from_raw.id.as_str()));
     assert_eq!(
-        response.message_id,
+        response.end.meta.response_id.as_deref(),
+        Some(from_raw.id.as_str())
+    );
+    assert_eq!(
+        response.end.message_id,
         from_raw
             .output
             .iter()
@@ -245,7 +251,10 @@ async fn normalized_fields_equal_raw_renormalized() {
     );
     // ChatGPT reads no transport request-id header, so the whole identity
     // lives in the body and needs no reassembly here.
-    assert_no_request_id(response.provider_request_id.as_deref(), CHATGPT_PROVIDER);
+    assert_no_request_id(
+        response.end.meta.provider_request_id.as_deref(),
+        CHATGPT_PROVIDER,
+    );
     assert!(!response.choice.is_empty());
 
     let terminal = recorded_terminal_response(scenario);

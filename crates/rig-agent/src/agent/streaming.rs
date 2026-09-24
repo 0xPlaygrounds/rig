@@ -204,7 +204,7 @@ pub(crate) async fn drain_stream_usage(
     while let Some(content) = stream.next().await {
         match content {
             Ok(StreamEvent::Final(final_resp)) => {
-                return Ok(final_resp.usage);
+                return Ok(final_resp.meta.usage);
             }
             Ok(_) => {}
             Err(err) => return Err(err.into()),

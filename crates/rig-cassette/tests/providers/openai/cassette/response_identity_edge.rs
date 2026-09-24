@@ -34,7 +34,7 @@ async fn structured_output_and_identity() {
                 .await
                 .expect("structured completion should succeed");
             assert_transport_request_id(
-                response.provider_request_id.as_deref(),
+                response.end.meta.provider_request_id.as_deref(),
                 "structured-output response",
             );
         },
@@ -59,10 +59,15 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 .await
                 .expect("first chained call should succeed");
             let first_response_id = first
+                .end
+                .meta
                 .response_id
                 .clone()
                 .expect("Responses API reports a response id");
-            assert_transport_request_id(first.provider_request_id.as_deref(), "chain call 1");
+            assert_transport_request_id(
+                first.end.meta.provider_request_id.as_deref(),
+                "chain call 1",
+            );
 
             let second = model
                 .completion_request("What was the code word? Reply with just the word.")
@@ -73,12 +78,15 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 .await
                 .expect("chained call should succeed");
 
-            assert_transport_request_id(second.provider_request_id.as_deref(), "chain call 2");
+            assert_transport_request_id(
+                second.end.meta.provider_request_id.as_deref(),
+                "chain call 2",
+            );
             assert_ne!(
-                first.provider_request_id, second.provider_request_id,
+                first.end.meta.provider_request_id, second.end.meta.provider_request_id,
                 "each chained call has its own transport id"
             );
-            let second_response_id = second.response_id.expect("second response id");
+            let second_response_id = second.end.meta.response_id.expect("second response id");
             assert_ne!(
                 first_response_id, second_response_id,
                 "chaining reuses the first response id as *input*; the second \
@@ -86,7 +94,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
             );
             assert_ne!(
                 Some(second_response_id.as_str()),
-                second.provider_request_id.as_deref(),
+                second.end.meta.provider_request_id.as_deref(),
                 "response-scoped and transport ids are never conflated"
             );
         },
@@ -139,9 +147,12 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
 
             let turns = hook.probe.turn_identities();
             assert_eq!(turns.len(), 2, "rejected attempt plus its retry");
-            assert_transport_request_id(turns[0].provider_request_id.as_deref(), "attempt 1");
-            assert_transport_request_id(turns[1].provider_request_id.as_deref(), "attempt 2");
-            assert_ne!(turns[0].provider_request_id, turns[1].provider_request_id);
+            assert_transport_request_id(turns[0].meta.provider_request_id.as_deref(), "attempt 1");
+            assert_transport_request_id(turns[1].meta.provider_request_id.as_deref(), "attempt 2");
+            assert_ne!(
+                turns[0].meta.provider_request_id,
+                turns[1].meta.provider_request_id
+            );
         },
     )
     .await;
@@ -195,13 +206,16 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .completion(request)
                 .await
                 .expect("completion should succeed");
-            assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");
+            assert_transport_request_id(
+                response.end.meta.provider_request_id.as_deref(),
+                "normalized view",
+            );
 
-            let reply = ResponsesReply::deserialize(&response.raw)
+            let reply = ResponsesReply::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized responses_api::CompletionResponse");
             assert_eq!(
                 Some(reply.id.as_str()),
-                response.response_id.as_deref(),
+                response.end.meta.response_id.as_deref(),
                 "raw and normalized views describe the same interaction"
             );
             assert!(

@@ -63,39 +63,43 @@
               "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}"
             }
           ],
-          "usage": {
-            "input_tokens": 96,
-            "output_tokens": 305,
-            "total_tokens": 401,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 256
-          },
-          "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
-          "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 96,
-              "completion_tokens": 305,
-              "total_tokens": 401,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 256
-              }
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "GD",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+              "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
+              "usage": {
+                "input_tokens": 96,
+                "output_tokens": 305,
+                "total_tokens": 401,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 256
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 96,
+                  "completion_tokens": 305,
+                  "total_tokens": 401,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 256
+                  }
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+                "model": "gpt-5-mini-2025-08-07",
+                "additional_params": {
+                  "created": 0,
+                  "obfuscation": "GD",
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "system_fingerprint": null
+                }
+              }
             }
           }
         }
@@ -430,39 +434,41 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 96,
-            "output_tokens": 305,
-            "total_tokens": 401,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 256
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
-          "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 96,
-              "completion_tokens": 305,
-              "total_tokens": 401,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 256
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+          "meta": {
+            "provider": "openai",
             "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "GD",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+            "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+            "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
+            "usage": {
+              "input_tokens": 96,
+              "output_tokens": 305,
+              "total_tokens": 401,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 256
+            },
+            "raw": {
+              "usage": {
+                "prompt_tokens": 96,
+                "completion_tokens": 305,
+                "total_tokens": 401,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 256
+                }
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+              "model": "gpt-5-mini-2025-08-07",
+              "additional_params": {
+                "created": 0,
+                "obfuscation": "GD",
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "system_fingerprint": null
+              }
             }
           }
         }

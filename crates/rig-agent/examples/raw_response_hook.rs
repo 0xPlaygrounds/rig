@@ -50,7 +50,7 @@ impl AgentHook for PrintOpenAiFields {
         };
         if ctx.is_streaming() {
             match openai::wire::StreamingCompletionResponse::<openai::Usage>::deserialize(
-                &response.raw,
+                &response.end.meta.raw,
             ) {
                 Ok(terminal) => {
                     let extra = |key: &str| {
@@ -70,7 +70,7 @@ impl AgentHook for PrintOpenAiFields {
                 Err(err) => println!("  raw is not an OpenAI terminal: {err}"),
             }
         } else {
-            match openai::CompletionResponse::deserialize(&response.raw) {
+            match openai::CompletionResponse::deserialize(&response.end.meta.raw) {
                 Ok(response) => println!(
                     "  id {} · system_fingerprint {:?} · service_tier {:?}",
                     response.id, response.system_fingerprint, response.service_tier

@@ -144,7 +144,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // terminal metadata — routed `provider`, `service_tier`, the
             // per-choice finish reason — so it observes the reply document
             // the driver keeps on `raw`, not the normalized projection.
-            model.completion(request).await?.raw
+            model.completion(request).await?.end.meta.raw
         }
         Transport::Streaming => {
             let mut stream = model.stream(request).await?;
@@ -155,7 +155,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
                 }
             }
             let terminal = terminal.context("raw stream should carry a terminal response")?;
-            terminal.raw
+            terminal.meta.raw
         }
     };
 

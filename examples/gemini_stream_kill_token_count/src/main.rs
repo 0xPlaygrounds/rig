@@ -258,7 +258,7 @@ where
                     // record is itself the truncation signal — so reaching this
                     // arm means the stream completed. Still guard on reported
                     // usage in case the provider sent none.
-                    let usage = resp.usage;
+                    let usage = resp.meta.usage;
                     if usage.is_reported() {
                         authoritative = Some(usage);
                     }

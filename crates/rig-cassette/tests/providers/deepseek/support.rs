@@ -261,7 +261,7 @@ pub(super) struct RawStreamOutcome {
     /// `"reasoning"`, `"text"`, `"tool_call"` in the order the stream emitted
     /// them, deltas collapsed into their first occurrence's kind.
     pub(super) order: Vec<&'static str>,
-    pub(super) final_record: Option<rig::streaming::StreamFinal>,
+    pub(super) final_record: Option<rig::completion::CompletionEnd>,
     pub(super) errors: Vec<String>,
 }
 

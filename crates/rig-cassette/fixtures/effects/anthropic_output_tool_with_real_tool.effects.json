@@ -153,56 +153,60 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 795,
-            "output_tokens": 86,
-            "total_tokens": 881,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLccy7AYfDUTRuHYpPfP",
-          "provider_request_id": "req_011CfLccxfsioTM2D1NB6X9U",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "I'll start by adding 17 and 25 using the add tool!",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLccy7AYfDUTRuHYpPfP",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLccxfsioTM2D1NB6X9U",
+              "usage": {
+                "input_tokens": 795,
+                "output_tokens": 86,
+                "total_tokens": 881,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n",
-                "input": {
-                  "x": 17,
-                  "y": 25
-                },
-                "name": "add",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "I'll start by adding 17 and 25 using the add tool!",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n",
+                    "input": {
+                      "x": 17,
+                      "y": 25
+                    },
+                    "name": "add",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLccy7AYfDUTRuHYpPfP",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 795,
+                  "output_tokens": 86,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLccy7AYfDUTRuHYpPfP",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 795,
-              "output_tokens": 86,
-              "service_tier": "standard"
             }
           }
         }
@@ -380,57 +384,61 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 894,
-            "output_tokens": 180,
-            "total_tokens": 1074,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcd7FKTds86giEYNgRw",
-          "provider_request_id": "req_011CfLcd6nXrd9XjDNBqor6P",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcd7FKTds86giEYNgRw",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcd6nXrd9XjDNBqor6P",
+              "usage": {
+                "input_tokens": 894,
+                "output_tokens": 180,
+                "total_tokens": 1074,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01CVpPhS4MGTznXKiKs8uRBo",
-                "input": {
-                  "category": "Technology / Programming",
-                  "summary": "Join fellow Rustaceans at the Seattle Rust Meetup! This month we celebrate that 17 + 25 = 42 — the answer to life, the universe, and everything Rust. Come share projects, discuss ownership and borrowing, and connect with the local systems-programming community.",
-                  "title": "Rust Meetup – Seattle"
-                },
-                "name": "final_result",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01CVpPhS4MGTznXKiKs8uRBo",
+                    "input": {
+                      "category": "Technology / Programming",
+                      "summary": "Join fellow Rustaceans at the Seattle Rust Meetup! This month we celebrate that 17 + 25 = 42 — the answer to life, the universe, and everything Rust. Come share projects, discuss ownership and borrowing, and connect with the local systems-programming community.",
+                      "title": "Rust Meetup – Seattle"
+                    },
+                    "name": "final_result",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcd7FKTds86giEYNgRw",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 894,
+                  "output_tokens": 180,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcd7FKTds86giEYNgRw",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 894,
-              "output_tokens": 180,
-              "service_tier": "standard"
             }
           }
         }

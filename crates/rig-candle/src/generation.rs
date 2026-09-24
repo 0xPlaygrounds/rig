@@ -232,6 +232,7 @@ use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::utils::apply_repeat_penalty;
 use rig_core::completion::{AssistantContent, CompletionResponse};
+use rig_core::error::ProviderError;
 use rig_core::message::ReasoningContent;
 use rig_core::streaming::{BlockId, MintKind, ToolCallEnd, non_empty_id};
 use tokenizers::tokenizer::DecodeStream;
@@ -584,14 +585,23 @@ pub(crate) struct InferredCompletion {
 impl InferredCompletion {
     /// Normalizes content and metadata, serializing the local response as `raw`.
     /// Returns serialization errors.
-    pub(crate) fn into_normalized(self) -> Result<CompletionResponse, serde_json::Error> {
+    pub(crate) fn into_normalized(self) -> Result<CompletionResponse, ProviderError> {
         let usage = (&self.response).into();
         let finish_reason: rig_core::completion::FinishReason = self.response.finish_reason.into();
         let raw = serde_json::to_value(&self.response)?;
         let has_tool_call = self.choice.iter().any(AssistantContent::is_tool_call);
         Ok(CompletionResponse {
-            finish_reason: Some(finish_reason.reconcile_with_output(has_tool_call)),
-            ..CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME, raw)
+            choice: self.choice,
+            end: rig_core::completion::CompletionEnd {
+                finish_reason: Some(finish_reason.reconcile_with_output(has_tool_call)),
+                ..rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage,
+                    raw,
+                    ..rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new(
+                        crate::types::PROVIDER_NAME,
+                    )?)
+                })
+            },
         })
     }
 }

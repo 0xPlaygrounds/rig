@@ -95,12 +95,16 @@ impl Serve for Mock {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        let response = CompletionResponse::new(
-            vec![AssistantContent::text("hello from the world")],
-            Usage::default(),
-            "mock",
-            serde_json::json!({}),
-        );
+        let response = CompletionResponse {
+            choice: vec![AssistantContent::text("hello from the world")],
+            end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                )
+            }),
+        };
         rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
     }
 }

@@ -28,7 +28,7 @@ use crate::support::{Adder, IdentityProbe, TOOLS_PREAMBLE, assert_transport_requ
 /// the per-TTL cache-creation split is provider-native and rig's normalized
 /// usage does not model it.
 fn provider_usage(response: &CompletionResponse) -> Usage {
-    AnthropicResponse::deserialize(&response.raw)
+    AnthropicResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the serialized anthropic::completion::CompletionResponse")
         .usage
 }
@@ -73,10 +73,13 @@ async fn caching_and_identity_share_the_wire_blocking() {
             let second = send(model).await;
 
             // Identity present on both turns, and per-attempt distinct.
-            assert_transport_request_id(first.provider_request_id.as_deref(), "cold turn");
-            assert_transport_request_id(second.provider_request_id.as_deref(), "warm turn");
+            assert_transport_request_id(first.end.meta.provider_request_id.as_deref(), "cold turn");
+            assert_transport_request_id(
+                second.end.meta.provider_request_id.as_deref(),
+                "warm turn",
+            );
             assert_ne!(
-                first.provider_request_id, second.provider_request_id,
+                first.end.meta.provider_request_id, second.end.meta.provider_request_id,
                 "the warm turn reports its own request id, not the cold turn's"
             );
 
@@ -132,13 +135,16 @@ async fn caching_and_identity_share_the_wire_streaming() {
 
             let first = send(model.clone()).await;
             let second = send(model).await;
-            assert_transport_request_id(first.provider_request_id.as_deref(), "cold stream");
-            assert_transport_request_id(second.provider_request_id.as_deref(), "warm stream");
-            assert_ne!(first.provider_request_id, second.provider_request_id);
+            assert_transport_request_id(first.meta.provider_request_id.as_deref(), "cold stream");
+            assert_transport_request_id(second.meta.provider_request_id.as_deref(), "warm stream");
+            assert_ne!(
+                first.meta.provider_request_id,
+                second.meta.provider_request_id
+            );
             assert!(
-                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
+                second.meta.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "warm stream reads the cache, got {:?}",
-                second.usage
+                second.meta.usage
             );
         },
     )
@@ -164,10 +170,10 @@ async fn strict_tools_and_identity() {
                 .await
                 .expect("strict tool completion should succeed");
             assert_transport_request_id(
-                response.provider_request_id.as_deref(),
+                response.end.meta.provider_request_id.as_deref(),
                 "strict-tools response",
             );
-            assert!(response.message_id.is_some());
+            assert!(response.end.message_id.is_some());
         },
     )
     .await;
@@ -191,7 +197,7 @@ async fn extended_thinking_and_identity() {
                 .await
                 .expect("thinking completion should succeed");
             assert_transport_request_id(
-                response.provider_request_id.as_deref(),
+                response.end.meta.provider_request_id.as_deref(),
                 "thinking response",
             );
         },
@@ -218,7 +224,7 @@ async fn documents_and_identity() {
                 .await
                 .expect("document completion should succeed");
             assert_transport_request_id(
-                response.provider_request_id.as_deref(),
+                response.end.meta.provider_request_id.as_deref(),
                 "document response",
             );
         },
@@ -296,7 +302,7 @@ async fn tool_error_retry_reports_distinct_ids_blocking() {
             );
             let mut ids: Vec<_> = turns
                 .iter()
-                .map(|turn| turn.provider_request_id.clone())
+                .map(|turn| turn.meta.provider_request_id.clone())
                 .collect();
             for (index, id) in ids.iter().enumerate() {
                 assert_transport_request_id(id.as_deref(), &format!("turn {index}"));
@@ -345,7 +351,7 @@ async fn tool_error_retry_reports_distinct_ids_streamed() {
             assert!(turns.len() >= 3, "got {} turns", turns.len());
             let mut ids: Vec<_> = turns
                 .iter()
-                .map(|turn| turn.provider_request_id.clone())
+                .map(|turn| turn.meta.provider_request_id.clone())
                 .collect();
             for id in &ids {
                 assert_transport_request_id(id.as_deref(), "streamed retry turn");
@@ -413,10 +419,10 @@ async fn streamed_hook_retry_uses_second_connections_id() {
 
             let turns = hook.probe.turn_identities();
             assert_eq!(turns.len(), 2, "one rejected attempt plus its retry");
-            assert_transport_request_id(turns[0].provider_request_id.as_deref(), "attempt 1");
-            assert_transport_request_id(turns[1].provider_request_id.as_deref(), "attempt 2");
+            assert_transport_request_id(turns[0].meta.provider_request_id.as_deref(), "attempt 1");
+            assert_transport_request_id(turns[1].meta.provider_request_id.as_deref(), "attempt 2");
             assert_ne!(
-                turns[0].provider_request_id, turns[1].provider_request_id,
+                turns[0].meta.provider_request_id, turns[1].meta.provider_request_id,
                 "the retried attempt reports the second connection's id"
             );
         },
@@ -554,7 +560,7 @@ async fn max_turns_exhaustion_still_observed_completed_calls() {
             let turns = probe.turn_identities();
             assert_eq!(turns.len(), 1, "the one completed call was observed");
             assert_transport_request_id(
-                turns[0].provider_request_id.as_deref(),
+                turns[0].meta.provider_request_id.as_deref(),
                 "exhausted run's completed call",
             );
         },
@@ -595,7 +601,7 @@ async fn parallel_tool_calls_one_identity_per_turn() {
                  how many tools ran inside a turn"
             );
             for (turn, call) in turns.iter().zip(&response.completion_calls) {
-                assert_eq!(turn.provider_request_id, call.provider_request_id);
+                assert_eq!(turn.meta.provider_request_id, call.provider_request_id);
             }
         },
     )
@@ -638,7 +644,7 @@ async fn history_replay_does_not_leak_prior_run_identity() {
             assert_eq!(identities.len(), 2);
             let run_b_identity = identities[1].clone();
             assert_ne!(
-                run_a_identity.provider_request_id, run_b_identity.provider_request_id,
+                run_a_identity.meta.provider_request_id, run_b_identity.meta.provider_request_id,
                 "run B reports its own transport id"
             );
             assert_ne!(
@@ -667,7 +673,7 @@ async fn stream_conversion_carries_live_identity() {
             let mut terminal_id = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(final_record) = item.expect("stream item") {
-                    terminal_id = final_record.provider_request_id.clone();
+                    terminal_id = final_record.meta.provider_request_id.clone();
                 }
             }
             assert_transport_request_id(terminal_id.as_deref(), "live terminal");
@@ -676,7 +682,7 @@ async fn stream_conversion_carries_live_identity() {
                 .finish()
                 .expect("the stream produced a terminal record");
             assert_eq!(
-                response.provider_request_id, terminal_id,
+                response.end.meta.provider_request_id, terminal_id,
                 "conversion carries the live terminal's id"
             );
         },

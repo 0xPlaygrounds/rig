@@ -108,7 +108,7 @@ async fn raw_round_trips_provider_type() {
     .await;
     let response = captured.take();
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
 
     // Typed access is recoverable: the provider's own wire type reads
     // the captured value back. The capture is the reply *document*, so
@@ -124,7 +124,7 @@ async fn raw_round_trips_provider_type() {
     assert!(typed.done, "raw carries the completed turn");
     assert_eq!(
         Some(typed.model.as_str()),
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         "normalized model equals the raw model"
     );
 
@@ -163,7 +163,7 @@ async fn raw_exposes_ollama_durations() {
         &["total_duration", "load_duration", "eval_duration"],
     );
 
-    let raw = response.raw;
+    let raw = response.end.meta.raw;
 
     // Premise + assertion in one: the fixture body reports the durations, and
     // raw carries exactly the values the wire did.
@@ -217,12 +217,15 @@ async fn normalized_fields_equal_raw_renormalized() {
     .await;
     let response = captured.take();
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed = ollama::CompletionResponse::deserialize(raw)
         .expect("raw must deserialize into ollama::CompletionResponse");
 
-    assert_eq!(response.provider, OLLAMA_PROVIDER);
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(response.end.meta.provider, OLLAMA_PROVIDER);
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
     // The provider's own vocabulary, paired with what the decoder made
     // of it. Read from the payload rather than hardcoded, so the cell
     // pins the mapping for whichever reason the fixture holds and fails
@@ -235,23 +238,26 @@ async fn normalized_fields_equal_raw_renormalized() {
         }
     };
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(expected),
         "the decoder maps Ollama's `done_reason` onto the normalized vocabulary"
     );
-    assert_eq!(typed.prompt_eval_count, response.usage.input_tokens);
-    assert_eq!(typed.eval_count, response.usage.output_tokens);
+    assert_eq!(
+        typed.prompt_eval_count,
+        response.end.meta.usage.input_tokens
+    );
+    assert_eq!(typed.eval_count, response.end.meta.usage.output_tokens);
     assert_eq!(
         typed
             .prompt_eval_count
             .zip(typed.eval_count)
             .map(|(i, o)| i + o),
-        response.usage.total_tokens,
+        response.end.meta.usage.total_tokens,
         "Ollama reports no total; the decoder derives it from both counts"
     );
     // Ollama's chat reply carries no response id, so the normalized
     // identity reports none — the documented outcome.
-    assert_eq!(response.identity().response_id, None);
+    assert_eq!(response.end.meta.response_id, None);
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(OLLAMA_PROVIDER, scenario);
@@ -260,14 +266,17 @@ async fn normalized_fields_equal_raw_renormalized() {
         .expect("recorded body must be an Ollama chat response");
     assert_eq!(
         Some(from_wire.model.as_str()),
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         "the normalized response names the model the wire bytes named"
     );
-    assert_eq!(from_wire.prompt_eval_count, response.usage.input_tokens);
-    assert_eq!(from_wire.eval_count, response.usage.output_tokens);
+    assert_eq!(
+        from_wire.prompt_eval_count,
+        response.end.meta.usage.input_tokens
+    );
+    assert_eq!(from_wire.eval_count, response.end.meta.usage.output_tokens);
     assert_eq!(
         normalized_without_raw(response)
-            .get("finish_reason")
+            .pointer("/end/finish_reason")
             .cloned(),
         from_wire
             .done_reason

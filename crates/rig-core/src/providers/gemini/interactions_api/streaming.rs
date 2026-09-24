@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use super::PROVIDER_NAME;
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
     Step, TextContent, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
@@ -290,14 +289,14 @@ impl Decoder<Completion> for InteractionsDecoder {
                 let response_id = interaction.and_then(|interaction| {
                     crate::id::ResponseId::non_empty(interaction.id.as_str())
                 });
-                out.final_record(streaming::StreamFinal {
+                out.final_record(crate::completion::ReportedEnd {
                     finish_reason,
                     response_id,
                     model: native
                         .model_version
                         .as_deref()
                         .and_then(crate::id::ModelName::non_empty),
-                    ..streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
+                    ..crate::completion::ReportedEnd::new(usage, raw)
                 });
             }
             event @ InteractionSseEvent::Error { .. } => {

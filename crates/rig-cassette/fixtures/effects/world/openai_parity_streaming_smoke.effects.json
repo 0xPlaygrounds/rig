@@ -456,40 +456,44 @@
               "text": "A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the moon to cast a shadow on Earth, creating phenomena such as a partial, total, or annular eclipse, depending on the observer's location and the distances between the Earth, moon, and sun. During a total solar eclipse, the sun's corona becomes visible, offering a unique astronomical event."
             }
           ],
-          "usage": {
-            "input_tokens": 35,
-            "output_tokens": 89,
-            "total_tokens": 124,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
-          "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
-          "provider_request_id": "req_c7a029136dae4abc829d09118d5cfdaf",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 35,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 89,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-2024-08-06",
+              "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
+              "provider_request_id": "req_c7a029136dae4abc829d09118d5cfdaf",
+              "usage": {
+                "input_tokens": 35,
+                "output_tokens": 89,
+                "total_tokens": 124,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 124
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
-            "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
-            "model": "gpt-4o-2024-08-06"
+              "raw": {
+                "usage": {
+                  "input_tokens": 35,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 89,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 124
+                },
+                "reasoning_metadata": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
+                "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
+                "model": "gpt-4o-2024-08-06"
+              }
+            }
           }
         }
       },
@@ -1214,40 +1218,42 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 35,
-            "output_tokens": 89,
-            "total_tokens": 124,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
-          "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
-          "provider_request_id": "req_c7a029136dae4abc829d09118d5cfdaf",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-4o-2024-08-06",
+            "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
+            "provider_request_id": "req_c7a029136dae4abc829d09118d5cfdaf",
             "usage": {
               "input_tokens": 35,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 89,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "total_tokens": 124,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 35,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 89,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 124
               },
-              "total_tokens": 124
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
-            "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
-            "model": "gpt-4o-2024-08-06"
+              "reasoning_metadata": {
+                "context": null,
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
+              "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
+              "model": "gpt-4o-2024-08-06"
+            }
           }
         }
       ],

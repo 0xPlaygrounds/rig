@@ -102,13 +102,16 @@ async fn raw_roundtrips_cohere_completion_response() {
     .await;
 
     let response = observed.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
 
     let typed = CompletionResponse::deserialize(raw)
         .expect("raw must deserialize into Cohere's CompletionResponse");
 
     // The typed value agrees with the normalized fields next to it.
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
     assert_eq!(
         typed
             .usage
@@ -116,7 +119,7 @@ async fn raw_roundtrips_cohere_completion_response() {
             .and_then(|usage| usage.tokens.as_ref())
             .and_then(|tokens| tokens.input_tokens)
             .map(|tokens| tokens as u64),
-        response.usage.input_tokens
+        response.end.meta.usage.input_tokens
     );
 
     // One decoder, two views: the provider's own fields say what the
@@ -129,7 +132,7 @@ async fn raw_roundtrips_cohere_completion_response() {
         "the recorded turn completed naturally in Cohere's own vocabulary"
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and the decoder maps COMPLETE onto a natural stop"
     );
@@ -175,13 +178,13 @@ async fn raw_exposes_billing_metadata() {
     let normalized = normalized_without_raw(response.clone());
     assert!(!json_contains_key(&normalized, "billed_units"));
     assert_ne!(
-        normalized.get("finish_reason"),
+        normalized.pointer("/end/finish_reason"),
         Some(&Value::String("COMPLETE".to_string())),
         "the normalized finish reason is rig's spelling, not Cohere's"
     );
-    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let body = assert_recorded_complete_turn(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),

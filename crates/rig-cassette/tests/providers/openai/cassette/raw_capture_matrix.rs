@@ -160,17 +160,17 @@ fn assert_chat_fixture_premise(
         "{scenario}: the recorded turn finished as the cell expects"
     );
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         body["id"].as_str(),
         &format!("{scenario}: response_id"),
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(finish),
         "{scenario}: normalized finish reason"
     );
     assert_eq!(
-        response.usage.input_tokens,
+        response.end.meta.usage.input_tokens,
         body["usage"]["prompt_tokens"].as_u64()
     );
 }
@@ -191,10 +191,10 @@ fn assert_responses_fixture_premise(scenario: &str, response: &CompletionRespons
 /// `completion()` result never is.
 fn captured_raw<'a>(scenario: &str, response: &'a CompletionResponse) -> &'a Value {
     assert!(
-        !response.raw.is_null(),
+        !response.end.meta.raw.is_null(),
         "{scenario}: a response off the wire always carries `raw`"
     );
-    &response.raw
+    &response.end.meta.raw
 }
 
 /// `raw` and the normalized response are two views of one reply — for the
@@ -215,12 +215,12 @@ fn assert_chat_raw_agrees(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         Some(typed.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.end.meta.model.as_deref(),
         Some(typed.model.as_str()),
         "{scenario}: model"
     );
@@ -229,12 +229,12 @@ fn assert_chat_raw_agrees(
         .as_ref()
         .unwrap_or_else(|| panic!("{scenario}: the recorded chat body reports usage"));
     assert_eq!(
-        response.usage.input_tokens,
+        response.end.meta.usage.input_tokens,
         Some(usage.prompt_tokens as u64),
         "{scenario}: input tokens are the provider's `prompt_tokens`"
     );
     assert_eq!(
-        response.usage.total_tokens,
+        response.end.meta.usage.total_tokens,
         Some(usage.total_tokens as u64),
         "{scenario}: total tokens"
     );
@@ -245,11 +245,11 @@ fn assert_chat_raw_agrees(
 /// holds — it is an `x-request-id` response header.
 fn assert_transport_id_is_header_only(scenario: &str, response: &CompletionResponse) {
     assert!(
-        response.provider_request_id.is_some(),
+        response.end.meta.provider_request_id.is_some(),
         "{scenario}: the response reports the transport id"
     );
     assert!(
-        response.raw.get("provider_request_id").is_none(),
+        response.end.meta.raw.get("provider_request_id").is_none(),
         "{scenario}: the transport id is a header, so the reply document has none"
     );
 }
@@ -384,7 +384,7 @@ async fn responses_raw_round_trips_typed() {
         "{SCENARIO}: the Responses raw value mirrors the wire body"
     );
     assert!(
-        response.provider_request_id.is_some(),
+        response.end.meta.provider_request_id.is_some(),
         "{SCENARIO}: the normalized response still reports the transport id"
     );
     // Two views of one reply: the provider's field names, then rig's.

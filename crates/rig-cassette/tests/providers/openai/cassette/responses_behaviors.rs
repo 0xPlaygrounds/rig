@@ -96,7 +96,7 @@ async fn incomplete_response_surfaces_partial_output() {
                 .completion(request)
                 .await
                 .expect("an incomplete response should still convert, not error");
-            let reply = ResponsesReply::deserialize(&response.raw)
+            let reply = ResponsesReply::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized responses_api::CompletionResponse");
 
             assert_eq!(
@@ -115,7 +115,7 @@ async fn incomplete_response_surfaces_partial_output() {
             );
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::Length),
                 "the incomplete/max_output_tokens pair should normalize to a length stop"
             );

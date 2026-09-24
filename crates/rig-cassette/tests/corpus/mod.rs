@@ -3907,21 +3907,25 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             .response
                             .as_ref()
                             .expect("a stream that reached its end carries its terminal record");
-                        let usage = terminal.usage;
-                        let raw = terminal.raw.clone();
                         let snapshot = stream.snapshot();
                         let streamed = assembler.finish(
                             stream.message_id.clone().map(String::from),
                             &snapshot,
                             stream.reasoning_issuer(),
                         );
+                        let response = rig_core::completion::CompletionResponse {
+                            choice: streamed.choice,
+                            end: rig_core::completion::CompletionEnd {
+                                message_id: streamed
+                                    .message_id
+                                    .and_then(rig_core::id::MessageId::non_empty),
+                                ..terminal.clone()
+                            },
+                        };
                         ModelTurn::new(
-                            streamed.message_id,
-                            streamed.choice,
-                            usage,
+                            response,
                             streamed.executable_tool_names,
                             streamed.allowed_tool_names,
-                            raw,
                         )
                     } else {
                         let response = match (within(model.complete(request)).await, program.ending)
@@ -3939,9 +3943,9 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                 panic!("the replayer recognised the request: {report:?}")
                             }
                         };
-                        ModelTurn::from_response_parts(&response, executable, allowed)
+                        ModelTurn::new(response, executable, allowed)
                     };
-                    let choice = turn.choice.clone();
+                    let choice = turn.response.choice.clone();
                     let mut outcome = run.model_response(turn).expect("a model turn");
                     let mut unknown_tool_call = false;
                     while let ModelTurnOutcome::NeedsResolution(invalid) = outcome {

@@ -38,13 +38,17 @@ async fn nonstreaming_response_carries_identity() {
 
             assert!(
                 response
+                    .end
                     .message_id
                     .as_deref()
                     .is_some_and(|id| id.starts_with("msg")),
                 "Anthropic reports message.id, got {:?}",
-                response.message_id
+                response.end.message_id
             );
-            assert_request_id(response.provider_request_id.as_deref(), "blocking response");
+            assert_request_id(
+                response.end.meta.provider_request_id.as_deref(),
+                "blocking response",
+            );
         },
     )
     .await;
@@ -83,7 +87,7 @@ async fn streaming_terminal_carries_identity() {
             // Blocking/streaming parity: the SSE connection's `request-id`
             // header lands on the terminal record.
             assert_request_id(
-                terminal.provider_request_id.as_deref(),
+                terminal.meta.provider_request_id.as_deref(),
                 "streaming terminal",
             );
         },
@@ -115,8 +119,13 @@ impl AgentHook for IdentityCapture {
         self.seen.lock().expect("snapshots").push((
             ctx.is_streaming(),
             (
-                response.message_id.clone().map(String::from),
-                response.provider_request_id.clone().map(String::from),
+                response.end.message_id.clone().map(String::from),
+                response
+                    .end
+                    .meta
+                    .provider_request_id
+                    .clone()
+                    .map(String::from),
             ),
         ));
         OutcomeAction::proceed()
@@ -285,12 +294,12 @@ async fn streamed_agent_tool_run_reports_per_attempt_identity() {
             );
             for (index, turn) in turns.iter().enumerate() {
                 assert_request_id(
-                    turn.provider_request_id.as_deref(),
+                    turn.meta.provider_request_id.as_deref(),
                     &format!("streamed turn {index}"),
                 );
             }
             assert_ne!(
-                turns[0].provider_request_id, turns[1].provider_request_id,
+                turns[0].meta.provider_request_id, turns[1].meta.provider_request_id,
                 "each streamed attempt reports its own request id"
             );
 
@@ -306,7 +315,7 @@ async fn streamed_agent_tool_run_reports_per_attempt_identity() {
             // The per-call records the stream emitted agree with the hooks.
             assert_eq!(completion_calls.len(), turns.len());
             for (call, turn) in completion_calls.iter().zip(&turns) {
-                assert_eq!(call.provider_request_id, turn.provider_request_id);
+                assert_eq!(call.provider_request_id, turn.meta.provider_request_id);
                 assert_eq!(call.message_id, turn.message_id);
             }
         },

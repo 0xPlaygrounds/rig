@@ -78,45 +78,49 @@
               "text": "GAMMA-33 ZULU-99"
             }
           ],
-          "usage": {
-            "input_tokens": 53,
-            "output_tokens": 9,
-            "total_tokens": 113,
-            "reasoning_tokens": 51
-          },
-          "response_id": "pXizar31Ooi-qtsPpfaNwQQ",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "pXizar31Ooi-qtsPpfaNwQQ",
+              "usage": {
+                "input_tokens": 53,
+                "output_tokens": 9,
+                "total_tokens": 113,
+                "reasoning_tokens": 51
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "GAMMA-33 ZULU-99"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "pXizar31Ooi-qtsPpfaNwQQ",
+                "usageMetadata": {
+                  "candidatesTokenCount": 9,
+                  "promptTokenCount": 53,
+                  "promptTokensDetails": [
                     {
-                      "text": "GAMMA-33 ZULU-99"
+                      "modality": "TEXT",
+                      "tokenCount": 53
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "pXizar31Ooi-qtsPpfaNwQQ",
-            "usageMetadata": {
-              "candidatesTokenCount": 9,
-              "promptTokenCount": 53,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 53
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 51,
+                  "totalTokenCount": 113
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 51,
-              "totalTokenCount": 113
+              }
             }
           }
         }

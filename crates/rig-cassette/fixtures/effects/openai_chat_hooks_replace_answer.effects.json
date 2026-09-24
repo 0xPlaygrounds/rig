@@ -65,51 +65,55 @@
               "text": "Rust is a systems programming language that offers C/C++-level performance while enforcing memory safety via ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety prevents bugs and security vulnerabilities (use-after-free, buffer overflows, data races), making programs more reliable and secure."
             }
           ],
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 195,
-            "total_tokens": 232,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "response_id": "chatcmpl-ERDBkEiEWtQLrAJNlFiqofQtdBa89",
-          "provider_request_id": "req_028a1446f8c342cfb209d2f62217dccf",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": "Rust is a systems programming language that offers C/C++-level performance while enforcing memory safety via ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety prevents bugs and security vulnerabilities (use-after-free, buffer overflows, data races), making programs more reliable and secure.",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDBkEiEWtQLrAJNlFiqofQtdBa89",
+              "provider_request_id": "req_028a1446f8c342cfb209d2f62217dccf",
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 195,
+                "total_tokens": 232,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 128
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "Rust is a systems programming language that offers C/C++-level performance while enforcing memory safety via ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety prevents bugs and security vulnerabilities (use-after-free, buffer overflows, data races), making programs more reliable and secure.",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDBkEiEWtQLrAJNlFiqofQtdBa89",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 195,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 128,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 37,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 232
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDBkEiEWtQLrAJNlFiqofQtdBa89",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 195,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 128,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 37,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 232
             }
           }
         }

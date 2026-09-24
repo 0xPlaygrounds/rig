@@ -1,16 +1,16 @@
 //! Matrix for raw provider response capture on the streaming path:
-//! `StreamFinal::raw` beside the normalized terminal fields.
+//! `CompletionEnd::raw` beside the normalized terminal fields.
 //!
 //! # The feature
 //!
 //! Capture is always on. The wire's decoder assembles the provider-native
 //! terminal — `anthropic::streaming::StreamingCompletionResponse` — and the
-//! driver serializes it onto the terminal `StreamFinal::raw` before mapping it
+//! driver serializes it onto the terminal `CompletionEnd::raw` before mapping it
 //! to the normalized terminal. So `raw` is the **terminal record only**: the
 //! provider's own final record, not the stream's frames. Anthropic's terminal is
 //! assembled from `message_start` (id, model) and the closing `message_delta`
 //! (`stop_reason`, `stop_sequence`, usage), plus the transport `request-id`
-//! header the driver stamps. `raw` is `Value::Null` only on a `StreamFinal`
+//! header the driver stamps. `raw` is `Value::Null` only on a `CompletionEnd`
 //! built by hand, with no provider terminal behind it; `Value::Null` never
 //! means "not requested". Cells 1–3 pin the terminal round trip, a
 //! terminal-only field, and normalized/raw agreement on text streams; cells 4
@@ -46,6 +46,7 @@
 //! what the terminal *does* carry: the usage bucket and the verbatim
 //! `stop_reason`.
 
+use rig::completion::CompletionEnd;
 use rig::message::AssistantContent;
 
 use futures::StreamExt;
@@ -56,7 +57,7 @@ use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::{StreamEvent, StreamFinal};
+use rig::streaming::StreamEvent;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -133,7 +134,7 @@ fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
 /// terminal record.
 struct Streamed {
     items: Vec<StreamEvent>,
-    terminal: StreamFinal,
+    terminal: CompletionEnd,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> Streamed {
@@ -264,7 +265,7 @@ fn recorded_stream(scenario: &str) -> RecordedStream {
 /// The normalized terminal reports what its own recording says.
 fn assert_terminal_matches_fixture(
     scenario: &str,
-    terminal: &StreamFinal,
+    terminal: &CompletionEnd,
     recorded: &RecordedStream,
 ) {
     assert!(
@@ -284,14 +285,20 @@ fn assert_terminal_matches_fixture(
         scenario,
     );
     assert_ids_match_recording(
-        std::slice::from_ref(&terminal.provider_request_id),
+        std::slice::from_ref(&terminal.meta.provider_request_id),
         std::slice::from_ref(&recorded.request_id),
         scenario,
     );
-    assert_eq!(terminal.model.as_deref(), recorded.model.as_deref());
-    assert_eq!(terminal.usage.input_tokens, Some(recorded.input_tokens));
-    assert_eq!(terminal.usage.output_tokens, Some(recorded.output_tokens));
-    assert_eq!(terminal.provider, ANTHROPIC_PROVIDER);
+    assert_eq!(terminal.meta.model.as_deref(), recorded.model.as_deref());
+    assert_eq!(
+        terminal.meta.usage.input_tokens,
+        Some(recorded.input_tokens)
+    );
+    assert_eq!(
+        terminal.meta.usage.output_tokens,
+        Some(recorded.output_tokens)
+    );
+    assert_eq!(terminal.meta.provider, ANTHROPIC_PROVIDER);
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +325,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
     )
     .await;
     let terminal = sink.take();
-    let raw: &Value = &terminal.raw;
+    let raw: &Value = &terminal.meta.raw;
     assert!(
         !raw.is_null(),
         "every terminal `stream()` yields carries `raw`"
@@ -382,7 +389,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
     // native record inside `raw`.
     assert!(raw.get("provider_request_id").is_none());
     assert_ids_match_recording(
-        std::slice::from_ref(&terminal.provider_request_id),
+        std::slice::from_ref(&terminal.meta.provider_request_id),
         std::slice::from_ref(&recorded.request_id),
         ROUND_TRIP_SCENARIO,
     );
@@ -426,7 +433,7 @@ async fn raw_exposes_stop_sequence() {
     })
     .await;
     let terminal = sink.take();
-    let raw: &Value = &terminal.raw;
+    let raw: &Value = &terminal.meta.raw;
     assert!(
         !raw.is_null(),
         "every terminal `stream()` yields carries `raw`"
@@ -497,7 +504,7 @@ async fn normalized_terminal_matches_raw_renormalized() {
     )
     .await;
     let terminal = sink.take();
-    let raw: &Value = &terminal.raw;
+    let raw: &Value = &terminal.meta.raw;
     assert!(
         !raw.is_null(),
         "every terminal `stream()` yields carries `raw`"
@@ -515,10 +522,10 @@ async fn normalized_terminal_matches_raw_renormalized() {
         terminal.message_id.as_deref(),
         "the message id survives raw → typed"
     );
-    assert_eq!(typed.model.as_deref(), terminal.model.as_deref());
+    assert_eq!(typed.model.as_deref(), terminal.meta.model.as_deref());
     assert_eq!(
         typed.usage.input_tokens.map(|n| n as u64),
-        terminal.usage.input_tokens
+        terminal.meta.usage.input_tokens
     );
 
     // …and none of that is vacuous: the normalized terminal is the fixture's.
@@ -558,7 +565,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     )
     .await;
     let Streamed { items, terminal } = sink.take();
-    let raw: &Value = &terminal.raw;
+    let raw: &Value = &terminal.meta.raw;
     let typed = assert_raw_round_trips(raw);
 
     // Premise, from the frames: the stream opened a `thinking` content block,
@@ -627,7 +634,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     // spells `thinking` — only `raw` does.
     assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
     assert_eq!(
-        terminal.usage.reasoning_tokens,
+        terminal.meta.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
     let normalized = stream_normalized_without_raw(&terminal);
@@ -690,7 +697,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     )
     .await;
     let Streamed { items, terminal } = sink.take();
-    let raw: &Value = &terminal.raw;
+    let raw: &Value = &terminal.meta.raw;
     let typed = assert_raw_round_trips(raw);
 
     // Premise, from the frames: the stream opened a `tool_use` block for the

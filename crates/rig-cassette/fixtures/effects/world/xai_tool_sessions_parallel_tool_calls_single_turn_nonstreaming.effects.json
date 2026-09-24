@@ -182,128 +182,132 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 398,
-            "output_tokens": 340,
-            "total_tokens": 738,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 324
-          },
-          "response_id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
-          "provider_request_id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_b2efd026-bb0f-964c-886c-adc24c1cb8dd",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{}",
-                "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0",
-                "id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_0",
-                "name": "lookup_harbor_label",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{}",
-                "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1",
-                "id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_1",
-                "name": "lookup_orchard_label",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "auto",
-            "tools": [
-              {
-                "description": "Return the alpha signal marker.",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Return the beta signal marker.",
-                "name": "lookup_orchard_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+              "provider_request_id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+              "usage": {
                 "input_tokens": 398,
-                "output_tokens": 343
-              },
-              "cost_in_usd_ticks": 11459000,
-              "input_tokens": 398,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 340,
-              "output_tokens_details": {
+                "output_tokens": 340,
+                "total_tokens": 738,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 324
               },
-              "total_tokens": 738
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{}",
+                    "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0",
+                    "id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_0",
+                    "name": "lookup_harbor_label",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{}",
+                    "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1",
+                    "id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_1",
+                    "name": "lookup_orchard_label",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "description": "Return the alpha signal marker.",
+                    "name": "lookup_harbor_label",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Return the beta signal marker.",
+                    "name": "lookup_orchard_label",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 398,
+                    "output_tokens": 343
+                  },
+                  "cost_in_usd_ticks": 11459000,
+                  "input_tokens": 398,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 340,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 324
+                  },
+                  "total_tokens": 738
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -503,116 +507,120 @@
               "text": "The outputs are crimson-harbor and silver-orchard."
             }
           ],
-          "usage": {
-            "input_tokens": 432,
-            "output_tokens": 168,
-            "total_tokens": 600,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 156
-          },
-          "message_id": "msg_c0412e7f-53a2-968d-ac5a-51d1a6f76668",
-          "response_id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
-          "provider_request_id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
-          "finish_reason": "stop",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "The outputs are crimson-harbor and silver-orchard.",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_c0412e7f-53a2-968d-ac5a-51d1a6f76668",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "auto",
-            "tools": [
-              {
-                "description": "Return the alpha signal marker.",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Return the beta signal marker.",
-                "name": "lookup_orchard_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+              "provider_request_id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+              "usage": {
                 "input_tokens": 432,
-                "output_tokens": 176
-              },
-              "cost_in_usd_ticks": 7584000,
-              "input_tokens": 432,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 168,
-              "output_tokens_details": {
+                "output_tokens": 168,
+                "total_tokens": 600,
+                "cached_input_tokens": 192,
                 "reasoning_tokens": 156
               },
-              "total_tokens": 600
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "The outputs are crimson-harbor and silver-orchard.",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "description": "Return the alpha signal marker.",
+                    "name": "lookup_harbor_label",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Return the beta signal marker.",
+                    "name": "lookup_orchard_label",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 432,
+                    "output_tokens": 176
+                  },
+                  "cost_in_usd_ticks": 7584000,
+                  "input_tokens": 432,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 168,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 156
+                  },
+                  "total_tokens": 600
+                },
+                "user": null
+              }
+            }
           }
         }
       },

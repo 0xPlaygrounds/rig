@@ -7,8 +7,12 @@ use std::{
 
 use crate::error::ProviderError;
 use crate::{
-    completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionResponse, Usage},
+    completion::{
+        AssistantContent, CompletionEnd, CompletionModel, CompletionRequest, CompletionResponse,
+        Usage,
+    },
     message::{ToolCall, ToolFunction},
+    response::ResponseMeta,
     streaming::StreamingCompletionResponse,
 };
 
@@ -262,19 +266,27 @@ impl MockTurn {
         let response = self.response.map_err(MockError::into_completion_error)?;
         let has_tool_call = response.choice.iter().any(AssistantContent::is_tool_call);
         Ok(CompletionResponse {
-            message_id: response
-                .message_id
-                .and_then(crate::id::MessageId::non_empty),
-            response_id: response
-                .response_id
-                .and_then(crate::id::ResponseId::non_empty),
-            provider_request_id: response
-                .provider_request_id
-                .and_then(crate::id::RequestId::non_empty),
-            finish_reason: response
-                .finish_reason
-                .map(|reason| reason.reconcile_with_output(has_tool_call)),
-            ..CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER, raw)
+            choice: response.choice,
+            end: CompletionEnd {
+                finish_reason: response
+                    .finish_reason
+                    .map(|reason| reason.reconcile_with_output(has_tool_call)),
+                message_id: response
+                    .message_id
+                    .and_then(crate::id::MessageId::non_empty),
+                reasoning_issuer: None,
+                meta: ResponseMeta {
+                    response_id: response
+                        .response_id
+                        .and_then(crate::id::ResponseId::non_empty),
+                    provider_request_id: response
+                        .provider_request_id
+                        .and_then(crate::id::RequestId::non_empty),
+                    usage: response.usage,
+                    raw,
+                    ..ResponseMeta::new(crate::id::ProviderName::new(MOCK_PROVIDER)?)
+                },
+            },
         })
     }
 }
@@ -450,12 +462,13 @@ impl CompletionModel for MockCompletionModel {
             ));
         };
 
+        let provider = crate::id::ProviderName::new(MOCK_PROVIDER)?;
         // Scripted events go through the same `AdapterOutput` helper every
         // real adapter uses, so the mock speaks exactly the wire grammar —
         // and the same `Stop` -> `ToolCalls` reconciliation callers see in
         // production runs in `StreamingCompletionResponse` for both.
         let stream = async_stream::stream! {
-            let mut out = crate::operation::AdapterOutput::new();
+            let mut out = crate::operation::AdapterOutput::new(provider);
             // An id-less scripted tool call mints per stream, like a wire
             // that carries no ids (`tool-0`, `tool-1`, …).
             let mut tool_ids = crate::streaming::SyntheticIds::tool();

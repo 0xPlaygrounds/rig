@@ -185,12 +185,9 @@ async fn main() -> Result<()> {
                     .map(|def| def.name.clone())
                     .collect();
                 let mut outcome = run.model_response(ModelTurn::new(
-                    response.message_id.clone().map(String::from),
-                    response.choice.clone(),
-                    response.usage,
+                    response.clone(),
                     tool_names.clone(),
                     tool_names,
-                    response.raw.clone(),
                 ))?;
                 while let ModelTurnOutcome::NeedsResolution(context) = outcome {
                     eprintln!("model called unknown tool `{}`", context.tool_name);

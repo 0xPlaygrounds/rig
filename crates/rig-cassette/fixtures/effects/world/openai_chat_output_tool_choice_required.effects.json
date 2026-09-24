@@ -111,61 +111,65 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 224,
-            "output_tokens": 1602,
-            "total_tokens": 1826,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 1408
-          },
-          "response_id": "chatcmpl-ERDCG98SOMUxlkB2SKqcKtZXI3H4B",
-          "provider_request_id": "req_85291502a0d44899a5e572661b9b5890",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"Tech / Programming / Meetup\",\"summary\":\"Date: 2026-10-08; Time: 18:00–20:30 PDT; Location: Impact Hub Seattle, 220 2nd Ave S, Seattle, WA — Room B; Description: Monthly Seattle Rust meetup for developers of all levels: talks, lightning demos, code clinic, and networking; Agenda: 18:00 doors & networking; 18:30 lightning talks (3×10m); 19:15 featured talk: “Async Rust patterns” (Anna Lee); 20:00 Q&A & social; RSVP: https://www.meetup.com/seattle-rust/events/123456789; Organizer: Seattle Rust Collective (organizer@seattlerust.org); Capacity: 80; Cost: Free.\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_6IMgim1gXPnW2Ub3H2i2lVqO",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCG98SOMUxlkB2SKqcKtZXI3H4B",
+              "provider_request_id": "req_85291502a0d44899a5e572661b9b5890",
+              "usage": {
+                "input_tokens": 224,
+                "output_tokens": 1602,
+                "total_tokens": 1826,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 1408
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"Tech / Programming / Meetup\",\"summary\":\"Date: 2026-10-08; Time: 18:00–20:30 PDT; Location: Impact Hub Seattle, 220 2nd Ave S, Seattle, WA — Room B; Description: Monthly Seattle Rust meetup for developers of all levels: talks, lightning demos, code clinic, and networking; Agenda: 18:00 doors & networking; 18:30 lightning talks (3×10m); 19:15 featured talk: “Async Rust patterns” (Anna Lee); 20:00 Q&A & social; RSVP: https://www.meetup.com/seattle-rust/events/123456789; Organizer: Seattle Rust Collective (organizer@seattlerust.org); Capacity: 80; Cost: Free.\"}",
+                            "name": "final_result"
+                          },
+                          "id": "call_6IMgim1gXPnW2Ub3H2i2lVqO",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDCG98SOMUxlkB2SKqcKtZXI3H4B",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 1602,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 1408,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 224,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 1826
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDCG98SOMUxlkB2SKqcKtZXI3H4B",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 1602,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 1408,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 224,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 1826
             }
           }
         }

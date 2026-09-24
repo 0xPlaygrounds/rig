@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on Bedrock's ConverseStream path
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`CompletionEnd::raw`](rig::completion::CompletionEnd::raw)).
 //!
 //! # The feature
 //!
@@ -11,7 +11,7 @@
 //! Bedrock's own vocabulary, and the operation's AWS request id — serialized
 //! with `serde_json::to_value`. It is the terminal record only, and nothing
 //! about it is sent to Bedrock. `raw == Value::Null` means only that a
-//! `StreamFinal` was built by hand without a provider terminal behind it, which
+//! `CompletionEnd` was built by hand without a provider terminal behind it, which
 //! no cell here can produce.
 //!
 //! Bedrock streams the AWS event-stream binary framing (recorded base64), so
@@ -148,7 +148,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     .await;
 
     let terminal = captured.take();
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed = BedrockStreamingResponse::deserialize(raw)
         .expect("raw must deserialize into BedrockStreamingResponse");
     assert_eq!(
@@ -160,15 +160,21 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     // The typed terminal agrees with the normalized one: raw is the record the
     // adapter's `final_record` mapped.
     let usage = typed.usage.expect("terminal carries usage");
-    assert_eq!(Some(usage.total_tokens as u64), terminal.usage.total_tokens);
-    assert_eq!(Some(usage.input_tokens as u64), terminal.usage.input_tokens);
+    assert_eq!(
+        Some(usage.total_tokens as u64),
+        terminal.meta.usage.total_tokens
+    );
+    assert_eq!(
+        Some(usage.input_tokens as u64),
+        terminal.meta.usage.input_tokens
+    );
     assert_eq!(
         Some(usage.output_tokens as u64),
-        terminal.usage.output_tokens
+        terminal.meta.usage.output_tokens
     );
     assert_eq!(
         typed.provider_request_id.as_deref(),
-        terminal.provider_request_id.as_deref()
+        terminal.meta.provider_request_id.as_deref()
     );
 
     let (_, recorded_usage) = recorded_terminal_events(scenario);
@@ -204,7 +210,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
         Some(rig::completion::FinishReason::Stop)
     );
 
-    let raw = terminal.raw;
+    let raw = terminal.meta.raw;
     let (stop_reason, usage) = recorded_terminal_events(scenario);
     assert_eq!(
         stop_reason, "end_turn",

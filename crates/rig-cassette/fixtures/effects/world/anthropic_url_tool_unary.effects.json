@@ -162,56 +162,60 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 660,
-            "output_tokens": 77,
-            "total_tokens": 737,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcZqnJr9QvfiahSNRUq",
-          "provider_request_id": "req_011CfLcZqJ3AiurJtMb3Pq7b",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "I'll calculate the sum right away!",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcZqnJr9QvfiahSNRUq",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcZqJ3AiurJtMb3Pq7b",
+              "usage": {
+                "input_tokens": 660,
+                "output_tokens": 77,
+                "total_tokens": 737,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01UUAPHWA7wWPDrx8zYvHxru",
-                "input": {
-                  "x": 17,
-                  "y": 25
-                },
-                "name": "add",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "I'll calculate the sum right away!",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01UUAPHWA7wWPDrx8zYvHxru",
+                    "input": {
+                      "x": 17,
+                      "y": 25
+                    },
+                    "name": "add",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcZqnJr9QvfiahSNRUq",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 660,
+                  "output_tokens": 77,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcZqnJr9QvfiahSNRUq",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 660,
-              "output_tokens": 77,
-              "service_tier": "standard"
             }
           }
         }
@@ -359,44 +363,48 @@
               "text": "The dominant non-background color is **red**, and 17 + 25 = **42**."
             }
           ],
-          "usage": {
-            "input_tokens": 750,
-            "output_tokens": 25,
-            "total_tokens": 775,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLca1TDvGV3pr1dieqUb",
-          "provider_request_id": "req_011CfLca11BhDAEfEGG2jvoq",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "The dominant non-background color is **red**, and 17 + 25 = **42**.",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLca1TDvGV3pr1dieqUb",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLca1TDvGV3pr1dieqUb",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLca11BhDAEfEGG2jvoq",
+              "usage": {
+                "input_tokens": 750,
+                "output_tokens": 25,
+                "total_tokens": 775,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 750,
-              "output_tokens": 25,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The dominant non-background color is **red**, and 17 + 25 = **42**.",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLca1TDvGV3pr1dieqUb",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 750,
+                  "output_tokens": 25,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

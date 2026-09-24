@@ -95,45 +95,49 @@
               "text": "A \"glarb-glarb\" is not a recognized term or concept."
             }
           ],
-          "usage": {
-            "input_tokens": 26,
-            "output_tokens": 18,
-            "total_tokens": 121,
-            "reasoning_tokens": 77
-          },
-          "response_id": "oXizaum2Ad-JmtkPlbOD2A8",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "oXizaum2Ad-JmtkPlbOD2A8",
+              "usage": {
+                "input_tokens": 26,
+                "output_tokens": 18,
+                "total_tokens": 121,
+                "reasoning_tokens": 77
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "A \"glarb-glarb\" is not a recognized term or concept."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "oXizaum2Ad-JmtkPlbOD2A8",
+                "usageMetadata": {
+                  "candidatesTokenCount": 18,
+                  "promptTokenCount": 26,
+                  "promptTokensDetails": [
                     {
-                      "text": "A \"glarb-glarb\" is not a recognized term or concept."
+                      "modality": "TEXT",
+                      "tokenCount": 26
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "oXizaum2Ad-JmtkPlbOD2A8",
-            "usageMetadata": {
-              "candidatesTokenCount": 18,
-              "promptTokenCount": 26,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 26
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 77,
+                  "totalTokenCount": 121
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 77,
-              "totalTokenCount": 121
+              }
             }
           }
         }

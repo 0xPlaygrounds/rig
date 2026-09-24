@@ -3,6 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
+use crate::completion::CompletionEnd;
 use futures::StreamExt;
 use serde_json::json;
 
@@ -10,7 +11,7 @@ use super::*;
 use crate::{
     completion::Usage,
     effect::{FamilyDescriptor, HandlerKey},
-    streaming::{StreamEvent, StreamFinal},
+    streaming::StreamEvent,
 };
 
 fn custom(payload: serde_json::Value) -> EffectKind {
@@ -72,11 +73,13 @@ impl Serve for Streamer {
             writer.text("hel").await.expect("open");
             writer.text("lo").await.expect("open");
             writer
-                .finish(StreamFinal::new(
-                    "test",
-                    Usage::default(),
-                    serde_json::json!({}),
-                ))
+                .finish(CompletionEnd::new(crate::response::ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..crate::response::ResponseMeta::new(
+                        crate::id::ProviderName::new("test").expect("a provider name"),
+                    )
+                }))
                 .await
                 .expect("open");
         })

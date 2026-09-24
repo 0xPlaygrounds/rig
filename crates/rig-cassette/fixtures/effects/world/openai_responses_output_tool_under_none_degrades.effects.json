@@ -103,141 +103,145 @@
               "text": "{\"title\":\"Seattle Rust Meetup (Monthly)\",\"category\":\"Tech Meetup — Rust\",\"summary\":\"Monthly Rust meetup in Seattle — Next: Tue, Oct 12, 2026, 6:30–8:30 PM; Impact Hub Seattle, 220 2nd Ave S; agenda: 2 short talks, lightning demos, Q&A, and networking; bring a laptop; RSVP via Meetup.com/rust-seattle.\"}"
             }
           ],
-          "usage": {
-            "input_tokens": 68,
-            "output_tokens": 873,
-            "total_tokens": 941,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 768
-          },
-          "message_id": "msg_091a906bc1ad1b88006ab2b38f2d7087d0b60c02d8083f3825",
-          "response_id": "resp_091a906bc1ad1b88006ab2b3870c3887d0a9c3f50efd128634",
-          "provider_request_id": "req_54af980e0f4c45189a6bbc09a3dab199",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_091a906bc1ad1b88006ab2b3870c3887d0a9c3f50efd128634",
-            "incomplete_details": null,
-            "instructions": "You are a concise assistant. Answer directly.",
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-5-mini-2025-08-07",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [],
-                "encrypted_content": "gAAAAABqsrOQXK0AkM4xrY3VP1TJZb0UnEKU7dyQFx859CyOXj-5L17DBhIBdcMdNwGpidc-fozs-qF4nzPCsUx0FL0N6zqa2hz-aPaYPzpl07dLdzJrzstG7f6iELCh3eBkFcbhHVOSBk8kkM7hCMwa6TdnPVohgrDmsPd_TjYzm5kdXyjCAvn6Zc-TTHZAotqgCPbYnCKBrr2mHvFPPcz6WnwKUTrm6rAK63sPdD0Ka06D-z_oP-0O-5oP2h1eiuwFxTVsk-vXtI_GtEBh4DeJ0eTJ_Yn2DeCvYjTedgaprQgR_O9RXkigAoNpsoJP5svcyCFY_KTsLJs-wmPmpg0g55msNxtBDgsBbsVPmOId0KiozOGn72tNjA250PA5XDK6TH8meclCoQxtoKxmSAV7WQLlL6mIR6V5hHHhaRZw2FpM-gVB7_GgQ44T4XN3i0uc7vjWykiV8z0ymx7NhKesxM2NhVVOri7jARM4qvM4Uu_cyIJgqbIgiUYSWrZAoX0-ZkZ4i3A8olek8oAzFIXcEYQqeIsLxgi2HjWfmkxHXBhD93UgwORJmGToqRoqch--uSVLLjoqeTEqZIBeO16JnpEpInlRQ42h1qRpZ6-msCOlYwV352dJ5OvzlLHyvKRTkqLKxgFqysmZDwECRn7s6cJJnJjST4qUEeCCv26IdbPdoxj9H5ytDd0LaoE7qYbzIw48M3P042-bvbALz-cxNfEdSmwhp_h4CERW8eZoQd06u9hUAl2O2NVPwPKLWWMWK2-_GsEZMo456cuyXLQrx9cFKDliHiy77qHxRsEyMQTaGadgfh8hYmLsqhIri-yp5yK6gLlGF-8XvleEdcKobJtZpaoOdH5GyiU7tesg9gQECPmzFqSAs9IizgFNoLyEQHzq571734OxiPpEWU_25N637QQcD0ij6kx-oAiatnf6uQixu7U6cALg9ZiVCBWuPgdy02bNsz3WXCiGeYxzZTHhXjrLEKKVqeOY1ynUaFX0-fJf-vrI8k0iqpzh7B0jVvLWKJVewy_6KhKOvrKYzv6I9xqJjJVFxxbbVfwes6gG8L82M8aDudIyPlTH-JYUzgf4ivTxYipqM7sWJoJFmeKj-2VcQAEo1pv45JG6X0Mzr7VgZWXDWQNcFct23S-L3pBlJR3yGrBdr9wvwasBtPMQ_eswf9Jvfk8EZsZ4UzFPx65PRzJRAUQy_7-yDuQzOe--6AQ0cn4SVPr9SnX5cxXTIttGF4yNMiLIZmLOJUzGgW_0aKy-ij2xnmjo8I8NVKEynjG8VQvbFiySYMa1r94wbyfnBkXPuYNTSAbKde285zNbNWfktXz3ktNuvsRCy1qHTO-WKq235uRP_tO_9OQgljkucKQu9ogiQfjwu5KeBCIkvUL5Ac4D_2RTQdEV-mmvZKCWph69lvE_lOceASyuWYxxQkd_gngXKV7uBtI02G3bZv2ZphNQ9ANmWXtNXNcZ5xK9wvRnuS9XNL0qLBEWXSAMt5Fz9SqyFbtqV2njsRsnM7_vyI8pjvHxPrbwKhLy5EiQYOgjbdwHcIWfZI9RHFCacUNtEwaKhNUhZ4xjGBgXEobp9tWwp2q23DQVvwNYFZR4TyQYtJDaK24dnAO4fho0Hwb0jLDGxnf8h14u-xMYec6gT4pgxXV58T5cm2ACiSYj4HomfwKoaWBOkfAU53N0zagV1PHRzJJASObY59AiBkTIQ8jbhn0aIYhjg7edJg2T5nQZyNUk_865H4YackQdg0IA-zO8yzyo4GdRB-8YfcuWWTQZ_xdSoSQTW_I1GQFKDcTAwbZRjBThLZTujUAJuz6G4M8bDzFjTSFo959XrApJ0p0kXYRw0lCDsdTYew2S6s1wurJXIZInyxCmnQTd9FGtkRejNdbzmRchvfcp04HMa_G-sbouM-H5IzJ2ihBslJdjFJTeVL4UJSMcFeN8v3oWIMZmsbExq7KYw4jC5MN20U3gfZnUsB1Bue6tuyAzGGIjjECz4BKByyUKTinQokUatDJprLNBu-FOsVSuTiKkTo0tLMj3Fx9YDp2oTnWX97yY5zZhMcJscCj3sjYPBsKtUtPeuwMBT3DWSYL59ECv2RFbOPpzkE5Kh-KGqvWvXOUqYqri_pZW2ZNAVgv7V6E2kniuGVBw_Pfz2soxGm6u0Cn3LdPSC7M4JViD8HvO0T4sMwBxzMlnvbcgqmnvAbFQayLg2SgW81TrTngM4_LEzoGZbKxZmzgWkbIqiJB--ui7o1f3NilzX6va7DCcbGsYsty6COQOKHd52kmwIAS2KdE9Llnp4qTjnbIWeLK8ysvbE-UPY9m_fBV1IVd3oca0fvjBjZCBiUlageRUq8rQwlXfrKc2p94rdkLL6oAlzy0G1PPDyLk8uTZXF9a3YhmRCtYgILujAwPuhQenUJh9kEP8bnktuAeSmerbrP7KwTbBnDpYUh9mnYMDOFWgjl02HLw8AxZEuzVdyGn5pFUxHmmj_cooAnqNE0RPZdneUEGMlGkOq48czAcp7NZEy5XitLEROZ5r-dL80897KqonhyTG-y9HQ42Qz1gha0WpFEkv3RVvXUtBTtQo88Pd5VzxjA93XPY1YESKqjabsUW4_n6J_ZbfkCQPB2cecWkGQwEFZjhb-QORBuMC7WfX57ECEQigj6goNAta_teBiUnNbpnP5jaP_yJvuBFy-FHAYycLaS_hFbYN9G6TQvdi-s0uLSggJKHQps45q2kIqMkv7Mig7yY9_oB3Hz5vfoHcplBpT0ZQ7FJ7McxO5nMQ7K5Za9Nr2jBxV8ueipfTxAw3vyMYw0bdTvAq4yNBuUczo-y1oSsJ9l1U6ldPCQSrTLZAxFiU-lUa2Qt_RTs1yq9PGgE6uFt1DKuot0x9bxIvh-rQZNPrNWIrPNSpKRYiuooNCIigOEyYlBdRE-_xQSIM73G-QRBTfmZ4JIgPuSD-Jd7_U0O22xM8ryQkuktFpaLmf_fcGPMP1CoFthlMgczbC5lM7HeX0S65IWSfgxf_BFE6ZD40GvJha4c8QjRzP6mRyJc4Xga9DRAJFJsHMnyklGNup6wPvZH7Dbc0LKTpROrRvI-KgdRTCuS1PQFKM5X8fb-vhx4aPw0eyaCZ0PLiHfJjbMcfz9TdtxLB3Q1lpX-4fPgAyjMCd8BdyYuwPYmE37-dAbLNlek1wvA-6C5XBAXkfDXEPAVlLa8uMhcBWbgHcBMRXUCxmDdBwuXF42P9sZakOdhmFhcFVBZCJ5kxbuZSsPX0pbBGCjKY1kaPm7Zthi_WXj46yK9kEdelhU7GGlb8xvhfzbg6eY5z9kW08mbgTw_jtVYAeq_3JXpPo0zh9Tt_piMedKx-AFPBI8YTEZu3h-Sj2-toMmKZxifGAENouSxCymEYgyvxbGWuGGYZncHJa3rnTQLcY9xebS1xOR370lPVs7_o1Wpw6nzCwrAi3AQMyyhdI75cZP1y5BLa2GI-Xl8eYHvPkOz3sLWevQULgqkLCIWz4sgUOdsn1YFuKgWGkOyhkqiJOJ4t80EKFiAfFHRGMg0zP9kxZ4lZteUK3egs0sN5bowzsqcrknkKjfEIi5k_aLlpsUqUutE3r43jlpA77ANw46HO2xKap8vpsgrVEw7SkD1Be0P2HROpO-Go2t6cisNT2GeCJVr_dWYMDaBQa9ElXOo9lASZDjTyFfH4HLHLI7YlfkkNzc9SAgiN8g_VdDK3YkinixZ0JsARZDabxXItw9IyXP3aRnjTFJHzF6b7rw6gzgDnj92xHuZaCZgCt5vsxAIdqhBSa9_b_O0c3wKiWjjLO_s9MV4fCxct5oHtdoa_yEnahPUd8OutxR0ot0a4_tUzGC8gFDqQDx-0kKeuoChTPoGc_LbhIy26DM4ES9bgDKe4BxPCLraWG81pbtDxicGxFsi8dVrxaRo3DVfc73LYSf1nJUmK0MVfPMVHyCa_Y5zMEXXDoXH84Y8n22dSuFcc7t_osFDyE3Npm-DQ4dhD_nShCeOj_hNY3mw1QD_7ZNHLjxaCNO5oAuGlcNVedrH9QfRFxnKA0ODY_sWGwGjb7K1LIsuHRZJ0bjo_-a76wfPYBTS2cKxDJC6UQw8ETGeIRAJ0cmQjIdSV1JKfiYGkVv_UkkKyuJ0WjszgOvZbfMzVDmEfaAgBH_3PnITnRoznNBtWvzvz3v8zPjlJUCL1JbosWTRTCG2Rdcnvm6nT9WUWV57Nwh8QZmz7p0kZfw_8E-fi1BYg9YKjozAp9k7bKqv8NwGuqhjuM_g9objTf-rvWN0et2K0fXl8-ul5vtPjGI_8VSE3NWR_At-9j3egB2Dp-aKKih9EZqtA1OBB21EMzqEQE8hy2O3E14GXg2Q2hsvIJ7VTqL-dtt-CrCwFeGuyd6WrWzVzVDYeLEBKvUcZ4gO55pqFRsWEvEDat8qKv2lnpE37LcpILk2IWWV2sbOP10FEr6m0PtXrSCKxq8QeAUqFaf0uYcZGQtvGoWI8uKCm9nHXNkBwDXlLN7mK2LfXUtlrW_b96GkZAZ8Z0nasEaNhbh1NIVflj4DYiC0n67lN_8aNZVQ3UxuKT6cRQ89pINfO-525FpIuZ_2GnqKc7eg2jzV1KgDEC5M_bT85l5MD9-u7oJXC0ekNciptKQoGoO-YVfmW7aV0bXidIKztwDyLPSuFb06eDLo3I6ZMqK4rEn_PUptew8eUeN3OxScp8PqZb5PMnmnVz2Kr3CjuO7kEoGVMi9otlLEIBDRZohEUcbCt0irNQRvt0meMLtG-OqXDI6G9PYCfaJ7ixGpNecSc3HCOHTzVLkDMd4BEdDMwtB_J9yFfwZXubSbTjxxDZNk1F1w5MbcD8bVrGk5_Zxw5g1yP9lR3hjWTvbipcFMFMya_oCefRRvYFkyG1Eb4lLnRcb8bNWsvTouVgVJLT26cs2jKRwFnwAXYur3C8lGS6H2uRBUfSnEh9bcoRhoKpk02mUEvbfXQgN92iddoftkdH-3vIP9f66T0m-WFqoszwjQdu3epcTng7RHmaWPqQ6qUWmsWL2BzAKB1NwHi-1qb4hAhIaTfNJH9t7FebhNbwQbrH5CIMGC-1WAoFJnMcy1KvHDOcmI5KpdS9GMpmH4Vs508_qqls0bizzwMwMsUmNJIuCjGaebnLcYOO_ywKAsPKoBxk73wJmgjLQ9aiGK3h5-10hoKYCwqBGv5G97tHeXbjMLML5xK3Mayg9MYm73SKxFsK_xElel6WWjFQYUf_vxQxbMqBggY5iaIjlPQpHQyn4rt5dG2PLkbtHyoi8Zl6iUGCOaYbsmk494MW02wwv9lgNSMe1MjErbLan9KZJWXJnsKwxSAxJXLhv7TO8K2VSSfd2-8j0ad_4csqfYBbySJzPTs-BLhTcsMyxdP9rFVfOeD8qfKwekZm0XkDEO_eF2H-jsbvk7cxGlgtMMJzQi29yMjegPLmuzcH7GrerwFwk04RwIIECSyDw==",
-                "id": "rs_091a906bc1ad1b88006ab2b38758a087d09f5d3e1745469bf9",
-                "summary": [],
-                "type": "reasoning"
-              },
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "{\"title\":\"Seattle Rust Meetup (Monthly)\",\"category\":\"Tech Meetup — Rust\",\"summary\":\"Monthly Rust meetup in Seattle — Next: Tue, Oct 12, 2026, 6:30–8:30 PM; Impact Hub Seattle, 220 2nd Ave S; agenda: 2 short talks, lightning demos, Q&A, and networking; bring a laptop; RSVP via Meetup.com/rust-seattle.\"}",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_091a906bc1ad1b88006ab2b38f2d7087d0b60c02d8083f3825",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": "current_turn",
-              "effort": "medium",
-              "mode": "standard",
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 1.0,
-            "text": {
-              "format": {
-                "description": null,
-                "name": "response_schema",
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "category": {
-                      "type": "string"
-                    },
-                    "summary": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "title",
-                    "category",
-                    "summary"
-                  ],
-                  "type": "object"
-                },
-                "strict": true,
-                "type": "json_schema"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "none",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 68,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 873,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_091a906bc1ad1b88006ab2b38f2d7087d0b60c02d8083f3825",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "resp_091a906bc1ad1b88006ab2b3870c3887d0a9c3f50efd128634",
+              "provider_request_id": "req_54af980e0f4c45189a6bbc09a3dab199",
+              "usage": {
+                "input_tokens": 68,
+                "output_tokens": 873,
+                "total_tokens": 941,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 768
               },
-              "total_tokens": 941
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_091a906bc1ad1b88006ab2b3870c3887d0a9c3f50efd128634",
+                "incomplete_details": null,
+                "instructions": "You are a concise assistant. Answer directly.",
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-5-mini-2025-08-07",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [],
+                    "encrypted_content": "gAAAAABqsrOQXK0AkM4xrY3VP1TJZb0UnEKU7dyQFx859CyOXj-5L17DBhIBdcMdNwGpidc-fozs-qF4nzPCsUx0FL0N6zqa2hz-aPaYPzpl07dLdzJrzstG7f6iELCh3eBkFcbhHVOSBk8kkM7hCMwa6TdnPVohgrDmsPd_TjYzm5kdXyjCAvn6Zc-TTHZAotqgCPbYnCKBrr2mHvFPPcz6WnwKUTrm6rAK63sPdD0Ka06D-z_oP-0O-5oP2h1eiuwFxTVsk-vXtI_GtEBh4DeJ0eTJ_Yn2DeCvYjTedgaprQgR_O9RXkigAoNpsoJP5svcyCFY_KTsLJs-wmPmpg0g55msNxtBDgsBbsVPmOId0KiozOGn72tNjA250PA5XDK6TH8meclCoQxtoKxmSAV7WQLlL6mIR6V5hHHhaRZw2FpM-gVB7_GgQ44T4XN3i0uc7vjWykiV8z0ymx7NhKesxM2NhVVOri7jARM4qvM4Uu_cyIJgqbIgiUYSWrZAoX0-ZkZ4i3A8olek8oAzFIXcEYQqeIsLxgi2HjWfmkxHXBhD93UgwORJmGToqRoqch--uSVLLjoqeTEqZIBeO16JnpEpInlRQ42h1qRpZ6-msCOlYwV352dJ5OvzlLHyvKRTkqLKxgFqysmZDwECRn7s6cJJnJjST4qUEeCCv26IdbPdoxj9H5ytDd0LaoE7qYbzIw48M3P042-bvbALz-cxNfEdSmwhp_h4CERW8eZoQd06u9hUAl2O2NVPwPKLWWMWK2-_GsEZMo456cuyXLQrx9cFKDliHiy77qHxRsEyMQTaGadgfh8hYmLsqhIri-yp5yK6gLlGF-8XvleEdcKobJtZpaoOdH5GyiU7tesg9gQECPmzFqSAs9IizgFNoLyEQHzq571734OxiPpEWU_25N637QQcD0ij6kx-oAiatnf6uQixu7U6cALg9ZiVCBWuPgdy02bNsz3WXCiGeYxzZTHhXjrLEKKVqeOY1ynUaFX0-fJf-vrI8k0iqpzh7B0jVvLWKJVewy_6KhKOvrKYzv6I9xqJjJVFxxbbVfwes6gG8L82M8aDudIyPlTH-JYUzgf4ivTxYipqM7sWJoJFmeKj-2VcQAEo1pv45JG6X0Mzr7VgZWXDWQNcFct23S-L3pBlJR3yGrBdr9wvwasBtPMQ_eswf9Jvfk8EZsZ4UzFPx65PRzJRAUQy_7-yDuQzOe--6AQ0cn4SVPr9SnX5cxXTIttGF4yNMiLIZmLOJUzGgW_0aKy-ij2xnmjo8I8NVKEynjG8VQvbFiySYMa1r94wbyfnBkXPuYNTSAbKde285zNbNWfktXz3ktNuvsRCy1qHTO-WKq235uRP_tO_9OQgljkucKQu9ogiQfjwu5KeBCIkvUL5Ac4D_2RTQdEV-mmvZKCWph69lvE_lOceASyuWYxxQkd_gngXKV7uBtI02G3bZv2ZphNQ9ANmWXtNXNcZ5xK9wvRnuS9XNL0qLBEWXSAMt5Fz9SqyFbtqV2njsRsnM7_vyI8pjvHxPrbwKhLy5EiQYOgjbdwHcIWfZI9RHFCacUNtEwaKhNUhZ4xjGBgXEobp9tWwp2q23DQVvwNYFZR4TyQYtJDaK24dnAO4fho0Hwb0jLDGxnf8h14u-xMYec6gT4pgxXV58T5cm2ACiSYj4HomfwKoaWBOkfAU53N0zagV1PHRzJJASObY59AiBkTIQ8jbhn0aIYhjg7edJg2T5nQZyNUk_865H4YackQdg0IA-zO8yzyo4GdRB-8YfcuWWTQZ_xdSoSQTW_I1GQFKDcTAwbZRjBThLZTujUAJuz6G4M8bDzFjTSFo959XrApJ0p0kXYRw0lCDsdTYew2S6s1wurJXIZInyxCmnQTd9FGtkRejNdbzmRchvfcp04HMa_G-sbouM-H5IzJ2ihBslJdjFJTeVL4UJSMcFeN8v3oWIMZmsbExq7KYw4jC5MN20U3gfZnUsB1Bue6tuyAzGGIjjECz4BKByyUKTinQokUatDJprLNBu-FOsVSuTiKkTo0tLMj3Fx9YDp2oTnWX97yY5zZhMcJscCj3sjYPBsKtUtPeuwMBT3DWSYL59ECv2RFbOPpzkE5Kh-KGqvWvXOUqYqri_pZW2ZNAVgv7V6E2kniuGVBw_Pfz2soxGm6u0Cn3LdPSC7M4JViD8HvO0T4sMwBxzMlnvbcgqmnvAbFQayLg2SgW81TrTngM4_LEzoGZbKxZmzgWkbIqiJB--ui7o1f3NilzX6va7DCcbGsYsty6COQOKHd52kmwIAS2KdE9Llnp4qTjnbIWeLK8ysvbE-UPY9m_fBV1IVd3oca0fvjBjZCBiUlageRUq8rQwlXfrKc2p94rdkLL6oAlzy0G1PPDyLk8uTZXF9a3YhmRCtYgILujAwPuhQenUJh9kEP8bnktuAeSmerbrP7KwTbBnDpYUh9mnYMDOFWgjl02HLw8AxZEuzVdyGn5pFUxHmmj_cooAnqNE0RPZdneUEGMlGkOq48czAcp7NZEy5XitLEROZ5r-dL80897KqonhyTG-y9HQ42Qz1gha0WpFEkv3RVvXUtBTtQo88Pd5VzxjA93XPY1YESKqjabsUW4_n6J_ZbfkCQPB2cecWkGQwEFZjhb-QORBuMC7WfX57ECEQigj6goNAta_teBiUnNbpnP5jaP_yJvuBFy-FHAYycLaS_hFbYN9G6TQvdi-s0uLSggJKHQps45q2kIqMkv7Mig7yY9_oB3Hz5vfoHcplBpT0ZQ7FJ7McxO5nMQ7K5Za9Nr2jBxV8ueipfTxAw3vyMYw0bdTvAq4yNBuUczo-y1oSsJ9l1U6ldPCQSrTLZAxFiU-lUa2Qt_RTs1yq9PGgE6uFt1DKuot0x9bxIvh-rQZNPrNWIrPNSpKRYiuooNCIigOEyYlBdRE-_xQSIM73G-QRBTfmZ4JIgPuSD-Jd7_U0O22xM8ryQkuktFpaLmf_fcGPMP1CoFthlMgczbC5lM7HeX0S65IWSfgxf_BFE6ZD40GvJha4c8QjRzP6mRyJc4Xga9DRAJFJsHMnyklGNup6wPvZH7Dbc0LKTpROrRvI-KgdRTCuS1PQFKM5X8fb-vhx4aPw0eyaCZ0PLiHfJjbMcfz9TdtxLB3Q1lpX-4fPgAyjMCd8BdyYuwPYmE37-dAbLNlek1wvA-6C5XBAXkfDXEPAVlLa8uMhcBWbgHcBMRXUCxmDdBwuXF42P9sZakOdhmFhcFVBZCJ5kxbuZSsPX0pbBGCjKY1kaPm7Zthi_WXj46yK9kEdelhU7GGlb8xvhfzbg6eY5z9kW08mbgTw_jtVYAeq_3JXpPo0zh9Tt_piMedKx-AFPBI8YTEZu3h-Sj2-toMmKZxifGAENouSxCymEYgyvxbGWuGGYZncHJa3rnTQLcY9xebS1xOR370lPVs7_o1Wpw6nzCwrAi3AQMyyhdI75cZP1y5BLa2GI-Xl8eYHvPkOz3sLWevQULgqkLCIWz4sgUOdsn1YFuKgWGkOyhkqiJOJ4t80EKFiAfFHRGMg0zP9kxZ4lZteUK3egs0sN5bowzsqcrknkKjfEIi5k_aLlpsUqUutE3r43jlpA77ANw46HO2xKap8vpsgrVEw7SkD1Be0P2HROpO-Go2t6cisNT2GeCJVr_dWYMDaBQa9ElXOo9lASZDjTyFfH4HLHLI7YlfkkNzc9SAgiN8g_VdDK3YkinixZ0JsARZDabxXItw9IyXP3aRnjTFJHzF6b7rw6gzgDnj92xHuZaCZgCt5vsxAIdqhBSa9_b_O0c3wKiWjjLO_s9MV4fCxct5oHtdoa_yEnahPUd8OutxR0ot0a4_tUzGC8gFDqQDx-0kKeuoChTPoGc_LbhIy26DM4ES9bgDKe4BxPCLraWG81pbtDxicGxFsi8dVrxaRo3DVfc73LYSf1nJUmK0MVfPMVHyCa_Y5zMEXXDoXH84Y8n22dSuFcc7t_osFDyE3Npm-DQ4dhD_nShCeOj_hNY3mw1QD_7ZNHLjxaCNO5oAuGlcNVedrH9QfRFxnKA0ODY_sWGwGjb7K1LIsuHRZJ0bjo_-a76wfPYBTS2cKxDJC6UQw8ETGeIRAJ0cmQjIdSV1JKfiYGkVv_UkkKyuJ0WjszgOvZbfMzVDmEfaAgBH_3PnITnRoznNBtWvzvz3v8zPjlJUCL1JbosWTRTCG2Rdcnvm6nT9WUWV57Nwh8QZmz7p0kZfw_8E-fi1BYg9YKjozAp9k7bKqv8NwGuqhjuM_g9objTf-rvWN0et2K0fXl8-ul5vtPjGI_8VSE3NWR_At-9j3egB2Dp-aKKih9EZqtA1OBB21EMzqEQE8hy2O3E14GXg2Q2hsvIJ7VTqL-dtt-CrCwFeGuyd6WrWzVzVDYeLEBKvUcZ4gO55pqFRsWEvEDat8qKv2lnpE37LcpILk2IWWV2sbOP10FEr6m0PtXrSCKxq8QeAUqFaf0uYcZGQtvGoWI8uKCm9nHXNkBwDXlLN7mK2LfXUtlrW_b96GkZAZ8Z0nasEaNhbh1NIVflj4DYiC0n67lN_8aNZVQ3UxuKT6cRQ89pINfO-525FpIuZ_2GnqKc7eg2jzV1KgDEC5M_bT85l5MD9-u7oJXC0ekNciptKQoGoO-YVfmW7aV0bXidIKztwDyLPSuFb06eDLo3I6ZMqK4rEn_PUptew8eUeN3OxScp8PqZb5PMnmnVz2Kr3CjuO7kEoGVMi9otlLEIBDRZohEUcbCt0irNQRvt0meMLtG-OqXDI6G9PYCfaJ7ixGpNecSc3HCOHTzVLkDMd4BEdDMwtB_J9yFfwZXubSbTjxxDZNk1F1w5MbcD8bVrGk5_Zxw5g1yP9lR3hjWTvbipcFMFMya_oCefRRvYFkyG1Eb4lLnRcb8bNWsvTouVgVJLT26cs2jKRwFnwAXYur3C8lGS6H2uRBUfSnEh9bcoRhoKpk02mUEvbfXQgN92iddoftkdH-3vIP9f66T0m-WFqoszwjQdu3epcTng7RHmaWPqQ6qUWmsWL2BzAKB1NwHi-1qb4hAhIaTfNJH9t7FebhNbwQbrH5CIMGC-1WAoFJnMcy1KvHDOcmI5KpdS9GMpmH4Vs508_qqls0bizzwMwMsUmNJIuCjGaebnLcYOO_ywKAsPKoBxk73wJmgjLQ9aiGK3h5-10hoKYCwqBGv5G97tHeXbjMLML5xK3Mayg9MYm73SKxFsK_xElel6WWjFQYUf_vxQxbMqBggY5iaIjlPQpHQyn4rt5dG2PLkbtHyoi8Zl6iUGCOaYbsmk494MW02wwv9lgNSMe1MjErbLan9KZJWXJnsKwxSAxJXLhv7TO8K2VSSfd2-8j0ad_4csqfYBbySJzPTs-BLhTcsMyxdP9rFVfOeD8qfKwekZm0XkDEO_eF2H-jsbvk7cxGlgtMMJzQi29yMjegPLmuzcH7GrerwFwk04RwIIECSyDw==",
+                    "id": "rs_091a906bc1ad1b88006ab2b38758a087d09f5d3e1745469bf9",
+                    "summary": [],
+                    "type": "reasoning"
+                  },
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "{\"title\":\"Seattle Rust Meetup (Monthly)\",\"category\":\"Tech Meetup — Rust\",\"summary\":\"Monthly Rust meetup in Seattle — Next: Tue, Oct 12, 2026, 6:30–8:30 PM; Impact Hub Seattle, 220 2nd Ave S; agenda: 2 short talks, lightning demos, Q&A, and networking; bring a laptop; RSVP via Meetup.com/rust-seattle.\"}",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_091a906bc1ad1b88006ab2b38f2d7087d0b60c02d8083f3825",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": "current_turn",
+                  "effort": "medium",
+                  "mode": "standard",
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 1.0,
+                "text": {
+                  "format": {
+                    "description": null,
+                    "name": "response_schema",
+                    "schema": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "category": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "category",
+                        "summary"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": true,
+                    "type": "json_schema"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "none",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 68,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 873,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 768
+                  },
+                  "total_tokens": 941
+                },
+                "user": null
+              }
+            }
           }
         }
       },

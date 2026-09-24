@@ -486,150 +486,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 328,
-            "output_tokens": 23,
-            "total_tokens": 351,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b92d288887d09d84c7b3f5d92f2d",
-          "provider_request_id": "req_2b211a0eac914517a09315d196971d9d",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b92d288887d09d84c7b3f5d92f2d",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"index\",\"value\":null}",
-                "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
-                "id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 328,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 23,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b92d288887d09d84c7b3f5d92f2d",
+              "provider_request_id": "req_2b211a0eac914517a09315d196971d9d",
+              "usage": {
+                "input_tokens": 328,
+                "output_tokens": 23,
+                "total_tokens": 351,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 351
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b92d288887d09d84c7b3f5d92f2d",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"index\",\"value\":null}",
+                    "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                    "id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 328,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 23,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 351
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -826,150 +830,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 397,
-            "output_tokens": 26,
-            "total_tokens": 423,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b92e608c87d08bb88edf8c9f3899",
-          "provider_request_id": "req_187b9762b882486288564dd9be91c2f2",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b92e608c87d08bb88edf8c9f3899",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/1\",\"value\":null}",
-                "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
-                "id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 397,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 26,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b92e608c87d08bb88edf8c9f3899",
+              "provider_request_id": "req_187b9762b882486288564dd9be91c2f2",
+              "usage": {
+                "input_tokens": 397,
+                "output_tokens": 26,
+                "total_tokens": 423,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 423
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b92e608c87d08bb88edf8c9f3899",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/1\",\"value\":null}",
+                    "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                    "id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 397,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 26,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 423
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -1215,150 +1223,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 462,
-            "output_tokens": 26,
-            "total_tokens": 488,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b92f54f487d083d4bf50bc495fb8",
-          "provider_request_id": "req_b08f5718821b4e4db7a9c64a281a516e",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b92f54f487d083d4bf50bc495fb8",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/2\",\"value\":null}",
-                "call_id": "call_Czka0KC1WU2838TxFShpLud4",
-                "id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 462,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 26,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b92f54f487d083d4bf50bc495fb8",
+              "provider_request_id": "req_b08f5718821b4e4db7a9c64a281a516e",
+              "usage": {
+                "input_tokens": 462,
+                "output_tokens": 26,
+                "total_tokens": 488,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 488
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b92f54f487d083d4bf50bc495fb8",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/2\",\"value\":null}",
+                    "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                    "id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 462,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 26,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 488
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -1657,150 +1669,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 527,
-            "output_tokens": 26,
-            "total_tokens": 553,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b930512c87d0bcb96b889e9bcbdf",
-          "provider_request_id": "req_17c2620ba27e4b4d8a9472de5fdf030e",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b930512c87d0bcb96b889e9bcbdf",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/3\",\"value\":null}",
-                "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
-                "id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 527,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 26,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b930512c87d0bcb96b889e9bcbdf",
+              "provider_request_id": "req_17c2620ba27e4b4d8a9472de5fdf030e",
+              "usage": {
+                "input_tokens": 527,
+                "output_tokens": 26,
+                "total_tokens": 553,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 553
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b930512c87d0bcb96b889e9bcbdf",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/3\",\"value\":null}",
+                    "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                    "id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 527,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 26,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 553
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -2152,150 +2168,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 592,
-            "output_tokens": 26,
-            "total_tokens": 618,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b9315f8887d0860dbd8d3ed969f4",
-          "provider_request_id": "req_c4011d1538454892b99807d71fd3c77b",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b9315f8887d0860dbd8d3ed969f4",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/4\",\"value\":null}",
-                "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
-                "id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 592,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 26,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b9315f8887d0860dbd8d3ed969f4",
+              "provider_request_id": "req_c4011d1538454892b99807d71fd3c77b",
+              "usage": {
+                "input_tokens": 592,
+                "output_tokens": 26,
+                "total_tokens": 618,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 618
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b9315f8887d0860dbd8d3ed969f4",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/4\",\"value\":null}",
+                    "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                    "id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 592,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 26,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 618
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -2700,150 +2720,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 657,
-            "output_tokens": 26,
-            "total_tokens": 683,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b9327e2487d0bfe13e35c4b0357b",
-          "provider_request_id": "req_82ea9bbde7ad47ec83ac8cf3e5a5695b",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b9327e2487d0bfe13e35c4b0357b",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/5\",\"value\":null}",
-                "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
-                "id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 657,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 26,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b9327e2487d0bfe13e35c4b0357b",
+              "provider_request_id": "req_82ea9bbde7ad47ec83ac8cf3e5a5695b",
+              "usage": {
+                "input_tokens": 657,
+                "output_tokens": 26,
+                "total_tokens": 683,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 683
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b9327e2487d0bfe13e35c4b0357b",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/5\",\"value\":null}",
+                    "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                    "id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 657,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 26,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 683
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -3301,150 +3325,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 722,
-            "output_tokens": 26,
-            "total_tokens": 748,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b9338cf087d08c09dc72e5d9c49d",
-          "provider_request_id": "req_8c7d29c2111d425293c0770e51c7ef91",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b9338cf087d08c09dc72e5d9c49d",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/6\",\"value\":null}",
-                "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
-                "id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 722,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 26,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b9338cf087d08c09dc72e5d9c49d",
+              "provider_request_id": "req_8c7d29c2111d425293c0770e51c7ef91",
+              "usage": {
+                "input_tokens": 722,
+                "output_tokens": 26,
+                "total_tokens": 748,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 748
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b9338cf087d08c09dc72e5d9c49d",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/6\",\"value\":null}",
+                    "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                    "id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 722,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 26,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 748
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -4050,190 +4078,194 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 787,
-            "output_tokens": 167,
-            "total_tokens": 954,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b934a1d087d09998eb214584c490",
-          "provider_request_id": "req_2026e418d9914af98ccd36497c7ebe29",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b934a1d087d09998eb214584c490",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/1\",\"value\":11}",
-                "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
-                "id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/2\",\"value\":22}",
-                "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
-                "id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/3\",\"value\":33}",
-                "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
-                "id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/4\",\"value\":44}",
-                "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
-                "id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/5\",\"value\":55}",
-                "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
-                "id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/6\",\"value\":66}",
-                "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
-                "id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 787,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 167,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b934a1d087d09998eb214584c490",
+              "provider_request_id": "req_2026e418d9914af98ccd36497c7ebe29",
+              "usage": {
+                "input_tokens": 787,
+                "output_tokens": 167,
+                "total_tokens": 954,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 954
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b934a1d087d09998eb214584c490",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/1\",\"value\":11}",
+                    "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                    "id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/2\",\"value\":22}",
+                    "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                    "id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/3\",\"value\":33}",
+                    "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                    "id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/4\",\"value\":44}",
+                    "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                    "id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/5\",\"value\":55}",
+                    "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                    "id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/6\",\"value\":66}",
+                    "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                    "id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 787,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 167,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 954
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -5131,150 +5163,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1045,
-            "output_tokens": 23,
-            "total_tokens": 1068,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b936c0fc87d0b439836b6c76b115",
-          "provider_request_id": "req_b01fba4d27f9419dbe4866657bce1347",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b936c0fc87d0b439836b6c76b115",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"check\",\"key\":\"all\",\"value\":null}",
-                "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
-                "id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1045,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 0
-              },
-              "output_tokens": 23,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b936c0fc87d0b439836b6c76b115",
+              "provider_request_id": "req_b01fba4d27f9419dbe4866657bce1347",
+              "usage": {
+                "input_tokens": 1045,
+                "output_tokens": 23,
+                "total_tokens": 1068,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1068
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b936c0fc87d0b439836b6c76b115",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"check\",\"key\":\"all\",\"value\":null}",
+                    "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                    "id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1045,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 23,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1068
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -6069,157 +6105,161 @@
               "text": "Done"
             }
           ],
-          "usage": {
-            "input_tokens": 1089,
-            "output_tokens": 3,
-            "total_tokens": 1092,
-            "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7",
-          "response_id": "resp_047afa2a97ee8a44006ab2b937cf1887d08f0ae93b72d0ed9b",
-          "provider_request_id": "req_5d243811d8564217843987bd18910fdf",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b937cf1887d08f0ae93b72d0ed9b",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "Done",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1089,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1024
-              },
-              "output_tokens": 3,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b937cf1887d08f0ae93b72d0ed9b",
+              "provider_request_id": "req_5d243811d8564217843987bd18910fdf",
+              "usage": {
+                "input_tokens": 1089,
+                "output_tokens": 3,
+                "total_tokens": 1092,
+                "cached_input_tokens": 1024,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1092
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b937cf1887d08f0ae93b72d0ed9b",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "Done",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1089,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1024
+                  },
+                  "output_tokens": 3,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1092
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -7019,150 +7059,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1164,
-            "output_tokens": 24,
-            "total_tokens": 1188,
-            "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b938e39c87d096ea471dcd1f9d19",
-          "provider_request_id": "req_5278a26336b74bafb1d4fd96b5d67609",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b938e39c87d096ea471dcd1f9d19",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"revise\",\"key\":\"all\",\"value\":null}",
-                "call_id": "call_BVjFuMQjEY518LxiDc03QcMj",
-                "id": "fc_047afa2a97ee8a44006ab2b9396f2887d090dd814cece9923a",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1164,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1024
-              },
-              "output_tokens": 24,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b938e39c87d096ea471dcd1f9d19",
+              "provider_request_id": "req_5278a26336b74bafb1d4fd96b5d67609",
+              "usage": {
+                "input_tokens": 1164,
+                "output_tokens": 24,
+                "total_tokens": 1188,
+                "cached_input_tokens": 1024,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1188
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b938e39c87d096ea471dcd1f9d19",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"revise\",\"key\":\"all\",\"value\":null}",
+                    "call_id": "call_BVjFuMQjEY518LxiDc03QcMj",
+                    "id": "fc_047afa2a97ee8a44006ab2b9396f2887d090dd814cece9923a",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1164,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1024
+                  },
+                  "output_tokens": 24,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1188
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -8133,190 +8177,194 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1238,
-            "output_tokens": 167,
-            "total_tokens": 1405,
-            "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b939fd5c87d08636413fae82b192",
-          "provider_request_id": "req_1cd3b99ae7ff4ec19bc3053e8a425717",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b939fd5c87d08636413fae82b192",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/1\",\"value\":null}",
-                "call_id": "call_DmadsjJFC8Qb6B3SX2GtLInb",
-                "id": "fc_047afa2a97ee8a44006ab2b93c451c87d0a5d2d2167344e396",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/2\",\"value\":null}",
-                "call_id": "call_fSPZXOFTgM2lJvVqc3HlzKA9",
-                "id": "fc_047afa2a97ee8a44006ab2b93c452c87d0a9292e097e7ca551",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/3\",\"value\":null}",
-                "call_id": "call_AI6qjUqjdorVAOkYS5gpovCg",
-                "id": "fc_047afa2a97ee8a44006ab2b93c453c87d0a765fda8d0ae74a0",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/4\",\"value\":null}",
-                "call_id": "call_APQjssBlvXVFugBYFNosHOGZ",
-                "id": "fc_047afa2a97ee8a44006ab2b93c454887d0b6f6aad197eac55c",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/5\",\"value\":null}",
-                "call_id": "call_jlxHj89QeSZhfLLqQFseD2kP",
-                "id": "fc_047afa2a97ee8a44006ab2b93c455487d0af7cac3741314280",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"read\",\"key\":\"depot/6\",\"value\":null}",
-                "call_id": "call_wrwzGiMzXFKtSUIcZOPG2sIx",
-                "id": "fc_047afa2a97ee8a44006ab2b93c455c87d0a68d55cb9c7d1a8e",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1238,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1024
-              },
-              "output_tokens": 167,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b939fd5c87d08636413fae82b192",
+              "provider_request_id": "req_1cd3b99ae7ff4ec19bc3053e8a425717",
+              "usage": {
+                "input_tokens": 1238,
+                "output_tokens": 167,
+                "total_tokens": 1405,
+                "cached_input_tokens": 1024,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1405
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b939fd5c87d08636413fae82b192",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/1\",\"value\":null}",
+                    "call_id": "call_DmadsjJFC8Qb6B3SX2GtLInb",
+                    "id": "fc_047afa2a97ee8a44006ab2b93c451c87d0a5d2d2167344e396",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/2\",\"value\":null}",
+                    "call_id": "call_fSPZXOFTgM2lJvVqc3HlzKA9",
+                    "id": "fc_047afa2a97ee8a44006ab2b93c452c87d0a9292e097e7ca551",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/3\",\"value\":null}",
+                    "call_id": "call_AI6qjUqjdorVAOkYS5gpovCg",
+                    "id": "fc_047afa2a97ee8a44006ab2b93c453c87d0a765fda8d0ae74a0",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/4\",\"value\":null}",
+                    "call_id": "call_APQjssBlvXVFugBYFNosHOGZ",
+                    "id": "fc_047afa2a97ee8a44006ab2b93c454887d0b6f6aad197eac55c",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/5\",\"value\":null}",
+                    "call_id": "call_jlxHj89QeSZhfLLqQFseD2kP",
+                    "id": "fc_047afa2a97ee8a44006ab2b93c455487d0af7cac3741314280",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"read\",\"key\":\"depot/6\",\"value\":null}",
+                    "call_id": "call_wrwzGiMzXFKtSUIcZOPG2sIx",
+                    "id": "fc_047afa2a97ee8a44006ab2b93c455c87d0a68d55cb9c7d1a8e",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1238,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1024
+                  },
+                  "output_tokens": 167,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1405
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -9714,190 +9762,194 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1610,
-            "output_tokens": 167,
-            "total_tokens": 1777,
-            "cached_input_tokens": 1152,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b93cd48087d08cfba6b3ba1da8ff",
-          "provider_request_id": "req_c1ec8e55d4ed4eda802385e7d2265fe7",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b93cd48087d08cfba6b3ba1da8ff",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/1\",\"value\":6}",
-                "call_id": "call_36rNOhyVfdXuus2W2K984boJ",
-                "id": "fc_047afa2a97ee8a44006ab2b93eb5f487d0b6064c724e509b27",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/2\",\"value\":17}",
-                "call_id": "call_CyYl7pp7nZ1SIpj9sMsXPRwO",
-                "id": "fc_047afa2a97ee8a44006ab2b93eb60887d0aa05a85b01d5f8a9",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/3\",\"value\":28}",
-                "call_id": "call_1u2L2tcoKjjtWiQf3RZTONnZ",
-                "id": "fc_047afa2a97ee8a44006ab2b93eb61487d08b62e89485107000",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/4\",\"value\":39}",
-                "call_id": "call_ssszpYvMEteDlspjdzn3WqFZ",
-                "id": "fc_047afa2a97ee8a44006ab2b93eb61c87d0a8bb0375cbc261af",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/5\",\"value\":50}",
-                "call_id": "call_lSzeZhsffLA0XPldr4c5aPNg",
-                "id": "fc_047afa2a97ee8a44006ab2b93eb62487d0bca471b13bbf0819",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "arguments": "{\"action\":\"apply\",\"key\":\"depot/6\",\"value\":61}",
-                "call_id": "call_lhaYL68vd9PzeHqjjEkYbRtb",
-                "id": "fc_047afa2a97ee8a44006ab2b93eb62c87d0a3a19672f7ae65b8",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1610,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1152
-              },
-              "output_tokens": 167,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b93cd48087d08cfba6b3ba1da8ff",
+              "provider_request_id": "req_c1ec8e55d4ed4eda802385e7d2265fe7",
+              "usage": {
+                "input_tokens": 1610,
+                "output_tokens": 167,
+                "total_tokens": 1777,
+                "cached_input_tokens": 1152,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1777
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b93cd48087d08cfba6b3ba1da8ff",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/1\",\"value\":6}",
+                    "call_id": "call_36rNOhyVfdXuus2W2K984boJ",
+                    "id": "fc_047afa2a97ee8a44006ab2b93eb5f487d0b6064c724e509b27",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/2\",\"value\":17}",
+                    "call_id": "call_CyYl7pp7nZ1SIpj9sMsXPRwO",
+                    "id": "fc_047afa2a97ee8a44006ab2b93eb60887d0aa05a85b01d5f8a9",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/3\",\"value\":28}",
+                    "call_id": "call_1u2L2tcoKjjtWiQf3RZTONnZ",
+                    "id": "fc_047afa2a97ee8a44006ab2b93eb61487d08b62e89485107000",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/4\",\"value\":39}",
+                    "call_id": "call_ssszpYvMEteDlspjdzn3WqFZ",
+                    "id": "fc_047afa2a97ee8a44006ab2b93eb61c87d0a8bb0375cbc261af",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/5\",\"value\":50}",
+                    "call_id": "call_lSzeZhsffLA0XPldr4c5aPNg",
+                    "id": "fc_047afa2a97ee8a44006ab2b93eb62487d0bca471b13bbf0819",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  {
+                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/6\",\"value\":61}",
+                    "call_id": "call_lhaYL68vd9PzeHqjjEkYbRtb",
+                    "id": "fc_047afa2a97ee8a44006ab2b93eb62c87d0a3a19672f7ae65b8",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1610,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1152
+                  },
+                  "output_tokens": 167,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1777
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -11432,150 +11484,154 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1868,
-            "output_tokens": 23,
-            "total_tokens": 1891,
-            "cached_input_tokens": 1536,
-            "reasoning_tokens": 0
-          },
-          "response_id": "resp_047afa2a97ee8a44006ab2b93f2c9887d0977d72d71b5bcc05",
-          "provider_request_id": "req_744e50f7bf5b444686ae3a97867bc673",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b93f2c9887d0977d72d71b5bcc05",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"action\":\"check\",\"key\":\"all\",\"value\":null}",
-                "call_id": "call_2U4L3FrLa7PtNwFS3IN1Zv2j",
-                "id": "fc_047afa2a97ee8a44006ab2b93fff5487d0b7cb8a7946ebf56b",
-                "name": "task_operation",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1868,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1536
-              },
-              "output_tokens": 23,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b93f2c9887d0977d72d71b5bcc05",
+              "provider_request_id": "req_744e50f7bf5b444686ae3a97867bc673",
+              "usage": {
+                "input_tokens": 1868,
+                "output_tokens": 23,
+                "total_tokens": 1891,
+                "cached_input_tokens": 1536,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1891
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b93f2c9887d0977d72d71b5bcc05",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"action\":\"check\",\"key\":\"all\",\"value\":null}",
+                    "call_id": "call_2U4L3FrLa7PtNwFS3IN1Zv2j",
+                    "id": "fc_047afa2a97ee8a44006ab2b93fff5487d0b7cb8a7946ebf56b",
+                    "name": "task_operation",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1868,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1536
+                  },
+                  "output_tokens": 23,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1891
+                },
+                "user": null
+              }
+            }
           }
         }
       },
@@ -13007,157 +13063,161 @@
               "text": "Done"
             }
           ],
-          "usage": {
-            "input_tokens": 1912,
-            "output_tokens": 3,
-            "total_tokens": 1915,
-            "cached_input_tokens": 1792,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_047afa2a97ee8a44006ab2b941188c87d08807eb292c4c95a9",
-          "response_id": "resp_047afa2a97ee8a44006ab2b940a94087d097797170650424db",
-          "provider_request_id": "req_f3a6806a6a7b47b29fe74b0403666784",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "background": false,
-            "billing": {
-              "payer": "developer"
-            },
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "resp_047afa2a97ee8a44006ab2b940a94087d097797170650424db",
-            "incomplete_details": null,
-            "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-            "max_output_tokens": 2048,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "gpt-4.1-mini-2025-04-14",
-            "moderation": null,
-            "object": "response",
-            "output": [
-              {
-                "content": [
-                  {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "Done",
-                    "type": "output_text"
-                  }
-                ],
-                "id": "msg_047afa2a97ee8a44006ab2b941188c87d08807eb292c4c95a9",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": true,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": "rig-native-long-tasks",
-            "prompt_cache_retention": "in_memory",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.0,
-            "text": {
-              "format": {
-                "type": "text"
-              },
-              "verbosity": "medium"
-            },
-            "tool_choice": "auto",
-            "tool_usage": {
-              "image_gen": {
-                "input_tokens": 0,
-                "input_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "output_tokens": 0,
-                "output_tokens_details": {
-                  "image_tokens": 0,
-                  "text_tokens": 0
-                },
-                "total_tokens": 0
-              },
-              "web_search": {
-                "num_requests": 0
-              }
-            },
-            "tools": [
-              {
-                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                "name": "task_operation",
-                "output_schema": null,
-                "parameters": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "action": {
-                      "enum": [
-                        "read",
-                        "apply",
-                        "check",
-                        "revise"
-                      ],
-                      "type": "string"
-                    },
-                    "key": {
-                      "enum": [
-                        "index",
-                        "all",
-                        "depot/1",
-                        "depot/2",
-                        "depot/3",
-                        "depot/4",
-                        "depot/5",
-                        "depot/6"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key",
-                    "value"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              }
-            ],
-            "top_logprobs": 0,
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "usage": {
-              "input_tokens": 1912,
-              "input_tokens_details": {
-                "cache_write_tokens": 0,
-                "cached_tokens": 1792
-              },
-              "output_tokens": 3,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_047afa2a97ee8a44006ab2b941188c87d08807eb292c4c95a9",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4.1-mini-2025-04-14",
+              "response_id": "resp_047afa2a97ee8a44006ab2b940a94087d097797170650424db",
+              "provider_request_id": "req_f3a6806a6a7b47b29fe74b0403666784",
+              "usage": {
+                "input_tokens": 1912,
+                "output_tokens": 3,
+                "total_tokens": 1915,
+                "cached_input_tokens": 1792,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 1915
-            },
-            "user": null
+              "raw": {
+                "background": false,
+                "billing": {
+                  "payer": "developer"
+                },
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "resp_047afa2a97ee8a44006ab2b940a94087d097797170650424db",
+                "incomplete_details": null,
+                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+                "max_output_tokens": 2048,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "gpt-4.1-mini-2025-04-14",
+                "moderation": null,
+                "object": "response",
+                "output": [
+                  {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "Done",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_047afa2a97ee8a44006ab2b941188c87d08807eb292c4c95a9",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": "rig-native-long-tasks",
+                "prompt_cache_retention": "in_memory",
+                "reasoning": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.0,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  },
+                  "verbosity": "medium"
+                },
+                "tool_choice": "auto",
+                "tool_usage": {
+                  "image_gen": {
+                    "input_tokens": 0,
+                    "input_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "output_tokens": 0,
+                    "output_tokens_details": {
+                      "image_tokens": 0,
+                      "text_tokens": 0
+                    },
+                    "total_tokens": 0
+                  },
+                  "web_search": {
+                    "num_requests": 0
+                  }
+                },
+                "tools": [
+                  {
+                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                    "name": "task_operation",
+                    "output_schema": null,
+                    "parameters": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "enum": [
+                            "read",
+                            "apply",
+                            "check",
+                            "revise"
+                          ],
+                          "type": "string"
+                        },
+                        "key": {
+                          "enum": [
+                            "index",
+                            "all",
+                            "depot/1",
+                            "depot/2",
+                            "depot/3",
+                            "depot/4",
+                            "depot/5",
+                            "depot/6"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 1.0,
+                "truncation": "disabled",
+                "usage": {
+                  "input_tokens": 1912,
+                  "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 1792
+                  },
+                  "output_tokens": 3,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 1915
+                },
+                "user": null
+              }
+            }
           }
         }
       },

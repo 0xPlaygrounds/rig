@@ -89,7 +89,7 @@ async fn raw_is_the_verbatim_response_body() {
     // provider sent is reachable and holds the recorded value. The generated
     // id goes through the token helper because a recording pass mints a live
     // one while replay serves the scrubbed fixture back.
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_matches_recorded_token(
         raw["id"].as_str(),
         body["id"].as_str(),
@@ -103,10 +103,13 @@ async fn raw_is_the_verbatim_response_body() {
         .expect("raw is the shared OpenAI chat-completions reply Groq sends");
     assert_matches_recorded_token(
         Some(typed.id.as_str()),
-        response.response_id.as_deref(),
+        response.end.meta.response_id.as_deref(),
         "typed response id",
     );
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
     // `x_groq` is Groq's own envelope and no shared type models it — which is
     // exactly why `raw` being the document rather than the parse is the
     // difference between a caller reaching it and losing it.
@@ -154,7 +157,7 @@ async fn raw_exposes_queue_time() {
         .as_str()
         .expect("Groq reports a system_fingerprint");
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(raw["usage"]["queue_time"], json!(recorded_queue_time));
     assert_eq!(raw["usage"]["prompt_time"], json!(recorded_prompt_time));
     assert_matches_recorded_token(
@@ -170,7 +173,7 @@ async fn raw_exposes_queue_time() {
     assert_eq!(usage.prompt_time, Some(recorded_prompt_time));
 
     // And the normalized view has no slot for any of them.
-    let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
+    let normalized_usage = serde_json::to_value(response.end.meta.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("queue_time").is_none()
             && normalized_usage.get("prompt_time").is_none(),
@@ -206,7 +209,7 @@ async fn normalized_fields_match_raw_renormalized() {
     chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
     // Groq contracts `x-request-id`; the recorded header is the premise.
     assert_contracted_request_id(
-        response.provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         recorded_request_id(SCENARIO).as_deref(),
         REQUEST_ID_HEADER,
     );
@@ -214,7 +217,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // One seam, two views: the normalized fields hold against the response's
     // own `raw` exactly as they hold against the fixture bytes, because `raw`
     // *is* those bytes. Capture adds a view; it never changes the mapping.
-    let raw = response.raw.clone();
+    let raw = response.end.meta.raw.clone();
     chat::assert_reproduces_body(&response, PROVIDER, &raw, "the response's own raw");
 
     // The provider-native view of the same reply, through the typed escape

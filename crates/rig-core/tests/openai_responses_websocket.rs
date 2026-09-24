@@ -28,7 +28,7 @@ use websocket_script::{Script, session, session_with_timeout, test_client};
 /// The provider's own terminal response object, read back off `raw`: the
 /// session's `completion` folds it, and the document survives verbatim.
 fn raw_response(response: rig_core::completion::CompletionResponse) -> CompletionResponse {
-    serde_json::from_value(response.raw).expect("`raw` is the Responses document")
+    serde_json::from_value(response.end.meta.raw).expect("`raw` is the Responses document")
 }
 
 fn sample_response(status: ResponseStatus) -> CompletionResponse {
@@ -130,10 +130,13 @@ async fn incomplete_turn_keeps_streamed_partial_output() {
     assert_response_create(&script.sent()[0]);
     // The streamed partial text survives, and normalization maps the incomplete
     // status to the same finish reason as the unary path.
-    assert_eq!(normalized.finish_reason.clone(), Some(FinishReason::Length));
-    assert_eq!(normalized.usage.input_tokens, Some(1));
-    assert_eq!(normalized.usage.output_tokens, Some(2));
-    assert_eq!(normalized.usage.total_tokens, Some(3));
+    assert_eq!(
+        normalized.end.finish_reason.clone(),
+        Some(FinishReason::Length)
+    );
+    assert_eq!(normalized.end.meta.usage.input_tokens, Some(1));
+    assert_eq!(normalized.end.meta.usage.output_tokens, Some(2));
+    assert_eq!(normalized.end.meta.usage.total_tokens, Some(3));
     assert!(matches!(
         normalized.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "partial"
@@ -215,7 +218,7 @@ async fn completed_turn_without_deltas_falls_back_to_terminal_body() {
         normalized.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "hello there"
     ));
-    assert_eq!(normalized.message_id.as_deref(), Some("msg_terminal_1"));
+    assert_eq!(normalized.end.message_id.as_deref(), Some("msg_terminal_1"));
 }
 
 #[tokio::test]
@@ -246,8 +249,14 @@ async fn incomplete_turn_without_deltas_normalizes_terminal_body_output() {
         normalized.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "partial from body"
     ));
-    assert_eq!(normalized.finish_reason.clone(), Some(FinishReason::Length));
-    assert_eq!(normalized.message_id.as_deref(), Some("msg_body_only_1"));
+    assert_eq!(
+        normalized.end.finish_reason.clone(),
+        Some(FinishReason::Length)
+    );
+    assert_eq!(
+        normalized.end.message_id.as_deref(),
+        Some("msg_body_only_1")
+    );
 }
 
 #[tokio::test]
@@ -726,14 +735,14 @@ async fn websocket_conformance_replays_sse_fixture_frames() {
         .collect();
     assert_eq!(tool_names, vec![fixture.expected_tool_name]);
     assert_eq!(
-        normalized.usage.total_tokens,
+        normalized.end.meta.usage.total_tokens,
         Some(fixture.expected_usage_total)
     );
     // The fixture's expected finish reason applies to its text-only sequences;
     // this combined replay carries a tool call, which the shared normalization
     // maps to `ToolCalls` on every transport.
     assert_eq!(
-        normalized.finish_reason.clone(),
+        normalized.end.finish_reason.clone(),
         Some(FinishReason::ToolCalls)
     );
 }

@@ -59,7 +59,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
                 .await
                 .expect("completions api request should succeed");
             let reply: openai::completion::CompletionResponse =
-                serde_json::from_value(response.raw.clone())
+                serde_json::from_value(response.end.meta.raw.clone())
                     .expect("`raw` is the serialized openai::completion::CompletionResponse");
             let raw_text = reply
                 .choices

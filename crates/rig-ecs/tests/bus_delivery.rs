@@ -8,10 +8,10 @@ use rig_cassette::ecs::EffectLogResource;
 use rig_cassette::ecs::Replay;
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::{
+    completion::CompletionEnd,
     completion::{ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     serve::{Dispatch, Reply, Serve},
-    streaming::StreamFinal,
 };
 use rig_ecs::bus::{
     BusSet, EffectOutcome, Handlers, InFlight, PendingEffect, RigSchedule, Streamed,
@@ -562,11 +562,14 @@ impl Serve for BatchedStream {
                         drop(writer);
                     } else {
                         writer
-                            .finish(StreamFinal::new(
-                                "batched",
-                                Usage::default(),
-                                serde_json::json!({}),
-                            ))
+                            .finish(CompletionEnd::new(rig_core::response::ResponseMeta {
+                                usage: Usage::default(),
+                                raw: serde_json::json!({}),
+                                ..rig_core::response::ResponseMeta::new(
+                                    rig_core::id::ProviderName::new("batched")
+                                        .expect("a provider name"),
+                                )
+                            }))
                             .await
                             .unwrap();
                     }
@@ -1276,10 +1279,14 @@ impl Serve for TerminalErrors {
     }
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let error = rig_core::error::ErrorReport::new(self.error_kind, "original error");
-        let terminal = rig_core::streaming::StreamEvent::Final(StreamFinal::new(
-            "test",
-            Usage::default(),
-            serde_json::json!({}),
+        let terminal = rig_core::streaming::StreamEvent::Final(CompletionEnd::new(
+            rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("test").expect("a provider name"),
+                )
+            },
         ));
         let first = if self.error_first {
             vec![Err(error), Ok(terminal)]
@@ -1781,7 +1788,13 @@ fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
                 entered.send(()).unwrap();
                 release.recv_timeout(bus_support::GUARD).unwrap();
                 std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Final(
-                    StreamFinal::new("mock", Usage::default(), serde_json::json!({})),
+                    CompletionEnd::new(rig_core::response::ResponseMeta {
+                        usage: Usage::default(),
+                        raw: serde_json::json!({}),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                        )
+                    }),
                 ))))
             })))
         }

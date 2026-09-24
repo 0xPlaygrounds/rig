@@ -15,11 +15,11 @@ use std::{
 use futures::{StreamExt, channel::oneshot};
 
 use crate::{
-    completion::CompletionResponse,
+    completion::{CompletionEnd, CompletionResponse},
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
     id::MessageId,
-    streaming::{BlockAccumulator, StreamEvent, StreamEvents, StreamFinal},
+    streaming::{BlockAccumulator, StreamEvent, StreamEvents},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -209,15 +209,12 @@ pub trait Observe: Send + Sync {
 fn finish_unary(
     accumulator: &mut BlockAccumulator,
     message_id: Option<MessageId>,
-    terminal: &StreamFinal,
+    terminal: &CompletionEnd,
 ) -> Result<Outcome, ErrorReport> {
     Ok(Outcome::Completion(crate::streaming::fold_finish(
         std::mem::replace(accumulator, BlockAccumulator::new()),
-        Some(terminal),
+        terminal.clone(),
         message_id,
-        terminal.provider.clone(),
-        terminal.issuer(),
-        terminal.raw.clone(),
     )))
 }
 
@@ -232,8 +229,8 @@ pub(crate) fn events_from_response(
         streaming::{BlockId, MintKind, ToolCallEnd},
     };
 
-    let mut out = AdapterOutput::new();
-    if let Some(message_id) = &response.message_id {
+    let mut out = AdapterOutput::relay();
+    if let Some(message_id) = &response.end.message_id {
         out.message_id(message_id.clone());
     }
     for (index, content) in response.choice.iter().enumerate() {
@@ -283,17 +280,7 @@ pub(crate) fn events_from_response(
             }
         }
     }
-    let mut terminal = StreamFinal::new(
-        response.provider.clone(),
-        response.usage,
-        response.raw.clone(),
-    );
-    terminal.finish_reason = response.finish_reason.clone();
-    terminal.message_id = response.message_id.clone();
-    terminal.response_id = response.response_id.clone();
-    terminal.provider_request_id = response.provider_request_id.clone();
-    terminal.model = response.model.clone();
-    out.final_record(terminal);
+    out.push(Ok(StreamEvent::Final(response.end.clone())));
     // An item that failed to re-emit (an image that did not serialize) is
     // delivered as the error it is, not dropped.
     out.drain()

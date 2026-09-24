@@ -119,62 +119,66 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 56,
-            "output_tokens": 10,
-            "total_tokens": 66,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "response_id": "chatcmpl-ERDAxzsOeWzIbCWCv8CSaa7lukL2O",
-          "provider_request_id": "req_7797ec5a043b4e0588b5b6c865e9cb37",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping"
-                      },
-                      "id": "call_Zl9z7RjeBvqOunGKxMqtBXml",
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-mini-2024-07-18",
+              "response_id": "chatcmpl-ERDAxzsOeWzIbCWCv8CSaa7lukL2O",
+              "provider_request_id": "req_7797ec5a043b4e0588b5b6c865e9cb37",
+              "usage": {
+                "input_tokens": 56,
+                "output_tokens": 10,
+                "total_tokens": 66,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "annotations": [],
+                      "content": null,
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{}",
+                            "name": "ping"
+                          },
+                          "id": "call_Zl9z7RjeBvqOunGKxMqtBXml",
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDAxzsOeWzIbCWCv8CSaa7lukL2O",
+                "model": "gpt-4o-mini-2024-07-18",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": "fp_9262d56da7",
+                "usage": {
+                  "completion_tokens": 10,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 56,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 66
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDAxzsOeWzIbCWCv8CSaa7lukL2O",
-            "model": "gpt-4o-mini-2024-07-18",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": "fp_9262d56da7",
-            "usage": {
-              "completion_tokens": 10,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 0,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 56,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 66
             }
           }
         }

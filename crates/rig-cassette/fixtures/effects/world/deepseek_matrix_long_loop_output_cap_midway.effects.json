@@ -258,53 +258,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 722,
-            "output_tokens": 29,
-            "total_tokens": 751,
-            "cached_input_tokens": 512
-          },
-          "response_id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_RVBqFIY9SoOm1eV4apwe8568",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
+              "usage": {
+                "input_tokens": 722,
+                "output_tokens": 29,
+                "total_tokens": 751,
+                "cached_input_tokens": 512
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "I'll start by listing the repository files.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{}",
+                            "name": "list_files"
+                          },
+                          "id": "call_00_RVBqFIY9SoOm1eV4apwe8568",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 29,
+                  "prompt_cache_hit_tokens": 512,
+                  "prompt_cache_miss_tokens": 210,
+                  "prompt_tokens": 722,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 512
+                  },
+                  "total_tokens": 751
                 }
               }
-            ],
-            "created": 0,
-            "id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 29,
-              "prompt_cache_hit_tokens": 512,
-              "prompt_cache_miss_tokens": 210,
-              "prompt_tokens": 722,
-              "prompt_tokens_details": {
-                "cached_tokens": 512
-              },
-              "total_tokens": 751
             }
           }
         }
@@ -493,53 +497,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 784,
-            "output_tokens": 32,
-            "total_tokens": 816,
-            "cached_input_tokens": 640
-          },
-          "response_id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
-          "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "length",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_psT9fOiGzEemGVRKWcCp1002",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
+              "usage": {
+                "input_tokens": 784,
+                "output_tokens": 32,
+                "total_tokens": 816,
+                "cached_input_tokens": 640
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"path\": \"README.md\"}",
+                            "name": "read_file"
+                          },
+                          "id": "call_00_psT9fOiGzEemGVRKWcCp1002",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 32,
+                  "prompt_cache_hit_tokens": 640,
+                  "prompt_cache_miss_tokens": 144,
+                  "prompt_tokens": 784,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 640
+                  },
+                  "total_tokens": 816
                 }
               }
-            ],
-            "created": 0,
-            "id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 32,
-              "prompt_cache_hit_tokens": 640,
-              "prompt_cache_miss_tokens": 144,
-              "prompt_tokens": 784,
-              "prompt_tokens_details": {
-                "cached_tokens": 640
-              },
-              "total_tokens": 816
             }
           }
         }
@@ -754,53 +762,57 @@
         "Ok": {
           "outcome": "completion",
           "choice": [],
-          "usage": {
-            "input_tokens": 900,
-            "output_tokens": 32,
-            "total_tokens": 932,
-            "cached_input_tokens": 766
-          },
-          "response_id": "c684ae8f-0189-4276-b54a-7f9079844db4",
-          "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "length",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_uwBLoiio4ljs7eXSUF3Z5804",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "c684ae8f-0189-4276-b54a-7f9079844db4",
+              "usage": {
+                "input_tokens": 900,
+                "output_tokens": 32,
+                "total_tokens": 932,
+                "cached_input_tokens": 766
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"path\": \"tests/basic.rs\"",
+                            "name": "read_file"
+                          },
+                          "id": "call_00_uwBLoiio4ljs7eXSUF3Z5804",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "c684ae8f-0189-4276-b54a-7f9079844db4",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 32,
+                  "prompt_cache_hit_tokens": 766,
+                  "prompt_cache_miss_tokens": 134,
+                  "prompt_tokens": 900,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 766
+                  },
+                  "total_tokens": 932
                 }
               }
-            ],
-            "created": 0,
-            "id": "c684ae8f-0189-4276-b54a-7f9079844db4",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 32,
-              "prompt_cache_hit_tokens": 766,
-              "prompt_cache_miss_tokens": 134,
-              "prompt_tokens": 900,
-              "prompt_tokens_details": {
-                "cached_tokens": 766
-              },
-              "total_tokens": 932
             }
           }
         }

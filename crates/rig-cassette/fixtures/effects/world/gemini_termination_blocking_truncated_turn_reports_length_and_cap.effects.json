@@ -81,43 +81,47 @@
               "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
             }
           ],
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 24,
-            "total_tokens": 52
-          },
-          "response_id": "p3izapCdNe3Uz7IP-NrwwQw",
-          "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "p3izapCdNe3Uz7IP-NrwwQw",
+              "usage": {
+                "input_tokens": 28,
+                "output_tokens": 24,
+                "total_tokens": 52
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "MAX_TOKENS",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "p3izapCdNe3Uz7IP-NrwwQw",
+                "usageMetadata": {
+                  "candidatesTokenCount": 24,
+                  "promptTokenCount": 28,
+                  "promptTokensDetails": [
                     {
-                      "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+                      "modality": "TEXT",
+                      "tokenCount": 28
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "MAX_TOKENS",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "p3izapCdNe3Uz7IP-NrwwQw",
-            "usageMetadata": {
-              "candidatesTokenCount": 24,
-              "promptTokenCount": 28,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 28
+                  "serviceTier": "standard",
+                  "totalTokenCount": 52
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 52
+              }
             }
           }
         }

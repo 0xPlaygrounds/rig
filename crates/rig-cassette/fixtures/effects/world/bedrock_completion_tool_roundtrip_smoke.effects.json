@@ -200,44 +200,48 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 514,
-            "output_tokens": 70,
-            "total_tokens": 584
-          },
-          "finish_reason": "tool_calls",
-          "provider": "aws_bedrock",
-          "raw": {
-            "output": {
-              "Message": {
-                "role": "Assistant",
-                "content": [
-                  {
-                    "Text": "<thinking>The User wants to perform a subtraction operation. The tool to use is 'subtract'. The 'x' parameter will be 2 and 'y' will be 5. I will call this tool to get the result.</thinking>\n"
-                  },
-                  {
-                    "ToolUse": {
-                      "tool_use_id": "tooluse_REDACTED_1",
-                      "name": "subtract",
-                      "input": {
-                        "x": 2,
-                        "y": 5
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "aws_bedrock",
+              "usage": {
+                "input_tokens": 514,
+                "output_tokens": 70,
+                "total_tokens": 584
+              },
+              "raw": {
+                "output": {
+                  "Message": {
+                    "role": "Assistant",
+                    "content": [
+                      {
+                        "Text": "<thinking>The User wants to perform a subtraction operation. The tool to use is 'subtract'. The 'x' parameter will be 2 and 'y' will be 5. I will call this tool to get the result.</thinking>\n"
+                      },
+                      {
+                        "ToolUse": {
+                          "tool_use_id": "tooluse_REDACTED_1",
+                          "name": "subtract",
+                          "input": {
+                            "x": 2,
+                            "y": 5
+                          }
+                        }
                       }
-                    }
+                    ]
                   }
-                ]
+                },
+                "stop_reason": "ToolUse",
+                "usage": {
+                  "input_tokens": 514,
+                  "output_tokens": 70,
+                  "total_tokens": 584
+                },
+                "metrics": {
+                  "latency_ms": 712
+                },
+                "additional_model_response_fields": null
               }
-            },
-            "stop_reason": "ToolUse",
-            "usage": {
-              "input_tokens": 514,
-              "output_tokens": 70,
-              "total_tokens": 584
-            },
-            "metrics": {
-              "latency_ms": 712
-            },
-            "additional_model_response_fields": null
+            }
           }
         }
       },
@@ -395,34 +399,38 @@
               "text": "<thinking>The tool 'subtract' has returned a result of -3. This is the result of the subtraction operation 2 - 5.</thinking>\n\nThe result of 2 - 5 is -3."
             }
           ],
-          "usage": {
-            "input_tokens": 614,
-            "output_tokens": 45,
-            "total_tokens": 659
-          },
-          "finish_reason": "stop",
-          "provider": "aws_bedrock",
-          "raw": {
-            "output": {
-              "Message": {
-                "role": "Assistant",
-                "content": [
-                  {
-                    "Text": "<thinking>The tool 'subtract' has returned a result of -3. This is the result of the subtraction operation 2 - 5.</thinking>\n\nThe result of 2 - 5 is -3."
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "aws_bedrock",
+              "usage": {
+                "input_tokens": 614,
+                "output_tokens": 45,
+                "total_tokens": 659
+              },
+              "raw": {
+                "output": {
+                  "Message": {
+                    "role": "Assistant",
+                    "content": [
+                      {
+                        "Text": "<thinking>The tool 'subtract' has returned a result of -3. This is the result of the subtraction operation 2 - 5.</thinking>\n\nThe result of 2 - 5 is -3."
+                      }
+                    ]
                   }
-                ]
+                },
+                "stop_reason": "EndTurn",
+                "usage": {
+                  "input_tokens": 614,
+                  "output_tokens": 45,
+                  "total_tokens": 659
+                },
+                "metrics": {
+                  "latency_ms": 501
+                },
+                "additional_model_response_fields": null
               }
-            },
-            "stop_reason": "EndTurn",
-            "usage": {
-              "input_tokens": 614,
-              "output_tokens": 45,
-              "total_tokens": 659
-            },
-            "metrics": {
-              "latency_ms": 501
-            },
-            "additional_model_response_fields": null
+            }
           }
         }
       },

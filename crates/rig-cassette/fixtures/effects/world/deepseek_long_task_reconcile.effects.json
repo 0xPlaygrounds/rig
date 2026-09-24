@@ -513,53 +513,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 538,
-            "output_tokens": 82,
-            "total_tokens": 620,
-            "cached_input_tokens": 384
-          },
-          "response_id": "a6981591-7b54-4503-b21b-5fdd58535cc7",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "I'll start by reading the index to understand the task structure.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_ERFlyqFRrSSwFN8KIwVa2847",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "a6981591-7b54-4503-b21b-5fdd58535cc7",
+              "usage": {
+                "input_tokens": 538,
+                "output_tokens": 82,
+                "total_tokens": 620,
+                "cached_input_tokens": 384
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "I'll start by reading the index to understand the task structure.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_ERFlyqFRrSSwFN8KIwVa2847",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "a6981591-7b54-4503-b21b-5fdd58535cc7",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 82,
+                  "prompt_cache_hit_tokens": 384,
+                  "prompt_cache_miss_tokens": 154,
+                  "prompt_tokens": 538,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 384
+                  },
+                  "total_tokens": 620
                 }
               }
-            ],
-            "created": 0,
-            "id": "a6981591-7b54-4503-b21b-5fdd58535cc7",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 82,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 154,
-              "prompt_tokens": 538,
-              "prompt_tokens_details": {
-                "cached_tokens": 384
-              },
-              "total_tokens": 620
             }
           }
         }
@@ -754,53 +758,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 667,
-            "output_tokens": 83,
-            "total_tokens": 750,
-            "cached_input_tokens": 512
-          },
-          "response_id": "51e303f6-cf8e-4196-98dd-a3f5a40b2683",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Now I'll read each page separately, one per turn.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"page/1\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_tN9XFp1VYhp9t3Qdh2Jt3761",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "51e303f6-cf8e-4196-98dd-a3f5a40b2683",
+              "usage": {
+                "input_tokens": 667,
+                "output_tokens": 83,
+                "total_tokens": 750,
+                "cached_input_tokens": 512
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Now I'll read each page separately, one per turn.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"page/1\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_tN9XFp1VYhp9t3Qdh2Jt3761",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "51e303f6-cf8e-4196-98dd-a3f5a40b2683",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 83,
+                  "prompt_cache_hit_tokens": 512,
+                  "prompt_cache_miss_tokens": 155,
+                  "prompt_tokens": 667,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 512
+                  },
+                  "total_tokens": 750
                 }
               }
-            ],
-            "created": 0,
-            "id": "51e303f6-cf8e-4196-98dd-a3f5a40b2683",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 83,
-              "prompt_cache_hit_tokens": 512,
-              "prompt_cache_miss_tokens": 155,
-              "prompt_tokens": 667,
-              "prompt_tokens_details": {
-                "cached_tokens": 512
-              },
-              "total_tokens": 750
             }
           }
         }
@@ -1288,53 +1296,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1165,
-            "output_tokens": 88,
-            "total_tokens": 1253,
-            "cached_input_tokens": 1024
-          },
-          "response_id": "e34849e6-bfa3-4a41-b168-0fb341531f05",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 1: subtotal 900, credit reference credit/1. Continuing.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"page/2\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_9fLRx6m7HfcKf5aqXKlT1606",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "e34849e6-bfa3-4a41-b168-0fb341531f05",
+              "usage": {
+                "input_tokens": 1165,
+                "output_tokens": 88,
+                "total_tokens": 1253,
+                "cached_input_tokens": 1024
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 1: subtotal 900, credit reference credit/1. Continuing.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"page/2\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_9fLRx6m7HfcKf5aqXKlT1606",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "e34849e6-bfa3-4a41-b168-0fb341531f05",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 88,
+                  "prompt_cache_hit_tokens": 1024,
+                  "prompt_cache_miss_tokens": 141,
+                  "prompt_tokens": 1165,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1024
+                  },
+                  "total_tokens": 1253
                 }
               }
-            ],
-            "created": 0,
-            "id": "e34849e6-bfa3-4a41-b168-0fb341531f05",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 88,
-              "prompt_cache_hit_tokens": 1024,
-              "prompt_cache_miss_tokens": 141,
-              "prompt_tokens": 1165,
-              "prompt_tokens_details": {
-                "cached_tokens": 1024
-              },
-              "total_tokens": 1253
             }
           }
         }
@@ -1998,53 +2010,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1669,
-            "output_tokens": 87,
-            "total_tokens": 1756,
-            "cached_input_tokens": 1152
-          },
-          "response_id": "04351745-09ef-4346-afae-e556db75006b",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 2: subtotal 1200, credit reference credit/2.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"page/3\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_UolzdAve272O77xFLB8l4997",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "04351745-09ef-4346-afae-e556db75006b",
+              "usage": {
+                "input_tokens": 1669,
+                "output_tokens": 87,
+                "total_tokens": 1756,
+                "cached_input_tokens": 1152
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 2: subtotal 1200, credit reference credit/2.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"page/3\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_UolzdAve272O77xFLB8l4997",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "04351745-09ef-4346-afae-e556db75006b",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 87,
+                  "prompt_cache_hit_tokens": 1152,
+                  "prompt_cache_miss_tokens": 517,
+                  "prompt_tokens": 1669,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1152
+                  },
+                  "total_tokens": 1756
                 }
               }
-            ],
-            "created": 0,
-            "id": "04351745-09ef-4346-afae-e556db75006b",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 87,
-              "prompt_cache_hit_tokens": 1152,
-              "prompt_cache_miss_tokens": 517,
-              "prompt_tokens": 1669,
-              "prompt_tokens_details": {
-                "cached_tokens": 1152
-              },
-              "total_tokens": 1756
             }
           }
         }
@@ -2884,53 +2900,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 2172,
-            "output_tokens": 87,
-            "total_tokens": 2259,
-            "cached_input_tokens": 1664
-          },
-          "response_id": "afc43c9e-4e1a-4b60-89f3-2e871b47bbf1",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 3: subtotal 1500, credit reference credit/3.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"page/4\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_D2omqUSo2FMiQAfUVGLS1436",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "afc43c9e-4e1a-4b60-89f3-2e871b47bbf1",
+              "usage": {
+                "input_tokens": 2172,
+                "output_tokens": 87,
+                "total_tokens": 2259,
+                "cached_input_tokens": 1664
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 3: subtotal 1500, credit reference credit/3.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"page/4\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_D2omqUSo2FMiQAfUVGLS1436",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "afc43c9e-4e1a-4b60-89f3-2e871b47bbf1",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 87,
+                  "prompt_cache_hit_tokens": 1664,
+                  "prompt_cache_miss_tokens": 508,
+                  "prompt_tokens": 2172,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1664
+                  },
+                  "total_tokens": 2259
                 }
               }
-            ],
-            "created": 0,
-            "id": "afc43c9e-4e1a-4b60-89f3-2e871b47bbf1",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 87,
-              "prompt_cache_hit_tokens": 1664,
-              "prompt_cache_miss_tokens": 508,
-              "prompt_tokens": 2172,
-              "prompt_tokens_details": {
-                "cached_tokens": 1664
-              },
-              "total_tokens": 2259
             }
           }
         }
@@ -3946,53 +3966,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 2675,
-            "output_tokens": 87,
-            "total_tokens": 2762,
-            "cached_input_tokens": 2176
-          },
-          "response_id": "d5ea2583-a045-4ea3-930b-620f37d3dc85",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 4: subtotal 1800, credit reference credit/4.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"page/5\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_zpnXT4uHMjsDU2uzcxPR2099",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "d5ea2583-a045-4ea3-930b-620f37d3dc85",
+              "usage": {
+                "input_tokens": 2675,
+                "output_tokens": 87,
+                "total_tokens": 2762,
+                "cached_input_tokens": 2176
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 4: subtotal 1800, credit reference credit/4.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"page/5\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_zpnXT4uHMjsDU2uzcxPR2099",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "d5ea2583-a045-4ea3-930b-620f37d3dc85",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 87,
+                  "prompt_cache_hit_tokens": 2176,
+                  "prompt_cache_miss_tokens": 499,
+                  "prompt_tokens": 2675,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 2176
+                  },
+                  "total_tokens": 2762
                 }
               }
-            ],
-            "created": 0,
-            "id": "d5ea2583-a045-4ea3-930b-620f37d3dc85",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 87,
-              "prompt_cache_hit_tokens": 2176,
-              "prompt_cache_miss_tokens": 499,
-              "prompt_tokens": 2675,
-              "prompt_tokens_details": {
-                "cached_tokens": 2176
-              },
-              "total_tokens": 2762
             }
           }
         }
@@ -5184,53 +5208,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 3178,
-            "output_tokens": 87,
-            "total_tokens": 3265,
-            "cached_input_tokens": 2688
-          },
-          "response_id": "ad935105-afcb-4f67-8841-8d1d58bf2af8",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 5: subtotal 2100, credit reference credit/5.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"page/6\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_zribIWCsbXb5Krk6nGxD9924",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "ad935105-afcb-4f67-8841-8d1d58bf2af8",
+              "usage": {
+                "input_tokens": 3178,
+                "output_tokens": 87,
+                "total_tokens": 3265,
+                "cached_input_tokens": 2688
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 5: subtotal 2100, credit reference credit/5.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"page/6\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_zribIWCsbXb5Krk6nGxD9924",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "ad935105-afcb-4f67-8841-8d1d58bf2af8",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 87,
+                  "prompt_cache_hit_tokens": 2688,
+                  "prompt_cache_miss_tokens": 490,
+                  "prompt_tokens": 3178,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 2688
+                  },
+                  "total_tokens": 3265
                 }
               }
-            ],
-            "created": 0,
-            "id": "ad935105-afcb-4f67-8841-8d1d58bf2af8",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 87,
-              "prompt_cache_hit_tokens": 2688,
-              "prompt_cache_miss_tokens": 490,
-              "prompt_tokens": 3178,
-              "prompt_tokens_details": {
-                "cached_tokens": 2688
-              },
-              "total_tokens": 3265
             }
           }
         }
@@ -6616,62 +6644,66 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 3681,
-            "output_tokens": 159,
-            "total_tokens": 3840,
-            "cached_input_tokens": 3200
-          },
-          "response_id": "0dcc2e65-35a5-4275-8008-7d2565989e96",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "All six pages read. Now I'll look up the six credit references in three turns, two reads in parallel per turn.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"credit/1\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_6CbJgMS4YKAJCFJxDJWA4209",
-                      "index": 0,
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"credit/2\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_HKGadkQse5gVef3xV6jb0255",
-                      "index": 1,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "0dcc2e65-35a5-4275-8008-7d2565989e96",
+              "usage": {
+                "input_tokens": 3681,
+                "output_tokens": 159,
+                "total_tokens": 3840,
+                "cached_input_tokens": 3200
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "All six pages read. Now I'll look up the six credit references in three turns, two reads in parallel per turn.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"credit/1\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_6CbJgMS4YKAJCFJxDJWA4209",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"credit/2\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_01_HKGadkQse5gVef3xV6jb0255",
+                          "index": 1,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "0dcc2e65-35a5-4275-8008-7d2565989e96",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 159,
+                  "prompt_cache_hit_tokens": 3200,
+                  "prompt_cache_miss_tokens": 481,
+                  "prompt_tokens": 3681,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 3200
+                  },
+                  "total_tokens": 3840
                 }
               }
-            ],
-            "created": 0,
-            "id": "0dcc2e65-35a5-4275-8008-7d2565989e96",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 159,
-              "prompt_cache_hit_tokens": 3200,
-              "prompt_cache_miss_tokens": 481,
-              "prompt_tokens": 3681,
-              "prompt_tokens_details": {
-                "cached_tokens": 3200
-              },
-              "total_tokens": 3840
             }
           }
         }
@@ -8071,62 +8103,66 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 3930,
-            "output_tokens": 155,
-            "total_tokens": 4085,
-            "cached_input_tokens": 3712
-          },
-          "response_id": "0322926a-1daf-4185-9500-86a9aeb8b965",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "credit/1 = 11 (confirmed), credit/2 = 22 (confirmed). Next pair.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"credit/3\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_rdfi4PKEL9fJuUqPowW13047",
-                      "index": 0,
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"credit/4\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_pa7WpgF2qcc770VacmkA7246",
-                      "index": 1,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "0322926a-1daf-4185-9500-86a9aeb8b965",
+              "usage": {
+                "input_tokens": 3930,
+                "output_tokens": 155,
+                "total_tokens": 4085,
+                "cached_input_tokens": 3712
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "credit/1 = 11 (confirmed), credit/2 = 22 (confirmed). Next pair.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"credit/3\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_rdfi4PKEL9fJuUqPowW13047",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"credit/4\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_01_pa7WpgF2qcc770VacmkA7246",
+                          "index": 1,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "0322926a-1daf-4185-9500-86a9aeb8b965",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 155,
+                  "prompt_cache_hit_tokens": 3712,
+                  "prompt_cache_miss_tokens": 218,
+                  "prompt_tokens": 3930,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 3712
+                  },
+                  "total_tokens": 4085
                 }
               }
-            ],
-            "created": 0,
-            "id": "0322926a-1daf-4185-9500-86a9aeb8b965",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 155,
-              "prompt_cache_hit_tokens": 3712,
-              "prompt_cache_miss_tokens": 218,
-              "prompt_tokens": 3930,
-              "prompt_tokens_details": {
-                "cached_tokens": 3712
-              },
-              "total_tokens": 4085
             }
           }
         }
@@ -9626,62 +9662,66 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 4175,
-            "output_tokens": 155,
-            "total_tokens": 4330,
-            "cached_input_tokens": 3968
-          },
-          "response_id": "7e4dab1b-bb4c-4f19-b365-6aacac4dd4fb",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "credit/3 = 33 (confirmed), credit/4 = 44 (confirmed). Final pair.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"credit/5\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_cYuQmTKNdAvm4CBpcgth2698",
-                      "index": 0,
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"credit/6\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_cYB1VkoV7IjoZsSdtRor6380",
-                      "index": 1,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "7e4dab1b-bb4c-4f19-b365-6aacac4dd4fb",
+              "usage": {
+                "input_tokens": 4175,
+                "output_tokens": 155,
+                "total_tokens": 4330,
+                "cached_input_tokens": 3968
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "credit/3 = 33 (confirmed), credit/4 = 44 (confirmed). Final pair.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"credit/5\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_cYuQmTKNdAvm4CBpcgth2698",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"credit/6\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_01_cYB1VkoV7IjoZsSdtRor6380",
+                          "index": 1,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "7e4dab1b-bb4c-4f19-b365-6aacac4dd4fb",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 155,
+                  "prompt_cache_hit_tokens": 3968,
+                  "prompt_cache_miss_tokens": 207,
+                  "prompt_tokens": 4175,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 3968
+                  },
+                  "total_tokens": 4330
                 }
               }
-            ],
-            "created": 0,
-            "id": "7e4dab1b-bb4c-4f19-b365-6aacac4dd4fb",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 155,
-              "prompt_cache_hit_tokens": 3968,
-              "prompt_cache_miss_tokens": 207,
-              "prompt_tokens": 4175,
-              "prompt_tokens_details": {
-                "cached_tokens": 3968
-              },
-              "total_tokens": 4330
             }
           }
         }
@@ -11263,53 +11303,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 4420,
-            "output_tokens": 223,
-            "total_tokens": 4643,
-            "cached_input_tokens": 4224
-          },
-          "response_id": "ffabf5ae-b781-4570-a752-4bde3fe8b05e",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "All credits confirmed:\n- credit/1 = 11 → page/1: 900 − 11 = 889\n- credit/2 = 22 → page/2: 1200 − 22 = 1178\n- credit/3 = 33 → page/3: 1500 − 33 = 1467\n- credit/4 = 44 → page/4: 1800 − 44 = 1756\n- credit/5 = 55 → page/5: 2100 − 55 = 2045\n- credit/6 = 66 → page/6: 2400 − 66 = 2334\n\nNow applying page by page, each in its own turn.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"page/1\", \"value\": 889}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_R23xjyRu5Kk6DWhdHs6o0182",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "ffabf5ae-b781-4570-a752-4bde3fe8b05e",
+              "usage": {
+                "input_tokens": 4420,
+                "output_tokens": 223,
+                "total_tokens": 4643,
+                "cached_input_tokens": 4224
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "All credits confirmed:\n- credit/1 = 11 → page/1: 900 − 11 = 889\n- credit/2 = 22 → page/2: 1200 − 22 = 1178\n- credit/3 = 33 → page/3: 1500 − 33 = 1467\n- credit/4 = 44 → page/4: 1800 − 44 = 1756\n- credit/5 = 55 → page/5: 2100 − 55 = 2045\n- credit/6 = 66 → page/6: 2400 − 66 = 2334\n\nNow applying page by page, each in its own turn.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"page/1\", \"value\": 889}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_R23xjyRu5Kk6DWhdHs6o0182",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "ffabf5ae-b781-4570-a752-4bde3fe8b05e",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 223,
+                  "prompt_cache_hit_tokens": 4224,
+                  "prompt_cache_miss_tokens": 196,
+                  "prompt_tokens": 4420,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 4224
+                  },
+                  "total_tokens": 4643
                 }
               }
-            ],
-            "created": 0,
-            "id": "ffabf5ae-b781-4570-a752-4bde3fe8b05e",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 223,
-              "prompt_cache_hit_tokens": 4224,
-              "prompt_cache_miss_tokens": 196,
-              "prompt_tokens": 4420,
-              "prompt_tokens_details": {
-                "cached_tokens": 4224
-              },
-              "total_tokens": 4643
             }
           }
         }
@@ -12903,53 +12947,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 4671,
-            "output_tokens": 72,
-            "total_tokens": 4743,
-            "cached_input_tokens": 4480
-          },
-          "response_id": "f1e84ad8-8b1e-4928-b588-87cfb510f807",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"page/1\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_Zt8bkCy1eoRJJ4vPtsHL4753",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "f1e84ad8-8b1e-4928-b588-87cfb510f807",
+              "usage": {
+                "input_tokens": 4671,
+                "output_tokens": 72,
+                "total_tokens": 4743,
+                "cached_input_tokens": 4480
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"page/1\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_Zt8bkCy1eoRJJ4vPtsHL4753",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "f1e84ad8-8b1e-4928-b588-87cfb510f807",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 72,
+                  "prompt_cache_hit_tokens": 4480,
+                  "prompt_cache_miss_tokens": 191,
+                  "prompt_tokens": 4671,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 4480
+                  },
+                  "total_tokens": 4743
                 }
               }
-            ],
-            "created": 0,
-            "id": "f1e84ad8-8b1e-4928-b588-87cfb510f807",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 72,
-              "prompt_cache_hit_tokens": 4480,
-              "prompt_cache_miss_tokens": 191,
-              "prompt_tokens": 4671,
-              "prompt_tokens_details": {
-                "cached_tokens": 4480
-              },
-              "total_tokens": 4743
             }
           }
         }
@@ -14596,53 +14644,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 4769,
-            "output_tokens": 82,
-            "total_tokens": 4851,
-            "cached_input_tokens": 4608
-          },
-          "response_id": "030f2740-819f-428f-ac01-baee17df71a6",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 1 verified. Applying page 2.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"page/2\", \"value\": 1178}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_vXQYSlO9mxE5cCTXtrSL9043",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "030f2740-819f-428f-ac01-baee17df71a6",
+              "usage": {
+                "input_tokens": 4769,
+                "output_tokens": 82,
+                "total_tokens": 4851,
+                "cached_input_tokens": 4608
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 1 verified. Applying page 2.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"page/2\", \"value\": 1178}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_vXQYSlO9mxE5cCTXtrSL9043",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "030f2740-819f-428f-ac01-baee17df71a6",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 82,
+                  "prompt_cache_hit_tokens": 4608,
+                  "prompt_cache_miss_tokens": 161,
+                  "prompt_tokens": 4769,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 4608
+                  },
+                  "total_tokens": 4851
                 }
               }
-            ],
-            "created": 0,
-            "id": "030f2740-819f-428f-ac01-baee17df71a6",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 82,
-              "prompt_cache_hit_tokens": 4608,
-              "prompt_cache_miss_tokens": 161,
-              "prompt_tokens": 4769,
-              "prompt_tokens_details": {
-                "cached_tokens": 4608
-              },
-              "total_tokens": 4851
             }
           }
         }
@@ -16338,53 +16390,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 4880,
-            "output_tokens": 72,
-            "total_tokens": 4952,
-            "cached_input_tokens": 4736
-          },
-          "response_id": "5419e03d-b297-465a-aa8d-8793d0b6e09b",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"page/2\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_dRAaNJOFb4TLzSN0Oo6H6018",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "5419e03d-b297-465a-aa8d-8793d0b6e09b",
+              "usage": {
+                "input_tokens": 4880,
+                "output_tokens": 72,
+                "total_tokens": 4952,
+                "cached_input_tokens": 4736
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"page/2\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_dRAaNJOFb4TLzSN0Oo6H6018",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "5419e03d-b297-465a-aa8d-8793d0b6e09b",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 72,
+                  "prompt_cache_hit_tokens": 4736,
+                  "prompt_cache_miss_tokens": 144,
+                  "prompt_tokens": 4880,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 4736
+                  },
+                  "total_tokens": 4952
                 }
               }
-            ],
-            "created": 0,
-            "id": "5419e03d-b297-465a-aa8d-8793d0b6e09b",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 72,
-              "prompt_cache_hit_tokens": 4736,
-              "prompt_cache_miss_tokens": 144,
-              "prompt_tokens": 4880,
-              "prompt_tokens_details": {
-                "cached_tokens": 4736
-              },
-              "total_tokens": 4952
             }
           }
         }
@@ -18133,53 +18189,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 4978,
-            "output_tokens": 82,
-            "total_tokens": 5060,
-            "cached_input_tokens": 4736
-          },
-          "response_id": "85037f41-bd02-4038-91d9-6fa6bdb84f14",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 2 verified. Applying page 3.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"page/3\", \"value\": 1467}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_7ZCiOJByiVyc6AbzQE6B1472",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "85037f41-bd02-4038-91d9-6fa6bdb84f14",
+              "usage": {
+                "input_tokens": 4978,
+                "output_tokens": 82,
+                "total_tokens": 5060,
+                "cached_input_tokens": 4736
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 2 verified. Applying page 3.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"page/3\", \"value\": 1467}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_7ZCiOJByiVyc6AbzQE6B1472",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "85037f41-bd02-4038-91d9-6fa6bdb84f14",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 82,
+                  "prompt_cache_hit_tokens": 4736,
+                  "prompt_cache_miss_tokens": 242,
+                  "prompt_tokens": 4978,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 4736
+                  },
+                  "total_tokens": 5060
                 }
               }
-            ],
-            "created": 0,
-            "id": "85037f41-bd02-4038-91d9-6fa6bdb84f14",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 82,
-              "prompt_cache_hit_tokens": 4736,
-              "prompt_cache_miss_tokens": 242,
-              "prompt_tokens": 4978,
-              "prompt_tokens_details": {
-                "cached_tokens": 4736
-              },
-              "total_tokens": 5060
             }
           }
         }
@@ -19977,53 +20037,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5089,
-            "output_tokens": 72,
-            "total_tokens": 5161,
-            "cached_input_tokens": 4864
-          },
-          "response_id": "c609a69d-6ff0-4f9a-8c37-1601c7bf9788",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"page/3\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_9qQhGCGdkOzuUMAH7ZmI0139",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "c609a69d-6ff0-4f9a-8c37-1601c7bf9788",
+              "usage": {
+                "input_tokens": 5089,
+                "output_tokens": 72,
+                "total_tokens": 5161,
+                "cached_input_tokens": 4864
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"page/3\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_9qQhGCGdkOzuUMAH7ZmI0139",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "c609a69d-6ff0-4f9a-8c37-1601c7bf9788",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 72,
+                  "prompt_cache_hit_tokens": 4864,
+                  "prompt_cache_miss_tokens": 225,
+                  "prompt_tokens": 5089,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 4864
+                  },
+                  "total_tokens": 5161
                 }
               }
-            ],
-            "created": 0,
-            "id": "c609a69d-6ff0-4f9a-8c37-1601c7bf9788",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 72,
-              "prompt_cache_hit_tokens": 4864,
-              "prompt_cache_miss_tokens": 225,
-              "prompt_tokens": 5089,
-              "prompt_tokens_details": {
-                "cached_tokens": 4864
-              },
-              "total_tokens": 5161
             }
           }
         }
@@ -21874,53 +21938,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5187,
-            "output_tokens": 82,
-            "total_tokens": 5269,
-            "cached_input_tokens": 4992
-          },
-          "response_id": "74bf8fb0-e8a4-40b1-96ad-374ca3c950f1",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 3 verified. Applying page 4.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"page/4\", \"value\": 1756}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_mi6iVD7Dijy5ai4NwoMj7355",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "74bf8fb0-e8a4-40b1-96ad-374ca3c950f1",
+              "usage": {
+                "input_tokens": 5187,
+                "output_tokens": 82,
+                "total_tokens": 5269,
+                "cached_input_tokens": 4992
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 3 verified. Applying page 4.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"page/4\", \"value\": 1756}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_mi6iVD7Dijy5ai4NwoMj7355",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "74bf8fb0-e8a4-40b1-96ad-374ca3c950f1",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 82,
+                  "prompt_cache_hit_tokens": 4992,
+                  "prompt_cache_miss_tokens": 195,
+                  "prompt_tokens": 5187,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 4992
+                  },
+                  "total_tokens": 5269
                 }
               }
-            ],
-            "created": 0,
-            "id": "74bf8fb0-e8a4-40b1-96ad-374ca3c950f1",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 82,
-              "prompt_cache_hit_tokens": 4992,
-              "prompt_cache_miss_tokens": 195,
-              "prompt_tokens": 5187,
-              "prompt_tokens_details": {
-                "cached_tokens": 4992
-              },
-              "total_tokens": 5269
             }
           }
         }
@@ -23820,53 +23888,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5298,
-            "output_tokens": 72,
-            "total_tokens": 5370,
-            "cached_input_tokens": 5120
-          },
-          "response_id": "fcd11fa4-67e0-4e9d-b01d-39bde3da9a9e",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"page/4\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_JkExc71mxWkIHN04VJBX4399",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "fcd11fa4-67e0-4e9d-b01d-39bde3da9a9e",
+              "usage": {
+                "input_tokens": 5298,
+                "output_tokens": 72,
+                "total_tokens": 5370,
+                "cached_input_tokens": 5120
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"page/4\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_JkExc71mxWkIHN04VJBX4399",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "fcd11fa4-67e0-4e9d-b01d-39bde3da9a9e",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 72,
+                  "prompt_cache_hit_tokens": 5120,
+                  "prompt_cache_miss_tokens": 178,
+                  "prompt_tokens": 5298,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5120
+                  },
+                  "total_tokens": 5370
                 }
               }
-            ],
-            "created": 0,
-            "id": "fcd11fa4-67e0-4e9d-b01d-39bde3da9a9e",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 72,
-              "prompt_cache_hit_tokens": 5120,
-              "prompt_cache_miss_tokens": 178,
-              "prompt_tokens": 5298,
-              "prompt_tokens_details": {
-                "cached_tokens": 5120
-              },
-              "total_tokens": 5370
             }
           }
         }
@@ -25819,53 +25891,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5396,
-            "output_tokens": 82,
-            "total_tokens": 5478,
-            "cached_input_tokens": 5248
-          },
-          "response_id": "31295947-3b55-4e63-9fde-4fa2987e8edc",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 4 verified. Applying page 5.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"page/5\", \"value\": 2045}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_KtLSZUK3CB2YvzL0K0dy0203",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "31295947-3b55-4e63-9fde-4fa2987e8edc",
+              "usage": {
+                "input_tokens": 5396,
+                "output_tokens": 82,
+                "total_tokens": 5478,
+                "cached_input_tokens": 5248
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 4 verified. Applying page 5.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"page/5\", \"value\": 2045}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_KtLSZUK3CB2YvzL0K0dy0203",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "31295947-3b55-4e63-9fde-4fa2987e8edc",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 82,
+                  "prompt_cache_hit_tokens": 5248,
+                  "prompt_cache_miss_tokens": 148,
+                  "prompt_tokens": 5396,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5248
+                  },
+                  "total_tokens": 5478
                 }
               }
-            ],
-            "created": 0,
-            "id": "31295947-3b55-4e63-9fde-4fa2987e8edc",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 82,
-              "prompt_cache_hit_tokens": 5248,
-              "prompt_cache_miss_tokens": 148,
-              "prompt_tokens": 5396,
-              "prompt_tokens_details": {
-                "cached_tokens": 5248
-              },
-              "total_tokens": 5478
             }
           }
         }
@@ -27867,53 +27943,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5507,
-            "output_tokens": 72,
-            "total_tokens": 5579,
-            "cached_input_tokens": 5248
-          },
-          "response_id": "d68c517a-932f-45df-975c-60451eac379e",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"page/5\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_tsdJzFzWMl1P361DwfeW5654",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "d68c517a-932f-45df-975c-60451eac379e",
+              "usage": {
+                "input_tokens": 5507,
+                "output_tokens": 72,
+                "total_tokens": 5579,
+                "cached_input_tokens": 5248
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"page/5\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_tsdJzFzWMl1P361DwfeW5654",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "d68c517a-932f-45df-975c-60451eac379e",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 72,
+                  "prompt_cache_hit_tokens": 5248,
+                  "prompt_cache_miss_tokens": 259,
+                  "prompt_tokens": 5507,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5248
+                  },
+                  "total_tokens": 5579
                 }
               }
-            ],
-            "created": 0,
-            "id": "d68c517a-932f-45df-975c-60451eac379e",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 72,
-              "prompt_cache_hit_tokens": 5248,
-              "prompt_cache_miss_tokens": 259,
-              "prompt_tokens": 5507,
-              "prompt_tokens_details": {
-                "cached_tokens": 5248
-              },
-              "total_tokens": 5579
             }
           }
         }
@@ -29968,53 +30048,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5605,
-            "output_tokens": 82,
-            "total_tokens": 5687,
-            "cached_input_tokens": 5376
-          },
-          "response_id": "626ca78c-5ff3-48e4-9ebb-1665a5abf027",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Page 5 verified. Applying page 6.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"page/6\", \"value\": 2334}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_x1BEVglZAMWirnxKBJwe4764",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "626ca78c-5ff3-48e4-9ebb-1665a5abf027",
+              "usage": {
+                "input_tokens": 5605,
+                "output_tokens": 82,
+                "total_tokens": 5687,
+                "cached_input_tokens": 5376
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Page 5 verified. Applying page 6.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"page/6\", \"value\": 2334}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_x1BEVglZAMWirnxKBJwe4764",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "626ca78c-5ff3-48e4-9ebb-1665a5abf027",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 82,
+                  "prompt_cache_hit_tokens": 5376,
+                  "prompt_cache_miss_tokens": 229,
+                  "prompt_tokens": 5605,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5376
+                  },
+                  "total_tokens": 5687
                 }
               }
-            ],
-            "created": 0,
-            "id": "626ca78c-5ff3-48e4-9ebb-1665a5abf027",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 82,
-              "prompt_cache_hit_tokens": 5376,
-              "prompt_cache_miss_tokens": 229,
-              "prompt_tokens": 5605,
-              "prompt_tokens_details": {
-                "cached_tokens": 5376
-              },
-              "total_tokens": 5687
             }
           }
         }
@@ -32118,53 +32202,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5716,
-            "output_tokens": 72,
-            "total_tokens": 5788,
-            "cached_input_tokens": 5504
-          },
-          "response_id": "ae15dcb7-3a17-4b8a-959d-0fca78a64f78",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"page/6\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_t4njWMSmHL9VPPk1okeD6945",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "ae15dcb7-3a17-4b8a-959d-0fca78a64f78",
+              "usage": {
+                "input_tokens": 5716,
+                "output_tokens": 72,
+                "total_tokens": 5788,
+                "cached_input_tokens": 5504
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"page/6\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_t4njWMSmHL9VPPk1okeD6945",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "ae15dcb7-3a17-4b8a-959d-0fca78a64f78",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 72,
+                  "prompt_cache_hit_tokens": 5504,
+                  "prompt_cache_miss_tokens": 212,
+                  "prompt_tokens": 5716,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5504
+                  },
+                  "total_tokens": 5788
                 }
               }
-            ],
-            "created": 0,
-            "id": "ae15dcb7-3a17-4b8a-959d-0fca78a64f78",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 72,
-              "prompt_cache_hit_tokens": 5504,
-              "prompt_cache_miss_tokens": 212,
-              "prompt_tokens": 5716,
-              "prompt_tokens_details": {
-                "cached_tokens": 5504
-              },
-              "total_tokens": 5788
             }
           }
         }
@@ -34321,53 +34409,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5814,
-            "output_tokens": 84,
-            "total_tokens": 5898,
-            "cached_input_tokens": 5632
-          },
-          "response_id": "778a2871-777f-47b8-b737-a1aa898efc96",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "All six pages applied and individually verified. Now the final check of all.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_DBkUeUZvLr0lP1APiIJJ2018",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "778a2871-777f-47b8-b737-a1aa898efc96",
+              "usage": {
+                "input_tokens": 5814,
+                "output_tokens": 84,
+                "total_tokens": 5898,
+                "cached_input_tokens": 5632
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "All six pages applied and individually verified. Now the final check of all.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_00_DBkUeUZvLr0lP1APiIJJ2018",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "778a2871-777f-47b8-b737-a1aa898efc96",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 84,
+                  "prompt_cache_hit_tokens": 5632,
+                  "prompt_cache_miss_tokens": 182,
+                  "prompt_tokens": 5814,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5632
+                  },
+                  "total_tokens": 5898
                 }
               }
-            ],
-            "created": 0,
-            "id": "778a2871-777f-47b8-b737-a1aa898efc96",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 84,
-              "prompt_cache_hit_tokens": 5632,
-              "prompt_cache_miss_tokens": 182,
-              "prompt_tokens": 5814,
-              "prompt_tokens_details": {
-                "cached_tokens": 5632
-              },
-              "total_tokens": 5898
             }
           }
         }
@@ -36559,42 +36651,46 @@
               "text": "Done.\n\nAll six invoice pages reconciled using the confirmed credits (never the superseded provisional versions):\n\n| Page | Subtotal | Confirmed credit | Applied value |\n|------|----------|------------------|---------------|\n| page/1 | 900 | 11 | 889 |\n| page/2 | 1200 | 22 | 1178 |\n| page/3 | 1500 | 33 | 1467 |\n| page/4 | 1800 | 44 | 1756 |\n| page/5 | 2100 | 55 | 2045 |\n| page/6 | 2400 | 66 | 2334 |\n\nEach page was applied in its own turn, checked separately (all passed), and the final check(all) passed at revision 6."
             }
           ],
-          "usage": {
-            "input_tokens": 5924,
-            "output_tokens": 163,
-            "total_tokens": 6087,
-            "cached_input_tokens": 5760
-          },
-          "response_id": "311f0115-9d73-493f-b268-ae0ca60b0601",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Done.\n\nAll six invoice pages reconciled using the confirmed credits (never the superseded provisional versions):\n\n| Page | Subtotal | Confirmed credit | Applied value |\n|------|----------|------------------|---------------|\n| page/1 | 900 | 11 | 889 |\n| page/2 | 1200 | 22 | 1178 |\n| page/3 | 1500 | 33 | 1467 |\n| page/4 | 1800 | 44 | 1756 |\n| page/5 | 2100 | 55 | 2045 |\n| page/6 | 2400 | 66 | 2334 |\n\nEach page was applied in its own turn, checked separately (all passed), and the final check(all) passed at revision 6.",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "311f0115-9d73-493f-b268-ae0ca60b0601",
+              "usage": {
+                "input_tokens": 5924,
+                "output_tokens": 163,
+                "total_tokens": 6087,
+                "cached_input_tokens": 5760
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Done.\n\nAll six invoice pages reconciled using the confirmed credits (never the superseded provisional versions):\n\n| Page | Subtotal | Confirmed credit | Applied value |\n|------|----------|------------------|---------------|\n| page/1 | 900 | 11 | 889 |\n| page/2 | 1200 | 22 | 1178 |\n| page/3 | 1500 | 33 | 1467 |\n| page/4 | 1800 | 44 | 1756 |\n| page/5 | 2100 | 55 | 2045 |\n| page/6 | 2400 | 66 | 2334 |\n\nEach page was applied in its own turn, checked separately (all passed), and the final check(all) passed at revision 6.",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "311f0115-9d73-493f-b268-ae0ca60b0601",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 163,
+                  "prompt_cache_hit_tokens": 5760,
+                  "prompt_cache_miss_tokens": 164,
+                  "prompt_tokens": 5924,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5760
+                  },
+                  "total_tokens": 6087
                 }
               }
-            ],
-            "created": 0,
-            "id": "311f0115-9d73-493f-b268-ae0ca60b0601",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 163,
-              "prompt_cache_hit_tokens": 5760,
-              "prompt_cache_miss_tokens": 164,
-              "prompt_tokens": 5924,
-              "prompt_tokens_details": {
-                "cached_tokens": 5760
-              },
-              "total_tokens": 6087
             }
           }
         }

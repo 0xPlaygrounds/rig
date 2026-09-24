@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use futures::Stream;
+use rig_core::completion::ReportedEnd;
 use rig_core::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig_core::driver::run_wire_stream;
 use rig_core::error::ProviderError;
@@ -23,7 +24,7 @@ use rig_core::error::ProviderError;
 use rig_core::message::{Message, UserContent};
 use rig_core::operation::AdapterOutput;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
-use rig_core::streaming::{StreamFinal, StreamingCompletionResponse, StreamingResult};
+use rig_core::streaming::{StreamingCompletionResponse, StreamingResult};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -345,17 +346,12 @@ impl rig_core::wire::Decoder<rig_core::operation::Completion, GenerationEvent> f
     }
 }
 
-/// Map this crate's own terminal record onto rig's [`StreamFinal`],
-/// serializing the local record onto [`StreamFinal::raw`].
-fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, serde_json::Error> {
-    let usage = response.into();
-    Ok(StreamFinal {
+/// What this crate's own terminal record reports, with the local record as
+/// its document.
+fn terminal_record(response: &CandleCompletionResponse) -> Result<ReportedEnd, serde_json::Error> {
+    Ok(ReportedEnd {
         finish_reason: Some(response.finish_reason.into()),
-        ..StreamFinal::new(
-            crate::types::PROVIDER_NAME,
-            usage,
-            serde_json::to_value(response)?,
-        )
+        ..ReportedEnd::new(response.into(), serde_json::to_value(response)?)
     })
 }
 
@@ -368,7 +364,7 @@ pub fn stream_from_events(
 ) -> StreamingCompletionResponse {
     StreamingCompletionResponse::stream(
         crate::types::PROVIDER_NAME,
-        run_wire_stream(events, CandleAdapter),
+        run_wire_stream(crate::types::PROVIDER_NAME, None, events, CandleAdapter),
     )
 }
 
@@ -414,8 +410,8 @@ impl CandleModel {
         }
     }
 
-    /// Open a stream normalized to rig's terminal record; the adapter maps
-    /// this crate's own response record onto [`StreamFinal::raw`].
+    /// Open a stream normalized to rig's terminal record; the adapter keeps
+    /// this crate's own response record as the record's `raw`.
     async fn open_stream(
         &self,
         request: CompletionRequest,
@@ -447,7 +443,10 @@ impl CandleModel {
                 }
             });
             // Dropping the driver stream drops the receiver and signals cancellation.
+            // A local model has no transport request id.
             let stream = run_wire_stream(
+                crate::types::PROVIDER_NAME,
+                None,
                 CandleReceiverStream {
                     receiver,
                     cancellation,
@@ -467,6 +466,8 @@ impl CandleModel {
             })?;
             events.push(Ok(GenerationEvent::Final(response)));
             Ok(run_wire_stream(
+                crate::types::PROVIDER_NAME,
+                None,
                 futures::stream::iter(events),
                 CandleAdapter,
             ))
@@ -479,7 +480,7 @@ impl CompletionModel for CandleModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        Ok(self.infer_completion(request).await?.into_normalized()?)
+        self.infer_completion(request).await?.into_normalized()
     }
 
     async fn stream(

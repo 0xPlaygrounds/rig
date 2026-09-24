@@ -537,12 +537,16 @@ fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
             .expect("a folded completion")
     };
     let answer = |choice: Vec<AssistantContent>| {
-        EffectOutcome(Ok(Outcome::Completion(CompletionResponse::new(
+        EffectOutcome(Ok(Outcome::Completion(CompletionResponse {
             choice,
-            Usage::default(),
-            "model",
-            serde_json::json!({}),
-        ))))
+            end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("model").expect("a provider name"),
+                )
+            }),
+        })))
     };
     let refused = AssistantContent::Image(Image {
         data: DocumentSourceKind::Base64("invalid!".into()),

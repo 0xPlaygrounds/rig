@@ -1226,26 +1226,25 @@ impl ChatDecoder {
             .upstream_reasoning_issuer
             .then_some(self.response_model.as_deref())
             .flatten()
-            .map(|model| super::upstream_reasoning_issuer(self.provider, model));
+            .and_then(|model| {
+                crate::id::ProviderName::non_empty(super::upstream_reasoning_issuer(
+                    self.provider,
+                    model,
+                ))
+            });
         let native = StreamingCompletionResponse {
             usage: self.final_usage.take(),
             finish_reason: self.final_finish_reason.take(),
             response_id: self.response_id.take(),
             model: self.response_model.take(),
-            // Stamped by the driver; the decoder never sees connection
-            // headers.
-            provider_request_id: None,
             logprobs: self.logprobs.take().map(Into::into),
             additional_params: self.additional_params.take(),
         };
         match serde_json::to_value(&native) {
-            Ok(raw) => {
-                let terminal = native.into_stream_final(self.provider, raw);
-                out.final_record(match issuer {
-                    Some(issuer) => terminal.with_reasoning_issuer(issuer),
-                    None => terminal,
-                })
-            }
+            Ok(raw) => out.final_record(crate::completion::ReportedEnd {
+                reasoning_issuer: issuer,
+                ..native.into_reported(raw)
+            }),
             Err(error) => out.error(ProviderError::from(error)),
         }
     }

@@ -38,7 +38,7 @@ fn typed_raw_response_can_be_stored_and_recovered() -> anyhow::Result<()> {
     anyhow::ensure!(
         matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "hello")
     );
-    let restored: VertexGenerateContentOutput = serde_json::from_value(response.raw)?;
+    let restored: VertexGenerateContentOutput = serde_json::from_value(response.end.meta.raw)?;
     anyhow::ensure!(restored.0.response_id == "offline-vertex-response");
     anyhow::ensure!(
         restored

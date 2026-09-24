@@ -234,14 +234,7 @@ pub(crate) async fn call_model(
         .send()
         .await
         .expect("gemini completion should succeed");
-    ModelTurn::new(
-        response.message_id.clone().map(String::from),
-        response.choice.clone(),
-        response.usage,
-        executable.clone(),
-        allowed.clone(),
-        response.raw.clone(),
-    )
+    ModelTurn::new(response.clone(), executable.clone(), allowed.clone())
 }
 
 pub(crate) fn assistant_tool_call_names(message: &Message) -> Vec<String> {

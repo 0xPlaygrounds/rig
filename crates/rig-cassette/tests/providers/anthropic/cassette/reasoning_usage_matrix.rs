@@ -342,6 +342,8 @@ async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> U
         .completion(request)
         .await
         .expect("completion should succeed")
+        .end
+        .meta
         .usage
 }
 
@@ -356,6 +358,7 @@ async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> U
     }
     terminal
         .expect("stream should yield a terminal record")
+        .meta
         .usage
 }
 

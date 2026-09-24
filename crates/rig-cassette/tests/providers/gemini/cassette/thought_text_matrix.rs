@@ -466,7 +466,7 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
         .await
         .expect("completion should succeed");
 
-    let document = GenerateContentResponse::deserialize(&response.raw)
+    let document = GenerateContentResponse::deserialize(&response.end.meta.raw)
         .expect("raw is Gemini's own generateContent document");
     let (visible, recorded_thoughts) = split_parts(&document);
     assert_eq!(
@@ -753,7 +753,7 @@ async fn text_response_on_a_tool_call_turn() {
 
             // A tool-call turn's *text* is whatever visible text parts it has
             // — never the reasoning that preceded the call.
-            let document = GenerateContentResponse::deserialize(&response.raw)
+            let document = GenerateContentResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is Gemini's own generateContent document");
             let (visible, _) = split_parts(&document);
             assert_eq!(
@@ -847,7 +847,7 @@ async fn text_response_across_two_candidates() {
                 .await
                 .expect("completion should succeed");
 
-            let document = GenerateContentResponse::deserialize(&response.raw)
+            let document = GenerateContentResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is Gemini's own generateContent document");
             assert_eq!(
                 document.candidates.len(),
@@ -935,7 +935,7 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
                 .await
                 .expect("completion should succeed");
 
-            let document = GenerateContentResponse::deserialize(&response.raw)
+            let document = GenerateContentResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is Gemini's own generateContent document");
             let (visible, thoughts) = split_parts(&document);
             assert!(
@@ -1062,7 +1062,7 @@ async fn blocking_keeps_a_trailing_thought_signature() {
 
             // The premise, from the recorded bytes: a text part with a
             // signature and no `thought` flag at all.
-            let document = GenerateContentResponse::deserialize(&response.raw)
+            let document = GenerateContentResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is Gemini's own generateContent document");
             let signed_text_part = document
                 .candidates

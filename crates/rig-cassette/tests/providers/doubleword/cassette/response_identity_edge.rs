@@ -42,7 +42,7 @@ async fn blocking_identity_contract_vs_reality() {
             // only `content-type`: no contract is declared, and the backend
             // serving `DEFAULT_MODEL` stamps no id either, so `None` is what
             // both halves agree on.
-            assert_eq!(response.provider_request_id, None);
+            assert_eq!(response.end.meta.provider_request_id, None);
         },
     )
     .await;
@@ -72,7 +72,7 @@ async fn streaming_identity_contract_vs_reality() {
             }
             let terminal = terminal.expect("terminal record");
             // Derived from the recording, matching the blocking surface.
-            assert_eq!(terminal.provider_request_id, None);
+            assert_eq!(terminal.meta.provider_request_id, None);
         },
     )
     .await;

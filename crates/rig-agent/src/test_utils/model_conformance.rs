@@ -1269,7 +1269,7 @@ where
                 streamed_text.push_str(&text);
             }
             crate::streaming::StreamEvent::Final(response) => {
-                streamed_usage = Some(response.usage);
+                streamed_usage = Some(response.meta.usage);
             }
             crate::streaming::StreamEvent::BlockStart { .. }
             | crate::streaming::StreamEvent::BlockDelta { .. }
@@ -1289,14 +1289,14 @@ where
     let streamed_answer = normalize(&streamed_text);
     if !buffered_answer.eq_ignore_ascii_case("Paris")
         || !streamed_answer.eq_ignore_ascii_case("Paris")
-        || !buffered.usage.is_reported()
+        || !buffered.end.meta.usage.is_reported()
         || !usage.is_reported()
     {
         return Err(ScenarioError::contract(
             SCENARIO,
             format!(
                 "buffered={buffered_text:?}, streamed={streamed_text:?}, buffered_usage={:?}, streamed_usage={usage:?}",
-                buffered.usage
+                buffered.end.meta.usage
             ),
         ));
     }
@@ -1411,12 +1411,9 @@ where
                 return OutcomeAction::proceed();
             };
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                response.message_id.clone().map(String::from),
-                response.choice.clone(),
-                response.usage,
+                response.clone(),
                 BTreeSet::new(),
                 BTreeSet::new(),
-                response.raw.clone(),
             ));
             OutcomeAction::stop("captured conformance model turn")
         }
@@ -1438,6 +1435,7 @@ where
         ScenarioError::contract(SCENARIO, "capture hook observed no model response")
     })?;
     let emitted = response
+        .response
         .choice
         .iter()
         .filter(|item| {
@@ -1449,20 +1447,13 @@ where
             SCENARIO,
             format!(
                 "model emitted {emitted} add calls, response={:?}",
-                response.choice
+                response.response.choice
             ),
         ));
     }
     let executable = BTreeSet::from([CountingAdd::NAME.to_string(), CountingSum::NAME.to_string()]);
     let allowed = BTreeSet::from([CountingSum::NAME.to_string()]);
-    let turn = ModelTurn::new(
-        response.message_id,
-        response.choice,
-        response.usage,
-        executable,
-        allowed,
-        response.raw,
-    );
+    let turn = ModelTurn::new(response.response, executable, allowed);
 
     let mut fail = restricted_recovery_run(PROMPT, turn.clone(), 0)?;
     let error = match fail.resolve_invalid_tool_call(InvalidToolCallAction::fail()) {
@@ -1564,8 +1555,8 @@ where
     Ok(ScenarioReport {
         name: SCENARIO,
         tool_calls: emitted,
-        prompt_tokens: turn.usage.input_tokens.unwrap_or(0),
-        generated_tokens: turn.usage.output_tokens.unwrap_or(0),
+        prompt_tokens: turn.response.end.meta.usage.input_tokens.unwrap_or(0),
+        generated_tokens: turn.response.end.meta.usage.output_tokens.unwrap_or(0),
         history_messages: 2,
         duration: started.elapsed(),
         response: "fail, retry, repair, rejected repair, and skip passed".to_string(),
@@ -2015,7 +2006,7 @@ where
         ));
     }
 
-    let usage = none.usage + required.usage + specific.usage;
+    let usage = none.end.meta.usage + required.end.meta.usage + specific.end.meta.usage;
     Ok(ScenarioReport {
         name: "tool_choice_modes",
         tool_calls: required_calls + specific_calls.len(),

@@ -13,7 +13,7 @@ use futures::StreamExt;
 /// A fresh decoder labelled the way the [`Messages`](super::super::wire::Messages)
 /// wire labels Anthropic proper.
 fn adapter() -> MessagesDecoder {
-    MessagesDecoder::new("anthropic")
+    MessagesDecoder::default()
 }
 
 /// Interpret one event, returning exactly what the adapter emitted (an
@@ -30,7 +30,8 @@ fn interpret_items(
     adapter: &mut MessagesDecoder,
     event: StreamingEvent,
 ) -> Vec<Result<StreamEvent, ProviderError>> {
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
     adapter.interpret(event, &mut out);
     out.into_items()
 }
@@ -42,7 +43,8 @@ fn interpret_all(
     adapter: &mut MessagesDecoder,
     events: impl IntoIterator<Item = StreamingEvent>,
 ) -> Vec<Result<StreamEvent, ProviderError>> {
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
     for event in events {
         adapter.interpret(event, &mut out);
     }
@@ -1248,7 +1250,8 @@ fn test_code_execution_tool_result_block_is_preserved() {
 #[tokio::test]
 async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
     let mut adapter = adapter();
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
 
     adapter.interpret(
         StreamingEvent::ContentBlockStart {
@@ -1531,7 +1534,8 @@ fn novel_nested_delta_type_is_a_known_noop() {
     };
 
     let mut adapter = adapter();
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
     adapter.interpret(event, &mut out);
     assert!(out.is_empty(), "an unmodeled nested delta is a no-op");
 }
@@ -1545,7 +1549,8 @@ fn novel_nested_delta_type_is_a_known_noop() {
 #[test]
 fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     let mut adapter = adapter();
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
 
     let start = WireFrame::Text(
         r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":9366,"ephemeral_5m_input_tokens":336}}}}"#
@@ -1575,7 +1580,7 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     // The native record rides on `raw`; the split is Anthropic-specific, so
     // it is readable only there.
     let native: StreamingCompletionResponse =
-        serde_json::from_value(terminal.raw).expect("raw must be the native terminal");
+        serde_json::from_value(terminal.meta.raw).expect("raw must be the native terminal");
     let split = native
         .usage
         .cache_creation
@@ -1639,7 +1644,8 @@ fn top_level_error_event_surfaces_as_a_provider_error() {
     };
 
     let mut adapter = adapter();
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
     adapter.interpret(event, &mut out);
 
     assert_eq!(out.len(), 1, "the error envelope maps to one error item");
@@ -1661,7 +1667,8 @@ fn message_start_with_null_message_is_a_known_noop() {
     };
 
     let mut adapter = adapter();
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
     adapter.interpret(event, &mut out);
     assert!(out.is_empty(), "a message-less message_start is a no-op");
 }
@@ -1669,7 +1676,8 @@ fn message_start_with_null_message_is_a_known_noop() {
 #[tokio::test]
 async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
     let mut adapter = adapter();
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
     adapter.message_id = Some("msg_1".to_string());
     adapter.response_model = Some(CLAUDE_OPUS_4_8.to_string());
     out.text("hi");
@@ -1695,17 +1703,17 @@ async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
     while stream.next().await.is_some() {}
 
     let terminal = stream.response.expect("expected a terminal record");
-    assert_eq!(terminal.provider, "anthropic");
+    assert_eq!(terminal.meta.provider, "anthropic");
     assert_eq!(terminal.message_id.as_deref(), Some("msg_1"));
-    assert_eq!(terminal.model.as_deref(), Some(CLAUDE_OPUS_4_8));
+    assert_eq!(terminal.meta.model.as_deref(), Some(CLAUDE_OPUS_4_8));
     assert_eq!(
         terminal.finish_reason,
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(terminal.usage.input_tokens, Some(3));
-    assert_eq!(terminal.usage.output_tokens, Some(5));
-    assert_eq!(terminal.usage.cached_input_tokens, Some(2));
-    assert_eq!(terminal.usage.total_tokens, Some(10));
+    assert_eq!(terminal.meta.usage.input_tokens, Some(3));
+    assert_eq!(terminal.meta.usage.output_tokens, Some(5));
+    assert_eq!(terminal.meta.usage.cached_input_tokens, Some(2));
+    assert_eq!(terminal.meta.usage.total_tokens, Some(10));
 }
 
 #[tokio::test]
@@ -1714,7 +1722,8 @@ async fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_c
     // `StreamingCompletionResponse` applies must hold whenever the turn
     // actually emitted a tool call.
     let mut adapter = adapter();
-    let mut out = AdapterOutput::new();
+    let mut out =
+        AdapterOutput::new(crate::id::ProviderName::new("anthropic").expect("a provider name"));
     out.tool_call(
         crate::streaming::BlockId::wire("toolu_1"),
         ToolCallEnd::whole("add", json!({"x": 1})).with_tool_id("toolu_1"),
@@ -2003,7 +2012,7 @@ mod terminal_emission {
 
             assert!(saw_terminal, "{case}: the turn must complete");
             let terminal = stream.response.expect("terminal record");
-            assert_eq!(terminal.usage.input_tokens, Some(expected), "{case}");
+            assert_eq!(terminal.meta.usage.input_tokens, Some(expected), "{case}");
         }
     }
 
@@ -2049,7 +2058,7 @@ mod terminal_emission {
     /// Raw capture on the streaming terminal, through the real
     /// `CompletionModel::stream` seam on `Bound` over the mock transport:
     /// the decoder serializes the native terminal onto the record it maps,
-    /// so the terminal `StreamFinal.raw` is Anthropic's own
+    /// so the terminal `CompletionEnd.raw` is Anthropic's own
     /// `StreamingCompletionResponse`. A `message_delta` with
     /// `stop_sequence` set is used because the normalized terminal folds
     /// it into `FinishReason::Stop` and keeps neither Anthropic's spelling
@@ -2073,7 +2082,7 @@ mod terminal_emission {
         }
         let terminal = stream.response.expect("terminal record");
 
-        let raw = &terminal.raw;
+        let raw = &terminal.meta.raw;
         let typed: super::super::StreamingCompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
         assert_eq!(
@@ -2087,17 +2096,17 @@ mod terminal_emission {
 
         // Re-normalizing the capture tells the same story as the terminal
         // the stream produced.
-        let renormalized =
-            super::super::terminal_record("anthropic", &typed).expect("re-normalize the capture");
-        assert_eq!(terminal.identity(), renormalized.identity());
+        let renormalized = super::super::terminal_record(&typed).expect("re-normalize the capture");
+        assert_eq!(terminal.message_id, renormalized.message_id);
+        assert_eq!(terminal.meta.response_id, renormalized.response_id);
         assert_eq!(terminal.finish_reason, renormalized.finish_reason);
-        assert_eq!(terminal.model, renormalized.model);
-        assert_eq!(terminal.usage, renormalized.usage);
+        assert_eq!(terminal.meta.model, renormalized.model);
+        assert_eq!(terminal.meta.usage, renormalized.usage);
         assert_eq!(
             terminal.finish_reason,
             Some(crate::completion::FinishReason::Stop)
         );
-        assert_eq!(terminal.usage.output_tokens, Some(3));
+        assert_eq!(terminal.meta.usage.output_tokens, Some(3));
     }
 }
 

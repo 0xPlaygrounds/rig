@@ -94,65 +94,69 @@
               "text": "The number is 169."
             }
           ],
-          "usage": {
-            "input_tokens": 20,
-            "output_tokens": 25,
-            "total_tokens": 159,
-            "tool_use_prompt_tokens": 79,
-            "reasoning_tokens": 35
-          },
-          "response_id": "kHizasKhO4DcqtsPz8-qwAY",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
-                    {
-                      "executableCode": {
-                        "code": "result = 13 * 13\nprint(f'{result=}')\n",
-                        "language": "PYTHON"
-                      }
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "kHizasKhO4DcqtsPz8-qwAY",
+              "usage": {
+                "input_tokens": 20,
+                "output_tokens": 25,
+                "total_tokens": 159,
+                "tool_use_prompt_tokens": 79,
+                "reasoning_tokens": 35
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "executableCode": {
+                            "code": "result = 13 * 13\nprint(f'{result=}')\n",
+                            "language": "PYTHON"
+                          }
+                        },
+                        {
+                          "codeExecutionResult": {
+                            "outcome": "OUTCOME_OK",
+                            "output": "result=169\n"
+                          }
+                        },
+                        {
+                          "text": "The number is 169."
+                        }
+                      ],
+                      "role": "model"
                     },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "kHizasKhO4DcqtsPz8-qwAY",
+                "usageMetadata": {
+                  "candidatesTokenCount": 25,
+                  "promptTokenCount": 20,
+                  "promptTokensDetails": [
                     {
-                      "codeExecutionResult": {
-                        "outcome": "OUTCOME_OK",
-                        "output": "result=169\n"
-                      }
-                    },
-                    {
-                      "text": "The number is 169."
+                      "modality": "TEXT",
+                      "tokenCount": 20
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 35,
+                  "toolUsePromptTokenCount": 79,
+                  "toolUsePromptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 79
+                    }
+                  ],
+                  "totalTokenCount": 159
+                }
               }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "kHizasKhO4DcqtsPz8-qwAY",
-            "usageMetadata": {
-              "candidatesTokenCount": 25,
-              "promptTokenCount": 20,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 20
-                }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 35,
-              "toolUsePromptTokenCount": 79,
-              "toolUsePromptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 79
-                }
-              ],
-              "totalTokenCount": 159
             }
           }
         }
@@ -221,65 +225,69 @@
               "text": "The result of doubling 169 is 338."
             }
           ],
-          "usage": {
-            "input_tokens": 39,
-            "output_tokens": 23,
-            "total_tokens": 197,
-            "tool_use_prompt_tokens": 94,
-            "reasoning_tokens": 41
-          },
-          "response_id": "knizauimBbC0qtsP5bHOkQc",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
-                    {
-                      "executableCode": {
-                        "code": "print(169 * 2)\n",
-                        "language": "PYTHON"
-                      }
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "knizauimBbC0qtsP5bHOkQc",
+              "usage": {
+                "input_tokens": 39,
+                "output_tokens": 23,
+                "total_tokens": 197,
+                "tool_use_prompt_tokens": 94,
+                "reasoning_tokens": 41
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "executableCode": {
+                            "code": "print(169 * 2)\n",
+                            "language": "PYTHON"
+                          }
+                        },
+                        {
+                          "codeExecutionResult": {
+                            "outcome": "OUTCOME_OK",
+                            "output": "338\n"
+                          }
+                        },
+                        {
+                          "text": "The result of doubling 169 is 338."
+                        }
+                      ],
+                      "role": "model"
                     },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "knizauimBbC0qtsP5bHOkQc",
+                "usageMetadata": {
+                  "candidatesTokenCount": 23,
+                  "promptTokenCount": 39,
+                  "promptTokensDetails": [
                     {
-                      "codeExecutionResult": {
-                        "outcome": "OUTCOME_OK",
-                        "output": "338\n"
-                      }
-                    },
-                    {
-                      "text": "The result of doubling 169 is 338."
+                      "modality": "TEXT",
+                      "tokenCount": 39
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 41,
+                  "toolUsePromptTokenCount": 94,
+                  "toolUsePromptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 94
+                    }
+                  ],
+                  "totalTokenCount": 197
+                }
               }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "knizauimBbC0qtsP5bHOkQc",
-            "usageMetadata": {
-              "candidatesTokenCount": 23,
-              "promptTokenCount": 39,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 39
-                }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 41,
-              "toolUsePromptTokenCount": 94,
-              "toolUsePromptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 94
-                }
-              ],
-              "totalTokenCount": 197
             }
           }
         }

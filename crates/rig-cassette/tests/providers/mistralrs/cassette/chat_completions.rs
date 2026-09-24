@@ -26,7 +26,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
                 .completion(request)
                 .await
                 .expect("chat completion should succeed");
-            let raw = &response.raw;
+            let raw = &response.end.meta.raw;
             let message = &raw["choices"][0]["message"];
             let text = message
                 .get("content")

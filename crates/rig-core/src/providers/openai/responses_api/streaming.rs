@@ -5,14 +5,16 @@
 //! let decoder = ResponsesDecoder::new("openai", ResponsesStreamOptions::strict());
 //! ```
 
+use crate::completion::ReportedEnd;
 use crate::error::ProviderError;
+use crate::id::{MessageId, ModelName, ProviderName, ResponseId};
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
-use crate::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
+use crate::streaming::{BlockId, ToolCallEnd, UnparseableToolInput};
 use crate::wire::Decoder;
 use crate::wire::WireFrame;
 use serde::{Deserialize, Serialize};
@@ -27,7 +29,7 @@ pub enum StreamingCompletionChunk {
     Delta(ItemChunk),
 }
 
-/// Provider terminal metadata serialized into [`StreamFinal::raw`].
+/// Provider terminal metadata, serialized as the terminal record's `raw`.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
     /// Token usage from the terminal response event; `None` when the event
@@ -60,10 +62,6 @@ pub struct StreamingCompletionResponse {
     /// The model identifier reported by the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Transport request ID, if supplied by the caller.
-    /// The driver stamps connection headers onto the normalized final record instead.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
 }
 
 impl StreamingCompletionResponse {
@@ -72,7 +70,6 @@ impl StreamingCompletionResponse {
     pub fn new(usage: Option<ResponsesUsage>) -> Self {
         Self {
             usage,
-            provider_request_id: None,
             reasoning_metadata: None,
             reasoning_context: None,
             status: None,
@@ -84,56 +81,43 @@ impl StreamingCompletionResponse {
     }
 }
 
-/// Normalize the Responses API's terminal stream record.
+/// What the Responses API's terminal stream record reports.
 ///
-/// The provider descriptor name is an input for the same reason it is on the
-/// unary conversion: ChatGPT and Copilot stream this exact wire shape, so a
-/// baked-in `"openai"` would mislabel them.
+/// The provider descriptor name is an input because ChatGPT and Copilot
+/// stream this exact wire shape through a gateway whose reasoning issuer
+/// depends on the upstream model.
 ///
-/// The finish reason is left exactly as the provider reported it;
-/// [`crate::streaming::StreamingCompletionResponse`] applies the tool-call
-/// reconciliation afterwards, using the calls the stream actually emitted.
+/// The finish reason is left exactly as the provider reported it; the fold
+/// reconciles it with the calls the stream actually emitted.
 ///
-/// The native record is serialized onto [`StreamFinal::raw`]; a
-/// serialization failure is the caller's to surface as an in-band error.
+/// The native record is the terminal document; a serialization failure is
+/// the caller's to surface as an in-band error.
 fn terminal_record(
     provider: &str,
     upstream_reasoning_issuer: bool,
     response: StreamingCompletionResponse,
-) -> Result<StreamFinal, ProviderError> {
+) -> Result<ReportedEnd, ProviderError> {
     let raw = serde_json::to_value(&response)?;
-    let issuer = upstream_reasoning_issuer
+    let reasoning_issuer = upstream_reasoning_issuer
         .then_some(response.model.as_deref())
         .flatten()
-        .map(|model| crate::providers::openai::wire::upstream_reasoning_issuer(provider, model));
+        .and_then(|model| {
+            ProviderName::non_empty(crate::providers::openai::wire::upstream_reasoning_issuer(
+                provider, model,
+            ))
+        });
     let finish_reason = response
         .status
         .as_ref()
         .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
 
-    let terminal = StreamFinal {
+    Ok(ReportedEnd {
         finish_reason,
-        message_id: response
-            .message_id
-            .clone()
-            .and_then(crate::id::MessageId::non_empty),
-        response_id: response
-            .response_id
-            .clone()
-            .and_then(crate::id::ResponseId::non_empty),
-        provider_request_id: response
-            .provider_request_id
-            .clone()
-            .and_then(crate::id::RequestId::non_empty),
-        model: response
-            .model
-            .clone()
-            .and_then(crate::id::ModelName::non_empty),
-        ..StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
-    };
-    Ok(match issuer {
-        Some(issuer) => terminal.with_reasoning_issuer(issuer),
-        None => terminal,
+        message_id: response.message_id.clone().and_then(MessageId::non_empty),
+        reasoning_issuer,
+        response_id: response.response_id.clone().and_then(ResponseId::non_empty),
+        model: response.model.clone().and_then(ModelName::non_empty),
+        ..ReportedEnd::new(crate::completion::Usage::from(&response), raw)
     })
 }
 

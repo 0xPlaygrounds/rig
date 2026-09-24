@@ -22,7 +22,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
                 .expect("completion should succeed");
 
             assert_eq!(
-                response.provider_request_id, None,
+                response.end.meta.provider_request_id, None,
                 "Cohere has no adopted request-id header; None is the documented outcome"
             );
         },
@@ -57,7 +57,7 @@ async fn streaming_request_id_is_none_by_design() {
             }
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_eq!(
-                terminal.provider_request_id, None,
+                terminal.meta.provider_request_id, None,
                 "Cohere has no adopted request-id header on either surface"
             );
         },

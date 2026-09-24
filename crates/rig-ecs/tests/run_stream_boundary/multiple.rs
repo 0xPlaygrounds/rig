@@ -110,10 +110,14 @@ fn buffered_names_and_eof_keep_ordered_policy_prefixes() {
                 open(),
                 name("later"),
                 second_close,
-                StreamEvent::Final(StreamFinal::new(
-                    "boundary",
-                    ProviderUsage::default(),
-                    serde_json::json!({}),
+                StreamEvent::Final(rig_core::completion::CompletionEnd::new(
+                    rig_core::response::ResponseMeta {
+                        usage: ProviderUsage::default(),
+                        raw: serde_json::json!({}),
+                        ..rig_core::response::ResponseMeta::new(
+                            rig_core::id::ProviderName::new("boundary").expect("a provider name"),
+                        )
+                    },
                 )),
             ],
             gate,

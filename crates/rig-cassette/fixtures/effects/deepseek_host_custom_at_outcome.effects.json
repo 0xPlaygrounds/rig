@@ -131,53 +131,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 336,
-            "output_tokens": 52,
-            "total_tokens": 388,
-            "cached_input_tokens": 128
-          },
-          "response_id": "25260956-c9f3-48c6-b39d-f4100d90e34e",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_iLlSzUcmKxXU6N3Lq5L67000",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "25260956-c9f3-48c6-b39d-f4100d90e34e",
+              "usage": {
+                "input_tokens": 336,
+                "output_tokens": 52,
+                "total_tokens": 388,
+                "cached_input_tokens": 128
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"x\": 17, \"y\": 25}",
+                            "name": "add"
+                          },
+                          "id": "call_00_iLlSzUcmKxXU6N3Lq5L67000",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "25260956-c9f3-48c6-b39d-f4100d90e34e",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 52,
+                  "prompt_cache_hit_tokens": 128,
+                  "prompt_cache_miss_tokens": 208,
+                  "prompt_tokens": 336,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 128
+                  },
+                  "total_tokens": 388
                 }
               }
-            ],
-            "created": 0,
-            "id": "25260956-c9f3-48c6-b39d-f4100d90e34e",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 52,
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 208,
-              "prompt_tokens": 336,
-              "prompt_tokens_details": {
-                "cached_tokens": 128
-              },
-              "total_tokens": 388
             }
           }
         }
@@ -329,42 +333,46 @@
               "text": "42"
             }
           ],
-          "usage": {
-            "input_tokens": 401,
-            "output_tokens": 1,
-            "total_tokens": 402,
-            "cached_input_tokens": 256
-          },
-          "response_id": "1fa231ba-c53f-442a-b200-21bd26bbd03f",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "42",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "1fa231ba-c53f-442a-b200-21bd26bbd03f",
+              "usage": {
+                "input_tokens": 401,
+                "output_tokens": 1,
+                "total_tokens": 402,
+                "cached_input_tokens": 256
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "42",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "1fa231ba-c53f-442a-b200-21bd26bbd03f",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 1,
+                  "prompt_cache_hit_tokens": 256,
+                  "prompt_cache_miss_tokens": 145,
+                  "prompt_tokens": 401,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 256
+                  },
+                  "total_tokens": 402
                 }
               }
-            ],
-            "created": 0,
-            "id": "1fa231ba-c53f-442a-b200-21bd26bbd03f",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 1,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 145,
-              "prompt_tokens": 401,
-              "prompt_tokens_details": {
-                "cached_tokens": 256
-              },
-              "total_tokens": 402
             }
           }
         }

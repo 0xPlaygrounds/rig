@@ -290,7 +290,7 @@ async fn long_history_replay_nonstreaming() {
                 })
                 .expect("first turn should call lookup_harbor_label");
             assert_eq!(
-                first_response.finish_reason.clone(),
+                first_response.end.finish_reason.clone(),
                 Some(FinishReason::ToolCalls),
                 "a tool-using turn should preserve the tool_use stop reason"
             );
@@ -350,26 +350,29 @@ async fn long_history_replay_nonstreaming() {
                 "answer should recall the replayed tool result, got {text:?}"
             );
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::Stop),
                 "a plain answer should preserve the end_turn stop reason"
             );
             assert!(
                 response
+                    .end
+                    .meta
                     .model
                     .as_deref()
                     .is_some_and(|model| !model.is_empty())
                     && response
+                        .end
                         .message_id
                         .as_deref()
                         .is_some_and(|id| !id.is_empty()),
                 "provider response should preserve model and message id"
             );
             assert!(
-                response.usage.input_tokens.is_some_and(|n| n > 0)
-                    && response.usage.output_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.input_tokens.is_some_and(|n| n > 0)
+                    && response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated, got {:?}",
-                response.usage
+                response.end.meta.usage
             );
         },
     )

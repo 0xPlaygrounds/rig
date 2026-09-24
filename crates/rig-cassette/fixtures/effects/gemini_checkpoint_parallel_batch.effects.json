@@ -149,65 +149,69 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 144,
-            "output_tokens": 45,
-            "total_tokens": 189
-          },
-          "response_id": "n3izaqH-JeSi6dkPv4mNmQk",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
-                    {
-                      "functionCall": {
-                        "args": {
-                          "slot": 0
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "n3izaqH-JeSi6dkPv4mNmQk",
+              "usage": {
+                "input_tokens": 144,
+                "output_tokens": 45,
+                "total_tokens": 189
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "slot": 0
+                            },
+                            "name": "checkpoint_batch"
+                          }
                         },
-                        "name": "checkpoint_batch"
-                      }
+                        {
+                          "functionCall": {
+                            "args": {
+                              "slot": 1
+                            },
+                            "name": "checkpoint_batch"
+                          }
+                        },
+                        {
+                          "functionCall": {
+                            "args": {
+                              "slot": 2
+                            },
+                            "name": "checkpoint_batch"
+                          }
+                        }
+                      ],
+                      "role": "model"
                     },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "n3izaqH-JeSi6dkPv4mNmQk",
+                "usageMetadata": {
+                  "candidatesTokenCount": 45,
+                  "promptTokenCount": 144,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "slot": 1
-                        },
-                        "name": "checkpoint_batch"
-                      }
-                    },
-                    {
-                      "functionCall": {
-                        "args": {
-                          "slot": 2
-                        },
-                        "name": "checkpoint_batch"
-                      }
+                      "modality": "TEXT",
+                      "tokenCount": 144
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izaqH-JeSi6dkPv4mNmQk",
-            "usageMetadata": {
-              "candidatesTokenCount": 45,
-              "promptTokenCount": 144,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 144
+                  "serviceTier": "standard",
+                  "totalTokenCount": 189
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 189
+              }
             }
           }
         }
@@ -440,43 +444,47 @@
               "text": "checkpoint-complete"
             }
           ],
-          "usage": {
-            "input_tokens": 240,
-            "output_tokens": 3,
-            "total_tokens": 243
-          },
-          "response_id": "n3izat_IO__jqtsP0Yzr8AY",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash-lite",
+              "response_id": "n3izat_IO__jqtsP0Yzr8AY",
+              "usage": {
+                "input_tokens": 240,
+                "output_tokens": 3,
+                "total_tokens": 243
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "checkpoint-complete"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash-lite",
+                "responseId": "n3izat_IO__jqtsP0Yzr8AY",
+                "usageMetadata": {
+                  "candidatesTokenCount": 3,
+                  "promptTokenCount": 240,
+                  "promptTokensDetails": [
                     {
-                      "text": "checkpoint-complete"
+                      "modality": "TEXT",
+                      "tokenCount": 240
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izat_IO__jqtsP0Yzr8AY",
-            "usageMetadata": {
-              "candidatesTokenCount": 3,
-              "promptTokenCount": 240,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 240
+                  "serviceTier": "standard",
+                  "totalTokenCount": 243
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 243
+              }
             }
           }
         }

@@ -1,6 +1,7 @@
 //! Gemini streaming coverage, including the migrated example path.
 
 use futures::StreamExt;
+use rig::completion::CompletionEnd;
 use rig::completion::CompletionModel;
 use rig::completion::FinishReason;
 use rig::prelude::*;
@@ -8,7 +9,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -38,13 +39,19 @@ async fn streaming_smoke() {
             .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-        let (response, provider_final): (_, StreamFinal) =
+        let (response, provider_final): (_, CompletionEnd) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
+        assert!(
+            provider_final
+                .meta
+                .usage
+                .total_tokens
+                .is_some_and(|n| n > 0)
+        );
     })
     .await;
 }
@@ -124,12 +131,12 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 final_response.finish_reason
             );
             assert_eq!(
-                final_response.model.as_deref(),
+                final_response.meta.model.as_deref(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected resolved Gemini model version to be surfaced"
             );
             assert!(
-                final_response.usage.is_reported(),
+                final_response.meta.usage.is_reported(),
                 "expected final response to expose token usage"
             );
         },
@@ -178,11 +185,11 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 final_response.finish_reason
             );
             assert_eq!(
-                final_response.model.as_deref(),
+                final_response.meta.model.as_deref(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected modelVersion from terminal chunks to be retained"
             );
-            let usage = final_response.usage;
+            let usage = final_response.meta.usage;
             assert!(
                 usage.input_tokens.is_some_and(|n| n > 0),
                 "expected positive input token usage, got {usage:?}"

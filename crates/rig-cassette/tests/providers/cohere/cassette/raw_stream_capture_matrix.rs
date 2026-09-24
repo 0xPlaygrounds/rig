@@ -6,7 +6,7 @@
 //! Raw capture is always on: the terminal record's `raw` carries Cohere's own
 //! serialized terminal — Cohere's own
 //! [`StreamingCompletionResponse`] terminal record, built from the
-//! `message-end` event — onto the terminal [`rig::streaming::StreamFinal::raw`].
+//! `message-end` event — onto the terminal [`rig::completion::CompletionEnd::raw`].
 //! There is no opt-in and nothing about it reaches the wire; `raw` is
 //! `Value::Null` only on a terminal constructed without a provider stream
 //! behind it, never because capture "was not requested".
@@ -31,9 +31,9 @@
 //! only frame carrying usage and the finish reason, and it is what rig's
 //! terminal record is built from.
 
+use rig::completion::CompletionEnd;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::providers::cohere::streaming::StreamingCompletionResponse;
-use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -98,7 +98,7 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, CompletionEnd)> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
@@ -112,7 +112,7 @@ async fn raw_roundtrips_streaming_completion_response() {
 
     let (text, terminal) = observed.take();
     assert!(!text.is_empty(), "the stream should have carried text");
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
 
     let typed = StreamingCompletionResponse::deserialize(raw)
         .expect("raw must deserialize into Cohere's streaming terminal type");
@@ -124,7 +124,10 @@ async fn raw_roundtrips_streaming_completion_response() {
     );
 
     // The typed value agrees with the normalized terminal next to it.
-    assert_eq!(typed.message_id.as_deref(), terminal.response_id.as_deref());
+    assert_eq!(
+        typed.message_id.as_deref(),
+        terminal.meta.response_id.as_deref()
+    );
     assert_eq!(
         typed
             .usage
@@ -132,7 +135,7 @@ async fn raw_roundtrips_streaming_completion_response() {
             .and_then(|usage| usage.tokens.as_ref())
             .and_then(|tokens| tokens.input_tokens)
             .map(|tokens| tokens as u64),
-        terminal.usage.input_tokens
+        terminal.meta.usage.input_tokens
     );
 
     let delta = recorded_message_end_delta(SCENARIO);
@@ -150,7 +153,7 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, CompletionEnd)> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
@@ -177,7 +180,7 @@ async fn raw_exposes_terminal_only_fields() {
     );
     assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let delta = recorded_message_end_delta(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),

@@ -96,8 +96,8 @@ impl AgentHook for StepLogger {
             let call_no = self.current_completion_call();
             println!("\n=== completion response #{call_no}: normalized choice ===");
             println!("{}", pretty_json(&response.choice));
-            println!("usage: {:?}", response.usage);
-            println!("message_id: {:?}", response.message_id);
+            println!("usage: {:?}", response.end.meta.usage);
+            println!("message_id: {:?}", response.end.message_id);
             return OutcomeAction::proceed();
         }
         let (Some(tool_name), Some(result)) = (event.tool_name(), event.tool_result()) else {

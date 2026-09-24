@@ -238,7 +238,7 @@ async fn raw_roundtrips_generate_content_response() {
     .await;
 
     let response = observed.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
 
     // `raw` is Gemini's reply document as it arrived: its own type reads it
     // back, so the escape hatch is typed rather than stringly.
@@ -248,24 +248,27 @@ async fn raw_roundtrips_generate_content_response() {
     // One decoder folded the normalized response out of these very bytes, so
     // every field it kept must be the one the document carries — `raw` is
     // additive, never a divergent second view.
-    assert_eq!(typed.model_version.as_deref(), response.model.as_deref());
+    assert_eq!(
+        typed.model_version.as_deref(),
+        response.end.meta.model.as_deref()
+    );
     assert_eq!(
         Some(typed.response_id.as_str()),
-        response.response_id.as_deref()
+        response.end.meta.response_id.as_deref()
     );
     assert_eq!(
         typed
             .usage_metadata
             .as_ref()
             .map(|usage| usage.prompt_token_count as u64),
-        response.usage.input_tokens
+        response.end.meta.usage.input_tokens
     );
     assert_eq!(
         typed
             .usage_metadata
             .as_ref()
             .map(|usage| usage.total_token_count as u64),
-        response.usage.total_tokens
+        response.end.meta.usage.total_tokens
     );
     let candidate = typed
         .candidates
@@ -277,7 +280,7 @@ async fn raw_roundtrips_generate_content_response() {
         "Gemini's own finish spelling stays on the document"
     );
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and the normalized response reports rig's vocabulary for it"
     );
@@ -324,7 +327,7 @@ async fn raw_exposes_prompt_tokens_details() {
          the kind of provider detail `raw` exists to expose"
     );
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let body = assert_recorded_generate_content_body(SCENARIO);
     assert_eq!(
         raw.pointer("/usageMetadata/promptTokensDetails"),
@@ -363,7 +366,7 @@ async fn raw_exposes_forced_function_call() {
     .await;
 
     let response = observed.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
 
     // The typed read-back holds for a functionCall turn too.
     let typed = GenerateContentResponse::deserialize(raw)
@@ -391,13 +394,13 @@ async fn raw_exposes_forced_function_call() {
             .usage_metadata
             .as_ref()
             .map(|usage| usage.total_token_count as u64),
-        response.usage.total_tokens
+        response.end.meta.usage.total_tokens
     );
 
     // The normalized response says ToolCalls and carries the call as a typed
     // ToolCall …
     assert_eq!(
-        response.finish_reason.clone(),
+        response.end.finish_reason.clone(),
         Some(FinishReason::ToolCalls)
     );
     let call = response
@@ -422,7 +425,7 @@ async fn raw_exposes_forced_function_call() {
     );
     let normalized = normalized_without_raw(response.clone());
     assert_ne!(
-        normalized.get("finish_reason"),
+        normalized.pointer("/end/finish_reason"),
         Some(&Value::String("STOP".to_string())),
         "the normalized finish reason is rig's vocabulary, not Gemini's"
     );
@@ -477,7 +480,7 @@ async fn raw_exposes_structured_output_turn() {
     .await;
 
     let response = observed.take();
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
 
     let typed = GenerateContentResponse::deserialize(raw)
         .expect("raw must deserialize into Gemini's GenerateContentResponse");
@@ -495,11 +498,11 @@ async fn raw_exposes_structured_output_turn() {
             .usage_metadata
             .as_ref()
             .map(|usage| usage.total_token_count as u64),
-        response.usage.total_tokens
+        response.end.meta.usage.total_tokens
     );
 
     // The normalized choice is the schema JSON as text …
-    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
     let text = match response.choice.first() {
         Some(AssistantContent::Text(text)) => text.text.clone(),
         other => panic!("structured output should arrive as text, got {other:?}"),
@@ -512,7 +515,7 @@ async fn raw_exposes_structured_output_turn() {
     let normalized = normalized_without_raw(response.clone());
     assert!(!json_contains_key(&normalized, "promptTokensDetails"));
     assert_ne!(
-        normalized.get("finish_reason"),
+        normalized.pointer("/end/finish_reason"),
         Some(&Value::String("STOP".to_string()))
     );
 

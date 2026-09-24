@@ -140,8 +140,15 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
 
             let response = model.completion(request).await.expect("reasoning turn");
 
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
+            assert!(
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = response.end.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -181,8 +188,8 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
+            assert!(terminal.meta.usage.reasoning_tokens.is_some_and(|n| n > 0));
+            *recorder.lock().expect("recorder") = terminal.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -260,8 +267,14 @@ async fn streaming_agent_reports_reasoning_tokens() {
                 .await
                 .expect("agent stream should succeed");
 
-            assert!(provider_final.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = provider_final.usage.reasoning_tokens;
+            assert!(
+                provider_final
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = provider_final.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -293,8 +306,15 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
+            assert!(
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = response.end.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -326,8 +346,15 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
+            assert!(
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = response.end.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -362,8 +389,8 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
+            assert!(terminal.meta.usage.reasoning_tokens.is_some_and(|n| n > 0));
+            *recorder.lock().expect("recorder") = terminal.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -403,8 +430,15 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
+            assert!(
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = response.end.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -443,8 +477,8 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
+            assert!(terminal.meta.usage.reasoning_tokens.is_some_and(|n| n > 0));
+            *recorder.lock().expect("recorder") = terminal.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -477,8 +511,15 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
+            assert!(
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = response.end.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -524,8 +565,15 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
 
             let response = model.completion(request).await.expect("reasoning turn");
 
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
+            assert!(
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = response.end.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -561,7 +609,7 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            let usage = &response.usage;
+            let usage = &response.end.meta.usage;
 
             assert!(usage.reasoning_tokens.is_some_and(|n| n > 0), "{usage:?}");
             assert!(usage.reasoning_tokens <= usage.output_tokens, "{usage:?}");
@@ -599,8 +647,15 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
+            assert!(
+                response
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            *recorder.lock().expect("recorder") = response.end.meta.usage.reasoning_tokens;
         },
     )
     .await;
@@ -653,11 +708,18 @@ async fn transports_agree_on_reasoning_tokens() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(blocking.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
+            assert!(
+                blocking
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0)
+            );
+            assert!(terminal.meta.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = (
-                blocking.usage.reasoning_tokens,
-                terminal.usage.reasoning_tokens,
+                blocking.end.meta.usage.reasoning_tokens,
+                terminal.meta.usage.reasoning_tokens,
             );
         },
     )
@@ -702,7 +764,7 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
                 .build();
 
             let normalized = model.completion(request).await.expect("the turn");
-            let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
+            let document = openrouter::CompletionResponse::deserialize(&normalized.end.meta.raw)
                 .expect("raw is OpenRouter's own completion response");
             let raw_reasoning = document
                 .usage
@@ -711,7 +773,10 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
                 .expect("the document's usage must model the breakdown");
 
             assert!(raw_reasoning > 0);
-            assert_eq!(normalized.usage.reasoning_tokens, Some(raw_reasoning));
+            assert_eq!(
+                normalized.end.meta.usage.reasoning_tokens,
+                Some(raw_reasoning)
+            );
         },
     )
     .await;
@@ -745,7 +810,7 @@ async fn blocking_cost_and_cache_details_still_map() {
                 .build();
 
             let normalized = model.completion(request).await.expect("the turn");
-            let usage = openrouter::CompletionResponse::deserialize(&normalized.raw)
+            let usage = openrouter::CompletionResponse::deserialize(&normalized.end.meta.raw)
                 .expect("raw is OpenRouter's own completion response")
                 .usage
                 .expect("usage");
@@ -756,7 +821,7 @@ async fn blocking_cost_and_cache_details_still_map() {
 
             // Shape check only — see the scope note above.
             assert_eq!(
-                normalized.usage.cached_input_tokens,
+                normalized.end.meta.usage.cached_input_tokens,
                 usage
                     .prompt_tokens_details
                     .as_ref()
@@ -765,12 +830,17 @@ async fn blocking_cost_and_cache_details_still_map() {
             // These two do carry weight: the new field must not have displaced
             // the cost mapping, and the reasoning share must still arrive.
             assert!(
-                normalized.usage.reasoning_tokens.is_some_and(|n| n > 0),
+                normalized
+                    .end
+                    .meta
+                    .usage
+                    .reasoning_tokens
+                    .is_some_and(|n| n > 0),
                 "{:?}",
-                normalized.usage
+                normalized.end.meta.usage
             );
             assert_eq!(
-                normalized.usage.output_tokens,
+                normalized.end.meta.usage.output_tokens,
                 u64::try_from(usage.completion_tokens).ok()
             );
         },
@@ -801,8 +871,8 @@ async fn control_non_reasoning_model_reports_zero_blocking() {
                 .build();
 
             let response = model.completion(request).await.expect("plain turn");
-            assert_eq!(response.usage.reasoning_tokens, Some(0));
-            assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
+            assert_eq!(response.end.meta.usage.reasoning_tokens, Some(0));
+            assert!(response.end.meta.usage.output_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;
@@ -830,8 +900,8 @@ async fn control_non_reasoning_model_reports_zero_streaming() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert_eq!(terminal.usage.reasoning_tokens, Some(0));
-            assert!(terminal.usage.output_tokens.is_some_and(|n| n > 0));
+            assert_eq!(terminal.meta.usage.reasoning_tokens, Some(0));
+            assert!(terminal.meta.usage.output_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;

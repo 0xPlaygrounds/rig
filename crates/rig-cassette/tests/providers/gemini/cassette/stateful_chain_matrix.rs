@@ -358,7 +358,12 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn one");
-                let first_id = first.response_id.clone().expect("an interaction id");
+                let first_id = first
+                    .end
+                    .meta
+                    .response_id
+                    .clone()
+                    .expect("an interaction id");
                 keep(&first_id);
                 let call = only_call(&first.choice);
 
@@ -378,7 +383,12 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn two answers the call");
-                let second_id = second.response_id.clone().expect("an interaction id");
+                let second_id = second
+                    .end
+                    .meta
+                    .response_id
+                    .clone()
+                    .expect("an interaction id");
                 keep(&second_id);
 
                 let third = model
@@ -392,7 +402,14 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn three continues");
-                keep(third.response_id.as_deref().expect("an interaction id"));
+                keep(
+                    third
+                        .end
+                        .meta
+                        .response_id
+                        .as_deref()
+                        .expect("an interaction id"),
+                );
                 assert!(text(&third.choice).contains(CODE), "{:?}", third.choice);
             })
             .await;
@@ -489,7 +506,7 @@ async fn file_uri_chain() {
                 let history = vec![
                     document,
                     Message::Assistant {
-                        id: first.message_id.clone().map(String::from),
+                        id: first.end.message_id.clone().map(String::from),
                         content: first.choice.clone(),
                     },
                     Message::user(

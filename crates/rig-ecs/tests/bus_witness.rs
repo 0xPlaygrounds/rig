@@ -1201,14 +1201,21 @@ fn answer_open(
             commands
                 .entity(entity)
                 .insert(WorldOutcome::new(Ok(Outcome::Completion(
-                    rig_core::completion::CompletionResponse::new(
-                        vec![rig_core::message::AssistantContent::text(
+                    rig_core::completion::CompletionResponse {
+                        choice: vec![rig_core::message::AssistantContent::text(
                             "served by a system",
                         )],
-                        rig_core::completion::Usage::default(),
-                        "open",
-                        serde_json::json!({}),
-                    ),
+                        end: rig_core::completion::CompletionEnd::new(
+                            rig_core::response::ResponseMeta {
+                                usage: rig_core::completion::Usage::default(),
+                                raw: serde_json::json!({}),
+                                ..rig_core::response::ResponseMeta::new(
+                                    rig_core::id::ProviderName::new("open")
+                                        .expect("a provider name"),
+                                )
+                            },
+                        ),
+                    },
                 ))));
         }
     }

@@ -26,7 +26,7 @@ async fn blocking_contract_and_gateway_both_report_none() {
                 .await
                 .expect("completion should succeed");
             assert_eq!(
-                response.provider_request_id, None,
+                response.end.meta.provider_request_id, None,
                 "no x-request-id on the wire (see the fixture's headers) and \
                  the compat contract is None: agreement, not a silent drop"
             );
@@ -57,7 +57,7 @@ async fn streaming_contract_and_gateway_both_report_none() {
                 }
             }
             let terminal = terminal.expect("terminal record");
-            assert_eq!(terminal.provider_request_id, None);
+            assert_eq!(terminal.meta.provider_request_id, None);
         },
     )
     .await;

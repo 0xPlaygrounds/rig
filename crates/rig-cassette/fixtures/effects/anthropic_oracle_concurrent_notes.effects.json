@@ -146,62 +146,66 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 700,
-            "output_tokens": 70,
-            "total_tokens": 770,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcbpt3e6y68stkhtf29",
-          "provider_request_id": "req_011CfLcbpWDXdNASJQNZuCBm",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "I'll call both tools simultaneously right now!",
-                "type": "text"
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLcbpt3e6y68stkhtf29",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcbpWDXdNASJQNZuCBm",
+              "usage": {
+                "input_tokens": 700,
+                "output_tokens": 70,
+                "total_tokens": 770,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_01Db6dAQpsRG1DKvGDrCktXT",
-                "input": {},
-                "name": "lookup_harbor_label",
-                "type": "tool_use"
-              },
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_014JF9ojGfYhs3ggLHmikDeH",
-                "input": {},
-                "name": "lookup_orchard_label",
-                "type": "tool_use"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "I'll call both tools simultaneously right now!",
+                    "type": "text"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_01Db6dAQpsRG1DKvGDrCktXT",
+                    "input": {},
+                    "name": "lookup_harbor_label",
+                    "type": "tool_use"
+                  },
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_014JF9ojGfYhs3ggLHmikDeH",
+                    "input": {},
+                    "name": "lookup_orchard_label",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLcbpt3e6y68stkhtf29",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 700,
+                  "output_tokens": 70,
+                  "service_tier": "standard"
+                }
               }
-            ],
-            "id": "msg_011CfLcbpt3e6y68stkhtf29",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 700,
-              "output_tokens": 70,
-              "service_tier": "standard"
             }
           }
         }
@@ -427,44 +431,48 @@
               "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**."
             }
           ],
-          "usage": {
-            "input_tokens": 846,
-            "output_tokens": 26,
-            "total_tokens": 872,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLcbxQien8T2Uwtjd5d8",
-          "provider_request_id": "req_011CfLcbwwwG64Kbv3WpFiej",
-          "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
-                "type": "text"
-              }
-            ],
-            "id": "msg_011CfLcbxQien8T2Uwtjd5d8",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_011CfLcbxQien8T2Uwtjd5d8",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLcbwwwG64Kbv3WpFiej",
+              "usage": {
+                "input_tokens": 846,
+                "output_tokens": 26,
+                "total_tokens": 872,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 846,
-              "output_tokens": 26,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_011CfLcbxQien8T2Uwtjd5d8",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 846,
+                  "output_tokens": 26,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

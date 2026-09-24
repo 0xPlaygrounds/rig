@@ -79,7 +79,7 @@ async fn raw_reads_back_as_openrouter_type() {
     // sent is reachable with the recorded value. The generated id goes through
     // the token helper because a recording pass mints a live one while replay
     // serves the scrubbed fixture back.
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_matches_recorded_token(
         raw["id"].as_str(),
         body["id"].as_str(),
@@ -91,8 +91,14 @@ async fn raw_reads_back_as_openrouter_type() {
     // hatch — whose identity is the identity the decoder reported.
     let typed = openrouter::CompletionResponse::deserialize(raw)
         .expect("raw is OpenRouter's own CompletionResponse");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.end.meta.response_id.as_deref()
+    );
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.end.meta.model.as_deref()
+    );
     assert_eq!(
         typed.choices.len(),
         1,
@@ -123,13 +129,13 @@ async fn raw_exposes_routed_provider() {
         .as_f64()
         .expect("OpenRouter reports usage.cost on every response");
 
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     assert_eq!(raw["provider"], json!(recorded_provider));
     assert_eq!(raw["usage"]["cost"], json!(recorded_cost));
     // And the normalized view has no slot for either: `provider` on the
     // normalized response is rig's descriptor name, not the routed upstream.
-    assert_eq!(response.provider, PROVIDER);
-    let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
+    assert_eq!(response.end.meta.provider, PROVIDER);
+    let normalized_usage = serde_json::to_value(response.end.meta.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("cost").is_none(),
         "the normalized usage has no cost slot: {normalized_usage}"
@@ -161,11 +167,14 @@ async fn normalized_fields_match_raw_renormalized() {
     // OpenRouter contracts no request-id header, so `None` is the documented
     // outcome. That is a claim about the dialect rather than about these
     // bytes, so it is stated once rather than once per view.
-    assert_no_request_id(response.provider_request_id.as_deref(), "OpenRouter");
+    assert_no_request_id(
+        response.end.meta.provider_request_id.as_deref(),
+        "OpenRouter",
+    );
 
     // One seam, two views: the normalized fields hold against the response's
     // own `raw` exactly as they hold against the fixture bytes, because `raw`
     // *is* those bytes. Capture adds a view; it never changes the mapping.
-    let raw = response.raw.clone();
+    let raw = response.end.meta.raw.clone();
     chat::assert_reproduces_body(&response, PROVIDER, &raw, "the response's own raw");
 }

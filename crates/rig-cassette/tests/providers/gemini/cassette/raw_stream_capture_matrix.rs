@@ -7,7 +7,7 @@
 //! record at EOF — Gemini's own
 //! [`StreamingCompletionResponse`], assembled from the stream's last
 //! `finishReason`, usage and metadata — and serializes it onto the terminal
-//! [`rig::streaming::StreamFinal::raw`]. There is no opt-in and nothing
+//! [`rig::completion::CompletionEnd::raw`]. There is no opt-in and nothing
 //! about it reaches the wire; `raw` is `Value::Null` only on a terminal
 //! constructed without a provider stream behind it, never because capture
 //! "was not requested".
@@ -42,10 +42,11 @@
 //! must keep the wire spelling and the terminal must report the upgrade.
 
 use futures::StreamExt;
+use rig::completion::CompletionEnd;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamEvent, StreamFinal};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -88,7 +89,7 @@ fn forced_tool_request(
 /// terminal record.
 struct Drained {
     tool_calls: Vec<ToolCall>,
-    terminal: StreamFinal,
+    terminal: CompletionEnd,
 }
 
 /// Drain a model stream, keeping every tool call it yielded.
@@ -201,7 +202,7 @@ fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, CompletionEnd)> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
@@ -215,7 +216,7 @@ async fn raw_roundtrips_streaming_completion_response() {
 
     let (text, terminal) = observed.take();
     assert!(!text.is_empty(), "the stream should have carried text");
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
 
     // `raw` is the terminal record the decoder built, serialized: Gemini's
     // own terminal type reads it back and re-serializes to the same value.
@@ -228,14 +229,17 @@ async fn raw_roundtrips_streaming_completion_response() {
     );
 
     // And the typed value agrees with the normalized terminal next to it.
-    assert_eq!(typed.model_version.as_deref(), terminal.model.as_deref());
+    assert_eq!(
+        typed.model_version.as_deref(),
+        terminal.meta.model.as_deref()
+    );
     assert_eq!(
         typed.response_id.as_deref(),
-        terminal.response_id.as_deref()
+        terminal.meta.response_id.as_deref()
     );
     assert_eq!(
         Some(typed.usage_metadata.total_token_count as u64),
-        terminal.usage.total_tokens
+        terminal.meta.usage.total_tokens
     );
 
     let last = last_usage_frame(SCENARIO);
@@ -253,7 +257,7 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, CompletionEnd)> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
@@ -280,7 +284,7 @@ async fn raw_exposes_terminal_only_fields() {
     );
     assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let last = last_usage_frame(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),
@@ -332,7 +336,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     );
 
     let terminal = &drained.terminal;
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
 
     // The typed round trip holds for a tool turn's terminal too.
     let typed = StreamingCompletionResponse::deserialize(raw)
@@ -344,11 +348,11 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     );
     assert_eq!(
         typed.response_id.as_deref(),
-        terminal.response_id.as_deref()
+        terminal.meta.response_id.as_deref()
     );
     assert_eq!(
         Some(typed.usage_metadata.total_token_count as u64),
-        terminal.usage.total_tokens
+        terminal.meta.usage.total_tokens
     );
 
     // The normalized terminal reports the reconciled ToolCalls …

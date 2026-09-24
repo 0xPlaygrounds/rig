@@ -142,7 +142,8 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // `CompletionResponse::raw`; decode it to read the same fields the
             // old raw surface exposed directly.
             let response = model.completion(request).await?;
-            let raw: openai::completion::CompletionResponse = serde_json::from_value(response.raw)?;
+            let raw: openai::completion::CompletionResponse =
+                serde_json::from_value(response.end.meta.raw)?;
             let choice = raw
                 .choices
                 .first()
@@ -162,11 +163,11 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             }
             let terminal = terminal.context("stream should carry a terminal record")?;
             // The provider-native chat-completions terminal rides serialized
-            // on `StreamFinal::raw`; decode it to prove the shape, then read
+            // on `CompletionEnd::raw`; decode it to prove the shape, then read
             // the serialized form the way the old raw surface did.
             let terminal = serde_json::from_value::<
                 openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
-            >(terminal.raw)?;
+            >(terminal.meta.raw)?;
             let serialized = serde_json::to_value(terminal)?;
             Observation {
                 logprobs: serialized["logprobs"].clone(),

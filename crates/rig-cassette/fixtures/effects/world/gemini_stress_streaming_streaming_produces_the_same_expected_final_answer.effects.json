@@ -233,33 +233,37 @@
               "signature": "CiQBaRR9E/UHToBnCTKggTqGaKxlxsiLwnV4C2bepoFCdpTQTQQKVgFpFH0TqT99lVsnMubMmdSV1l3M6Q+bbbGk1rVqm13pPISBWtXqiPLoADaiabWgZdz/4OBGsQEQmQf9siN4nVWV7ydUptj6bzS5XMnEdVup3q9NzSo+CssBAWkUfRMmh/h7gECsSvM4CcEKkKhpljMOzcts6qP/O8QJuexa1l8QyKBxYY+KmDj+e/eenVMLAEOkaa8HPZU7S9xweK8PE47ZBWhX9p+W5JmfMNg+E9eEY9MV+wqgjZvEflXDptEYdLEvnJjc3UknrMjpufYhwj5VM0W6RTMU3ZCBOJYYFfVkFuAFryS0g3zut84LM4vSU0Ypvvsi9hXVH4NKS5K9KTTbqDOgubA4KVLU+dpXC9CgFf4MUDMeP5uUOiUrpnpemVteqCIKVgFpFH0T8vwtYQjFE+PclSBGRQz3ACW4Uat9Ahq+mUdnIdqs299MGz9SmpxvMl9uDS8JA6zKv1JJDdAMHjaglHulkAKB3Us9EC0rxa7qK1rAufl4QxZP"
             }
           ],
-          "usage": {
-            "input_tokens": 199,
-            "output_tokens": 19,
-            "total_tokens": 300,
-            "reasoning_tokens": 82
-          },
-          "response_id": "iq6yateUEcifz7IP2cnoGQ",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 199,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 300,
-              "thoughtsTokenCount": 82,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 199
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "iq6yateUEcifz7IP2cnoGQ"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "iq6yateUEcifz7IP2cnoGQ",
+              "usage": {
+                "input_tokens": 199,
+                "output_tokens": 19,
+                "total_tokens": 300,
+                "reasoning_tokens": 82
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 199,
+                  "candidatesTokenCount": 19,
+                  "totalTokenCount": 300,
+                  "thoughtsTokenCount": 82,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 199
+                    }
+                  ]
+                },
+                "finish_reason": "STOP",
+                "finish_message": "Model generated function call(s).",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "iq6yateUEcifz7IP2cnoGQ"
+              }
+            }
           }
         }
       },
@@ -302,33 +306,35 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 199,
-            "output_tokens": 19,
-            "total_tokens": 300,
-            "reasoning_tokens": 82
-          },
           "finish_reason": "tool_calls",
-          "response_id": "iq6yateUEcifz7IP2cnoGQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 199,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 300,
-              "thoughtsTokenCount": 82,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 199
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "iq6yateUEcifz7IP2cnoGQ",
+            "usage": {
+              "input_tokens": 199,
+              "output_tokens": 19,
+              "total_tokens": 300,
+              "reasoning_tokens": 82
             },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "iq6yateUEcifz7IP2cnoGQ"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 199,
+                "candidatesTokenCount": 19,
+                "totalTokenCount": 300,
+                "thoughtsTokenCount": 82,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 199
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "finish_message": "Model generated function call(s).",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "iq6yateUEcifz7IP2cnoGQ"
+            }
           }
         }
       ],
@@ -488,33 +494,37 @@
               "signature": "CiIBaRR9E1xaWVFupnWBW4hl8/K/oWGOsQuM+K/R6xjcd7l5ClkBaRR9E4Y3QkqttZsn0TjLT87/cRkGpULFziVOjm8Op2JA2V+nNQ7eYyJcl8YHZ6bzKhHqim9wc5QTjMfWxM3xVNlXEfpKGdoJrtB0O/bJgG9X1Bs+v/CauwqgAQFpFH0TC58ogGfdYD5tuz7ExcR1PaibOWuHyx86qshDyxt0mAhPtqXJwb7bJWcPWINcZSj49EczJc9+f7YbRb8XQhGCD8a/ndgKXOpfBflpQj5bgEliXfMO530/FcEuqAytwWl5+quO/oLJVkA3suHoKArd6yVRVy6bY6wxxPN8o+RFWJiEr6hjKCj0lAY1yH4cMyrWzIo/vwGZp+xJQ7U="
             }
           ],
-          "usage": {
-            "input_tokens": 314,
-            "output_tokens": 19,
-            "total_tokens": 394,
-            "reasoning_tokens": 61
-          },
-          "response_id": "i66yavrZD-Xrz7IP08vMyA8",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 314,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 394,
-              "thoughtsTokenCount": 61,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 314
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "i66yavrZD-Xrz7IP08vMyA8"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "i66yavrZD-Xrz7IP08vMyA8",
+              "usage": {
+                "input_tokens": 314,
+                "output_tokens": 19,
+                "total_tokens": 394,
+                "reasoning_tokens": 61
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 314,
+                  "candidatesTokenCount": 19,
+                  "totalTokenCount": 394,
+                  "thoughtsTokenCount": 61,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 314
+                    }
+                  ]
+                },
+                "finish_reason": "STOP",
+                "finish_message": "Model generated function call(s).",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "i66yavrZD-Xrz7IP08vMyA8"
+              }
+            }
           }
         }
       },
@@ -557,33 +567,35 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 314,
-            "output_tokens": 19,
-            "total_tokens": 394,
-            "reasoning_tokens": 61
-          },
           "finish_reason": "tool_calls",
-          "response_id": "i66yavrZD-Xrz7IP08vMyA8",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 314,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 394,
-              "thoughtsTokenCount": 61,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 314
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "i66yavrZD-Xrz7IP08vMyA8",
+            "usage": {
+              "input_tokens": 314,
+              "output_tokens": 19,
+              "total_tokens": 394,
+              "reasoning_tokens": 61
             },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "i66yavrZD-Xrz7IP08vMyA8"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 314,
+                "candidatesTokenCount": 19,
+                "totalTokenCount": 394,
+                "thoughtsTokenCount": 61,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 314
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "finish_message": "Model generated function call(s).",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "i66yavrZD-Xrz7IP08vMyA8"
+            }
           }
         }
       ],
@@ -776,32 +788,36 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 408,
-            "output_tokens": 2,
-            "total_tokens": 424,
-            "reasoning_tokens": 14
-          },
-          "response_id": "jK6yaqCuAcLRz7IP-vqGKA",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 408,
-              "candidatesTokenCount": 2,
-              "totalTokenCount": 424,
-              "thoughtsTokenCount": 14,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 408
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "jK6yaqCuAcLRz7IP-vqGKA"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "jK6yaqCuAcLRz7IP-vqGKA",
+              "usage": {
+                "input_tokens": 408,
+                "output_tokens": 2,
+                "total_tokens": 424,
+                "reasoning_tokens": 14
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 408,
+                  "candidatesTokenCount": 2,
+                  "totalTokenCount": 424,
+                  "thoughtsTokenCount": 14,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 408
+                    }
+                  ]
+                },
+                "finish_reason": "STOP",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "jK6yaqCuAcLRz7IP-vqGKA"
+              }
+            }
           }
         }
       },
@@ -842,32 +858,34 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 408,
-            "output_tokens": 2,
-            "total_tokens": 424,
-            "reasoning_tokens": 14
-          },
           "finish_reason": "stop",
-          "response_id": "jK6yaqCuAcLRz7IP-vqGKA",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 408,
-              "candidatesTokenCount": 2,
-              "totalTokenCount": 424,
-              "thoughtsTokenCount": 14,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 408
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "jK6yaqCuAcLRz7IP-vqGKA",
+            "usage": {
+              "input_tokens": 408,
+              "output_tokens": 2,
+              "total_tokens": 424,
+              "reasoning_tokens": 14
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "jK6yaqCuAcLRz7IP-vqGKA"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 408,
+                "candidatesTokenCount": 2,
+                "totalTokenCount": 424,
+                "thoughtsTokenCount": 14,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 408
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "jK6yaqCuAcLRz7IP-vqGKA"
+            }
           }
         }
       ],

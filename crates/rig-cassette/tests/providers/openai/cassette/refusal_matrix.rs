@@ -209,7 +209,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
                 .build();
 
             let response = model.completion(request).await.expect("refusal turn");
-            let reply = ChatReply::deserialize(&response.raw)
+            let reply = ChatReply::deserialize(&response.end.meta.raw)
                 .expect("`raw` is the serialized openai::completion::CompletionResponse");
             let raw_refusal = reply
                 .choices
@@ -249,10 +249,10 @@ async fn chat_blocking_refusal_finishes_with_stop() {
             let response = model.completion(request).await.expect("refusal turn");
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Stop)
             );
-            assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
+            assert!(response.end.meta.usage.output_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;
@@ -332,7 +332,7 @@ async fn chat_streaming_terminal_carries_usage() {
 
             assert_nonempty_response(&text);
             let terminal = terminal.expect("the stream must still deliver a terminal record");
-            assert!(terminal.usage.output_tokens.is_some_and(|n| n > 0));
+            assert!(terminal.meta.usage.output_tokens.is_some_and(|n| n > 0));
             assert_eq!(
                 terminal.finish_reason,
                 Some(rig::completion::FinishReason::Stop)
@@ -391,7 +391,7 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
             assert_nonempty_response(&blocking_text);
             assert_nonempty_response(&streamed_text);
             assert_eq!(
-                blocking.finish_reason.clone(),
+                blocking.end.finish_reason.clone(),
                 terminal.and_then(|terminal| terminal.finish_reason),
                 "both transports must report the same terminal reason"
             );

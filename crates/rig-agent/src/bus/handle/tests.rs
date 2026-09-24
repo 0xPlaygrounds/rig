@@ -257,7 +257,7 @@ async fn model_handle_completes_and_streams() {
     assert_eq!(text, "streamed");
     let finished = stream.finish().expect("a terminal record");
     assert_eq!(finished.choice, vec![AssistantContent::text("streamed")]);
-    assert_eq!(finished.usage.total_tokens, Some(4));
+    assert_eq!(finished.end.meta.usage.total_tokens, Some(4));
 }
 
 #[tokio::test]

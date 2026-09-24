@@ -267,7 +267,7 @@ async fn collect_stream(
         .response
         .ok_or("stream did not emit a final response")?;
     // The local record rides the terminal's `raw`, typed back here.
-    let raw: CandleCompletionResponse = serde_json::from_value(terminal.raw)?;
+    let raw: CandleCompletionResponse = serde_json::from_value(terminal.meta.raw)?;
     Ok((text, raw))
 }
 
@@ -1536,7 +1536,7 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
 }
 
 /// The load-bearing property behind `CompletionResponse::raw` and
-/// `StreamFinal::raw` for this crate: the captured value is
+/// `CompletionEnd::raw` for this crate: the captured value is
 /// `serde_json::to_value(&CandleCompletionResponse)` — the local record
 /// `raw_completion` returns — and a consumer must be able to read it back as
 /// the same type and get the same JSON, with the local generation metrics rig
@@ -1610,13 +1610,13 @@ async fn stream_from_events_terminal_carries_raw()
         .ok_or("stream did not emit a terminal record")?;
 
     assert!(
-        !terminal.raw.is_null(),
+        !terminal.meta.raw.is_null(),
         "a provider-backed terminal always carries raw"
     );
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
     assert_eq!(typed, terminal_record);
-    assert_eq!(terminal.usage.total_tokens, Some(4));
+    assert_eq!(terminal.meta.usage.total_tokens, Some(4));
     Ok(())
 }
 
@@ -1644,10 +1644,10 @@ async fn completion_raw_round_trips_into_the_local_record()
         .await?;
 
     assert!(
-        !response.raw.is_null(),
+        !response.end.meta.raw.is_null(),
         "a provider-backed completion always carries raw"
     );
-    let raw = &response.raw;
+    let raw = &response.end.meta.raw;
     let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
     assert_eq!(
         serde_json::to_value(&typed)?,
@@ -1660,14 +1660,20 @@ async fn completion_raw_round_trips_into_the_local_record()
     assert_eq!(typed.finish_reason, escape_hatch.finish_reason);
     assert_eq!(typed.generated_tokens, 2);
 
-    assert_eq!(response.usage.input_tokens, Some(typed.prompt_tokens));
-    assert_eq!(response.usage.output_tokens, Some(typed.generated_tokens));
-    assert_eq!(response.usage.output_tokens, Some(2));
+    assert_eq!(
+        response.end.meta.usage.input_tokens,
+        Some(typed.prompt_tokens)
+    );
+    assert_eq!(
+        response.end.meta.usage.output_tokens,
+        Some(typed.generated_tokens)
+    );
+    assert_eq!(response.end.meta.usage.output_tokens, Some(2));
     Ok(())
 }
 
 /// The streaming twin through the real `CompletionModel::stream` path: the
-/// terminal `StreamFinal.raw` is the local record the generator's `Final`
+/// terminal `CompletionEnd.raw` is the local record the generator's `Final`
 /// event carries — it round-trips into `CandleCompletionResponse`, agrees
 /// with a second stream's terminal on text and token counts, and
 /// re-normalizing it through the events-first seam reproduces every
@@ -1691,10 +1697,10 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     let (_, streamed) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
 
     assert!(
-        !terminal.raw.is_null(),
+        !terminal.meta.raw.is_null(),
         "a provider-backed terminal always carries raw"
     );
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
     assert_eq!(
         serde_json::to_value(&typed)?,
@@ -1715,10 +1721,21 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     let renormalized = renormalized
         .response
         .ok_or("re-normalizing the capture did not emit a terminal record")?;
-    assert_eq!(terminal.identity(), renormalized.identity());
+    assert_eq!(
+        (
+            &terminal.message_id,
+            &terminal.meta.response_id,
+            &terminal.meta.provider_request_id
+        ),
+        (
+            &renormalized.message_id,
+            &renormalized.meta.response_id,
+            &renormalized.meta.provider_request_id
+        )
+    );
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);
-    assert_eq!(terminal.model, renormalized.model);
-    assert_eq!(terminal.usage, renormalized.usage);
-    assert_eq!(terminal.usage.output_tokens, Some(2));
+    assert_eq!(terminal.meta.model, renormalized.meta.model);
+    assert_eq!(terminal.meta.usage, renormalized.meta.usage);
+    assert_eq!(terminal.meta.usage.output_tokens, Some(2));
     Ok(())
 }

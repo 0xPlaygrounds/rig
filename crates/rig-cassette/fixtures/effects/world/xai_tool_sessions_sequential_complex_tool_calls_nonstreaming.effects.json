@@ -378,206 +378,210 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 743,
-            "output_tokens": 322,
-            "total_tokens": 1065,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 316
-          },
-          "response_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
-          "provider_request_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
-                "status": "completed",
-                "summary": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
+              "provider_request_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
+              "usage": {
+                "input_tokens": 743,
+                "output_tokens": 322,
+                "total_tokens": 1065,
+                "cached_input_tokens": 192,
+                "reasoning_tokens": 316
+              },
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
                   {
-                    "text": "Running the production-readiness scenario.",
-                    "type": "summary_text"
+                    "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Running the production-readiness scenario.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{}",
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0",
+                    "name": "ping_empty",
+                    "status": "completed",
+                    "type": "function_call"
                   }
                 ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{}",
-                "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                "id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0",
-                "name": "ping_empty",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": false,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "auto",
-            "tools": [
-              {
-                "description": "Return EMPTY-OK. This tool takes no arguments.",
-                "name": "ping_empty",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+                "parallel_tool_calls": false,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
                 },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Validate a nested deployment manifest.",
-                "name": "inspect_manifest",
-                "parameters": {
-                  "properties": {
-                    "flags": {
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "description": "Return EMPTY-OK. This tool takes no arguments.",
+                    "name": "ping_empty",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Validate a nested deployment manifest.",
+                    "name": "inspect_manifest",
+                    "parameters": {
                       "properties": {
-                        "critical": {
-                          "type": "boolean"
+                        "flags": {
+                          "properties": {
+                            "critical": {
+                              "type": "boolean"
+                            },
+                            "retries": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "critical",
+                            "retries"
+                          ],
+                          "type": "object"
                         },
-                        "retries": {
-                          "type": "integer"
+                        "note": {
+                          "type": "string"
+                        },
+                        "project": {
+                          "type": "string"
+                        },
+                        "steps": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "weight": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "weight"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
-                        "critical",
-                        "retries"
+                        "project",
+                        "flags",
+                        "steps",
+                        "note"
                       ],
                       "type": "object"
                     },
-                    "note": {
-                      "type": "string"
-                    },
-                    "project": {
-                      "type": "string"
-                    },
-                    "steps": {
-                      "items": {
-                        "properties": {
-                          "name": {
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Join label strings with the requested separator.",
+                    "name": "join_labels",
+                    "parameters": {
+                      "properties": {
+                        "labels": {
+                          "items": {
                             "type": "string"
                           },
-                          "weight": {
-                            "type": "integer"
-                          }
+                          "type": "array"
                         },
-                        "required": [
-                          "name",
-                          "weight"
-                        ],
-                        "type": "object"
+                        "separator": {
+                          "type": "string"
+                        }
                       },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "project",
-                    "flags",
-                    "steps",
-                    "note"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Join label strings with the requested separator.",
-                "name": "join_labels",
-                "parameters": {
-                  "properties": {
-                    "labels": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": [
+                        "labels",
+                        "separator"
+                      ],
+                      "type": "object"
                     },
-                    "separator": {
-                      "type": "string"
-                    }
+                    "strict": false,
+                    "type": "function"
                   },
-                  "required": [
-                    "labels",
-                    "separator"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Echo a string containing escaping-sensitive characters.",
-                "name": "escape_echo",
-                "parameters": {
-                  "properties": {
-                    "text": {
-                      "type": "string"
-                    }
+                  {
+                    "description": "Echo a string containing escaping-sensitive characters.",
+                    "name": "escape_echo",
+                    "parameters": {
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 743,
+                    "output_tokens": 325
                   },
-                  "required": [
-                    "text"
-                  ],
-                  "type": "object"
+                  "cost_in_usd_ticks": 15321500,
+                  "input_tokens": 743,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 322,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 316
+                  },
+                  "total_tokens": 1065
                 },
-                "strict": false,
-                "type": "function"
+                "user": null
               }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
-                "input_tokens": 743,
-                "output_tokens": 325
-              },
-              "cost_in_usd_ticks": 15321500,
-              "input_tokens": 743,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 322,
-              "output_tokens_details": {
-                "reasoning_tokens": 316
-              },
-              "total_tokens": 1065
-            },
-            "user": null
+            }
           }
         }
       },
@@ -840,206 +844,210 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 757,
-            "output_tokens": 433,
-            "total_tokens": 1190,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 360
-          },
-          "response_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
-          "provider_request_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
-                "status": "completed",
-                "summary": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
+              "provider_request_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
+              "usage": {
+                "input_tokens": 757,
+                "output_tokens": 433,
+                "total_tokens": 1190,
+                "cached_input_tokens": 192,
+                "reasoning_tokens": 360
+              },
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
                   {
-                    "text": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo.",
-                    "type": "summary_text"
+                    "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
+                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                    "id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0",
+                    "name": "inspect_manifest",
+                    "status": "completed",
+                    "type": "function_call"
                   }
                 ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
-                "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                "id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0",
-                "name": "inspect_manifest",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": false,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "auto",
-            "tools": [
-              {
-                "description": "Return EMPTY-OK. This tool takes no arguments.",
-                "name": "ping_empty",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+                "parallel_tool_calls": false,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
                 },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Validate a nested deployment manifest.",
-                "name": "inspect_manifest",
-                "parameters": {
-                  "properties": {
-                    "flags": {
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "description": "Return EMPTY-OK. This tool takes no arguments.",
+                    "name": "ping_empty",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Validate a nested deployment manifest.",
+                    "name": "inspect_manifest",
+                    "parameters": {
                       "properties": {
-                        "critical": {
-                          "type": "boolean"
+                        "flags": {
+                          "properties": {
+                            "critical": {
+                              "type": "boolean"
+                            },
+                            "retries": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "critical",
+                            "retries"
+                          ],
+                          "type": "object"
                         },
-                        "retries": {
-                          "type": "integer"
+                        "note": {
+                          "type": "string"
+                        },
+                        "project": {
+                          "type": "string"
+                        },
+                        "steps": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "weight": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "weight"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
-                        "critical",
-                        "retries"
+                        "project",
+                        "flags",
+                        "steps",
+                        "note"
                       ],
                       "type": "object"
                     },
-                    "note": {
-                      "type": "string"
-                    },
-                    "project": {
-                      "type": "string"
-                    },
-                    "steps": {
-                      "items": {
-                        "properties": {
-                          "name": {
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Join label strings with the requested separator.",
+                    "name": "join_labels",
+                    "parameters": {
+                      "properties": {
+                        "labels": {
+                          "items": {
                             "type": "string"
                           },
-                          "weight": {
-                            "type": "integer"
-                          }
+                          "type": "array"
                         },
-                        "required": [
-                          "name",
-                          "weight"
-                        ],
-                        "type": "object"
+                        "separator": {
+                          "type": "string"
+                        }
                       },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "project",
-                    "flags",
-                    "steps",
-                    "note"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Join label strings with the requested separator.",
-                "name": "join_labels",
-                "parameters": {
-                  "properties": {
-                    "labels": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": [
+                        "labels",
+                        "separator"
+                      ],
+                      "type": "object"
                     },
-                    "separator": {
-                      "type": "string"
-                    }
+                    "strict": false,
+                    "type": "function"
                   },
-                  "required": [
-                    "labels",
-                    "separator"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Echo a string containing escaping-sensitive characters.",
-                "name": "escape_echo",
-                "parameters": {
-                  "properties": {
-                    "text": {
-                      "type": "string"
-                    }
+                  {
+                    "description": "Echo a string containing escaping-sensitive characters.",
+                    "name": "escape_echo",
+                    "parameters": {
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 757,
+                    "output_tokens": 436
                   },
-                  "required": [
-                    "text"
-                  ],
-                  "type": "object"
+                  "cost_in_usd_ticks": 18271500,
+                  "input_tokens": 757,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 433,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 360
+                  },
+                  "total_tokens": 1190
                 },
-                "strict": false,
-                "type": "function"
+                "user": null
               }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
-                "input_tokens": 757,
-                "output_tokens": 436
-              },
-              "cost_in_usd_ticks": 18271500,
-              "input_tokens": 757,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 433,
-              "output_tokens_details": {
-                "reasoning_tokens": 360
-              },
-              "total_tokens": 1190
-            },
-            "user": null
+            }
           }
         }
       },
@@ -1353,195 +1361,199 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 841,
-            "output_tokens": 55,
-            "total_tokens": 896,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 25
-          },
-          "response_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
-          "provider_request_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
-                "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                "id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0",
-                "name": "join_labels",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": false,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "auto",
-            "tools": [
-              {
-                "description": "Return EMPTY-OK. This tool takes no arguments.",
-                "name": "ping_empty",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
+              "provider_request_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
+              "usage": {
+                "input_tokens": 841,
+                "output_tokens": 55,
+                "total_tokens": 896,
+                "cached_input_tokens": 192,
+                "reasoning_tokens": 25
               },
-              {
-                "description": "Validate a nested deployment manifest.",
-                "name": "inspect_manifest",
-                "parameters": {
-                  "properties": {
-                    "flags": {
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                    "id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0",
+                    "name": "join_labels",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": false,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "description": "Return EMPTY-OK. This tool takes no arguments.",
+                    "name": "ping_empty",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Validate a nested deployment manifest.",
+                    "name": "inspect_manifest",
+                    "parameters": {
                       "properties": {
-                        "critical": {
-                          "type": "boolean"
+                        "flags": {
+                          "properties": {
+                            "critical": {
+                              "type": "boolean"
+                            },
+                            "retries": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "critical",
+                            "retries"
+                          ],
+                          "type": "object"
                         },
-                        "retries": {
-                          "type": "integer"
+                        "note": {
+                          "type": "string"
+                        },
+                        "project": {
+                          "type": "string"
+                        },
+                        "steps": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "weight": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "weight"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
-                        "critical",
-                        "retries"
+                        "project",
+                        "flags",
+                        "steps",
+                        "note"
                       ],
                       "type": "object"
                     },
-                    "note": {
-                      "type": "string"
-                    },
-                    "project": {
-                      "type": "string"
-                    },
-                    "steps": {
-                      "items": {
-                        "properties": {
-                          "name": {
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Join label strings with the requested separator.",
+                    "name": "join_labels",
+                    "parameters": {
+                      "properties": {
+                        "labels": {
+                          "items": {
                             "type": "string"
                           },
-                          "weight": {
-                            "type": "integer"
-                          }
+                          "type": "array"
                         },
-                        "required": [
-                          "name",
-                          "weight"
-                        ],
-                        "type": "object"
+                        "separator": {
+                          "type": "string"
+                        }
                       },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "project",
-                    "flags",
-                    "steps",
-                    "note"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Join label strings with the requested separator.",
-                "name": "join_labels",
-                "parameters": {
-                  "properties": {
-                    "labels": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": [
+                        "labels",
+                        "separator"
+                      ],
+                      "type": "object"
                     },
-                    "separator": {
-                      "type": "string"
-                    }
+                    "strict": false,
+                    "type": "function"
                   },
-                  "required": [
-                    "labels",
-                    "separator"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Echo a string containing escaping-sensitive characters.",
-                "name": "escape_echo",
-                "parameters": {
-                  "properties": {
-                    "text": {
-                      "type": "string"
-                    }
+                  {
+                    "description": "Echo a string containing escaping-sensitive characters.",
+                    "name": "escape_echo",
+                    "parameters": {
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 841,
+                    "output_tokens": 58
                   },
-                  "required": [
-                    "text"
-                  ],
-                  "type": "object"
+                  "cost_in_usd_ticks": 9871500,
+                  "input_tokens": 841,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 55,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 25
+                  },
+                  "total_tokens": 896
                 },
-                "strict": false,
-                "type": "function"
+                "user": null
               }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
-                "input_tokens": 841,
-                "output_tokens": 58
-              },
-              "cost_in_usd_ticks": 9871500,
-              "input_tokens": 841,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 55,
-              "output_tokens_details": {
-                "reasoning_tokens": 25
-              },
-              "total_tokens": 896
-            },
-            "user": null
+            }
           }
         }
       },
@@ -1911,206 +1923,210 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 890,
-            "output_tokens": 283,
-            "total_tokens": 1173,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 256
-          },
-          "response_id": "8868afed-f733-9ee3-8085-20c58409643c",
-          "provider_request_id": "8868afed-f733-9ee3-8085-20c58409643c",
-          "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "8868afed-f733-9ee3-8085-20c58409643c",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
-                "status": "completed",
-                "summary": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "8868afed-f733-9ee3-8085-20c58409643c",
+              "provider_request_id": "8868afed-f733-9ee3-8085-20c58409643c",
+              "usage": {
+                "input_tokens": 890,
+                "output_tokens": 283,
+                "total_tokens": 1173,
+                "cached_input_tokens": 192,
+                "reasoning_tokens": 256
+              },
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "8868afed-f733-9ee3-8085-20c58409643c",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
                   {
-                    "text": "Running the production-readiness scenario.",
-                    "type": "summary_text"
+                    "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Running the production-readiness scenario.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                    "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                    "id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0",
+                    "name": "escape_echo",
+                    "status": "completed",
+                    "type": "function_call"
                   }
                 ],
-                "type": "reasoning"
-              },
-              {
-                "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                "id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0",
-                "name": "escape_echo",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "parallel_tool_calls": false,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "auto",
-            "tools": [
-              {
-                "description": "Return EMPTY-OK. This tool takes no arguments.",
-                "name": "ping_empty",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+                "parallel_tool_calls": false,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
                 },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Validate a nested deployment manifest.",
-                "name": "inspect_manifest",
-                "parameters": {
-                  "properties": {
-                    "flags": {
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "description": "Return EMPTY-OK. This tool takes no arguments.",
+                    "name": "ping_empty",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Validate a nested deployment manifest.",
+                    "name": "inspect_manifest",
+                    "parameters": {
                       "properties": {
-                        "critical": {
-                          "type": "boolean"
+                        "flags": {
+                          "properties": {
+                            "critical": {
+                              "type": "boolean"
+                            },
+                            "retries": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "critical",
+                            "retries"
+                          ],
+                          "type": "object"
                         },
-                        "retries": {
-                          "type": "integer"
+                        "note": {
+                          "type": "string"
+                        },
+                        "project": {
+                          "type": "string"
+                        },
+                        "steps": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "weight": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "weight"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
-                        "critical",
-                        "retries"
+                        "project",
+                        "flags",
+                        "steps",
+                        "note"
                       ],
                       "type": "object"
                     },
-                    "note": {
-                      "type": "string"
-                    },
-                    "project": {
-                      "type": "string"
-                    },
-                    "steps": {
-                      "items": {
-                        "properties": {
-                          "name": {
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Join label strings with the requested separator.",
+                    "name": "join_labels",
+                    "parameters": {
+                      "properties": {
+                        "labels": {
+                          "items": {
                             "type": "string"
                           },
-                          "weight": {
-                            "type": "integer"
-                          }
+                          "type": "array"
                         },
-                        "required": [
-                          "name",
-                          "weight"
-                        ],
-                        "type": "object"
+                        "separator": {
+                          "type": "string"
+                        }
                       },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "project",
-                    "flags",
-                    "steps",
-                    "note"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Join label strings with the requested separator.",
-                "name": "join_labels",
-                "parameters": {
-                  "properties": {
-                    "labels": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": [
+                        "labels",
+                        "separator"
+                      ],
+                      "type": "object"
                     },
-                    "separator": {
-                      "type": "string"
-                    }
+                    "strict": false,
+                    "type": "function"
                   },
-                  "required": [
-                    "labels",
-                    "separator"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Echo a string containing escaping-sensitive characters.",
-                "name": "escape_echo",
-                "parameters": {
-                  "properties": {
-                    "text": {
-                      "type": "string"
-                    }
+                  {
+                    "description": "Echo a string containing escaping-sensitive characters.",
+                    "name": "escape_echo",
+                    "parameters": {
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 890,
+                    "output_tokens": 286
                   },
-                  "required": [
-                    "text"
-                  ],
-                  "type": "object"
+                  "cost_in_usd_ticks": 16184000,
+                  "input_tokens": 890,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 283,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 256
+                  },
+                  "total_tokens": 1173
                 },
-                "strict": false,
-                "type": "function"
+                "user": null
               }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
-                "input_tokens": 890,
-                "output_tokens": 286
-              },
-              "cost_in_usd_ticks": 16184000,
-              "input_tokens": 890,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 283,
-              "output_tokens_details": {
-                "reasoning_tokens": 256
-              },
-              "total_tokens": 1173
-            },
-            "user": null
+            }
           }
         }
       },
@@ -2512,202 +2528,206 @@
               "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK."
             }
           ],
-          "usage": {
-            "input_tokens": 944,
-            "output_tokens": 156,
-            "total_tokens": 1100,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 133
-          },
-          "message_id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
-          "response_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
-          "provider_request_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
-          "finish_reason": "stop",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "background": false,
-            "completed_at": 0,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0.0,
-            "id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
-            },
-            "model": "grok-4.3",
-            "object": "response",
-            "output": [
-              {
-                "content": [
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+            "meta": {
+              "provider": "xai",
+              "model": "grok-4.3",
+              "response_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+              "provider_request_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+              "usage": {
+                "input_tokens": 944,
+                "output_tokens": 156,
+                "total_tokens": 1100,
+                "cached_input_tokens": 192,
+                "reasoning_tokens": 133
+              },
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
                   {
-                    "annotations": [],
-                    "logprobs": [],
-                    "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.",
-                    "type": "output_text"
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
                   }
                 ],
-                "id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
-                "role": "assistant",
-                "status": "completed",
-                "type": "message"
-              }
-            ],
-            "parallel_tool_calls": false,
-            "presence_penalty": 0.0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": {
-              "effort": "low",
-              "summary": "detailed"
-            },
-            "safety_identifier": null,
-            "service_tier": "default",
-            "status": "completed",
-            "store": true,
-            "temperature": 0.7,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "tool_choice": "auto",
-            "tools": [
-              {
-                "description": "Return EMPTY-OK. This tool takes no arguments.",
-                "name": "ping_empty",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+                "parallel_tool_calls": false,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
                 },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Validate a nested deployment manifest.",
-                "name": "inspect_manifest",
-                "parameters": {
-                  "properties": {
-                    "flags": {
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "auto",
+                "tools": [
+                  {
+                    "description": "Return EMPTY-OK. This tool takes no arguments.",
+                    "name": "ping_empty",
+                    "parameters": {
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Validate a nested deployment manifest.",
+                    "name": "inspect_manifest",
+                    "parameters": {
                       "properties": {
-                        "critical": {
-                          "type": "boolean"
+                        "flags": {
+                          "properties": {
+                            "critical": {
+                              "type": "boolean"
+                            },
+                            "retries": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "critical",
+                            "retries"
+                          ],
+                          "type": "object"
                         },
-                        "retries": {
-                          "type": "integer"
+                        "note": {
+                          "type": "string"
+                        },
+                        "project": {
+                          "type": "string"
+                        },
+                        "steps": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "weight": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "weight"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
-                        "critical",
-                        "retries"
+                        "project",
+                        "flags",
+                        "steps",
+                        "note"
                       ],
                       "type": "object"
                     },
-                    "note": {
-                      "type": "string"
-                    },
-                    "project": {
-                      "type": "string"
-                    },
-                    "steps": {
-                      "items": {
-                        "properties": {
-                          "name": {
+                    "strict": false,
+                    "type": "function"
+                  },
+                  {
+                    "description": "Join label strings with the requested separator.",
+                    "name": "join_labels",
+                    "parameters": {
+                      "properties": {
+                        "labels": {
+                          "items": {
                             "type": "string"
                           },
-                          "weight": {
-                            "type": "integer"
-                          }
+                          "type": "array"
                         },
-                        "required": [
-                          "name",
-                          "weight"
-                        ],
-                        "type": "object"
+                        "separator": {
+                          "type": "string"
+                        }
                       },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "project",
-                    "flags",
-                    "steps",
-                    "note"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Join label strings with the requested separator.",
-                "name": "join_labels",
-                "parameters": {
-                  "properties": {
-                    "labels": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": [
+                        "labels",
+                        "separator"
+                      ],
+                      "type": "object"
                     },
-                    "separator": {
-                      "type": "string"
-                    }
+                    "strict": false,
+                    "type": "function"
                   },
-                  "required": [
-                    "labels",
-                    "separator"
-                  ],
-                  "type": "object"
-                },
-                "strict": false,
-                "type": "function"
-              },
-              {
-                "description": "Echo a string containing escaping-sensitive characters.",
-                "name": "escape_echo",
-                "parameters": {
-                  "properties": {
-                    "text": {
-                      "type": "string"
-                    }
+                  {
+                    "description": "Echo a string containing escaping-sensitive characters.",
+                    "name": "escape_echo",
+                    "parameters": {
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 944,
+                    "output_tokens": 163
                   },
-                  "required": [
-                    "text"
-                  ],
-                  "type": "object"
+                  "cost_in_usd_ticks": 13684000,
+                  "input_tokens": 944,
+                  "input_tokens_details": {
+                    "cached_tokens": 192
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 156,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 133
+                  },
+                  "total_tokens": 1100
                 },
-                "strict": false,
-                "type": "function"
+                "user": null
               }
-            ],
-            "top_logprobs": 0,
-            "top_p": 0.95,
-            "truncation": "disabled",
-            "usage": {
-              "context_details": {
-                "input_tokens": 944,
-                "output_tokens": 163
-              },
-              "cost_in_usd_ticks": 13684000,
-              "input_tokens": 944,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "num_server_side_tools_used": 0,
-              "num_sources_used": 0,
-              "output_tokens": 156,
-              "output_tokens_details": {
-                "reasoning_tokens": 133
-              },
-              "total_tokens": 1100
-            },
-            "user": null
+            }
           }
         }
       },

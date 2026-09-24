@@ -286,31 +286,35 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1154,
-            "output_tokens": 16,
-            "total_tokens": 1170
-          },
-          "response_id": "chatcmpl-RqPW5vmuWXuXi4okJb143449",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1154,
-              "completion_tokens": 16,
-              "total_tokens": 1170
-            },
+          "end": {
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RqPW5vmuWXuXi4okJb143449",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001121875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RqPW5vmuWXuXi4okJb143449",
+              "usage": {
+                "input_tokens": 1154,
+                "output_tokens": 16,
+                "total_tokens": 1170
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1154,
+                  "completion_tokens": 16,
+                  "total_tokens": 1170
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "chatcmpl-RqPW5vmuWXuXi4okJb143449",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0001121875
+                  }
+                }
               }
             }
           }
@@ -494,31 +498,35 @@
               "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
             }
           ],
-          "usage": {
-            "input_tokens": 1218,
-            "output_tokens": 20,
-            "total_tokens": 1238
-          },
-          "response_id": "chatcmpl-RdZnGxz8aPdpd6gpGP4Wiekg",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1218,
-              "completion_tokens": 20,
-              "total_tokens": 1238
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RdZnGxz8aPdpd6gpGP4Wiekg",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001191875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RdZnGxz8aPdpd6gpGP4Wiekg",
+              "usage": {
+                "input_tokens": 1218,
+                "output_tokens": 20,
+                "total_tokens": 1238
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1218,
+                  "completion_tokens": 20,
+                  "total_tokens": 1238
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RdZnGxz8aPdpd6gpGP4Wiekg",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.0001191875
+                  }
+                }
               }
             }
           }

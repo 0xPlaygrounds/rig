@@ -501,31 +501,35 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 1093,
-            "output_tokens": 18,
-            "total_tokens": 1111
-          },
-          "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1093,
-              "completion_tokens": 18,
-              "total_tokens": 1111
-            },
+          "end": {
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00010696875
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
+              "usage": {
+                "input_tokens": 1093,
+                "output_tokens": 18,
+                "total_tokens": 1111
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1093,
+                  "completion_tokens": 18,
+                  "total_tokens": 1111
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.00010696875
+                  }
+                }
               }
             }
           }
@@ -576,31 +580,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1093,
-            "output_tokens": 18,
-            "total_tokens": 1111
-          },
           "finish_reason": "tool_calls",
-          "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
             "usage": {
-              "prompt_tokens": 1093,
-              "completion_tokens": 18,
+              "input_tokens": 1093,
+              "output_tokens": 18,
               "total_tokens": 1111
             },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00010696875
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1093,
+                "completion_tokens": 18,
+                "total_tokens": 1111
+              },
+              "finish_reason": "tool_calls",
+              "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00010696875
+                }
               }
             }
           }
@@ -710,31 +716,35 @@
               "text": "I'm unable to assist with that specific request at the moment, as the necessary tools are not available. However, I can guide you through the process if you'd like! Would you be interested in that?"
             }
           ],
-          "usage": {
-            "input_tokens": 1135,
-            "output_tokens": 43,
-            "total_tokens": 1178
-          },
-          "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1135,
-              "completion_tokens": 43,
-              "total_tokens": 1178
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00011715625
+            "meta": {
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
+              "usage": {
+                "input_tokens": 1135,
+                "output_tokens": 43,
+                "total_tokens": 1178
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 1135,
+                  "completion_tokens": 43,
+                  "total_tokens": 1178
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
+                "model": "mistral-small-3-2-24b-instruct",
+                "additional_params": {
+                  "created": 0,
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "cost": {
+                    "diem": 0,
+                    "usd": 0.00011715625
+                  }
+                }
               }
             }
           }
@@ -1086,31 +1096,33 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 1135,
-            "output_tokens": 43,
-            "total_tokens": 1178
-          },
           "finish_reason": "stop",
-          "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
+          "meta": {
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
             "usage": {
-              "prompt_tokens": 1135,
-              "completion_tokens": 43,
+              "input_tokens": 1135,
+              "output_tokens": 43,
               "total_tokens": 1178
             },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00011715625
+            "raw": {
+              "usage": {
+                "prompt_tokens": 1135,
+                "completion_tokens": 43,
+                "total_tokens": 1178
+              },
+              "finish_reason": "stop",
+              "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
+              "model": "mistral-small-3-2-24b-instruct",
+              "additional_params": {
+                "created": 0,
+                "object": "chat.completion.chunk",
+                "service_tier": "default",
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.00011715625
+                }
               }
             }
           }

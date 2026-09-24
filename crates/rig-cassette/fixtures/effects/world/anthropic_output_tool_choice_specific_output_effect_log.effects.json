@@ -118,53 +118,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 776,
-            "output_tokens": 118,
-            "total_tokens": 894,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "message_id": "msg_011CfLccfFdVKZT1fMwzUEPH",
-          "provider_request_id": "req_011CfLccenquircUxajdecuY",
-          "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "container": null,
-            "content": [
-              {
-                "caller": {
-                  "type": "direct"
-                },
-                "id": "toolu_013Hy8U23wSFz4VjWqRZEDYL",
-                "input": {
-                  "category": "Technology / Programming",
-                  "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share knowledge, discuss best practices, explore new features of Rust, and network with fellow developers passionate about systems programming and memory-safe software development.",
-                  "title": "Seattle Rust Meetup"
-                },
-                "name": "final_result",
-                "type": "tool_use"
-              }
-            ],
-            "id": "msg_011CfLccfFdVKZT1fMwzUEPH",
-            "model": "claude-sonnet-4-6",
-            "role": "assistant",
-            "stop_details": null,
-            "stop_reason": "tool_use",
-            "stop_sequence": null,
-            "type": "message",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+          "end": {
+            "finish_reason": "tool_calls",
+            "message_id": "msg_011CfLccfFdVKZT1fMwzUEPH",
+            "meta": {
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "provider_request_id": "req_011CfLccenquircUxajdecuY",
+              "usage": {
+                "input_tokens": 776,
+                "output_tokens": 118,
+                "total_tokens": 894,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "inference_geo": "global",
-              "input_tokens": 776,
-              "output_tokens": 118,
-              "service_tier": "standard"
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "caller": {
+                      "type": "direct"
+                    },
+                    "id": "toolu_013Hy8U23wSFz4VjWqRZEDYL",
+                    "input": {
+                      "category": "Technology / Programming",
+                      "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share knowledge, discuss best practices, explore new features of Rust, and network with fellow developers passionate about systems programming and memory-safe software development.",
+                      "title": "Seattle Rust Meetup"
+                    },
+                    "name": "final_result",
+                    "type": "tool_use"
+                  }
+                ],
+                "id": "msg_011CfLccfFdVKZT1fMwzUEPH",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "tool_use",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 776,
+                  "output_tokens": 118,
+                  "service_tier": "standard"
+                }
+              }
             }
           }
         }

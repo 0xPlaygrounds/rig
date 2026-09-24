@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! [`rig::completion::CompletionEnd::raw`] carries the decoder's own terminal
 //! record — for DeepSeek the shared chat-completions
 //! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
 //! is always on: there is no flag to request it, nothing about it reaches the
@@ -35,13 +35,14 @@
 //! thinking), so a recording that stopped reasoning fails instead of
 //! covering nothing.
 
+use rig::completion::CompletionEnd;
 use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ReasoningContent;
 use rig::providers::deepseek;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -82,7 +83,7 @@ fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionReques
 struct ReasoningStreamObservation {
     reasoning: String,
     text: String,
-    terminal: Option<StreamFinal>,
+    terminal: Option<CompletionEnd>,
 }
 
 /// Stays local: the shared [`capture_text_and_terminal`] keeps the text and
@@ -160,7 +161,7 @@ async fn stream_raw_round_trips_terminal_type() {
 
     let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
     chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
-    assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
+    assert_no_request_id(terminal.meta.provider_request_id.as_deref(), PROVIDER);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
 }
@@ -190,7 +191,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
         .as_u64()
         .expect("DeepSeek's terminal usage reports prompt_cache_hit_tokens");
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     // Typed, through the wire's own accounting shape: the OpenAI-compatible
     // counters are modeled and DeepSeek's split rides in `extra`.
     let usage = chat::Terminal::deserialize(raw)
@@ -212,8 +213,8 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
         usage.to_normalized().cached_input_tokens,
         Some(recorded_hit)
     );
-    assert_eq!(terminal.usage.cached_input_tokens, Some(recorded_hit));
-    let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
+    assert_eq!(terminal.meta.usage.cached_input_tokens, Some(recorded_hit));
+    let normalized_usage = serde_json::to_value(terminal.meta.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("prompt_cache_miss_tokens").is_none(),
         "the normalized usage has no miss-count slot: {normalized_usage}"
@@ -251,7 +252,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
     chat::assert_terminal_round_trips(terminal);
     let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
     chat::assert_terminal_reproduces_frame(terminal, PROVIDER, &frame, "the recorded frame");
-    assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
+    assert_no_request_id(terminal.meta.provider_request_id.as_deref(), PROVIDER);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
     assert_eq!(request_body["thinking"], json!({ "type": "enabled" }));
@@ -271,8 +272,9 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
     // The reasoning lives on the frames, not the terminal record: raw is the
     // terminal record only.
     assert!(
-        terminal.raw.get("reasoning_content").is_none() && terminal.raw.get("choices").is_none(),
+        terminal.meta.raw.get("reasoning_content").is_none()
+            && terminal.meta.raw.get("choices").is_none(),
         "the terminal raw carries no frame content: {}",
-        terminal.raw
+        terminal.meta.raw
     );
 }

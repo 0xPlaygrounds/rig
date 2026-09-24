@@ -136,30 +136,34 @@
               "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
             }
           ],
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 24,
-            "total_tokens": 46
-          },
-          "response_id": "qXizatDVBpeBqtsPh9GKUA",
-          "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 22,
-              "candidatesTokenCount": 24,
-              "totalTokenCount": 46,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 22
-                }
-              ]
-            },
-            "finish_reason": "MAX_TOKENS",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizatDVBpeBqtsPh9GKUA"
+          "end": {
+            "finish_reason": "length",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "qXizatDVBpeBqtsPh9GKUA",
+              "usage": {
+                "input_tokens": 22,
+                "output_tokens": 24,
+                "total_tokens": 46
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 22,
+                  "candidatesTokenCount": 24,
+                  "totalTokenCount": 46,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 22
+                    }
+                  ]
+                },
+                "finish_reason": "MAX_TOKENS",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "qXizatDVBpeBqtsPh9GKUA"
+              }
+            }
           }
         }
       },
@@ -197,30 +201,32 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 24,
-            "total_tokens": 46
-          },
           "finish_reason": "length",
-          "response_id": "qXizatDVBpeBqtsPh9GKUA",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 22,
-              "candidatesTokenCount": 24,
-              "totalTokenCount": 46,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 22
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "qXizatDVBpeBqtsPh9GKUA",
+            "usage": {
+              "input_tokens": 22,
+              "output_tokens": 24,
+              "total_tokens": 46
             },
-            "finish_reason": "MAX_TOKENS",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizatDVBpeBqtsPh9GKUA"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 22,
+                "candidatesTokenCount": 24,
+                "totalTokenCount": 46,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 22
+                  }
+                ]
+              },
+              "finish_reason": "MAX_TOKENS",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "qXizatDVBpeBqtsPh9GKUA"
+            }
           }
         }
       ],
@@ -270,30 +276,34 @@
               "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
             }
           ],
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 46,
-            "total_tokens": 68
-          },
-          "response_id": "qXizar_mL5KjqtsPwqGPkAk",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 22,
-              "candidatesTokenCount": 46,
-              "totalTokenCount": 68,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 22
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizar_mL5KjqtsPwqGPkAk"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "qXizar_mL5KjqtsPwqGPkAk",
+              "usage": {
+                "input_tokens": 22,
+                "output_tokens": 46,
+                "total_tokens": 68
+              },
+              "raw": {
+                "usage_metadata": {
+                  "promptTokenCount": 22,
+                  "candidatesTokenCount": 46,
+                  "totalTokenCount": 68,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 22
+                    }
+                  ]
+                },
+                "finish_reason": "STOP",
+                "model_version": "gemini-2.5-flash",
+                "response_id": "qXizar_mL5KjqtsPwqGPkAk"
+              }
+            }
           }
         }
       },
@@ -331,30 +341,32 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 46,
-            "total_tokens": 68
-          },
           "finish_reason": "stop",
-          "response_id": "qXizar_mL5KjqtsPwqGPkAk",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 22,
-              "candidatesTokenCount": 46,
-              "totalTokenCount": 68,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 22
-                }
-              ]
+          "meta": {
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_id": "qXizar_mL5KjqtsPwqGPkAk",
+            "usage": {
+              "input_tokens": 22,
+              "output_tokens": 46,
+              "total_tokens": 68
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizar_mL5KjqtsPwqGPkAk"
+            "raw": {
+              "usage_metadata": {
+                "promptTokenCount": 22,
+                "candidatesTokenCount": 46,
+                "totalTokenCount": 68,
+                "promptTokensDetails": [
+                  {
+                    "modality": "TEXT",
+                    "tokenCount": 22
+                  }
+                ]
+              },
+              "finish_reason": "STOP",
+              "model_version": "gemini-2.5-flash",
+              "response_id": "qXizar_mL5KjqtsPwqGPkAk"
+            }
           }
         }
       ],

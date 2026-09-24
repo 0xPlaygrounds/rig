@@ -123,35 +123,39 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-1"
-                },
-                "provider": {
-                  "call_id": "call-1"
-                },
-                "function": {
-                  "name": "multiply",
-                  "arguments": {
-                    "x": 2,
-                    "y": 3
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-1"
+                    },
+                    "provider": {
+                      "call_id": "call-1"
+                    },
+                    "function": {
+                      "name": "multiply",
+                      "arguments": {
+                        "x": 2,
+                        "y": 3
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }
@@ -268,35 +272,39 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-2"
-                },
-                "provider": {
-                  "call_id": "call-2"
-                },
-                "function": {
-                  "name": "divide",
-                  "arguments": {
-                    "x": 2,
-                    "y": 3
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-2"
+                    },
+                    "provider": {
+                      "call_id": "call-2"
+                    },
+                    "function": {
+                      "name": "divide",
+                      "arguments": {
+                        "x": 2,
+                        "y": 3
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }
@@ -457,35 +465,39 @@
               }
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call-3"
-                },
-                "provider": {
-                  "call_id": "call-3"
-                },
-                "function": {
-                  "name": "add",
-                  "arguments": {
-                    "x": 2,
-                    "y": 3
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "toolcall",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "call-3"
+                    },
+                    "provider": {
+                      "call_id": "call-3"
+                    },
+                    "function": {
+                      "name": "add",
+                      "arguments": {
+                        "x": 2,
+                        "y": 3
+                      }
+                    },
+                    "signature": null,
+                    "additional_params": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }
@@ -701,20 +713,24 @@
               "text": "2 + 3 = 5"
             }
           ],
-          "usage": {},
-          "provider": "mock",
-          "raw": {
-            "choice": [
-              {
-                "type": "text",
-                "text": "2 + 3 = 5"
+          "end": {
+            "meta": {
+              "provider": "mock",
+              "usage": {},
+              "raw": {
+                "choice": [
+                  {
+                    "type": "text",
+                    "text": "2 + 3 = 5"
+                  }
+                ],
+                "usage": {},
+                "message_id": null,
+                "response_id": null,
+                "provider_request_id": null,
+                "finish_reason": null
               }
-            ],
-            "usage": {},
-            "message_id": null,
-            "response_id": null,
-            "provider_request_id": null,
-            "finish_reason": null
+            }
           }
         }
       }

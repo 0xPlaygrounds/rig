@@ -374,53 +374,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 562,
-                "output_tokens": 82,
-                "total_tokens": 644,
-                "cached_input_tokens": 384
-              },
-              "response_id": "1606eb46-595e-4661-9c9a-aa6b6f227103",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "I'll start by reading the index to understand the task structure.",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_X4GU7MP11ElYNDXYdq2n0846",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "1606eb46-595e-4661-9c9a-aa6b6f227103",
+                  "usage": {
+                    "input_tokens": 562,
+                    "output_tokens": 82,
+                    "total_tokens": 644,
+                    "cached_input_tokens": 384
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "I'll start by reading the index to understand the task structure.",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_X4GU7MP11ElYNDXYdq2n0846",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "1606eb46-595e-4661-9c9a-aa6b6f227103",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 82,
+                      "prompt_cache_hit_tokens": 384,
+                      "prompt_cache_miss_tokens": 178,
+                      "prompt_tokens": 562,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 384
+                      },
+                      "total_tokens": 644
                     }
                   }
-                ],
-                "created": 0,
-                "id": "1606eb46-595e-4661-9c9a-aa6b6f227103",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 82,
-                  "prompt_cache_hit_tokens": 384,
-                  "prompt_cache_miss_tokens": 178,
-                  "prompt_tokens": 562,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 384
-                  },
-                  "total_tokens": 644
                 }
               }
             }
@@ -627,53 +631,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 695,
-                "output_tokens": 89,
-                "total_tokens": 784,
-                "cached_input_tokens": 512
-              },
-              "response_id": "746340dd-1c17-4156-bab0-ca44687afa84",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "Now I'll read each depot in a separate turn, starting with depot/1.",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"read\", \"key\": \"depot/1\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_i8nnPbpGVT2Mju5DApIc2119",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "746340dd-1c17-4156-bab0-ca44687afa84",
+                  "usage": {
+                    "input_tokens": 695,
+                    "output_tokens": 89,
+                    "total_tokens": 784,
+                    "cached_input_tokens": 512
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "Now I'll read each depot in a separate turn, starting with depot/1.",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"read\", \"key\": \"depot/1\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_i8nnPbpGVT2Mju5DApIc2119",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "746340dd-1c17-4156-bab0-ca44687afa84",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 89,
+                      "prompt_cache_hit_tokens": 512,
+                      "prompt_cache_miss_tokens": 183,
+                      "prompt_tokens": 695,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 512
+                      },
+                      "total_tokens": 784
                     }
                   }
-                ],
-                "created": 0,
-                "id": "746340dd-1c17-4156-bab0-ca44687afa84",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 89,
-                  "prompt_cache_hit_tokens": 512,
-                  "prompt_cache_miss_tokens": 183,
-                  "prompt_tokens": 695,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 512
-                  },
-                  "total_tokens": 784
                 }
               }
             }
@@ -864,53 +872,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 828,
-                "output_tokens": 73,
-                "total_tokens": 901,
-                "cached_input_tokens": 640
-              },
-              "response_id": "23264afa-9e79-40eb-8b22-7c91fb108987",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"read\", \"key\": \"depot/2\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_Fmxh6GznoPxPQd2uwE1n8058",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "23264afa-9e79-40eb-8b22-7c91fb108987",
+                  "usage": {
+                    "input_tokens": 828,
+                    "output_tokens": 73,
+                    "total_tokens": 901,
+                    "cached_input_tokens": 640
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"read\", \"key\": \"depot/2\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_Fmxh6GznoPxPQd2uwE1n8058",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "23264afa-9e79-40eb-8b22-7c91fb108987",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 73,
+                      "prompt_cache_hit_tokens": 640,
+                      "prompt_cache_miss_tokens": 188,
+                      "prompt_tokens": 828,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 640
+                      },
+                      "total_tokens": 901
                     }
                   }
-                ],
-                "created": 0,
-                "id": "23264afa-9e79-40eb-8b22-7c91fb108987",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 73,
-                  "prompt_cache_hit_tokens": 640,
-                  "prompt_cache_miss_tokens": 188,
-                  "prompt_tokens": 828,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 640
-                  },
-                  "total_tokens": 901
                 }
               }
             }
@@ -1093,53 +1105,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 945,
-                "output_tokens": 73,
-                "total_tokens": 1018,
-                "cached_input_tokens": 768
-              },
-              "response_id": "5a7953aa-8df4-4c58-8200-0ac3bf17d307",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"read\", \"key\": \"depot/3\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_NQYv6qmkb6QNEtVMeEdD1356",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "5a7953aa-8df4-4c58-8200-0ac3bf17d307",
+                  "usage": {
+                    "input_tokens": 945,
+                    "output_tokens": 73,
+                    "total_tokens": 1018,
+                    "cached_input_tokens": 768
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"read\", \"key\": \"depot/3\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_NQYv6qmkb6QNEtVMeEdD1356",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "5a7953aa-8df4-4c58-8200-0ac3bf17d307",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 73,
+                      "prompt_cache_hit_tokens": 768,
+                      "prompt_cache_miss_tokens": 177,
+                      "prompt_tokens": 945,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 768
+                      },
+                      "total_tokens": 1018
                     }
                   }
-                ],
-                "created": 0,
-                "id": "5a7953aa-8df4-4c58-8200-0ac3bf17d307",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 73,
-                  "prompt_cache_hit_tokens": 768,
-                  "prompt_cache_miss_tokens": 177,
-                  "prompt_tokens": 945,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 768
-                  },
-                  "total_tokens": 1018
                 }
               }
             }
@@ -1322,53 +1338,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 1062,
-                "output_tokens": 73,
-                "total_tokens": 1135,
-                "cached_input_tokens": 896
-              },
-              "response_id": "4460bb90-92e4-4915-8bbc-55c4b47e3e25",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"read\", \"key\": \"depot/4\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_HSnRGofhY9YbirBnJx007390",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "4460bb90-92e4-4915-8bbc-55c4b47e3e25",
+                  "usage": {
+                    "input_tokens": 1062,
+                    "output_tokens": 73,
+                    "total_tokens": 1135,
+                    "cached_input_tokens": 896
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"read\", \"key\": \"depot/4\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_HSnRGofhY9YbirBnJx007390",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "4460bb90-92e4-4915-8bbc-55c4b47e3e25",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 73,
+                      "prompt_cache_hit_tokens": 896,
+                      "prompt_cache_miss_tokens": 166,
+                      "prompt_tokens": 1062,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 896
+                      },
+                      "total_tokens": 1135
                     }
                   }
-                ],
-                "created": 0,
-                "id": "4460bb90-92e4-4915-8bbc-55c4b47e3e25",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 73,
-                  "prompt_cache_hit_tokens": 896,
-                  "prompt_cache_miss_tokens": 166,
-                  "prompt_tokens": 1062,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 896
-                  },
-                  "total_tokens": 1135
                 }
               }
             }
@@ -1551,53 +1571,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 1179,
-                "output_tokens": 73,
-                "total_tokens": 1252,
-                "cached_input_tokens": 1024
-              },
-              "response_id": "05313243-f43d-484d-8c33-baefb0231b1b",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"read\", \"key\": \"depot/5\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_EqC11r6FFJoKhZgWTyHv9556",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "05313243-f43d-484d-8c33-baefb0231b1b",
+                  "usage": {
+                    "input_tokens": 1179,
+                    "output_tokens": 73,
+                    "total_tokens": 1252,
+                    "cached_input_tokens": 1024
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"read\", \"key\": \"depot/5\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_EqC11r6FFJoKhZgWTyHv9556",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "05313243-f43d-484d-8c33-baefb0231b1b",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 73,
+                      "prompt_cache_hit_tokens": 1024,
+                      "prompt_cache_miss_tokens": 155,
+                      "prompt_tokens": 1179,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 1024
+                      },
+                      "total_tokens": 1252
                     }
                   }
-                ],
-                "created": 0,
-                "id": "05313243-f43d-484d-8c33-baefb0231b1b",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 73,
-                  "prompt_cache_hit_tokens": 1024,
-                  "prompt_cache_miss_tokens": 155,
-                  "prompt_tokens": 1179,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 1024
-                  },
-                  "total_tokens": 1252
                 }
               }
             }
@@ -1780,53 +1804,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 1296,
-                "output_tokens": 73,
-                "total_tokens": 1369,
-                "cached_input_tokens": 1152
-              },
-              "response_id": "ab1359b6-c60e-49ab-ae70-5b425681f0ed",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"read\", \"key\": \"depot/6\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_rawV4fknV2Q1FDeqMmnT4331",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "ab1359b6-c60e-49ab-ae70-5b425681f0ed",
+                  "usage": {
+                    "input_tokens": 1296,
+                    "output_tokens": 73,
+                    "total_tokens": 1369,
+                    "cached_input_tokens": 1152
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"read\", \"key\": \"depot/6\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_rawV4fknV2Q1FDeqMmnT4331",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "ab1359b6-c60e-49ab-ae70-5b425681f0ed",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 73,
+                      "prompt_cache_hit_tokens": 1152,
+                      "prompt_cache_miss_tokens": 144,
+                      "prompt_tokens": 1296,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 1152
+                      },
+                      "total_tokens": 1369
                     }
                   }
-                ],
-                "created": 0,
-                "id": "ab1359b6-c60e-49ab-ae70-5b425681f0ed",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 73,
-                  "prompt_cache_hit_tokens": 1152,
-                  "prompt_cache_miss_tokens": 144,
-                  "prompt_tokens": 1296,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 1152
-                  },
-                  "total_tokens": 1369
                 }
               }
             }
@@ -2053,62 +2081,66 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 1413,
-                "output_tokens": 184,
-                "total_tokens": 1597,
-                "cached_input_tokens": 1279
-              },
-              "response_id": "678636f2-82f9-4352-90e8-d21a79f0d875",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "All six depots read. Now I'll apply in three turns with two parallel applies each.\n\nTurn 1: depot/1 (10+2-1=11) and depot/2 (20+4-2=22).",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/1\", \"value\": 11}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_56VDiYY4wsr1Xh5HOneh9077",
-                          "index": 0,
-                          "type": "function"
-                        },
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/2\", \"value\": 22}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_01_V0eZ1L8bpzJ9mWiqd9zU1341",
-                          "index": 1,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "678636f2-82f9-4352-90e8-d21a79f0d875",
+                  "usage": {
+                    "input_tokens": 1413,
+                    "output_tokens": 184,
+                    "total_tokens": 1597,
+                    "cached_input_tokens": 1279
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "All six depots read. Now I'll apply in three turns with two parallel applies each.\n\nTurn 1: depot/1 (10+2-1=11) and depot/2 (20+4-2=22).",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"apply\", \"key\": \"depot/1\", \"value\": 11}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_56VDiYY4wsr1Xh5HOneh9077",
+                              "index": 0,
+                              "type": "function"
+                            },
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"apply\", \"key\": \"depot/2\", \"value\": 22}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_01_V0eZ1L8bpzJ9mWiqd9zU1341",
+                              "index": 1,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "678636f2-82f9-4352-90e8-d21a79f0d875",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 184,
+                      "prompt_cache_hit_tokens": 1279,
+                      "prompt_cache_miss_tokens": 134,
+                      "prompt_tokens": 1413,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 1279
+                      },
+                      "total_tokens": 1597
                     }
                   }
-                ],
-                "created": 0,
-                "id": "678636f2-82f9-4352-90e8-d21a79f0d875",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 184,
-                  "prompt_cache_hit_tokens": 1279,
-                  "prompt_cache_miss_tokens": 134,
-                  "prompt_tokens": 1413,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 1279
-                  },
-                  "total_tokens": 1597
                 }
               }
             }
@@ -2420,62 +2452,66 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 1641,
-                "output_tokens": 165,
-                "total_tokens": 1806,
-                "cached_input_tokens": 1408
-              },
-              "response_id": "590dd899-4a3a-4cf4-bf88-81d4f9e49281",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "Turn 2: depot/3 (30+6-3=33) and depot/4 (40+8-4=44).",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/3\", \"value\": 33}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_rIXudRctw0AkZoz4BINa5389",
-                          "index": 0,
-                          "type": "function"
-                        },
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/4\", \"value\": 44}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_01_GUmMuOyntzkgo9CZEiNB6818",
-                          "index": 1,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "590dd899-4a3a-4cf4-bf88-81d4f9e49281",
+                  "usage": {
+                    "input_tokens": 1641,
+                    "output_tokens": 165,
+                    "total_tokens": 1806,
+                    "cached_input_tokens": 1408
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "Turn 2: depot/3 (30+6-3=33) and depot/4 (40+8-4=44).",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"apply\", \"key\": \"depot/3\", \"value\": 33}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_rIXudRctw0AkZoz4BINa5389",
+                              "index": 0,
+                              "type": "function"
+                            },
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"apply\", \"key\": \"depot/4\", \"value\": 44}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_01_GUmMuOyntzkgo9CZEiNB6818",
+                              "index": 1,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "590dd899-4a3a-4cf4-bf88-81d4f9e49281",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 165,
+                      "prompt_cache_hit_tokens": 1408,
+                      "prompt_cache_miss_tokens": 233,
+                      "prompt_tokens": 1641,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 1408
+                      },
+                      "total_tokens": 1806
                     }
                   }
-                ],
-                "created": 0,
-                "id": "590dd899-4a3a-4cf4-bf88-81d4f9e49281",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 165,
-                  "prompt_cache_hit_tokens": 1408,
-                  "prompt_cache_miss_tokens": 233,
-                  "prompt_tokens": 1641,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 1408
-                  },
-                  "total_tokens": 1806
                 }
               }
             }
@@ -2787,62 +2823,66 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 1850,
-                "output_tokens": 165,
-                "total_tokens": 2015,
-                "cached_input_tokens": 1664
-              },
-              "response_id": "4f5b83df-96d2-4ddc-8768-6d5f4ff63da4",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "Turn 3: depot/5 (50+10-5=55) and depot/6 (60+12-6=66).",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/5\", \"value\": 55}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_3U1lR2d8A7niQjOlusdv3077",
-                          "index": 0,
-                          "type": "function"
-                        },
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/6\", \"value\": 66}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_01_aFea3ZBy2FjGzEnPjpIp3419",
-                          "index": 1,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "4f5b83df-96d2-4ddc-8768-6d5f4ff63da4",
+                  "usage": {
+                    "input_tokens": 1850,
+                    "output_tokens": 165,
+                    "total_tokens": 2015,
+                    "cached_input_tokens": 1664
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "Turn 3: depot/5 (50+10-5=55) and depot/6 (60+12-6=66).",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"apply\", \"key\": \"depot/5\", \"value\": 55}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_3U1lR2d8A7niQjOlusdv3077",
+                              "index": 0,
+                              "type": "function"
+                            },
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"apply\", \"key\": \"depot/6\", \"value\": 66}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_01_aFea3ZBy2FjGzEnPjpIp3419",
+                              "index": 1,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "4f5b83df-96d2-4ddc-8768-6d5f4ff63da4",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 165,
+                      "prompt_cache_hit_tokens": 1664,
+                      "prompt_cache_miss_tokens": 186,
+                      "prompt_tokens": 1850,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 1664
+                      },
+                      "total_tokens": 2015
                     }
                   }
-                ],
-                "created": 0,
-                "id": "4f5b83df-96d2-4ddc-8768-6d5f4ff63da4",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 165,
-                  "prompt_cache_hit_tokens": 1664,
-                  "prompt_cache_miss_tokens": 186,
-                  "prompt_tokens": 1850,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 1664
-                  },
-                  "total_tokens": 2015
                 }
               }
             }
@@ -3118,53 +3158,57 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 2059,
-                "output_tokens": 77,
-                "total_tokens": 2136,
-                "cached_input_tokens": 1920
-              },
-              "response_id": "a1fe3d15-e090-4530-8c73-53016ac682ec",
-              "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "All six applied. Now checking all.",
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
-                            "name": "task_operation"
-                          },
-                          "id": "call_00_bGmkPjODZEeTXyTTkGSP2415",
-                          "index": 0,
-                          "type": "function"
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "a1fe3d15-e090-4530-8c73-53016ac682ec",
+                  "usage": {
+                    "input_tokens": 2059,
+                    "output_tokens": 77,
+                    "total_tokens": 2136,
+                    "cached_input_tokens": 1920
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "All six applied. Now checking all.",
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
+                                "name": "task_operation"
+                              },
+                              "id": "call_00_bGmkPjODZEeTXyTTkGSP2415",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
                         }
-                      ]
+                      }
+                    ],
+                    "created": 0,
+                    "id": "a1fe3d15-e090-4530-8c73-53016ac682ec",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 77,
+                      "prompt_cache_hit_tokens": 1920,
+                      "prompt_cache_miss_tokens": 139,
+                      "prompt_tokens": 2059,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 1920
+                      },
+                      "total_tokens": 2136
                     }
                   }
-                ],
-                "created": 0,
-                "id": "a1fe3d15-e090-4530-8c73-53016ac682ec",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 77,
-                  "prompt_cache_hit_tokens": 1920,
-                  "prompt_cache_miss_tokens": 139,
-                  "prompt_tokens": 2059,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 1920
-                  },
-                  "total_tokens": 2136
                 }
               }
             }
@@ -3318,42 +3362,46 @@
                   "text": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6."
                 }
               ],
-              "usage": {
-                "input_tokens": 2162,
-                "output_tokens": 177,
-                "total_tokens": 2339,
-                "cached_input_tokens": 1920
-              },
-              "response_id": "b2f68eb6-7ff6-4a56-af34-84902c6b9651",
-              "finish_reason": "stop",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "stop",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6.",
-                      "role": "assistant"
+              "end": {
+                "finish_reason": "stop",
+                "meta": {
+                  "provider": "deepseek",
+                  "model": "deepseek-flash",
+                  "response_id": "b2f68eb6-7ff6-4a56-af34-84902c6b9651",
+                  "usage": {
+                    "input_tokens": 2162,
+                    "output_tokens": 177,
+                    "total_tokens": 2339,
+                    "cached_input_tokens": 1920
+                  },
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "stop",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6.",
+                          "role": "assistant"
+                        }
+                      }
+                    ],
+                    "created": 0,
+                    "id": "b2f68eb6-7ff6-4a56-af34-84902c6b9651",
+                    "model": "deepseek-flash",
+                    "object": "chat.completion",
+                    "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                    "usage": {
+                      "completion_tokens": 177,
+                      "prompt_cache_hit_tokens": 1920,
+                      "prompt_cache_miss_tokens": 242,
+                      "prompt_tokens": 2162,
+                      "prompt_tokens_details": {
+                        "cached_tokens": 1920
+                      },
+                      "total_tokens": 2339
                     }
                   }
-                ],
-                "created": 0,
-                "id": "b2f68eb6-7ff6-4a56-af34-84902c6b9651",
-                "model": "deepseek-flash",
-                "object": "chat.completion",
-                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-                "usage": {
-                  "completion_tokens": 177,
-                  "prompt_cache_hit_tokens": 1920,
-                  "prompt_cache_miss_tokens": 242,
-                  "prompt_tokens": 2162,
-                  "prompt_tokens_details": {
-                    "cached_tokens": 1920
-                  },
-                  "total_tokens": 2339
                 }
               }
             }

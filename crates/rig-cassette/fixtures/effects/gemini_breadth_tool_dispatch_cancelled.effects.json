@@ -125,53 +125,57 @@
               "signature": "CpQCAWkUfRNIxmkzT5fX89Mux3CEbJOyUBdMHQgv9wPEbuwkTGtKjzKz0aCv98PNgeZ6Q7QJDw8evC9ot+rszFcNE8lNKaTSsQgzDOZlfFLj/13Gce5noJx4jSzDkJDYtBaXSwBcIZheSGf00xFclU2Pb2cclvQVtvtvh9O/Fw79JxhizMipMyNURBQATRr7wNQ/4ZKoNGdWEshoDdR3FGcazSFPB+gl5Aqemvqw8OeT9U2ixr9kezAZt07Sg2/SavYX7Guq3mSn3yhtA7HGAHtp+c63Gj8lG47nKoKabBbIKQnL/bMCLcQlDAUQV987hpNR1owhNBdQXzEqucWto9/xA4q/DjpCbRBe08Kko6l/eS+zq6Fb"
             }
           ],
-          "usage": {
-            "input_tokens": 102,
-            "output_tokens": 20,
-            "total_tokens": 197,
-            "reasoning_tokens": 75
-          },
-          "response_id": "K6yyav-XMtW0qtsPg8SUqQU",
-          "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "K6yyav-XMtW0qtsPg8SUqQU",
+              "usage": {
+                "input_tokens": 102,
+                "output_tokens": 20,
+                "total_tokens": 197,
+                "reasoning_tokens": 75
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "x": 17,
+                              "y": 25
+                            },
+                            "name": "add"
+                          },
+                          "thoughtSignature": "CpQCAWkUfRNIxmkzT5fX89Mux3CEbJOyUBdMHQgv9wPEbuwkTGtKjzKz0aCv98PNgeZ6Q7QJDw8evC9ot+rszFcNE8lNKaTSsQgzDOZlfFLj/13Gce5noJx4jSzDkJDYtBaXSwBcIZheSGf00xFclU2Pb2cclvQVtvtvh9O/Fw79JxhizMipMyNURBQATRr7wNQ/4ZKoNGdWEshoDdR3FGcazSFPB+gl5Aqemvqw8OeT9U2ixr9kezAZt07Sg2/SavYX7Guq3mSn3yhtA7HGAHtp+c63Gj8lG47nKoKabBbIKQnL/bMCLcQlDAUQV987hpNR1owhNBdQXzEqucWto9/xA4q/DjpCbRBe08Kko6l/eS+zq6Fb"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishMessage": "Model generated function call(s).",
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "K6yyav-XMtW0qtsPg8SUqQU",
+                "usageMetadata": {
+                  "candidatesTokenCount": 20,
+                  "promptTokenCount": 102,
+                  "promptTokensDetails": [
                     {
-                      "functionCall": {
-                        "args": {
-                          "x": 17,
-                          "y": 25
-                        },
-                        "name": "add"
-                      },
-                      "thoughtSignature": "CpQCAWkUfRNIxmkzT5fX89Mux3CEbJOyUBdMHQgv9wPEbuwkTGtKjzKz0aCv98PNgeZ6Q7QJDw8evC9ot+rszFcNE8lNKaTSsQgzDOZlfFLj/13Gce5noJx4jSzDkJDYtBaXSwBcIZheSGf00xFclU2Pb2cclvQVtvtvh9O/Fw79JxhizMipMyNURBQATRr7wNQ/4ZKoNGdWEshoDdR3FGcazSFPB+gl5Aqemvqw8OeT9U2ixr9kezAZt07Sg2/SavYX7Guq3mSn3yhtA7HGAHtp+c63Gj8lG47nKoKabBbIKQnL/bMCLcQlDAUQV987hpNR1owhNBdQXzEqucWto9/xA4q/DjpCbRBe08Kko6l/eS+zq6Fb"
+                      "modality": "TEXT",
+                      "tokenCount": 102
                     }
                   ],
-                  "role": "model"
-                },
-                "finishMessage": "Model generated function call(s).",
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "K6yyav-XMtW0qtsPg8SUqQU",
-            "usageMetadata": {
-              "candidatesTokenCount": 20,
-              "promptTokenCount": 102,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 102
+                  "serviceTier": "standard",
+                  "thoughtsTokenCount": 75,
+                  "totalTokenCount": 197
                 }
-              ],
-              "serviceTier": "standard",
-              "thoughtsTokenCount": 75,
-              "totalTokenCount": 197
+              }
             }
           }
         }

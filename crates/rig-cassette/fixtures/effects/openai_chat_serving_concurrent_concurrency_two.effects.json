@@ -136,39 +136,43 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 241,
-            "output_tokens": 310,
-            "total_tokens": 551,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 256
-          },
-          "response_id": "chatcmpl-ERDCdJOl46y3nK76EO62mzoU8mvvF",
-          "provider_request_id": "req_1d46c38ac3894c1783bfe36b99e18933",
-          "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 241,
-              "completion_tokens": 310,
-              "total_tokens": 551,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 256
-              }
-            },
+          "end": {
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDCdJOl46y3nK76EO62mzoU8mvvF",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "6",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCdJOl46y3nK76EO62mzoU8mvvF",
+              "provider_request_id": "req_1d46c38ac3894c1783bfe36b99e18933",
+              "usage": {
+                "input_tokens": 241,
+                "output_tokens": 310,
+                "total_tokens": 551,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 256
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 241,
+                  "completion_tokens": 310,
+                  "total_tokens": 551,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 256
+                  }
+                },
+                "finish_reason": "tool_calls",
+                "response_id": "chatcmpl-ERDCdJOl46y3nK76EO62mzoU8mvvF",
+                "model": "gpt-5-mini-2025-08-07",
+                "additional_params": {
+                  "created": 0,
+                  "obfuscation": "6",
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "system_fingerprint": null
+                }
+              }
             }
           }
         }
@@ -348,39 +352,43 @@
               "text": "The labels are crimson-harbor and silver-orchard."
             }
           ],
-          "usage": {
-            "input_tokens": 315,
-            "output_tokens": 150,
-            "total_tokens": 465,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 128
-          },
-          "response_id": "chatcmpl-ERDCi72hHbB1Zsw5U4ZhuM0n2gcIp",
-          "provider_request_id": "req_65ca764514b04b1193f25f18acf0c3ad",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 315,
-              "completion_tokens": 150,
-              "total_tokens": 465,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 128
-              }
-            },
+          "end": {
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDCi72hHbB1Zsw5U4ZhuM0n2gcIp",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "v",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCi72hHbB1Zsw5U4ZhuM0n2gcIp",
+              "provider_request_id": "req_65ca764514b04b1193f25f18acf0c3ad",
+              "usage": {
+                "input_tokens": 315,
+                "output_tokens": 150,
+                "total_tokens": 465,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 128
+              },
+              "raw": {
+                "usage": {
+                  "prompt_tokens": 315,
+                  "completion_tokens": 150,
+                  "total_tokens": 465,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 128
+                  }
+                },
+                "finish_reason": "stop",
+                "response_id": "chatcmpl-ERDCi72hHbB1Zsw5U4ZhuM0n2gcIp",
+                "model": "gpt-5-mini-2025-08-07",
+                "additional_params": {
+                  "created": 0,
+                  "obfuscation": "v",
+                  "object": "chat.completion.chunk",
+                  "service_tier": "default",
+                  "system_fingerprint": null
+                }
+              }
             }
           }
         }

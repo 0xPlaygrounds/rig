@@ -65,11 +65,11 @@ fn recorded_request_id(scenario: &str, index: usize) -> String {
 /// The provider-native fields the reply document carries, beside the
 /// normalized fields the decoder produced from them.
 fn assert_maps_provider_fields(response: &rig::completion::CompletionResponse, context: &str) {
-    let reply = responses_api::CompletionResponse::deserialize(&response.raw)
+    let reply = responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
         .expect("`raw` is the serialized Responses CompletionResponse");
     responses::assert_native_matches_normalized(response, &reply, context);
     assert!(
-        response.provider_request_id.is_some(),
+        response.end.meta.provider_request_id.is_some(),
         "{context}: the transport id rides on the normalized view"
     );
 }
@@ -103,24 +103,27 @@ async fn raw_normalize_reproduces_completion() {
     // two different ids, so a cross-comparison would prove nothing.
     responses::assert_reproduces_body(&first, PROVIDER, &interactions[0].1, "first turn");
     assert_contracted_request_id(
-        first.identity().provider_request_id.as_deref(),
+        first.end.meta.provider_request_id.as_deref(),
         Some(first_id.as_str()),
         REQUEST_ID_HEADER,
     );
     responses::assert_reproduces_body(&second, PROVIDER, &interactions[1].1, "second turn");
     assert_contracted_request_id(
-        second.identity().provider_request_id.as_deref(),
+        second.end.meta.provider_request_id.as_deref(),
         Some(second_id.as_str()),
         REQUEST_ID_HEADER,
     );
     assert_maps_provider_fields(&first, "first turn");
     assert_maps_provider_fields(&second, "second turn");
     // Where the wire makes the two turns equal, the two agree.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
-    assert_eq!(second.finish_reason.clone(), first.finish_reason.clone());
-    assert!(first.identity().provider_request_id.is_some());
-    assert!(second.identity().provider_request_id.is_some());
+    assert_eq!(second.end.meta.provider, first.end.meta.provider);
+    assert_eq!(second.end.meta.model, first.end.meta.model);
+    assert_eq!(
+        second.end.finish_reason.clone(),
+        first.end.finish_reason.clone()
+    );
+    assert!(first.end.meta.provider_request_id.is_some());
+    assert!(second.end.meta.provider_request_id.is_some());
 }
 
 // ================================================================
@@ -142,12 +145,12 @@ async fn raw_completion_carries_request_id_on_the_type() {
     let response = sink.take();
     let recorded_id = recorded_request_id(SCENARIO, 0);
     assert_contracted_request_id(
-        response.provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         Some(recorded_id.as_str()),
         REQUEST_ID_HEADER,
     );
 
-    let mirrored = &response.raw;
+    let mirrored = &response.end.meta.raw;
     let reply = responses_api::CompletionResponse::deserialize(mirrored)
         .expect("`raw` is the serialized Responses CompletionResponse");
     // The reply document therefore *does* lack the id on this family — it is

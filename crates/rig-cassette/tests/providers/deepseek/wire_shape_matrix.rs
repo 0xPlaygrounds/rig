@@ -751,7 +751,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
             // DeepSeek's own split is on the reply document; only the hit
             // half has a normalized slot.
             let first = model.completion(build()).await?;
-            let first_usage = first.raw["usage"].clone();
+            let first_usage = first.end.meta.raw["usage"].clone();
             let hit = first_usage["prompt_cache_hit_tokens"]
                 .as_u64()
                 .expect("DeepSeek reports prompt_cache_hit_tokens");
@@ -767,7 +767,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
             );
 
             let second = model.completion(build()).await?;
-            let second_usage = second.raw["usage"].clone();
+            let second_usage = second.end.meta.raw["usage"].clone();
             let second_hit = second_usage["prompt_cache_hit_tokens"]
                 .as_u64()
                 .expect("DeepSeek reports prompt_cache_hit_tokens");
@@ -776,7 +776,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
                 "the repeated prompt should hit DeepSeek's cache: {second_usage}"
             );
             assert_eq!(
-                second.usage.cached_input_tokens,
+                second.end.meta.usage.cached_input_tokens,
                 Some(second_hit),
                 "the native cache-hit counter reaches rig's usage"
             );
@@ -812,7 +812,7 @@ async fn streaming_repeated_prompt_reports_the_cache_split() {
             let usage = second
                 .final_record
                 .as_ref()
-                .map(|record| record.usage)
+                .map(|record| record.meta.usage)
                 .expect("the stream should yield a terminal record");
             assert!(
                 usage.cached_input_tokens.is_some_and(|n| n > 0),

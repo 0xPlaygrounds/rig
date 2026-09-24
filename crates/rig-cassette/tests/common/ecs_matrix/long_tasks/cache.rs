@@ -22,16 +22,18 @@ pub(crate) fn assert_usage(thinking: ThinkingWire, log: &EffectLog) -> Value {
         let Ok(Outcome::Completion(response)) = &record.outcome else {
             panic!("successful task completion");
         };
-        let usage = response.usage;
+        let usage = response.end.meta.usage;
         let raw = long_loop::raw_usage(thinking, record);
         assert_prompt_usage(&usage, raw);
         let raw_usage = match thinking {
             ThinkingWire::Gemini => response
+                .end
+                .meta
                 .raw
                 .get("usageMetadata")
-                .or_else(|| response.raw.get("usage_metadata"))
+                .or_else(|| response.end.meta.raw.get("usage_metadata"))
                 .expect("Gemini usage"),
-            _ => response.raw.get("usage").expect("wire usage"),
+            _ => response.end.meta.raw.get("usage").expect("wire usage"),
         };
         let output_field = match thinking {
             ThinkingWire::OpenAiChat | ThinkingWire::DeepSeek => "completion_tokens",

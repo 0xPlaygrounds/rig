@@ -117,74 +117,78 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 382,
-            "output_tokens": 211,
-            "total_tokens": 593,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 160
-          },
-          "response_id": "resp_029f29ee-820c-4031-bd4c-298186c75772",
-          "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "message": {
-                  "reasoning_content": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
-                  "reasoning_details": [
-                    {
-                      "format": "unknown",
-                      "index": 0,
-                      "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
-                      "type": "reasoning.text"
-                    }
-                  ],
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"Monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network with the local Rust community.\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_00a91a28eb7346ad91e4bc46",
-                      "type": "function"
-                    }
-                  ]
-                }
-              }
-            ],
-            "created": 0,
-            "id": "resp_029f29ee-820c-4031-bd4c-298186c75772",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "object": "chat.completion",
-            "usage": {
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
-              "completion_tokens": 211,
-              "completion_tokens_details": {
-                "audio_tokens": 0,
-                "image_tokens": 0,
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "resp_029f29ee-820c-4031-bd4c-298186c75772",
+              "usage": {
+                "input_tokens": 382,
+                "output_tokens": 211,
+                "total_tokens": 593,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 160
               },
-              "prompt_tokens": 382,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cache_write_tokens": 0,
-                "cached_tokens": 0,
-                "video_tokens": 0
-              },
-              "total_tokens": 593
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "reasoning_content": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
+                      "reasoning_details": [
+                        {
+                          "format": "unknown",
+                          "index": 0,
+                          "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
+                          "type": "reasoning.text"
+                        }
+                      ],
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"Monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network with the local Rust community.\"}",
+                            "name": "final_result"
+                          },
+                          "id": "call_00a91a28eb7346ad91e4bc46",
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "resp_029f29ee-820c-4031-bd4c-298186c75772",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "object": "chat.completion",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "completion_tokens": 211,
+                  "completion_tokens_details": {
+                    "audio_tokens": 0,
+                    "image_tokens": 0,
+                    "reasoning_tokens": 160
+                  },
+                  "prompt_tokens": 382,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "cached_tokens": 0,
+                    "video_tokens": 0
+                  },
+                  "total_tokens": 593
+                }
+              }
             }
           }
         }

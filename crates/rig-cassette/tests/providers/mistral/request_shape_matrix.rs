@@ -165,7 +165,7 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
                 .collect();
             Observation {
                 text: normalized_text(&response.choice),
-                finish_reason: response.finish_reason.clone(),
+                finish_reason: response.end.finish_reason.clone(),
                 calls,
             }
         }

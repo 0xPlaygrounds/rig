@@ -508,7 +508,9 @@ fn run_events(
     events: Vec<aws_bedrock::ConverseStreamOutput>,
 ) -> (Vec<Result<StreamEvent, ProviderError>>, StreamState) {
     let mut state = StreamState::default();
-    let mut out = AdapterOutput::new();
+    let mut out = AdapterOutput::new(
+        rig_core::id::ProviderName::new("aws_bedrock").expect("a provider name"),
+    );
     for event in events {
         process_event(&mut state, event, &mut out);
     }
@@ -757,7 +759,9 @@ fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseSt
 
 /// Drive `items` through the normalized pipeline exactly as the
 /// `CompletionModel` seam does, returning the terminal.
-async fn normalized_terminal(items: Vec<Result<StreamEvent, ProviderError>>) -> StreamFinal {
+async fn normalized_terminal(
+    items: Vec<Result<StreamEvent, ProviderError>>,
+) -> rig_core::completion::CompletionEnd {
     let mut stream =
         StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
     while let Some(item) = stream.next().await {
@@ -789,11 +793,11 @@ async fn stream_from_events_terminal_carries_raw() {
     }
     let terminal = stream.response.expect("terminal record");
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed: BedrockStreamingResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(typed.stop_reason, Some(StopReason::EndTurn));
-    assert_eq!(terminal.usage.total_tokens, Some(4));
+    assert_eq!(terminal.meta.usage.total_tokens, Some(4));
 }
 
 /// The load-bearing streaming capture property at the seam
@@ -812,7 +816,7 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
     ]);
     let terminal = normalized_terminal(items).await;
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let typed: BedrockStreamingResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(
@@ -828,14 +832,12 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     // Feeding the capture back through the same pipeline tells the same
     // story as the terminal the stream produced.
-    let renormalized = normalized_terminal(vec![Ok(StreamEvent::Final(
-        terminal_record(typed).expect("terminal record"),
-    ))])
-    .await;
-    assert_eq!(terminal.identity(), renormalized.identity());
+    let renormalized = terminal_record(typed).expect("terminal record");
+    assert_eq!(terminal.message_id, renormalized.message_id);
+    assert_eq!(terminal.meta.response_id, renormalized.response_id);
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);
-    assert_eq!(terminal.model, renormalized.model);
-    assert_eq!(terminal.usage, renormalized.usage);
+    assert_eq!(terminal.meta.model, renormalized.model);
+    assert_eq!(terminal.meta.usage, renormalized.usage);
     assert_eq!(
         terminal.finish_reason,
         Some(rig_core::completion::FinishReason::Stop)
@@ -847,7 +849,7 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 #[tokio::test]
 async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
     let state = StreamState {
-        reasoning_issuer: Some("anthropic"),
+        reasoning_issuer: Some(ProviderName::new("anthropic").expect("a provider name")),
         ..StreamState::default()
     };
     let events = futures::stream::iter(
@@ -863,8 +865,10 @@ async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
         .into_iter()
         .map(Ok),
     );
-    let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, run_wire_stream(events, state));
+    let mut stream = StreamingCompletionResponse::stream(
+        PROVIDER_NAME,
+        run_wire_stream(PROVIDER_NAME, None, events, state),
+    );
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }

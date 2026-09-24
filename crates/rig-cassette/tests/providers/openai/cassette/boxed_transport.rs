@@ -45,14 +45,20 @@ async fn streaming_smoke_through_boxed_transport() {
             .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-        let (response, provider_final): (_, rig::streaming::StreamFinal) =
+        let (response, provider_final): (_, rig::completion::CompletionEnd) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert_eq!(provider_final.provider, "openai");
-        assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
+        assert_eq!(provider_final.meta.provider, "openai");
+        assert!(
+            provider_final
+                .meta
+                .usage
+                .total_tokens
+                .is_some_and(|n| n > 0)
+        );
     })
     .await;
 }

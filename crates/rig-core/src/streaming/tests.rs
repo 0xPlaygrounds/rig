@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use super::*;
-use crate::completion::FinishReason;
+use crate::completion::{FinishReason, ReportedEnd};
 use crate::message::{Reasoning, ReasoningContent, Text, ToolCall};
 use crate::operation::AdapterOutput;
 use async_stream::stream;
@@ -18,13 +18,25 @@ fn fixture_params(value: serde_json::Value) -> crate::message::AdditionalParams 
         .expect("fixture params must carry data")
 }
 
-/// Terminal record with a known total-token count.
-fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
-    let usage = Usage {
-        total_tokens: Some(total_tokens),
-        ..Usage::default()
-    };
-    StreamFinal::new(TEST_PROVIDER, usage, serde_json::json!({}))
+/// What a terminal record with a known total-token count reports.
+fn mock_final_with_total_tokens(total_tokens: u64) -> ReportedEnd {
+    ReportedEnd::new(
+        Usage {
+            total_tokens: Some(total_tokens),
+            ..Usage::default()
+        },
+        serde_json::json!({}),
+    )
+}
+
+/// A terminal record with a known total-token count, attributed to
+/// [`TEST_PROVIDER`].
+fn terminal_with_total_tokens(total_tokens: u64) -> CompletionEnd {
+    mock_final_with_total_tokens(total_tokens).complete(test_provider(), None)
+}
+
+fn test_provider() -> crate::id::ProviderName {
+    crate::id::ProviderName::new(TEST_PROVIDER).expect("a provider name")
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -44,7 +56,7 @@ fn to_stream_result(
 /// Script a provider's output through the same helpers adapters use, so
 /// the scripted events speak exactly the grammar a wire would.
 fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, ProviderError>> {
-    let mut out = AdapterOutput::new();
+    let mut out = AdapterOutput::new(test_provider());
     build(&mut out);
     out.into_items()
 }
@@ -131,9 +143,9 @@ async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
             });
         }
         yield Ok(StreamEvent::text(BlockId::wire("t"), "done"));
-        yield Ok(StreamEvent::Final(mock_final_with_total_tokens(1)));
+        yield Ok(StreamEvent::Final(terminal_with_total_tokens(1)));
         for _ in 0..50_000u32 {
-            yield Ok(StreamEvent::Final(mock_final_with_total_tokens(99)));
+            yield Ok(StreamEvent::Final(terminal_with_total_tokens(99)));
         }
     };
     let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(raw));
@@ -165,29 +177,19 @@ async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
 async fn stream_identity_falls_back_to_the_terminal_records_ids() {
     let mut stream = scripted(|out| {
         out.text("done");
-        out.final_record(StreamFinal {
+        out.set_request_id(Some("req_1".try_into().expect("a non-empty id")));
+        out.final_record(ReportedEnd {
             message_id: Some("msg_terminal".try_into().expect("a non-empty id")),
             response_id: Some("resp_1".try_into().expect("a non-empty id")),
-            provider_request_id: Some("req_1".try_into().expect("a non-empty id")),
             ..mock_final_with_total_tokens(1)
         });
     });
     while stream.next().await.is_some() {}
 
-    assert_eq!(
-        stream.identity(),
-        crate::completion::ResponseIdentity {
-            message_id: Some(
-                crate::id::MessageId::new("msg_terminal".to_string()).expect("a non-empty id")
-            ),
-            response_id: Some(
-                crate::id::ResponseId::new("resp_1".to_string()).expect("a non-empty id")
-            ),
-            provider_request_id: Some(
-                crate::id::RequestId::new("req_1".to_string()).expect("a non-empty id")
-            ),
-        }
-    );
+    let terminal = stream.response.as_ref().expect("a terminal record");
+    assert_eq!(stream.message_id.as_deref(), Some("msg_terminal"));
+    assert_eq!(terminal.meta.response_id.as_deref(), Some("resp_1"));
+    assert_eq!(terminal.meta.provider_request_id.as_deref(), Some("req_1"));
 }
 
 /// An explicit message-id block outranks the terminal record's message
@@ -197,7 +199,7 @@ async fn stream_identity_prefers_an_explicit_message_id_event() {
     let mut stream = scripted(|out| {
         out.message_id("msg_event");
         out.text("done");
-        out.final_record(StreamFinal {
+        out.final_record(ReportedEnd {
             message_id: Some("msg_terminal".try_into().expect("a non-empty id")),
             response_id: Some("resp_1".try_into().expect("a non-empty id")),
             ..mock_final_with_total_tokens(1)
@@ -205,18 +207,10 @@ async fn stream_identity_prefers_an_explicit_message_id_event() {
     });
     while stream.next().await.is_some() {}
 
-    assert_eq!(
-        stream.identity(),
-        crate::completion::ResponseIdentity {
-            message_id: Some(
-                crate::id::MessageId::new("msg_event".to_string()).expect("a non-empty id")
-            ),
-            response_id: Some(
-                crate::id::ResponseId::new("resp_1".to_string()).expect("a non-empty id")
-            ),
-            provider_request_id: None,
-        }
-    );
+    let terminal = stream.response.as_ref().expect("a terminal record");
+    assert_eq!(stream.message_id.as_deref(), Some("msg_event"));
+    assert_eq!(terminal.meta.response_id.as_deref(), Some("resp_1"));
+    assert_eq!(terminal.meta.provider_request_id, None);
 }
 
 fn create_reasoning_stream() -> StreamingCompletionResponse {
@@ -320,8 +314,8 @@ async fn finish_derives_usage_from_final_response() {
     let response: CompletionResponse = stream
         .finish()
         .expect("the stream produced a terminal record");
-    assert_eq!(response.usage.total_tokens, Some(15));
-    assert_eq!(response.provider, TEST_PROVIDER);
+    assert_eq!(response.end.meta.usage.total_tokens, Some(15));
+    assert_eq!(response.end.meta.provider, TEST_PROVIDER);
 }
 
 /// Regression (rig#2265): the transport request id captured on the
@@ -331,10 +325,10 @@ async fn finish_derives_usage_from_final_response() {
 async fn finish_carries_the_terminal_request_id() {
     let mut stream = scripted(|out| {
         out.text("hi");
-        out.final_record(StreamFinal {
+        out.set_request_id(Some("req_transport_1".try_into().expect("a non-empty id")));
+        out.final_record(crate::completion::ReportedEnd {
             response_id: Some("resp_1".try_into().expect("a non-empty id")),
-            provider_request_id: Some("req_transport_1".try_into().expect("a non-empty id")),
-            ..StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
+            ..crate::completion::ReportedEnd::new(Usage::default(), serde_json::json!({}))
         });
     });
     while stream.next().await.is_some() {}
@@ -342,9 +336,9 @@ async fn finish_carries_the_terminal_request_id() {
     let response: CompletionResponse = stream
         .finish()
         .expect("the stream produced a terminal record");
-    assert_eq!(response.response_id.as_deref(), Some("resp_1"));
+    assert_eq!(response.end.meta.response_id.as_deref(), Some("resp_1"));
     assert_eq!(
-        response.provider_request_id.as_deref(),
+        response.end.meta.provider_request_id.as_deref(),
         Some("req_transport_1")
     );
 }
@@ -389,7 +383,7 @@ async fn a_stream_that_errors_mid_stream_keeps_content_and_omits_the_terminal() 
     }
     assert!(saw_error, "the mid-stream error must be forwarded");
 
-    // No StreamFinal may be synthesized for the aborted stream...
+    // No CompletionEnd may be synthesized for the aborted stream...
     assert!(stream.response.is_none());
 
     // ...but the content delivered before the error is preserved.
@@ -406,9 +400,9 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
     let mut stream = scripted(|out| {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
         out.tool_call(id, end);
-        out.final_record(StreamFinal {
+        out.final_record(crate::completion::ReportedEnd {
             finish_reason: Some(FinishReason::Stop),
-            ..StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
+            ..crate::completion::ReportedEnd::new(Usage::default(), serde_json::json!({}))
         });
     });
     while stream.next().await.is_some() {}
@@ -426,9 +420,9 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
 async fn a_stop_without_tool_calls_is_left_alone() {
     let mut stream = scripted(|out| {
         out.text("done");
-        out.final_record(StreamFinal {
+        out.final_record(crate::completion::ReportedEnd {
             finish_reason: Some(FinishReason::Stop),
-            ..StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
+            ..crate::completion::ReportedEnd::new(Usage::default(), serde_json::json!({}))
         });
     });
     while stream.next().await.is_some() {}
@@ -444,13 +438,12 @@ async fn a_stop_without_tool_calls_is_left_alone() {
 
 #[test]
 fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
-    let final_record = StreamFinal {
+    let final_record = crate::completion::CompletionEnd {
         finish_reason: Some(FinishReason::Other("future_reason".to_owned())),
         message_id: Some("msg_123".try_into().expect("a non-empty id")),
-        model: Some("provider-model-v2".try_into().expect("a non-empty id")),
-        ..StreamFinal::new(
-            "example",
-            Usage {
+        ..crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+            model: Some("provider-model-v2".try_into().expect("a non-empty id")),
+            usage: Usage {
                 input_tokens: Some(4),
                 output_tokens: Some(6),
                 total_tokens: Some(10),
@@ -459,8 +452,11 @@ fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
                 tool_use_prompt_tokens: Some(3),
                 reasoning_tokens: Some(4),
             },
-            serde_json::json!({}),
-        )
+            raw: serde_json::json!({}),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("example").expect("a provider name"),
+            )
+        })
     };
 
     let encoded = serde_json::to_value(StreamEvent::Final(final_record.clone()))
@@ -494,12 +490,14 @@ fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
 fn deserializing_stream_final_refuses_empty_identifiers() {
     for field in ["message_id", "response_id", "model"] {
         let mut record = serde_json::json!({
-            "usage": Usage::default(),
-            "provider": "example",
-            "raw": {},
+            "meta": { "usage": Usage::default(), "provider": "example", "raw": {} },
         });
-        record[field] = serde_json::json!("");
-        let error = serde_json::from_value::<StreamFinal>(record)
+        if field == "message_id" {
+            record[field] = serde_json::json!("");
+        } else {
+            record["meta"][field] = serde_json::json!("");
+        }
+        let error = serde_json::from_value::<CompletionEnd>(record)
             .expect_err("an empty identifier is refused");
         assert!(
             error.to_string().contains("must not be empty"),
@@ -533,11 +531,11 @@ fn provider_terminal_stream() -> StreamingResult {
     to_stream_result(futures::stream::iter(script(|out| {
         out.text("done");
         let raw = serde_json::to_value(&terminal).expect("serialize terminal");
-        out.final_record(StreamFinal::new(TEST_PROVIDER, terminal.usage, raw));
+        out.final_record(crate::completion::ReportedEnd::new(terminal.usage, raw));
     })))
 }
 
-async fn drain(events: StreamingResult) -> StreamFinal {
+async fn drain(events: StreamingResult) -> CompletionEnd {
     let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, events);
     while stream.next().await.is_some() {}
     stream
@@ -552,14 +550,14 @@ async fn drain(events: StreamingResult) -> StreamFinal {
 #[tokio::test]
 async fn the_terminal_record_captures_the_providers_raw_terminal() {
     let final_record = drain(provider_terminal_stream()).await;
-    let raw = &final_record.raw;
+    let raw = &final_record.meta.raw;
 
     let typed = ProviderTerminal::deserialize(raw).expect("raw is the provider's terminal");
     assert_eq!(typed.provider_only, "kept");
     assert_eq!(&serde_json::to_value(&typed).expect("re-serialize"), raw);
 
-    assert_eq!(final_record.usage.total_tokens, Some(8));
-    assert_eq!(final_record.provider, TEST_PROVIDER);
+    assert_eq!(final_record.meta.usage.total_tokens, Some(8));
+    assert_eq!(final_record.meta.provider, TEST_PROVIDER);
     assert_eq!(final_record.finish_reason, None);
 }
 
@@ -572,15 +570,15 @@ async fn finish_reason_is_reconciled_with_raw_attached() {
         out.tool_call(id, end);
         let usage = Usage::default();
         let raw = serde_json::to_value(usage).expect("serialize usage");
-        out.final_record(StreamFinal {
+        out.final_record(crate::completion::ReportedEnd {
             finish_reason: Some(FinishReason::Stop),
-            ..StreamFinal::new(TEST_PROVIDER, usage, raw.clone())
+            ..crate::completion::ReportedEnd::new(usage, raw.clone())
         });
     })));
     let final_record = drain(events).await;
     assert_eq!(final_record.finish_reason, Some(FinishReason::ToolCalls));
     assert_eq!(
-        final_record.raw,
+        final_record.meta.raw,
         serde_json::to_value(Usage::default()).expect("serialize usage")
     );
 }
@@ -596,15 +594,21 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
         "usage": {"total_tokens": 8},
         "provider_only": "kept"
     });
-    let final_record = StreamFinal {
+    let final_record = crate::completion::CompletionEnd {
         message_id: Some("msg_123".try_into().expect("a non-empty id")),
-        ..StreamFinal::new("example", Usage::default(), payload.clone())
+        ..crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+            usage: Usage::default(),
+            raw: payload.clone(),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("example").expect("a provider name"),
+            )
+        })
     };
 
     let encoded = serde_json::to_value(&final_record).expect("serialize");
-    assert_eq!(encoded["raw"], payload);
-    let decoded = serde_json::from_value::<StreamFinal>(encoded.clone()).expect("deserialize");
-    assert_eq!(decoded.raw, payload);
+    assert_eq!(encoded["meta"]["raw"], payload);
+    let decoded = serde_json::from_value::<CompletionEnd>(encoded.clone()).expect("deserialize");
+    assert_eq!(decoded.meta.raw, payload);
     assert_eq!(decoded, final_record);
     assert_eq!(
         serde_json::to_value(&decoded).expect("re-serialize"),
@@ -617,25 +621,30 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
     assert_eq!(decoded, wrapped);
 
     // An absent document is omitted and reads back as absent.
-    let without_raw = StreamFinal::new("example", Usage::default(), serde_json::Value::Null);
+    let without_raw = crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+        usage: Usage::default(),
+        raw: serde_json::Value::Null,
+        ..crate::response::ResponseMeta::new(
+            crate::id::ProviderName::new("example").expect("a provider name"),
+        )
+    });
     let encoded = serde_json::to_value(&without_raw).expect("serialize");
-    assert!(encoded.get("raw").is_none(), "{encoded}");
-    let decoded = serde_json::from_value::<StreamFinal>(encoded).expect("deserialize");
-    assert!(decoded.raw.is_null());
+    assert!(encoded["meta"].get("raw").is_none(), "{encoded}");
+    let decoded = serde_json::from_value::<CompletionEnd>(encoded).expect("deserialize");
+    assert!(decoded.meta.raw.is_null());
 }
 
 /// The deserialization mirror must not change the wire format: a fully
 /// populated terminal record round-trips to byte-identical JSON.
 #[test]
 fn stream_final_serde_round_trip_is_identity() {
-    let final_record = StreamFinal {
+    let final_record = crate::completion::CompletionEnd {
         finish_reason: Some(FinishReason::Stop),
         message_id: Some("msg_123".try_into().expect("a non-empty id")),
-        response_id: Some("resp_456".try_into().expect("a non-empty id")),
-        model: Some("provider-model-v2".try_into().expect("a non-empty id")),
-        ..StreamFinal::new(
-            "example",
-            Usage {
+        ..crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+            response_id: Some("resp_456".try_into().expect("a non-empty id")),
+            model: Some("provider-model-v2".try_into().expect("a non-empty id")),
+            usage: Usage {
                 input_tokens: Some(4),
                 output_tokens: Some(6),
                 total_tokens: Some(10),
@@ -644,13 +653,16 @@ fn stream_final_serde_round_trip_is_identity() {
                 tool_use_prompt_tokens: Some(3),
                 reasoning_tokens: Some(4),
             },
-            serde_json::json!({}),
-        )
+            raw: serde_json::json!({}),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("example").expect("a provider name"),
+            )
+        })
     };
 
     let encoded = serde_json::to_value(&final_record).expect("serialize terminal record");
 
-    let decoded = serde_json::from_value::<StreamFinal>(encoded.clone()).expect("deserialize");
+    let decoded = serde_json::from_value::<CompletionEnd>(encoded.clone()).expect("deserialize");
     assert_eq!(decoded, final_record);
     assert_eq!(
         serde_json::to_value(&decoded).expect("re-serialize"),
@@ -1550,7 +1562,7 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
         let mut generated = SyntheticIds::tool();
         let key = generated.mint();
         for (position, explicit) in [explicit_first, !explicit_first].into_iter().enumerate() {
-            let mut out = AdapterOutput::new();
+            let mut out = AdapterOutput::new(test_provider());
             if explicit {
                 out.tool_call(
                     BlockId::wire("tool-0"),
@@ -1611,7 +1623,7 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
             );
         }
         sender
-            .unbounded_send(Ok(StreamEvent::Final(mock_final_with_total_tokens(1))))
+            .unbounded_send(Ok(StreamEvent::Final(terminal_with_total_tokens(1))))
             .expect("send final");
         drop(sender);
         while let Some(event) = response.next().await {

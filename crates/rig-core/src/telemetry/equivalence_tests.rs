@@ -2,6 +2,7 @@
 //! and modality builders opened, captured before they were removed: name,
 //! target, parent, declared fields, and recorded values, case by case.
 
+use crate::completion::CompletionEnd;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +19,7 @@ use crate::embeddings::EmbeddingResponse;
 use crate::error::ProviderError;
 use crate::operation::{Completion, Embedding, Rerank, RerankRequest, Transcription};
 use crate::rerank::RerankResponse;
-use crate::streaming::{StreamEvent, StreamFinal};
+use crate::streaming::StreamEvent;
 use crate::transcription::{TranscriptionRequest, TranscriptionResponse};
 use crate::wire::Operation;
 
@@ -261,11 +262,22 @@ fn cases() -> Vec<Value> {
                 &request,
             );
             let response = CompletionResponse {
-                message_id: Some("msg_1".try_into().expect("a non-empty id")),
-                model: Some("resp_model".try_into().expect("a non-empty id")),
-                ..CompletionResponse::new(vec![], usage(), "prov", Value::Null)
+                choice: vec![],
+                end: CompletionEnd {
+                    message_id: Some("msg_1".try_into().expect("a non-empty id")),
+                    ..CompletionEnd::new(crate::response::ResponseMeta {
+                        model: Some("resp_model".try_into().expect("a non-empty id")),
+                        usage: usage(),
+                        raw: Value::Null,
+                        ..crate::response::ResponseMeta::new(
+                            crate::id::ProviderName::new("prov").expect("a provider name"),
+                        )
+                    })
+                },
             };
-            Completion::record(&span, &response);
+            if let Some(recorded) = Completion::recorded(&response) {
+                span.record_meta(recorded);
+            }
         },
     );
     run(
@@ -277,13 +289,21 @@ fn cases() -> Vec<Value> {
                 .build();
             let span =
                 Completion::span("prov", Some("model"), Completion::telemetry(true), &request);
-            let terminal = StreamFinal {
-                response_id: Some("resp_1".try_into().expect("a non-empty id")),
+            let terminal = CompletionEnd {
                 message_id: Some("msg_1".try_into().expect("a non-empty id")),
-                model: Some("m2".try_into().expect("a non-empty id")),
-                ..StreamFinal::new("prov", usage(), Value::Null)
+                ..CompletionEnd::new(crate::response::ResponseMeta {
+                    response_id: Some("resp_1".try_into().expect("a non-empty id")),
+                    model: Some("m2".try_into().expect("a non-empty id")),
+                    usage: usage(),
+                    raw: Value::Null,
+                    ..crate::response::ResponseMeta::new(
+                        crate::id::ProviderName::new("prov").expect("a provider name"),
+                    )
+                })
             };
-            Completion::record_event(&span, &StreamEvent::Final(terminal));
+            if let Some(recorded) = Completion::recorded_event(&StreamEvent::Final(terminal)) {
+                span.record_meta(recorded);
+            }
         },
     );
     run("embedding operation span+record", &mut out, || {
@@ -304,7 +324,9 @@ fn cases() -> Vec<Value> {
                 )
             },
         };
-        span.record_meta(&response.meta);
+        if let Some(recorded) = Embedding::recorded(&response) {
+            span.record_meta(recorded);
+        }
     });
     run("rerank operation span+record", &mut out, || {
         let request = RerankRequest {
@@ -323,7 +345,9 @@ fn cases() -> Vec<Value> {
                 )
             },
         };
-        span.record_meta(&response.meta);
+        if let Some(recorded) = Rerank::recorded(&response) {
+            span.record_meta(recorded);
+        }
     });
     run("transcription operation span+record", &mut out, || {
         let request = TranscriptionRequest {
@@ -350,7 +374,9 @@ fn cases() -> Vec<Value> {
                 )
             },
         };
-        span.record_meta(&response.meta);
+        if let Some(recorded) = Transcription::recorded(&response) {
+            span.record_meta(recorded);
+        }
     });
     run("span combinator on a native response", &mut out, || {
         SpanBuilder::new("prov", "model", GenAiOperation::Chat)

@@ -1,5 +1,5 @@
 //! Raw provider response capture on OpenAI's streaming seams
-//! (`StreamFinal::raw`).
+//! (`CompletionEnd::raw`).
 //!
 //! # What this pins
 //!
@@ -12,7 +12,7 @@
 //! document — a streamed `raw` is the record the decoder assembled from the
 //! reply's frames, because no single frame is the terminal. So it
 //! round-trips into that terminal type and re-serializes equal, it exposes a
-//! terminal-only field the normalized `StreamFinal` does not model, and —
+//! terminal-only field the normalized `CompletionEnd` does not model, and —
 //! because capture is unconditional and must stay an escape hatch — running
 //! the decoder's own mapper over the captured record reproduces the `usage`,
 //! `finish_reason`, `model` and identity the stream reported.
@@ -28,7 +28,7 @@
 //! Cells 5–6 are the streamed twins of the reasoning and tool-call cells in
 //! `raw_capture_matrix`: a Responses reasoning stream, whose terminal
 //! carries the `reasoning` echo of `response.completed` as
-//! `reasoning_metadata` (a terminal-only field the normalized `StreamFinal`
+//! `reasoning_metadata` (a terminal-only field the normalized `CompletionEnd`
 //! does not model), and a forced Chat tool call, whose terminal spells
 //! `finish_reason` as `"tool_calls"` and whose normalized twin reports
 //! `FinishReason::ToolCalls`.
@@ -53,10 +53,10 @@
 //! with a string `encrypted_content`; cell 6 requires a chunk whose delta
 //! carries `tool_calls` and a chunk finishing with `"tool_calls"`.
 
+use rig::completion::CompletionEnd;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::streaming::StreamFinal;
 use serde_json::{Value, json};
 
 use super::super::support::{sse_json_frames, with_openai_cassette_result};
@@ -168,12 +168,12 @@ fn last_chunk_field(frames: &[Value], field: &str) -> Value {
 
 /// The `raw` a streamed terminal must carry — `Value::Null` is reserved for
 /// records built by hand, which a terminal off a live stream never is.
-fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
+fn captured_raw<'a>(scenario: &str, terminal: &'a CompletionEnd) -> &'a Value {
     assert!(
-        !terminal.raw.is_null(),
+        !terminal.meta.raw.is_null(),
         "{scenario}: a streamed terminal always carries `raw`"
     );
-    &terminal.raw
+    &terminal.meta.raw
 }
 
 // ---------------------------------------------------------------------------
@@ -308,8 +308,11 @@ async fn responses_stream_raw_round_trips_typed() {
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
-    assert_eq!(
-        typed.provider_request_id, None,
+    assert!(
+        serde_json::to_value(&typed)
+            .expect("the typed record serializes")
+            .get("provider_request_id")
+            .is_none(),
         "{SCENARIO}: the native record never carries the transport id"
     );
 }
@@ -350,7 +353,7 @@ async fn responses_stream_raw_exposes_status() {
         Some(recorded_message_id),
         &format!("{SCENARIO}: `message_id` off the captured terminal vs the fixture"),
     );
-    // `message_id` *is* normalized (`StreamFinal::message_id`); the captured
+    // `message_id` *is* normalized (`CompletionEnd::message_id`); the captured
     // terminal and the normalized record must agree on it.
     assert_eq!(
         raw["message_id"].as_str(),
@@ -366,7 +369,7 @@ async fn responses_stream_raw_exposes_status() {
 
 /// A Responses reasoning stream: the terminal record round-trips, and the
 /// `reasoning` echo of `response.completed` — which the normalized
-/// `StreamFinal` does not model — is readable off `raw` as
+/// `CompletionEnd` does not model — is readable off `raw` as
 /// `reasoning_metadata`. Premise: the completed response object carries a
 /// `reasoning` output item with a string `encrypted_content`, i.e. this was a
 /// reasoning turn on the wire and not merely a reasoning-configured request.
@@ -463,7 +466,7 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     // The normalized terminal reports the reasoning tokens the completed
     // event carried.
     assert_eq!(
-        terminal.usage.reasoning_tokens,
+        terminal.meta.usage.reasoning_tokens,
         completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         "{SCENARIO}: normalized reasoning tokens"
     );

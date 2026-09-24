@@ -70,8 +70,8 @@ impl AgentHook for LoggingHook {
             println!(
                 "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
                 ctx.run_id(),
-                response.usage,
-                response.message_id,
+                response.end.meta.usage,
+                response.end.message_id,
                 response.choice
             );
         }

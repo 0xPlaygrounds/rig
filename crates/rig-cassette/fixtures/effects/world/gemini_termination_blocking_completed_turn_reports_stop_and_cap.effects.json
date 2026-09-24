@@ -81,43 +81,47 @@
               "text": "cedar"
             }
           ],
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 2,
-            "total_tokens": 24
-          },
-          "response_id": "p3izasubA7CnmtkP7pWVYQ",
-          "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "candidates": [
-              {
-                "content": {
-                  "parts": [
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_id": "p3izasubA7CnmtkP7pWVYQ",
+              "usage": {
+                "input_tokens": 22,
+                "output_tokens": 2,
+                "total_tokens": 24
+              },
+              "raw": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "cedar"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "gemini-2.5-flash",
+                "responseId": "p3izasubA7CnmtkP7pWVYQ",
+                "usageMetadata": {
+                  "candidatesTokenCount": 2,
+                  "promptTokenCount": 22,
+                  "promptTokensDetails": [
                     {
-                      "text": "cedar"
+                      "modality": "TEXT",
+                      "tokenCount": 22
                     }
                   ],
-                  "role": "model"
-                },
-                "finishReason": "STOP",
-                "index": 0
-              }
-            ],
-            "modelVersion": "gemini-2.5-flash",
-            "responseId": "p3izasubA7CnmtkP7pWVYQ",
-            "usageMetadata": {
-              "candidatesTokenCount": 2,
-              "promptTokenCount": 22,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 22
+                  "serviceTier": "standard",
+                  "totalTokenCount": 24
                 }
-              ],
-              "serviceTier": "standard",
-              "totalTokenCount": 24
+              }
             }
           }
         }

@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on llama.cpp's streaming path
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`CompletionEnd::raw`](rig::completion::CompletionEnd::raw)).
 //!
 //! # The feature
 //!
@@ -10,13 +10,13 @@
 //! plus the envelope fields the chunks carried (`object`, `created`,
 //! `system_fingerprint`) accumulated under `additional_params`. Every
 //! terminal record the seam yields carries `raw` — that record serialized by
-//! the decoder before it folds into a `StreamFinal` — the terminal record
+//! the decoder before it folds into a `CompletionEnd` — the terminal record
 //! only, never the frames, and nothing about it is sent to the server.
-//! `raw == Value::Null` means only that a `StreamFinal` was built by hand
+//! `raw == Value::Null` means only that a `CompletionEnd` was built by hand
 //! without a provider terminal behind it, which no cell here can produce.
 //!
 //! The envelope fields are exactly what the normalized
-//! [`StreamFinal`](rig::streaming::StreamFinal) has no home for, so cell 2
+//! [`CompletionEnd`](rig::completion::CompletionEnd) has no home for, so cell 2
 //! reads them back through `raw` and checks them against the recorded frames.
 //!
 //! # Matrix
@@ -97,7 +97,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     chat::assert_terminal_round_trips(&terminal);
 
     let (_, terminal_frame) = chat::recorded_frames_with_terminal(LLAMACPP_PROVIDER, scenario);
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(
         raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
@@ -136,7 +136,7 @@ async fn stream_raw_exposes_envelope_fields() {
         ],
     );
 
-    let raw = terminal.raw;
+    let raw = terminal.meta.raw;
     let (frames, terminal_frame) = chat::recorded_frames_with_terminal(LLAMACPP_PROVIDER, scenario);
     let params = raw
         .get("additional_params")
@@ -199,7 +199,7 @@ async fn stream_raw_preserves_llamacpp_timings() {
     .await
     .expect("stream_raw_preserves_llamacpp_timings should replay from its cassette");
 
-    let raw = sink.take().raw;
+    let raw = sink.take().meta.raw;
     let (_, terminal_frame) = chat::recorded_frames_with_terminal(LLAMACPP_PROVIDER, scenario);
 
     let recorded_timings = terminal_frame

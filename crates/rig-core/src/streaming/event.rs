@@ -18,7 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::message::{AdditionalParams, AssistantContent, Reasoning};
 
-use super::{BlockId, StreamFinal, UnknownPayload, UnparseableToolInput};
+use super::{BlockId, UnknownPayload, UnparseableToolInput};
+use crate::completion::CompletionEnd;
 
 /// One event of a completion stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -54,9 +55,17 @@ pub enum StreamEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         block: Option<AssistantContent>,
     },
-    /// The provider's normalized terminal record. At most one per stream,
-    /// last among the content events.
-    Final(StreamFinal),
+    /// The provider's normalized terminal record, emitted only after
+    /// provider-signaled completion. At most one per stream, last among the
+    /// content events. EOF without one is truncation, not a successful
+    /// completion.
+    ///
+    /// Recoverable malformed frames yield errors and allow subsequent events.
+    /// Transport or provider terminal failures yield already-completed tool
+    /// calls before the final error, then end without a terminal record.
+    /// Consumers must drain to `None` rather than treating every error item
+    /// as terminal.
+    Final(CompletionEnd),
     /// Unmodeled provider data, passed through without joining the aggregated choice.
     Unknown(UnknownPayload),
 }
@@ -272,7 +281,7 @@ const _: fn() = || {
     assert_wire::<Delta>();
     assert_wire::<BlockClose>();
     assert_wire::<ToolCallEnd>();
-    assert_wire::<StreamFinal>();
+    assert_wire::<CompletionEnd>();
     assert_wire::<UnknownPayload>();
 };
 

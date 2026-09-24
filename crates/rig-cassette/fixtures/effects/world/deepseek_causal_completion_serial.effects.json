@@ -153,53 +153,57 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 329,
-            "output_tokens": 42,
-            "total_tokens": 371,
-            "cached_input_tokens": 128
-          },
-          "response_id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
-          "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"q\": \"What is the capital of France?\"}",
-                        "name": "lookup"
-                      },
-                      "id": "call_00_foTuLzyWG8tgIvcJ1dzw3639",
-                      "index": 0,
-                      "type": "function"
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
+              "usage": {
+                "input_tokens": 329,
+                "output_tokens": 42,
+                "total_tokens": 371,
+                "cached_input_tokens": 128
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"q\": \"What is the capital of France?\"}",
+                            "name": "lookup"
+                          },
+                          "id": "call_00_foTuLzyWG8tgIvcJ1dzw3639",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
                     }
-                  ]
+                  }
+                ],
+                "created": 0,
+                "id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 42,
+                  "prompt_cache_hit_tokens": 128,
+                  "prompt_cache_miss_tokens": 201,
+                  "prompt_tokens": 329,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 128
+                  },
+                  "total_tokens": 371
                 }
               }
-            ],
-            "created": 0,
-            "id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 42,
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 201,
-              "prompt_tokens": 329,
-              "prompt_tokens_details": {
-                "cached_tokens": 128
-              },
-              "total_tokens": 371
             }
           }
         }
@@ -266,42 +270,46 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 17,
-            "output_tokens": 1,
-            "total_tokens": 18,
-            "cached_input_tokens": 0
-          },
-          "response_id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Paris",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
+              "usage": {
+                "input_tokens": 17,
+                "output_tokens": 1,
+                "total_tokens": 18,
+                "cached_input_tokens": 0
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Paris",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 1,
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 17,
+                  "prompt_tokens": 17,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 18
                 }
               }
-            ],
-            "created": 0,
-            "id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 1,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 17,
-              "prompt_tokens": 17,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "total_tokens": 18
             }
           }
         }
@@ -409,42 +417,46 @@
               "text": "Paris"
             }
           ],
-          "usage": {
-            "input_tokens": 384,
-            "output_tokens": 1,
-            "total_tokens": 385,
-            "cached_input_tokens": 128
-          },
-          "response_id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
-          "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "content": "Paris",
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "response_id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
+              "usage": {
+                "input_tokens": 384,
+                "output_tokens": 1,
+                "total_tokens": 385,
+                "cached_input_tokens": 128
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Paris",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 1,
+                  "prompt_cache_hit_tokens": 128,
+                  "prompt_cache_miss_tokens": 256,
+                  "prompt_tokens": 384,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 128
+                  },
+                  "total_tokens": 385
                 }
               }
-            ],
-            "created": 0,
-            "id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
-            "model": "deepseek-flash",
-            "object": "chat.completion",
-            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "usage": {
-              "completion_tokens": 1,
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 256,
-              "prompt_tokens": 384,
-              "prompt_tokens_details": {
-                "cached_tokens": 128
-              },
-              "total_tokens": 385
             }
           }
         }

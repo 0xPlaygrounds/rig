@@ -416,14 +416,14 @@ async fn the_chat_route_folds_its_recorded_turn() {
     .await
     .expect("the recorded chat body folds");
 
-    assert_eq!(response.provider, PROVIDER_NAME);
+    assert_eq!(response.end.meta.provider, PROVIDER_NAME);
     assert!(
         text_of(&response)
             .is_some_and(|text| text.contains("Rust is a systems programming language")),
         "{:?}",
         response.choice
     );
-    assert_eq!(response.usage.input_tokens, Some(38));
+    assert_eq!(response.end.meta.usage.input_tokens, Some(38));
 }
 
 /// The Responses route's recorded turn folds to the normalized response —
@@ -439,14 +439,20 @@ async fn the_responses_route_folds_its_recorded_turn() {
     .await
     .expect("the recorded responses body folds");
 
-    assert_eq!(response.provider, PROVIDER_NAME);
-    assert_eq!(response.model.as_deref(), Some(super::super::GPT_5_3_CODEX));
+    assert_eq!(response.end.meta.provider, PROVIDER_NAME);
+    assert_eq!(
+        response.end.meta.model.as_deref(),
+        Some(super::super::GPT_5_3_CODEX)
+    );
     assert!(
         text_of(&response).is_some_and(|text| text.contains("Refactoring is the process")),
         "{:?}",
         response.choice
     );
-    assert_eq!(response.response_id.as_deref(), Some("resp_REDACTED_1"));
+    assert_eq!(
+        response.end.meta.response_id.as_deref(),
+        Some("resp_REDACTED_1")
+    );
 }
 
 /// Copilot's Responses route answers a tool-calling turn with a

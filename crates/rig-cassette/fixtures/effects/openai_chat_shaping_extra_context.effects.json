@@ -70,51 +70,55 @@
               "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
             }
           ],
-          "usage": {
-            "input_tokens": 65,
-            "output_tokens": 89,
-            "total_tokens": 154,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "response_id": "chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj",
-          "provider_request_id": "req_5de6de1e353243f29274ac5448845679",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "message": {
-                  "annotations": [],
-                  "content": "A glarb-glarb is an ancient farming tool from planet Jiro.",
-                  "refusal": null,
-                  "role": "assistant"
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj",
+              "provider_request_id": "req_5de6de1e353243f29274ac5448845679",
+              "usage": {
+                "input_tokens": 65,
+                "output_tokens": 89,
+                "total_tokens": 154,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 64
+              },
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 89,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 64,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 65,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 154
                 }
               }
-            ],
-            "created": 0,
-            "id": "chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj",
-            "model": "gpt-5-mini-2025-08-07",
-            "object": "chat.completion",
-            "service_tier": "default",
-            "system_fingerprint": null,
-            "usage": {
-              "completion_tokens": 89,
-              "completion_tokens_details": {
-                "accepted_prediction_tokens": 0,
-                "audio_tokens": 0,
-                "reasoning_tokens": 64,
-                "rejected_prediction_tokens": 0
-              },
-              "prompt_tokens": 65,
-              "prompt_tokens_details": {
-                "audio_tokens": 0,
-                "cached_tokens": 0
-              },
-              "total_tokens": 154
             }
           }
         }

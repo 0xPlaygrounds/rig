@@ -16,14 +16,14 @@ use crate::copilot::{live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
 /// Copilot's own terminal stream record carries reasoning metadata that rig's
-/// normalized `StreamFinal` does not model, and the roundtrip cassette records
+/// normalized `CompletionEnd` does not model, and the roundtrip cassette records
 /// exactly one interaction per turn. This wrapper lets the shared roundtrip
 /// drive the same requests through `stream` while the test keeps a copy of
 /// the terminal records, whose `raw` is Copilot's provider-native record.
 #[derive(Clone)]
 struct CapturingProviderFinals {
     inner: Bound<CopilotWire>,
-    finals: Arc<Mutex<Vec<rig::streaming::StreamFinal>>>,
+    finals: Arc<Mutex<Vec<rig::completion::CompletionEnd>>>,
 }
 
 impl CapturingProviderFinals {
@@ -34,7 +34,7 @@ impl CapturingProviderFinals {
         }
     }
 
-    fn finals(&self) -> Arc<Mutex<Vec<rig::streaming::StreamFinal>>> {
+    fn finals(&self) -> Arc<Mutex<Vec<rig::completion::CompletionEnd>>> {
         Arc::clone(&self.finals)
     }
 }
@@ -101,7 +101,7 @@ async fn streaming() {
             .first()
             .expect("Copilot reasoning stream should yield a provider final response");
         let response: rig::providers::openai::responses_api::streaming::StreamingCompletionResponse =
-            serde_json::from_value(response.raw.clone())
+            serde_json::from_value(response.meta.raw.clone())
                 .expect("Copilot reasoning stream should use the Responses route");
         assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
         assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());

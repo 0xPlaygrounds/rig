@@ -462,7 +462,7 @@ async fn raw_and_normalized_completion(
     rig::completion::CompletionResponse,
 )> {
     let normalized = model.completion(request).await?;
-    let raw = mistral::CompletionResponse::deserialize(&normalized.raw)?;
+    let raw = mistral::CompletionResponse::deserialize(&normalized.end.meta.raw)?;
     Ok((raw, normalized))
 }
 
@@ -471,8 +471,11 @@ fn assert_response_metadata(
     raw: &mistral::CompletionResponse,
 ) {
     assert_nonempty_response(&raw.id);
-    assert_eq!(response.response_id.as_deref(), Some(raw.id.as_str()));
-    assert_eq!(response.message_id, None);
+    assert_eq!(
+        response.end.meta.response_id.as_deref(),
+        Some(raw.id.as_str())
+    );
+    assert_eq!(response.end.message_id, None);
     assert_nonempty_response(&raw.model);
     assert!(
         raw.choices
@@ -485,15 +488,15 @@ fn assert_response_metadata(
         .as_ref()
         .expect("raw response should preserve usage");
     assert!(
-        response.usage.input_tokens.is_some_and(|n| n > 0),
+        response.end.meta.usage.input_tokens.is_some_and(|n| n > 0),
         "usage should include input tokens"
     );
     assert_eq!(
-        response.usage.output_tokens,
+        response.end.meta.usage.output_tokens,
         Some(raw_usage.completion_tokens as u64)
     );
     assert_eq!(
-        response.usage.total_tokens,
+        response.end.meta.usage.total_tokens,
         Some(raw_usage.total_tokens as u64)
     );
 }

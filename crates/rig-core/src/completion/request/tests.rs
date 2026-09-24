@@ -163,24 +163,28 @@ fn tool_call_choice() -> Vec<AssistantContent> {
 
 #[test]
 fn normalized_response_round_trips_through_serde() {
-    let response = CompletionResponse {
-        message_id: Some(MessageId::new("msg_123").unwrap()),
-        finish_reason: Some(FinishReason::Stop),
-        model: Some(ModelName::new("provider-model-v2").unwrap()),
-        ..CompletionResponse::new(
-            vec![AssistantContent::text("hello")],
-            Usage {
-                input_tokens: Some(3),
-                output_tokens: Some(2),
-                total_tokens: Some(5),
-                cached_input_tokens: Some(1),
-                cache_creation_input_tokens: Some(0),
-                tool_use_prompt_tokens: Some(0),
-                reasoning_tokens: Some(1),
-            },
-            "example",
-            serde_json::json!({}),
-        )
+    let response = crate::completion::CompletionResponse {
+        choice: vec![AssistantContent::text("hello")],
+        end: crate::completion::CompletionEnd {
+            message_id: Some(MessageId::new("msg_123").unwrap()),
+            finish_reason: Some(FinishReason::Stop),
+            ..crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+                model: Some(ModelName::new("provider-model-v2").unwrap()),
+                usage: Usage {
+                    input_tokens: Some(3),
+                    output_tokens: Some(2),
+                    total_tokens: Some(5),
+                    cached_input_tokens: Some(1),
+                    cache_creation_input_tokens: Some(0),
+                    tool_use_prompt_tokens: Some(0),
+                    reasoning_tokens: Some(1),
+                },
+                raw: serde_json::json!({}),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("example").expect("a provider name"),
+                )
+            })
+        },
     };
 
     let encoded = serde_json::to_value(&response).expect("serialize response");
@@ -197,33 +201,50 @@ fn normalized_response_round_trips_through_serde() {
 /// belongs to the fold that built the response, not to deserialization.
 #[test]
 fn deserializing_keeps_the_persisted_finish_reason() {
-    let mut encoded = serde_json::to_value(CompletionResponse::new(
-        tool_call_choice(),
-        Usage::default(),
-        "example",
-        serde_json::json!({}),
-    ))
+    let mut encoded = serde_json::to_value(crate::completion::CompletionResponse {
+        choice: tool_call_choice(),
+        end: crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+            usage: Usage::default(),
+            raw: serde_json::json!({}),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("example").expect("a provider name"),
+            )
+        }),
+    })
     .expect("serialize response");
-    encoded["finish_reason"] = serde_json::json!("stop");
+    encoded["end"]["finish_reason"] = serde_json::json!("stop");
 
     let decoded =
         serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");
 
-    assert_eq!(decoded.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(decoded.end.finish_reason, Some(FinishReason::Stop));
 }
 
 /// An empty identifier is not a valid value: loading refuses it.
 #[test]
 fn deserializing_an_empty_identifier_is_refused() {
-    for field in ["message_id", "response_id", "model"] {
-        let mut encoded = serde_json::to_value(CompletionResponse::new(
-            vec![AssistantContent::text("hello")],
-            Usage::default(),
-            "example",
-            serde_json::json!({}),
-        ))
+    for field in [
+        "/end/message_id",
+        "/end/meta/response_id",
+        "/end/meta/model",
+    ] {
+        let mut encoded = serde_json::to_value(crate::completion::CompletionResponse {
+            choice: vec![AssistantContent::text("hello")],
+            end: crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("example").expect("a provider name"),
+                )
+            }),
+        })
         .expect("serialize response");
-        encoded[field] = serde_json::json!("");
+        let (parent, key) = field.rsplit_once('/').expect("a nested field");
+        encoded
+            .pointer_mut(parent)
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("the field's parent")
+            .insert(key.to_owned(), serde_json::json!(""));
 
         let error = serde_json::from_value::<CompletionResponse>(encoded)
             .expect_err("an empty identifier is refused");
@@ -357,39 +378,45 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         "system_fingerprint": "fp_abc",
         "choices": [{"finish_reason": "stop"}]
     });
-    let response = CompletionResponse {
-        response_id: Some(ResponseId::new("chatcmpl-1").unwrap()),
-        ..CompletionResponse::new(
-            vec![AssistantContent::text("hello")],
-            Usage::default(),
-            "example",
-            payload.clone(),
-        )
+    let response = crate::completion::CompletionResponse {
+        choice: vec![AssistantContent::text("hello")],
+        end: crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+            response_id: Some(ResponseId::new("chatcmpl-1").unwrap()),
+            usage: Usage::default(),
+            raw: payload.clone(),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("example").expect("a provider name"),
+            )
+        }),
     };
 
     let encoded = serde_json::to_value(&response).expect("serialize response");
-    assert_eq!(encoded["raw"], payload);
+    assert_eq!(encoded["end"]["meta"]["raw"], payload);
     let decoded: CompletionResponse =
         serde_json::from_value(encoded.clone()).expect("deserialize response");
-    assert_eq!(decoded.raw, payload);
-    assert_eq!(decoded.response_id.as_deref(), Some("chatcmpl-1"));
+    assert_eq!(decoded.end.meta.raw, payload);
+    assert_eq!(decoded.end.meta.response_id.as_deref(), Some("chatcmpl-1"));
     assert_eq!(
         serde_json::to_value(&decoded).expect("re-serialize"),
         encoded
     );
 
     // An absent document is omitted and reads back as absent.
-    let without_raw = CompletionResponse::new(
-        vec![AssistantContent::text("hello")],
-        Usage::default(),
-        "example",
-        serde_json::Value::Null,
-    );
+    let without_raw = crate::completion::CompletionResponse {
+        choice: vec![AssistantContent::text("hello")],
+        end: crate::completion::CompletionEnd::new(crate::response::ResponseMeta {
+            usage: Usage::default(),
+            raw: serde_json::Value::Null,
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("example").expect("a provider name"),
+            )
+        }),
+    };
     let encoded = serde_json::to_value(&without_raw).expect("serialize response");
-    assert!(encoded.get("raw").is_none(), "{encoded}");
+    assert!(encoded["end"]["meta"].get("raw").is_none(), "{encoded}");
     let decoded: CompletionResponse =
         serde_json::from_value(encoded).expect("deserialize response");
-    assert!(decoded.raw.is_null());
+    assert!(decoded.end.meta.raw.is_null());
 }
 
 fn test_document(id: &str, text: &str) -> Document {

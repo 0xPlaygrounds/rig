@@ -623,7 +623,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             // read off OpenRouter's own response type rather than from a
             // second call.
             let response = model.completion(request).await?;
-            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
+            let wire = openrouter::CompletionResponse::deserialize(&response.end.meta.raw)
                 .expect("raw is OpenRouter's own completion response");
             let text = response
                 .choice
@@ -636,9 +636,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
             anyhow::ensure!(
-                response.usage.input_tokens.is_some_and(|n| n > 0) && response.usage.output_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.input_tokens.is_some_and(|n| n > 0) && response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated on long-history replay: {:?}",
-                response.usage
+                response.end.meta.usage
             );
             anyhow::ensure!(
                 wire.choices
@@ -647,9 +647,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "the gateway's document should preserve every choice's finish reason"
             );
             anyhow::ensure!(
-                response.finish_reason.clone().is_some(),
+                response.end.finish_reason.clone().is_some(),
                 "normalized response should preserve the finish reason: {:?}",
-                response.finish_reason.clone()
+                response.end.finish_reason.clone()
             );
             assert_nonempty_response(&wire.model);
 

@@ -173,93 +173,97 @@
               }
             }
           ],
-          "usage": {
-            "input_tokens": 5619,
-            "output_tokens": 126,
-            "total_tokens": 5745,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 67
-          },
-          "response_id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
-          "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-5-9b",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "annotations": null,
-                  "audio": null,
-                  "content": "",
-                  "function_call": null,
-                  "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"prefix\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "chatcmpl-tool-a9818439d95dcc14",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"breakpoint\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "chatcmpl-tool-b8c6dc5573232886",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "routed_experts": null,
-                "stop_reason": null,
-                "token_ids": null
-              }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.0005808
-            },
-            "created": 0,
-            "ec_transfer_params": null,
-            "id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
-            "kv_transfer_params": null,
-            "metrics": null,
-            "model": "qwen3-5-9b",
-            "object": "chat.completion",
-            "prompt_logprobs": null,
-            "prompt_text": null,
-            "prompt_token_ids": null,
-            "service_tier": null,
-            "usage": {
-              "completion_tokens": 126,
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "tool_calls",
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-5-9b",
+              "response_id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
+              "usage": {
+                "input_tokens": 5619,
+                "output_tokens": 126,
+                "total_tokens": 5745,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 67
               },
-              "prompt_tokens": 5619,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "total_tokens": 5745
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "annotations": null,
+                      "audio": null,
+                      "content": "",
+                      "function_call": null,
+                      "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
+                      "refusal": null,
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"topic\": \"prefix\"}",
+                            "name": "lookup_cache_policy"
+                          },
+                          "id": "chatcmpl-tool-a9818439d95dcc14",
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"topic\": \"breakpoint\"}",
+                            "name": "lookup_cache_policy"
+                          },
+                          "id": "chatcmpl-tool-b8c6dc5573232886",
+                          "type": "function"
+                        }
+                      ]
+                    },
+                    "routed_experts": null,
+                    "stop_reason": null,
+                    "token_ids": null
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0005808
+                },
+                "created": 0,
+                "ec_transfer_params": null,
+                "id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
+                "kv_transfer_params": null,
+                "metrics": null,
+                "model": "qwen3-5-9b",
+                "object": "chat.completion",
+                "prompt_logprobs": null,
+                "prompt_text": null,
+                "prompt_token_ids": null,
+                "service_tier": null,
+                "usage": {
+                  "completion_tokens": 126,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 67
+                  },
+                  "prompt_tokens": 5619,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 5745
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
+                }
+              }
             }
           }
         }
@@ -469,76 +473,80 @@
               "text": "\n\ncache probe ready"
             }
           ],
-          "usage": {
-            "input_tokens": 5795,
-            "output_tokens": 28,
-            "total_tokens": 5823,
-            "cached_input_tokens": 5280,
-            "reasoning_tokens": 22
-          },
-          "response_id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-5-9b",
-          "raw": {
-            "choices": [
-              {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": null,
-                "message": {
-                  "annotations": null,
-                  "audio": null,
-                  "content": "\n\ncache probe ready",
-                  "function_call": null,
-                  "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "routed_experts": null,
-                "stop_reason": null,
-                "token_ids": null
-              }
-            ],
-            "cost": {
-              "diem": 0,
-              "usd": 0.0005837
-            },
-            "created": 0,
-            "ec_transfer_params": null,
-            "id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
-            "kv_transfer_params": null,
-            "metrics": null,
-            "model": "qwen3-5-9b",
-            "object": "chat.completion",
-            "prompt_logprobs": null,
-            "prompt_text": null,
-            "prompt_token_ids": null,
-            "service_tier": null,
-            "usage": {
-              "cache_read_input_tokens": 5280,
-              "completion_tokens": 28,
-              "completion_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "meta": {
+              "provider": "venice",
+              "model": "qwen3-5-9b",
+              "response_id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
+              "usage": {
+                "input_tokens": 5795,
+                "output_tokens": 28,
+                "total_tokens": 5823,
+                "cached_input_tokens": 5280,
                 "reasoning_tokens": 22
               },
-              "prompt_tokens": 5795,
-              "prompt_tokens_details": {
-                "cached_tokens": 5280
-              },
-              "total_tokens": 5823
-            },
-            "venice_parameters": {
-              "disable_thinking": false,
-              "enable_e2ee": true,
-              "enable_web_citations": false,
-              "enable_web_scraping": false,
-              "enable_web_search": "off",
-              "enable_x_search": false,
-              "include_search_results_in_stream": false,
-              "include_venice_system_prompt": true,
-              "return_search_results_as_documents": false,
-              "strip_thinking_response": false,
-              "web_search_citations": []
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "annotations": null,
+                      "audio": null,
+                      "content": "\n\ncache probe ready",
+                      "function_call": null,
+                      "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
+                      "refusal": null,
+                      "role": "assistant"
+                    },
+                    "routed_experts": null,
+                    "stop_reason": null,
+                    "token_ids": null
+                  }
+                ],
+                "cost": {
+                  "diem": 0,
+                  "usd": 0.0005837
+                },
+                "created": 0,
+                "ec_transfer_params": null,
+                "id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
+                "kv_transfer_params": null,
+                "metrics": null,
+                "model": "qwen3-5-9b",
+                "object": "chat.completion",
+                "prompt_logprobs": null,
+                "prompt_text": null,
+                "prompt_token_ids": null,
+                "service_tier": null,
+                "usage": {
+                  "cache_read_input_tokens": 5280,
+                  "completion_tokens": 28,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 22
+                  },
+                  "prompt_tokens": 5795,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 5280
+                  },
+                  "total_tokens": 5823
+                },
+                "venice_parameters": {
+                  "disable_thinking": false,
+                  "enable_e2ee": true,
+                  "enable_web_citations": false,
+                  "enable_web_scraping": false,
+                  "enable_web_search": "off",
+                  "enable_x_search": false,
+                  "include_search_results_in_stream": false,
+                  "include_venice_system_prompt": true,
+                  "return_search_results_as_documents": false,
+                  "strip_thinking_response": false,
+                  "web_search_citations": []
+                }
+              }
             }
           }
         }

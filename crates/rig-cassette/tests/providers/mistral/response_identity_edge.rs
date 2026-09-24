@@ -62,7 +62,7 @@ async fn blocking_response_carries_the_correlation_id() -> Result<()> {
                 .completion_request("Reply with exactly: identity probe")
                 .send()
                 .await?;
-            assert_is_request_id(response.provider_request_id.as_deref());
+            assert_is_request_id(response.end.meta.provider_request_id.as_deref());
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -78,7 +78,7 @@ async fn streaming_terminal_carries_the_correlation_id() -> Result<()> {
             let mut stream = agent.prompt("Reply with exactly: identity probe").stream();
             let (_text, provider_final) =
                 collect_stream_final_response_and_provider_final(&mut stream).await?;
-            assert_is_request_id(provider_final.provider_request_id.as_deref());
+            assert_is_request_id(provider_final.meta.provider_request_id.as_deref());
             Ok::<_, anyhow::Error>(())
         },
     )

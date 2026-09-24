@@ -1,6 +1,6 @@
 //! Matrix for raw terminal-record capture on mistral.rs's streaming
 //! `/v1/chat/completions` route
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`CompletionEnd::raw`](rig::completion::CompletionEnd::raw)).
 //!
 //! # The feature
 //!
@@ -14,7 +14,7 @@
 //! and no single one is the answer, so a typed round trip through `raw` is
 //! exact here, unlike the unary path where `raw` is the reply document.
 //! Nothing about it is sent to the server. `raw == Value::Null` means only
-//! that a `StreamFinal` was built by hand without a provider terminal behind
+//! that a `CompletionEnd` was built by hand without a provider terminal behind
 //! it, which no cell here can produce.
 //!
 //! # Matrix
@@ -95,16 +95,16 @@ async fn stream_raw_terminal_round_trips_provider_type() {
         .expect("the terminal record carries the reply's accounting");
     assert_eq!(
         Some(usage.openai.prompt_tokens as u64),
-        terminal.usage.input_tokens
+        terminal.meta.usage.input_tokens
     );
     assert_eq!(
         usage.openai.completion_tokens.map(|tokens| tokens as u64),
-        terminal.usage.output_tokens
+        terminal.meta.usage.output_tokens
     );
-    assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
+    assert_eq!(terminal.meta.provider, NORMALIZED_PROVIDER);
 
     let (_, terminal_frame) = chat::recorded_frames_with_terminal(MISTRALRS_PROVIDER, scenario);
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     assert_eq!(
         raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
@@ -147,7 +147,7 @@ async fn stream_raw_exposes_envelope_fields() {
         ],
     );
 
-    let raw = &terminal.raw;
+    let raw = &terminal.meta.raw;
     let (frames, terminal_frame) =
         chat::recorded_frames_with_terminal(MISTRALRS_PROVIDER, scenario);
     let params = raw

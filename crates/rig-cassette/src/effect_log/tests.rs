@@ -34,12 +34,16 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
             request: request(),
             stream: false,
         };
-        record.outcome = Ok(Outcome::Completion(CompletionResponse::new(
-            vec![AssistantContent::text("ok")],
-            Usage::default(),
-            "composing-model",
-            serde_json::json!({}),
-        )));
+        record.outcome = Ok(Outcome::Completion(CompletionResponse {
+            choice: vec![AssistantContent::text("ok")],
+            end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                usage: Usage::default(),
+                raw: serde_json::json!({}),
+                ..rig_core::response::ResponseMeta::new(
+                    rig_core::id::ProviderName::new("composing-model").expect("a provider name"),
+                )
+            }),
+        }));
     }
     log.header.signature = log
         .records
@@ -287,12 +291,16 @@ fn effect_record_and_log_round_trip() {
                 request: request(),
                 stream: false,
             },
-            outcome: Ok(Outcome::Completion(CompletionResponse::new(
-                vec![AssistantContent::text("hi")],
-                Usage::default(),
-                "mock",
-                serde_json::json!({}),
-            ))),
+            outcome: Ok(Outcome::Completion(CompletionResponse {
+                choice: vec![AssistantContent::text("hi")],
+                end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+                    usage: Usage::default(),
+                    raw: serde_json::json!({}),
+                    ..rig_core::response::ResponseMeta::new(
+                        rig_core::id::ProviderName::new("mock").expect("a provider name"),
+                    )
+                }),
+            })),
             events: None,
         },
         EffectRecord {
@@ -754,23 +762,31 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         request: request(),
         stream: false,
     };
-    records[0].outcome = Ok(Outcome::Completion(CompletionResponse::new(
+    records[0].outcome = Ok(Outcome::Completion(CompletionResponse {
         choice,
-        Usage::default(),
-        "test",
-        serde_json::json!({}),
-    )));
+        end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+            usage: Usage::default(),
+            raw: serde_json::json!({}),
+            ..rig_core::response::ResponseMeta::new(
+                rig_core::id::ProviderName::new("test").expect("a provider name"),
+            )
+        }),
+    }));
     records[0].events = Some(events);
     records[1].kind = EffectKind::Completion {
         request: next,
         stream: false,
     };
-    records[1].outcome = Ok(Outcome::Completion(CompletionResponse::new(
-        vec![AssistantContent::text("done")],
-        Usage::default(),
-        "test",
-        serde_json::json!({}),
-    )));
+    records[1].outcome = Ok(Outcome::Completion(CompletionResponse {
+        choice: vec![AssistantContent::text("done")],
+        end: rig_core::completion::CompletionEnd::new(rig_core::response::ResponseMeta {
+            usage: Usage::default(),
+            raw: serde_json::json!({}),
+            ..rig_core::response::ResponseMeta::new(
+                rig_core::id::ProviderName::new("test").expect("a provider name"),
+            )
+        }),
+    }));
     let log = EffectLog::from_records(records);
     let json = serde_json::to_value(&log).unwrap();
     let restored: EffectLog = serde_json::from_value(json.clone()).unwrap();

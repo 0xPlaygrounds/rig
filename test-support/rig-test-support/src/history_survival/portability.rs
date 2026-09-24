@@ -18,6 +18,7 @@ use rig_agent::completion::CompletionModel;
 use rig_core::completion::CompletionResponse;
 use rig_core::driver::WireDriver;
 use rig_core::error::ProviderError;
+use rig_core::id::ProviderName;
 use rig_core::message::{AssistantContent, Message, ToolResult, ToolResultContent, UserContent};
 use rig_core::operation::{Completion, CompletionFold};
 use rig_core::providers::anthropic::wire::Anthropic;
@@ -42,7 +43,7 @@ pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse,
 where
     W: Wire<Op = Completion>,
 {
-    let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
+    let mut driver = WireDriver::new(&ProviderName::new(wire.name())?, wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(body.to_owned()));
     driver.finish();
     let mut fold = CompletionFold::default();
@@ -161,7 +162,7 @@ impl Source {
         vec![
             Message::user(TOOL_USER_PROMPT),
             Message::Assistant {
-                id: reply.message_id.map(String::from),
+                id: reply.end.message_id.map(String::from),
                 content: reply.choice,
             },
             Message::User { content: results },

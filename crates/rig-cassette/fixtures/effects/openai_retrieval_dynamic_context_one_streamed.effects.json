@@ -106,40 +106,44 @@
               "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro."
             }
           ],
-          "usage": {
-            "input_tokens": 74,
-            "output_tokens": 24,
-            "total_tokens": 98,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-          "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 74,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 24,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-2024-08-06",
+              "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+              "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
+              "usage": {
+                "input_tokens": 74,
+                "output_tokens": 24,
+                "total_tokens": 98,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 98
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-            "model": "gpt-4o-2024-08-06"
+              "raw": {
+                "usage": {
+                  "input_tokens": 74,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 24,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 98
+                },
+                "reasoning_metadata": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+                "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+                "model": "gpt-4o-2024-08-06"
+              }
+            }
           }
         }
       },
@@ -344,40 +348,42 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 74,
-            "output_tokens": 24,
-            "total_tokens": 98,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-          "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+            "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
             "usage": {
               "input_tokens": 74,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 24,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "total_tokens": 98,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 74,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 24,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 98
               },
-              "total_tokens": 98
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-            "model": "gpt-4o-2024-08-06"
+              "reasoning_metadata": {
+                "context": null,
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+              "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+              "model": "gpt-4o-2024-08-06"
+            }
           }
         }
       ]

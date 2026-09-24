@@ -65,7 +65,7 @@ async fn required_tool_choice_is_accepted() {
                 .expect("required tool choice should be accepted");
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::ToolCalls),
                 "REQUIRED should force a tool call"
             );
@@ -116,7 +116,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
                 .collect::<Vec<_>>();
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::ToolCalls)
             );
             assert_eq!(tool_calls.len(), 1, "expected exactly one tool call");
@@ -148,7 +148,7 @@ async fn none_tool_choice_with_tools_returns_text() {
                 .await
                 .expect("NONE with tools should produce a direct response");
 
-            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+            assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
             assert!(
                 response
                     .choice
@@ -185,7 +185,7 @@ async fn none_tool_choice_without_tools_returns_text() {
                 .await
                 .expect("Cohere permits NONE without a tools parameter");
 
-            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
+            assert_eq!(response.end.finish_reason.clone(), Some(FinishReason::Stop));
             assert!(
                 response
                     .choice
@@ -226,7 +226,7 @@ async fn strict_required_tool_choice_is_accepted() {
                 .expect("REQUIRED should produce a tool call");
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::ToolCalls)
             );
             assert_eq!(tool_call.function.name, "subtract");

@@ -287,73 +287,77 @@
                   }
                 }
               ],
-              "usage": {
-                "input_tokens": 166,
-                "output_tokens": 24,
-                "total_tokens": 190,
-                "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-                "reasoning_tokens": 0
-              },
-              "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1",
-              "finish_reason": "tool_calls",
-              "provider": "openrouter",
-              "model": "openai/gpt-4o-mini",
-              "raw": {
-                "choices": [
-                  {
-                    "finish_reason": "tool_calls",
-                    "index": 0,
-                    "logprobs": null,
-                    "message": {
-                      "content": null,
-                      "reasoning": null,
-                      "refusal": null,
-                      "role": "assistant",
-                      "tool_calls": [
-                        {
-                          "function": {
-                            "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
-                            "name": "submit"
-                          },
-                          "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
-                          "index": 0,
-                          "type": "function"
-                        }
-                      ]
-                    },
-                    "native_finish_reason": "tool_calls"
-                  }
-                ],
-                "created": 0,
-                "id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1",
-                "model": "openai/gpt-4o-mini",
-                "object": "chat.completion",
-                "provider": "OpenAI",
-                "service_tier": null,
-                "system_fingerprint": "fp_1e58d0ce9b",
-                "usage": {
-                  "completion_tokens": 24,
-                  "completion_tokens_details": {
-                    "audio_tokens": 0,
-                    "image_tokens": 0,
+              "end": {
+                "finish_reason": "tool_calls",
+                "meta": {
+                  "provider": "openrouter",
+                  "model": "openai/gpt-4o-mini",
+                  "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1",
+                  "usage": {
+                    "input_tokens": 166,
+                    "output_tokens": 24,
+                    "total_tokens": 190,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
                     "reasoning_tokens": 0
                   },
-                  "cost": 0.0000393,
-                  "cost_details": {
-                    "upstream_inference_completions_cost": 0.0000144,
-                    "upstream_inference_cost": 0.0000393,
-                    "upstream_inference_prompt_cost": 0.0000249
-                  },
-                  "is_byok": false,
-                  "prompt_tokens": 166,
-                  "prompt_tokens_details": {
-                    "audio_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "cached_tokens": 0,
-                    "video_tokens": 0
-                  },
-                  "total_tokens": 190
+                  "raw": {
+                    "choices": [
+                      {
+                        "finish_reason": "tool_calls",
+                        "index": 0,
+                        "logprobs": null,
+                        "message": {
+                          "content": null,
+                          "reasoning": null,
+                          "refusal": null,
+                          "role": "assistant",
+                          "tool_calls": [
+                            {
+                              "function": {
+                                "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                                "name": "submit"
+                              },
+                              "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
+                              "index": 0,
+                              "type": "function"
+                            }
+                          ]
+                        },
+                        "native_finish_reason": "tool_calls"
+                      }
+                    ],
+                    "created": 0,
+                    "id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1",
+                    "model": "openai/gpt-4o-mini",
+                    "object": "chat.completion",
+                    "provider": "OpenAI",
+                    "service_tier": null,
+                    "system_fingerprint": "fp_1e58d0ce9b",
+                    "usage": {
+                      "completion_tokens": 24,
+                      "completion_tokens_details": {
+                        "audio_tokens": 0,
+                        "image_tokens": 0,
+                        "reasoning_tokens": 0
+                      },
+                      "cost": 0.0000393,
+                      "cost_details": {
+                        "upstream_inference_completions_cost": 0.0000144,
+                        "upstream_inference_cost": 0.0000393,
+                        "upstream_inference_prompt_cost": 0.0000249
+                      },
+                      "is_byok": false,
+                      "prompt_tokens": 166,
+                      "prompt_tokens_details": {
+                        "audio_tokens": 0,
+                        "cache_write_tokens": 0,
+                        "cached_tokens": 0,
+                        "video_tokens": 0
+                      },
+                      "total_tokens": 190
+                    }
+                  }
                 }
               }
             }

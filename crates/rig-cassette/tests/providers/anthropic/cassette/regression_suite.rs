@@ -38,7 +38,7 @@ async fn max_tokens_truncation_surfaces_as_length() {
         let mut stream = agent
             .prompt("Write a detailed five paragraph essay about the ocean.")
             .stream();
-        let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+        let (_response, provider_final): (_, rig::completion::CompletionEnd) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
@@ -67,7 +67,7 @@ async fn natural_stop_surfaces_as_stop() {
             .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-        let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+        let (_response, provider_final): (_, rig::completion::CompletionEnd) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
@@ -125,7 +125,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
                 let mut stream = agent
                     .prompt("Reply with exactly: cache probe ready")
                     .stream();
-                let (_text, provider_final): (_, rig::streaming::StreamFinal) =
+                let (_text, provider_final): (_, rig::completion::CompletionEnd) =
                     collect_stream_final_response_and_provider_final(&mut stream)
                         .await
                         .expect("cached streaming prompt should succeed");
@@ -137,18 +137,18 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
             let second = send(model, padding).await;
 
             assert!(
-                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
+                second.meta.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "the second turn must read the cache for this fixture to say anything \
                  about cache-hit accounting; usage: {:?}",
-                second.usage
+                second.meta.usage
             );
             assert!(
-                second.usage.cached_input_tokens > second.usage.input_tokens,
+                second.meta.usage.cached_input_tokens > second.meta.usage.input_tokens,
                 "on a cache-hit turn the cached prefix must dominate the uncached \
                  remainder — `input_tokens` is NOT the prompt size, which is exactly \
                  why the `> 0` filter in anthropic/streaming.rs is documented as a \
                  heuristic rather than an invariant; usage: {:?}",
-                second.usage
+                second.meta.usage
             );
         },
     )

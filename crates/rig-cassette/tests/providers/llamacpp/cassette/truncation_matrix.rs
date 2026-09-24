@@ -99,7 +99,7 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
                 );
 
             assert_eq!(
-                response.finish_reason.clone(),
+                response.end.finish_reason.clone(),
                 Some(FinishReason::Length),
                 "the turn ran out of budget, and that is what authorizes the tolerance"
             );
@@ -113,9 +113,9 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
                 response.choice
             );
             assert!(
-                response.usage.output_tokens.is_some_and(|n| n > 0),
+                response.end.meta.usage.output_tokens.is_some_and(|n| n > 0),
                 "the rest of the turn survives, usage included: {:?}",
-                response.usage
+                response.end.meta.usage
             );
         },
     )

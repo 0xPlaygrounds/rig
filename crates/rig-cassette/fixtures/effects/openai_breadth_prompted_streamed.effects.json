@@ -64,40 +64,44 @@
               "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}"
             }
           ],
-          "usage": {
-            "input_tokens": 97,
-            "output_tokens": 27,
-            "total_tokens": 124,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
-          "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
-          "provider_request_id": "req_e2d2a525378f453cbaf7fe55dfbbfafd",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 97,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 27,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-2024-08-06",
+              "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
+              "provider_request_id": "req_e2d2a525378f453cbaf7fe55dfbbfafd",
+              "usage": {
+                "input_tokens": 97,
+                "output_tokens": 27,
+                "total_tokens": 124,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 124
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
-            "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
-            "model": "gpt-4o-2024-08-06"
+              "raw": {
+                "usage": {
+                  "input_tokens": 97,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 27,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 124
+                },
+                "reasoning_metadata": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+                "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
+                "model": "gpt-4o-2024-08-06"
+              }
+            }
           }
         }
       },
@@ -326,40 +330,42 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 97,
-            "output_tokens": 27,
-            "total_tokens": 124,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
-          "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
-          "provider_request_id": "req_e2d2a525378f453cbaf7fe55dfbbfafd",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-4o-2024-08-06",
+            "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
+            "provider_request_id": "req_e2d2a525378f453cbaf7fe55dfbbfafd",
             "usage": {
               "input_tokens": 97,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 27,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "total_tokens": 124,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 97,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 27,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 124
               },
-              "total_tokens": 124
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
-            "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
-            "model": "gpt-4o-2024-08-06"
+              "reasoning_metadata": {
+                "context": null,
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+              "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
+              "model": "gpt-4o-2024-08-06"
+            }
           }
         }
       ]

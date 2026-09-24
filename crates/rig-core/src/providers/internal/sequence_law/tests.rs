@@ -30,7 +30,10 @@ impl Decoder<Completion, usize> for Scripted {
 
 fn drive(batches: Vec<Vec<StreamEvent>>) {
     let frames = batches.len();
-    let mut driver = WireDriver::<Completion, _, usize>::new(Scripted { batches });
+    let mut driver = WireDriver::<Completion, _, usize>::new(
+        &crate::id::ProviderName::new("test").expect("a provider name"),
+        Scripted { batches },
+    );
     for frame in 0..frames {
         driver.push(frame);
     }

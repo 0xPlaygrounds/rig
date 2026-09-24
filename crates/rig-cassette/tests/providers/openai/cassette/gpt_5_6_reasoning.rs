@@ -78,8 +78,9 @@ async fn prompt_with_reasoning(
         .completion(request)
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed");
-    let raw_response = openai::responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized responses_api::CompletionResponse");
+    let raw_response =
+        openai::responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
+            .expect("`raw` is the serialized responses_api::CompletionResponse");
 
     (response, raw_response)
 }
@@ -233,7 +234,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                         panic!("turn {} should succeed: {error}", turn_index + 1)
                     });
                 let raw_response =
-                    openai::responses_api::CompletionResponse::deserialize(&response.raw)
+                    openai::responses_api::CompletionResponse::deserialize(&response.end.meta.raw)
                         .unwrap_or_else(|error| {
                             panic!("turn {} raw should deserialize: {error}", turn_index + 1)
                         });
@@ -271,7 +272,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredResponseTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: response.message_id.map(String::from),
+                        id: response.end.message_id.map(String::from),
                         content: response.choice,
                     },
                     raw_response,
@@ -337,8 +338,8 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     }))
                     .build();
                 // The terminal record under test is the Responses API's own
-                // streaming response, which rides on `StreamFinal::raw`; the
-                // normalized `StreamFinal` does not carry the reasoning
+                // streaming response, which rides on `CompletionEnd::raw`; the
+                // normalized `CompletionEnd` does not carry the reasoning
                 // metadata.
                 let mut stream = model.stream(request).await.unwrap_or_else(|error| {
                     panic!("turn {} stream should start: {error}", turn_index + 1)
@@ -392,9 +393,9 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     panic!("turn {} should yield a final response", turn_index + 1)
                 });
                 // The provider-native record rides on `raw`; the reasoning
-                // metadata lives there, not on the normalized `StreamFinal`.
+                // metadata lives there, not on the normalized `CompletionEnd`.
                 let final_response: openai::responses_api::streaming::StreamingCompletionResponse =
-                    serde_json::from_value(final_record.raw.clone())
+                    serde_json::from_value(final_record.meta.raw.clone())
                         .expect("the terminal's raw is the Responses record");
                 // Same precedence the normalized stream applies: an explicit
                 // message-id block wins, and the terminal record only fills a
@@ -485,7 +486,7 @@ async fn streaming_reasoning_metadata() {
                 }))
                 .build();
             // The terminal record's `raw` keeps the provider-native response;
-            // the normalized `StreamFinal` carries no reasoning metadata.
+            // the normalized `CompletionEnd` carries no reasoning metadata.
             let mut stream = model
                 .stream(request)
                 .await
@@ -502,7 +503,7 @@ async fn streaming_reasoning_metadata() {
                     item.expect("GPT-5.6 reasoning stream should succeed")
                 {
                     let response: openai::responses_api::streaming::StreamingCompletionResponse =
-                        serde_json::from_value(record.raw.clone())
+                        serde_json::from_value(record.meta.raw.clone())
                             .expect("the terminal's raw is the Responses record");
                     assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
                     assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());

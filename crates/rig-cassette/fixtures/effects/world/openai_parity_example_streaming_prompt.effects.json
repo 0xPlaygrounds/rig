@@ -153,40 +153,44 @@
               "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
             }
           ],
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 29,
-            "total_tokens": 57,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-          "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
-          "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 28,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 29,
-              "output_tokens_details": {
+          "end": {
+            "finish_reason": "stop",
+            "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+            "meta": {
+              "provider": "openai",
+              "model": "gpt-4o-2024-08-06",
+              "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+              "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
+              "usage": {
+                "input_tokens": 28,
+                "output_tokens": 29,
+                "total_tokens": 57,
+                "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "total_tokens": 57
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-            "model": "gpt-4o-2024-08-06"
+              "raw": {
+                "usage": {
+                  "input_tokens": 28,
+                  "input_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "output_tokens": 29,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 57
+                },
+                "reasoning_metadata": {
+                  "context": null,
+                  "effort": null,
+                  "summary": null
+                },
+                "status": "completed",
+                "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+                "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+                "model": "gpt-4o-2024-08-06"
+              }
+            }
           }
         }
       },
@@ -431,40 +435,42 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 29,
-            "total_tokens": 57,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
           "finish_reason": "stop",
           "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-          "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
+          "meta": {
+            "provider": "openai",
+            "model": "gpt-4o-2024-08-06",
+            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+            "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
             "usage": {
               "input_tokens": 28,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
               "output_tokens": 29,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "total_tokens": 57,
+              "cached_input_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "raw": {
+              "usage": {
+                "input_tokens": 28,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 29,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 57
               },
-              "total_tokens": 57
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-            "model": "gpt-4o-2024-08-06"
+              "reasoning_metadata": {
+                "context": null,
+                "effort": null,
+                "summary": null
+              },
+              "status": "completed",
+              "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+              "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+              "model": "gpt-4o-2024-08-06"
+            }
           }
         }
       ],

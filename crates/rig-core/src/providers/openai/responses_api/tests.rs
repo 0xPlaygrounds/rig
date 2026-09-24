@@ -1464,7 +1464,7 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
 
     assert!(completion.choice.is_empty());
     assert_eq!(
-        completion.finish_reason.clone(),
+        completion.end.finish_reason.clone(),
         Some(completion::FinishReason::Length)
     );
 }
@@ -1580,11 +1580,11 @@ fn completion_response_carries_the_message_id_not_the_response_id() {
 
     // The two IDs are distinct in this API: `resp_...` names the response,
     // `msg_...` names the assistant message.
-    assert_eq!(completion.message_id.as_deref(), Some("msg_456"));
-    assert_eq!(completion.provider, "openai");
-    assert_eq!(completion.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(completion.end.message_id.as_deref(), Some("msg_456"));
+    assert_eq!(completion.end.meta.provider, "openai");
+    assert_eq!(completion.end.meta.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(
-        completion.finish_reason.clone(),
+        completion.end.finish_reason.clone(),
         Some(completion::FinishReason::Stop)
     );
 }
@@ -1611,7 +1611,7 @@ fn completion_response_provider_name_is_an_input() {
     let completion: completion::CompletionResponse =
         wire::fold_body("chatgpt", response).expect("response should convert");
 
-    assert_eq!(completion.provider, "chatgpt");
+    assert_eq!(completion.end.meta.provider, "chatgpt");
 }
 
 #[test]
@@ -1640,7 +1640,7 @@ fn completion_response_completed_with_tool_call_reports_tool_calls() {
     // `completed` is reconciled up to `ToolCalls` because the turn carried
     // a function call.
     assert_eq!(
-        completion.finish_reason.clone(),
+        completion.end.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
 }
@@ -1669,7 +1669,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
         wire::fold_body("openai", response).expect("response should convert");
 
     assert_eq!(
-        completion.finish_reason.clone(),
+        completion.end.finish_reason.clone(),
         Some(completion::FinishReason::Length)
     );
 }
@@ -2769,7 +2769,7 @@ mod raw_capture {
             .await
             .expect("completion");
 
-        let raw = &response.raw;
+        let raw = &response.end.meta.raw;
         let typed: CompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
         assert_eq!(
@@ -2785,18 +2785,30 @@ mod raw_capture {
         assert!(raw.get("provider_request_id").is_none());
         assert_eq!(typed.provider_request_id, None);
 
-        let refolded = crate::completion::CompletionResponse {
-            provider_request_id: crate::id::RequestId::non_empty(REQUEST_ID),
-            ..wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
-                .expect("re-fold the capture")
-        };
-        assert_eq!(response.identity(), refolded.identity());
-        assert_eq!(response.finish_reason, refolded.finish_reason);
-        assert_eq!(response.model, refolded.model);
-        assert_eq!(response.usage, refolded.usage);
+        let mut refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
+            .expect("re-fold the capture");
+        refolded.end.meta.provider_request_id = crate::id::RequestId::non_empty(REQUEST_ID);
+        assert_eq!(
+            (
+                &response.end.message_id,
+                &response.end.meta.response_id,
+                &response.end.meta.provider_request_id
+            ),
+            (
+                &refolded.end.message_id,
+                &refolded.end.meta.response_id,
+                &refolded.end.meta.provider_request_id
+            )
+        );
+        assert_eq!(response.end.finish_reason, refolded.end.finish_reason);
+        assert_eq!(response.end.meta.model, refolded.end.meta.model);
+        assert_eq!(response.end.meta.usage, refolded.end.meta.usage);
         assert_eq!(response.choice, refolded.choice);
-        assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(response.identity().message_id.as_deref(), Some("msg_raw_1"));
+        assert_eq!(
+            response.end.meta.provider_request_id.as_deref(),
+            Some(REQUEST_ID)
+        );
+        assert_eq!(response.end.message_id.as_deref(), Some("msg_raw_1"));
     }
 }
 

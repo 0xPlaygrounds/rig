@@ -1,5 +1,6 @@
 use std::{sync::Mutex, task::Context};
 
+use crate::completion::CompletionEnd;
 use futures::{StreamExt, executor::block_on, task::noop_waker_ref};
 
 use super::*;
@@ -39,22 +40,26 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             discard_events: !keep_events,
             ..Seen::default()
         }));
-        let mut response = CompletionResponse::new(
-            vec![
+        let mut response = crate::completion::CompletionResponse {
+            choice: vec![
                 AssistantContent::text("generated image"),
                 AssistantContent::Image(Image {
                     data: DocumentSourceKind::base64("aW1hZ2U="),
                     ..Image::default()
                 }),
             ],
-            Default::default(),
-            "test",
-            serde_json::json!({}),
-        );
-        response.message_id = Some("message".try_into().expect("a non-empty id"));
-        response.response_id = Some("response".try_into().expect("a non-empty id"));
-        response.provider_request_id = Some("request".try_into().expect("a non-empty id"));
-        response.model = Some("image-model".try_into().expect("a non-empty id"));
+            end: CompletionEnd::new(crate::response::ResponseMeta {
+                usage: Default::default(),
+                raw: serde_json::json!({}),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("test").expect("a provider name"),
+                )
+            }),
+        };
+        response.end.message_id = Some("message".try_into().expect("a non-empty id"));
+        response.end.meta.response_id = Some("response".try_into().expect("a non-empty id"));
+        response.end.meta.provider_request_id = Some("request".try_into().expect("a non-empty id"));
+        response.end.meta.model = Some("image-model".try_into().expect("a non-empty id"));
         let expected = serde_json::to_value(&response).expect("response JSON");
         let reply = Reply::Outcome(Ok(Outcome::Completion(response))).observed(
             true,
@@ -149,11 +154,13 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
     let reply = Reply::written(move |mut writer| async move {
         writer.text("prefix").await.expect("consumer present");
         writer
-            .finish(StreamFinal::new(
-                "test",
-                Default::default(),
-                serde_json::json!({}),
-            ))
+            .finish(CompletionEnd::new(crate::response::ResponseMeta {
+                usage: Default::default(),
+                raw: serde_json::json!({}),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("test").expect("a provider name"),
+                )
+            }))
             .await
             .expect("consumer present");
         finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -217,12 +224,16 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
     provider_call.signature = Some("signature".into());
     provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
     calls.push(AssistantContent::ToolCall(provider_call));
-    let response = CompletionResponse::new(
-        calls.clone(),
-        Default::default(),
-        "local",
-        serde_json::json!({}),
-    );
+    let response = crate::completion::CompletionResponse {
+        choice: calls.clone(),
+        end: CompletionEnd::new(crate::response::ResponseMeta {
+            usage: Default::default(),
+            raw: serde_json::json!({}),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("local").expect("a provider name"),
+            )
+        }),
+    };
     let mut accumulator = crate::streaming::BlockAccumulator::new();
     let mut published = Vec::new();
     let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
@@ -253,11 +264,13 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     let finished = completed.clone();
     let mut stream = Reply::written(move |writer| async move {
         writer
-            .finish(StreamFinal::new(
-                "writer",
-                Default::default(),
-                serde_json::json!({}),
-            ))
+            .finish(CompletionEnd::new(crate::response::ResponseMeta {
+                usage: Default::default(),
+                raw: serde_json::json!({}),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("writer").expect("a provider name"),
+                )
+            }))
             .await
             .expect("open");
         wait.await.expect("released");
@@ -316,21 +329,29 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         fn discard(&mut self, _: &str) {}
         fn patch(&mut self, _: &EffectKind) {}
     }
-    let response = CompletionResponse::new(
-        vec![AssistantContent::Image(Image {
+    let response = crate::completion::CompletionResponse {
+        choice: vec![AssistantContent::Image(Image {
             data: DocumentSourceKind::base64("aW1hZ2U="),
             ..Image::default()
         })],
-        Default::default(),
-        "image-provider",
-        serde_json::json!({}),
-    );
+        end: CompletionEnd::new(crate::response::ResponseMeta {
+            usage: Default::default(),
+            raw: serde_json::json!({}),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("image-provider").expect("a provider name"),
+            )
+        }),
+    };
     let original = Ok(Outcome::Completion(response));
     let error = ErrorReport::new(ErrorKind::Response, "first error");
-    let final_event = Ok(StreamEvent::Final(StreamFinal::new(
-        "test",
-        Default::default(),
-        serde_json::json!({}),
+    let final_event = Ok(StreamEvent::Final(CompletionEnd::new(
+        crate::response::ResponseMeta {
+            usage: Default::default(),
+            raw: serde_json::json!({}),
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("test").expect("a provider name"),
+            )
+        },
     )));
     let after = Ok(StreamEvent::Unknown(crate::streaming::UnknownPayload::new(
         serde_json::json!({"after": true}),
@@ -551,15 +572,19 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
 fn an_observer_never_changes_what_the_consumer_receives() {
     use crate::{
         message::{AssistantContent, DocumentSourceKind, Image},
-        streaming::{BlockId, StreamFinal, UnknownPayload},
+        streaming::{BlockId, UnknownPayload},
     };
 
     type Shape = fn() -> Reply;
     fn terminal() -> Result<StreamEvent, ErrorReport> {
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "test",
-            Default::default(),
-            serde_json::json!({}),
+        Ok(StreamEvent::Final(CompletionEnd::new(
+            crate::response::ResponseMeta {
+                usage: Default::default(),
+                raw: serde_json::json!({}),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("test").expect("a provider name"),
+                )
+            },
         )))
     }
     fn text(fragment: &str) -> Result<StreamEvent, ErrorReport> {
@@ -570,18 +595,24 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     }
     let shapes: [(&str, Shape); 6] = [
         ("a completed response with an image", || {
-            Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
-                vec![
-                    AssistantContent::text("done"),
-                    AssistantContent::Image(Image {
-                        data: DocumentSourceKind::base64("aW1hZ2U="),
-                        ..Image::default()
+            Reply::Outcome(Ok(Outcome::Completion(
+                crate::completion::CompletionResponse {
+                    choice: vec![
+                        AssistantContent::text("done"),
+                        AssistantContent::Image(Image {
+                            data: DocumentSourceKind::base64("aW1hZ2U="),
+                            ..Image::default()
+                        }),
+                    ],
+                    end: CompletionEnd::new(crate::response::ResponseMeta {
+                        usage: Default::default(),
+                        raw: serde_json::json!({}),
+                        ..crate::response::ResponseMeta::new(
+                            crate::id::ProviderName::new("test").expect("a provider name"),
+                        )
                     }),
-                ],
-                Default::default(),
-                "test",
-                serde_json::json!({}),
-            ))))
+                },
+            )))
         }),
         ("a setup failure", || {
             Reply::Outcome(Err(ErrorReport::new(ErrorKind::Provider, "refused")))
@@ -661,23 +692,31 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
     use crate::streaming::{BlockAccumulator, StreamEvent};
 
     let mut accumulator = BlockAccumulator::new();
-    for event in events_from_response(&CompletionResponse::new(
-        vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
+    for event in events_from_response(&crate::completion::CompletionResponse {
+        choice: vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
             "thinking",
             Some("sig".to_owned()),
         ))],
-        Default::default(),
-        "aws_bedrock",
-        serde_json::Value::Null,
-    )) {
+        end: CompletionEnd::new(crate::response::ResponseMeta {
+            usage: Default::default(),
+            raw: serde_json::Value::Null,
+            ..crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("aws_bedrock").expect("a provider name"),
+            )
+        }),
+    }) {
         if let Ok(event) = event
             && !matches!(event, StreamEvent::Final(_))
         {
             accumulator.apply(&event).expect("a valid event");
         }
     }
-    let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
-        .with_reasoning_issuer("anthropic");
+    let terminal = CompletionEnd {
+        reasoning_issuer: Some(crate::id::ProviderName::new("anthropic").expect("a provider name")),
+        ..CompletionEnd::new(crate::response::ResponseMeta::new(
+            crate::id::ProviderName::new("aws_bedrock").expect("a provider name"),
+        ))
+    };
     let Ok(Outcome::Completion(response)) = finish_unary(&mut accumulator, None, &terminal) else {
         panic!("a completion outcome");
     };

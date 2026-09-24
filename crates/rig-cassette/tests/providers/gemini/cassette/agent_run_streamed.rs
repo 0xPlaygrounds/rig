@@ -80,20 +80,10 @@ async fn run_streamed_turn(
                     }
                 }
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
-                StreamedTurnEvent::Completed {
-                    usage,
-                    finish_reason,
-                    raw,
-                    ..
-                } => {
+                StreamedTurnEvent::Completed { end, .. } => {
                     if !recorded {
-                        run.record_streamed_completion_call(
-                            usage,
-                            rig::completion::ResponseIdentity::default(),
-                            finish_reason,
-                            raw,
-                        )
-                        .expect("completion call should record while the turn is pending");
+                        run.record_streamed_completion_call(&end)
+                            .expect("completion call should record while the turn is pending");
                         recorded = true;
                     }
                 }
@@ -127,7 +117,7 @@ async fn run_streamed_turn(
                                         let terminal = terminal.expect(
                                             "an abandoned turn's stream still reaches its terminal record",
                                         );
-                                        run.record_streamed_completion_call(terminal.usage, rig::completion::ResponseIdentity::default(), None, terminal.raw).expect(
+                                        run.record_streamed_completion_call(&attempt_end(terminal.meta.usage, None, terminal.meta.raw)).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -162,7 +152,7 @@ async fn run_streamed_turn(
 
 async fn drain_stream_terminal(
     stream: &mut rig::streaming::StreamingCompletionResponse,
-) -> Option<rig::streaming::StreamFinal> {
+) -> Option<rig::completion::CompletionEnd> {
     while let Some(item) = stream.next().await {
         if let Ok(StreamEvent::Final(final_response)) = item {
             return Some(final_response);
@@ -180,7 +170,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::default(), rig::completion::ResponseIdentity::default(), None, serde_json::json!({})).is_err(),
+                fresh.record_streamed_completion_call(&attempt_end(Usage::default(), None, serde_json::json!({}))).is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 
@@ -627,4 +617,23 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
         },
     )
     .await;
+}
+
+/// A streamed attempt's terminal record reporting `usage`, `finish_reason`,
+/// and `raw`, attributed to the mock provider.
+fn attempt_end(
+    usage: rig::completion::Usage,
+    finish_reason: Option<rig::completion::FinishReason>,
+    raw: serde_json::Value,
+) -> rig::completion::CompletionEnd {
+    rig::completion::CompletionEnd {
+        finish_reason,
+        ..rig::completion::CompletionEnd::new(rig::response::ResponseMeta {
+            usage,
+            raw,
+            ..rig::response::ResponseMeta::new(
+                rig::id::ProviderName::new("mock").expect("a provider name"),
+            )
+        })
+    }
 }

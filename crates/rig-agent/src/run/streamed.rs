@@ -14,7 +14,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::FinishReason;
+use rig_core::completion::{CompletionEnd, FinishReason};
 use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
@@ -23,7 +23,7 @@ use rig_core::streaming::BlockId;
 
 use super::policy::InvalidToolCallReason;
 use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
-use rig_core::completion::{Message, Usage};
+use rig_core::completion::Message;
 use rig_core::json_utils;
 use rig_core::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 
@@ -250,19 +250,13 @@ pub enum StreamedTurnEvent {
     /// `emit_final` is set, the turn streamed text and the driver should buffer
     /// the final item until EOF finalizes the turn.
     Completed {
-        /// Provider-reported usage for this call. Usage whose counters are
-        /// all `None` means the provider reported no usage metrics.
-        usage: Usage,
+        /// The provider's terminal record: what the driver records with
+        /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call)
+        /// so the call carries this attempt's usage, ids, and payload.
+        end: CompletionEnd,
         /// Whether the ingested final item should be forwarded to the
         /// consumer (set when the turn streamed text).
         emit_final: bool,
-        /// Why the provider stopped generating, when reported.
-        finish_reason: Option<FinishReason>,
-        /// The provider's own terminal record, as carried on
-        /// `StreamFinal::raw`: what the driver records with
-        /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call)
-        /// so the call carries this attempt's payload.
-        raw: serde_json::Value,
     },
 }
 
@@ -820,20 +814,16 @@ impl StreamedTurnAssembler {
                     return Err(err);
                 }
 
-                let usage = final_response.usage;
                 let emit_final = self.saw_text;
                 self.saw_text = false;
                 // `StreamingCompletionResponse` has already reconciled this
                 // against the tool calls the accumulator actually saw (see
                 // `FinishReason::reconcile_with_output`), so it is consumed
                 // as-is and never re-reconciled here.
-                let finish_reason = final_response.finish_reason.clone();
-                self.finish_reason.clone_from(&finish_reason);
+                self.finish_reason.clone_from(&final_response.finish_reason);
                 Ok(vec![StreamedTurnEvent::Completed {
-                    usage,
+                    end: final_response.clone(),
                     emit_final,
-                    finish_reason,
-                    raw: final_response.raw.clone(),
                 }])
             }
             StreamEvent::Unknown(payload) => {

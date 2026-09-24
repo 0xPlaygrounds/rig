@@ -10,12 +10,14 @@ use crate::{
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig_core::completion::ReportedEnd;
 use rig_core::driver::run_wire_stream;
 use rig_core::error::ProviderError;
+use rig_core::id::{ProviderName, RequestId};
 use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
-use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
+use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use rig_core::{
     message::ReasoningContent, streaming::UnparseableToolInput, wasm_compat::WasmCompatSend,
@@ -46,18 +48,15 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
     }
 }
 
-/// Map Bedrock's terminal record onto rig's, serializing the native record
-/// onto [`StreamFinal::raw`].
-fn terminal_record(response: BedrockStreamingResponse) -> Result<StreamFinal, serde_json::Error> {
+/// What Bedrock's terminal record reports, with the native record as its
+/// document.
+fn terminal_record(response: BedrockStreamingResponse) -> Result<ReportedEnd, serde_json::Error> {
     let usage = (&response).into();
     let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
     let raw = serde_json::to_value(&response)?;
-    Ok(StreamFinal {
-        provider_request_id: response
-            .provider_request_id
-            .and_then(rig_core::id::RequestId::non_empty),
+    Ok(ReportedEnd {
         finish_reason,
-        ..StreamFinal::new(PROVIDER_NAME, usage, raw)
+        ..ReportedEnd::new(usage, raw)
     })
 }
 
@@ -104,12 +103,12 @@ struct StreamState {
     current_reasoning: Option<ReasoningState>,
     final_stop_reason: Option<StopReason>,
     /// The AWS request id read off the SDK operation output before the event
-    /// stream is opened; stamped onto the terminal record. `None` on the
-    /// events-first seam, where no SDK operation exists.
+    /// stream is opened, kept in Bedrock's own terminal document. `None` on
+    /// the events-first seam, where no SDK operation exists.
     provider_request_id: Option<String>,
     /// The issuer the stream's reasoning records when it is not
     /// [`PROVIDER_NAME`] (see [`reasoning_issuer`]).
-    reasoning_issuer: Option<&'static str>,
+    reasoning_issuer: Option<ProviderName>,
 }
 
 /// A static, log-safe label for a stop reason: known variants map to their
@@ -281,12 +280,11 @@ fn process_event(
             };
             match terminal_record(final_response) {
                 Ok(record) => {
-                    let record = match state.reasoning_issuer {
-                        Some(issuer) => record.with_reasoning_issuer(issuer),
-                        None => record,
-                    };
                     tracing::Span::current().record_token_usage(&record.usage);
-                    out.final_record(record);
+                    out.final_record(ReportedEnd {
+                        reasoning_issuer: state.reasoning_issuer.clone(),
+                        ..record
+                    });
                 }
                 Err(err) => out.error(err.into()),
             }
@@ -330,13 +328,13 @@ pub fn stream_from_events(
 ) -> StreamingCompletionResponse {
     StreamingCompletionResponse::stream(
         PROVIDER_NAME,
-        run_wire_stream(events, StreamState::default()),
+        run_wire_stream(PROVIDER_NAME, None, events, StreamState::default()),
     )
 }
 
 impl CompletionModel {
-    /// Open a stream normalized to rig's terminal record; the adapter maps
-    /// Bedrock's own terminal onto [`StreamFinal::raw`].
+    /// Open a stream normalized to rig's terminal record; the adapter keeps
+    /// Bedrock's own terminal as the record's `raw`.
     pub(crate) async fn stream(
         &self,
         completion_request: rig_core::completion::CompletionRequest,
@@ -405,11 +403,19 @@ impl CompletionModel {
         };
 
         let state = StreamState {
-            provider_request_id,
-            reasoning_issuer: (issuer != PROVIDER_NAME).then_some(issuer),
+            provider_request_id: provider_request_id.clone(),
+            reasoning_issuer: (issuer != PROVIDER_NAME)
+                .then(|| ProviderName::new(issuer))
+                .transpose()?,
             ..StreamState::default()
         };
-        let stream = run_wire_stream(transport, state).instrument(span);
+        let stream = run_wire_stream(
+            PROVIDER_NAME,
+            provider_request_id.and_then(RequestId::non_empty),
+            transport,
+            state,
+        )
+        .instrument(span);
         let response = StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(stream));
         Ok(if issuer == PROVIDER_NAME {
             response
