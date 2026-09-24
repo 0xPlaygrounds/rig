@@ -673,3 +673,51 @@ async fn a_truncated_openrouter_stream_keeps_its_reasoning_to_the_requested_fami
     }
     assert!(reasoning[0].replayable_to("anthropic"));
 }
+
+/// A complete OpenRouter chat stream whose chunks never report a model: its
+/// terminal names no issuer.
+const MODELLESS_OPENROUTER_CHAT: &str = concat!(
+    "data: {\"id\":\"gen-2\",\"object\":\"chat.completion.chunk\",",
+    "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"thinking\",",
+    "\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"thinking\",\"format\":\"anthropic-claude-v1\",\"index\":0}]},",
+    "\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"gen-2\",\"object\":\"chat.completion.chunk\",",
+    "\"choices\":[{\"index\":0,\"delta\":{\"content\":\"4\"},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n",
+);
+
+#[tokio::test]
+async fn a_complete_stream_whose_terminal_names_no_issuer_keeps_the_requested_family() {
+    use crate::completion::CompletionModel as _;
+    use futures::StreamExt;
+
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(vec![Ok(Bytes::from_static(
+        MODELLESS_OPENROUTER_CHAT.as_bytes(),
+    ))]);
+    let mut stream = crate::driver::Bound::new(
+        OpenAI::with_key(&OPENROUTER, "test-key").chat("anthropic/claude-haiku-4.5"),
+        http,
+    )
+    .stream(history("unused"))
+    .await
+    .expect("the stream opens");
+    while stream.next().await.is_some() {}
+    let terminal = stream.response.as_ref().expect("the stream completed");
+    assert_eq!(terminal.model, None, "the stream never reported a model");
+    assert_eq!(
+        terminal.reasoning_issuer, None,
+        "so its terminal names no issuer"
+    );
+
+    assert_eq!(stream.reasoning_issuer(), Some("anthropic"));
+    let response = stream.finish().expect("a complete stream finishes");
+    let issuers: Vec<Option<&str>> = response
+        .choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.provider.as_deref()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(issuers, [Some("anthropic")], "{:?}", response.choice);
+}
