@@ -463,3 +463,50 @@ fn recorded_objects_bound_by_let_else_and_if_let_are_followed() {
         "{found:?}"
     );
 }
+
+#[test]
+fn a_pattern_over_two_modes_naming_record_is_not_replay() {
+    let source = r#"
+        fn two_modes() {
+            match (mode, fallback) {
+                (CassetteMode::Record, CassetteMode::Replay) => {
+                    assert_eq!(raw["created"], body["created"]);
+                }
+                _ => {}
+            }
+            if let (CassetteMode::Record, CassetteMode::Replay) = (mode, fallback) {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(found.len(), 2, "{found:?}");
+}
+
+#[test]
+fn let_chains_bind_and_shadow_like_if_let() {
+    let source = r#"
+        fn chained() {
+            let body = recorded_json_response("x", "cell");
+            if let Some(object) = body.as_object() && ready {
+                for (key, value) in object {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        fn chained_shadow() {
+            let body = recorded_json_response("x", "cell");
+            if ready && let Ok((body, _)) = live_pair() {
+                for (key, value) in body.as_object().unwrap() {
+                    assert_eq!(copy.get(key), Some(value));
+                }
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["chained"], "{found:?}");
+}
