@@ -1026,3 +1026,20 @@ then:
         "scrubbing is idempotent"
     );
 }
+
+#[test]
+fn a_team_id_a_provider_quotes_is_scrubbed() {
+    let team = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+    let other = "11111111-2222-3333-4444-555555555555";
+    let yaml = format!(
+        "when:\n  path: /v1/responses\n  method: POST\n  body: '{{\"model\":\"grok-x\",\"metadata\":{{\"run\":\"{other}\"}}}}'\nthen:\n  status: 404\n  body: '{{\"code\":\"not-found\",\"error\":\"The model grok-x does not exist or your team {team} does not have access to it. Quote your team ID.\",\"team_id\":\"{team}\"}}'\n"
+    );
+    let scrubbed = scrub_cassette_contents(&yaml);
+    assert!(!scrubbed.contains(team), "{scrubbed}");
+    // One id, one placeholder, wherever it appears.
+    assert_eq!(scrubbed.matches("team_REDACTED_1").count(), 2, "{scrubbed}");
+    // A UUID nobody names as a team is provider data and stays.
+    assert!(scrubbed.contains(other), "{scrubbed}");
+    // Scrubbing is idempotent, so a scrubbed fixture passes the safety check.
+    assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+}
