@@ -2769,7 +2769,7 @@ impl CassetteScrubber {
                     }
 
                     // An account's team, named by its key.
-                    if (key == "team_id" || key == "teamid") && is_uuid(text) {
+                    if matches!(key, "team" | "team_id" | "teamid") && is_uuid(text) {
                         *text = self.placeholder(text, "team_");
                         return;
                     }
@@ -3360,18 +3360,14 @@ impl HttpClientExt for DirectRecordingHttpClient {
             let per_chunk = tap.clone();
             let logged = stream
                 .map(move |chunk| {
-                    if let Ok(bytes) = &chunk
-                        && let Ok(mut tap) = per_chunk.lock()
-                    {
-                        tap.feed(bytes);
+                    if let Ok(bytes) = &chunk {
+                        StreamLedgerTap::locked(&per_chunk).feed(bytes);
                     }
                     chunk
                 })
                 .chain(
                     futures::stream::once(async move {
-                        if let Ok(mut tap) = tap.lock() {
-                            tap.finish();
-                        }
+                        StreamLedgerTap::locked(&tap).finish();
                     })
                     .filter_map(|()| async { None }),
                 );
@@ -3431,6 +3427,17 @@ impl StreamLedgerTap {
         self.pending.drain(..consumed);
     }
 
+    /// The tap behind `shared`. A lock poisoned by a panic elsewhere still
+    /// yields the tap: the ledger is the safety net and must keep logging.
+    fn locked(shared: &std::sync::Mutex<Self>) -> std::sync::MutexGuard<'_, Self> {
+        shared
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Check what is left after the last complete event. Runs when the
+    /// stream ends and again when the tap is dropped, so a stream the caller
+    /// abandons is still checked; the second call finds nothing left.
     fn finish(&mut self) {
         let rest = std::mem::take(&mut self.pending);
         if !rest.iter().all(u8::is_ascii_whitespace) {
@@ -3446,6 +3453,12 @@ impl StreamLedgerTap {
             self.status,
             body,
         );
+    }
+}
+
+impl Drop for StreamLedgerTap {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 
