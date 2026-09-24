@@ -217,3 +217,99 @@ fn only_the_arm_pattern_decides_a_replay_arm() {
     "#;
     assert_eq!(findings(source).len(), 2, "{:?}", findings(source));
 }
+
+#[test]
+fn the_else_of_a_branch_that_rules_replay_out_is_replay() {
+    let source = r#"
+        fn branches() {
+            if mode != CassetteMode::Replay {
+                assert!(raw.get("created").is_some());
+            } else {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if !matches!(mode, CassetteMode::Replay) {
+                assert!(raw.get("created_at").is_some());
+            } else {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+            // The `else` of a replay branch is the recording pass.
+            if mode == CassetteMode::Replay {
+                assert_eq!(raw["updated"], body["updated"]);
+            } else {
+                assert_eq!(raw["updated_at"], body["updated_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(found.len(), 1, "{found:?}");
+}
+
+#[test]
+fn a_rebound_name_no_longer_holds_a_recorded_document() {
+    let source = r#"
+        fn shadowed() {
+            let recorded = recorded_additional_params(&chunks);
+            let recorded = recorded["service_tier"].clone();
+            assert_eq!(observation.raw["service_tier"], recorded);
+        }
+        fn typed() {
+            let recorded: Value = recorded_additional_params(&chunks);
+            assert_eq!(observation.raw["additional_params"], recorded);
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["typed"], "{found:?}");
+}
+
+#[test]
+fn an_entry_by_entry_loop_over_a_recorded_object_is_flagged() {
+    let source = r#"
+        fn entries() {
+            let body = crate::cassettes::recorded_json_response("x", "cell");
+            for (key, value) in body.as_object().unwrap() {
+                assert_eq!(raw.get(key), Some(value), "{key}");
+            }
+        }
+        fn entries_of_a_live_document() {
+            let body = recorded_json_response("x", "cell");
+            for (key, value) in raw.as_object().unwrap() {
+                assert_eq!(body.get(key), Some(value), "{key}");
+            }
+        }
+        fn entries_treated() {
+            let body = recorded_json_response("x", "cell");
+            for (key, value) in body.as_object().unwrap() {
+                if !is_volatile_json_key(key) {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        // A live document against a re-serialization of itself holds in
+        // both modes.
+        fn live_against_itself() {
+            let reserialized = serde_json::to_value(&typed).unwrap();
+            for (field, value) in reserialized.as_object().unwrap() {
+                assert_eq!(raw.get(field), Some(value));
+            }
+        }
+        fn unrelated_pairs() {
+            for (index, call) in calls.iter().enumerate() {
+                assert_eq!(call.width, expected[index]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        functions,
+        ["entries", "entries_of_a_live_document"],
+        "{found:?}"
+    );
+}

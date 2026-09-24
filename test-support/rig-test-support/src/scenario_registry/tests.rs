@@ -160,6 +160,12 @@ fn a_wrapper_declares_through_its_session() {
             let cassette = ProviderCassette::start(root, "x", spec, url).await;
             let key = cassette.api_key("X_API_KEY");
         }
+        struct Harness;
+        impl Harness {
+            async fn with_x_limited(&self) {
+                self.cassette.expect_account_failure(AccountFailure::RateLimit);
+            }
+        }
     "#;
     let declaring = declaring_functions(source).expect("declarations parse");
     assert_eq!(
@@ -167,6 +173,49 @@ fn a_wrapper_declares_through_its_session() {
         [
             ("with_x_bogus_key".to_owned(), vec!["Auth".to_owned()]),
             ("with_x_rejected_key".to_owned(), vec!["Auth".to_owned()]),
+            // Listed with nothing declared, so it cannot be mistaken for absent.
+            ("with_x_cassette".to_owned(), vec![]),
+            ("with_x_limited".to_owned(), vec!["RateLimit".to_owned()]),
         ]
     );
+}
+
+#[test]
+fn same_named_helpers_in_different_files_are_not_merged() {
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
+    let set = |kinds: &[&str]| {
+        kinds
+            .iter()
+            .map(|kind| (*kind).to_owned())
+            .collect::<BTreeSet<_>>()
+    };
+    let (support, cells, other) = (
+        PathBuf::from("providers/x/support.rs"),
+        PathBuf::from("providers/x/cells.rs"),
+        PathBuf::from("providers/y/support.rs"),
+    );
+    let disagreeing = [(support.clone(), set(&["Auth"])), (other.clone(), set(&[]))];
+    // A helper beside the call is the one it reaches.
+    assert_eq!(
+        wrapper_declarations(&disagreeing, &support),
+        Ok(set(&["Auth"]))
+    );
+    assert_eq!(wrapper_declarations(&disagreeing, &other), Ok(set(&[])));
+    // Elsewhere the definitions disagree: an error, not their union.
+    assert_eq!(
+        wrapper_declarations(&disagreeing, &cells),
+        Err(vec![support.as_path(), other.as_path()])
+    );
+    // One definition, or several that agree, resolve.
+    assert_eq!(
+        wrapper_declarations(&disagreeing[..1], &cells),
+        Ok(set(&["Auth"]))
+    );
+    let agreeing = [
+        (support.clone(), set(&["Auth"])),
+        (other.clone(), set(&["Auth"])),
+    ];
+    assert_eq!(wrapper_declarations(&agreeing, &cells), Ok(set(&["Auth"])));
+    assert_eq!(wrapper_declarations(&[], &cells), Ok(set(&[])));
 }

@@ -409,7 +409,10 @@ fn account_failures_are_declared_by_their_cells() {
     };
     let mut failures = Vec::new();
 
-    let mut declaring = std::collections::BTreeMap::<String, Vec<String>>::new();
+    // Every helper definition, by name: the file it is in and what it
+    // declares. Same-named helpers in different modules stay apart.
+    let mut definitions =
+        std::collections::BTreeMap::<String, Vec<(PathBuf, BTreeSet<String>)>>::new();
     for dir in [format!("tests/providers/{own}"), "tests/common".to_owned()] {
         let dir = repo_path(&dir);
         if !dir.exists() {
@@ -420,12 +423,10 @@ fn account_failures_are_declared_by_their_cells() {
             match rig_test_support::scenario_registry::declaring_functions(&contents) {
                 Ok(functions) => {
                     for (function, kinds) in functions {
-                        let entry = declaring.entry(function).or_default();
-                        for kind in kinds {
-                            if !entry.contains(&kind) {
-                                entry.push(kind);
-                            }
-                        }
+                        definitions
+                            .entry(function)
+                            .or_default()
+                            .push((source.clone(), kinds.into_iter().collect()));
                     }
                 }
                 Err(error) => failures.push(format!("{}: {error}", display_repo_path(&source))),
@@ -447,6 +448,29 @@ fn account_failures_are_declared_by_their_cells() {
             }
         };
         for site in sites {
+            let candidates = definitions
+                .get(&site.wrapper)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let wrapper_kinds = match rig_test_support::scenario_registry::wrapper_declarations(
+                candidates, &source,
+            ) {
+                Ok(kinds) => kinds,
+                Err(files) => {
+                    failures.push(format!(
+                        "{}: `{}` is defined in {} with different account-failure \
+                             declarations; rename one so the call names one helper",
+                        display_repo_path(&source),
+                        site.wrapper,
+                        files
+                            .iter()
+                            .map(|file| display_repo_path(file))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                    BTreeSet::new()
+                }
+            };
             let kinds = declared
                 .entry(crate::cassettes::cassette_path(
                     suite.provider,
@@ -454,7 +478,7 @@ fn account_failures_are_declared_by_their_cells() {
                 ))
                 .or_default();
             kinds.extend(site.declared);
-            kinds.extend(declaring.get(&site.wrapper).into_iter().flatten().cloned());
+            kinds.extend(wrapper_kinds);
         }
     }
 
