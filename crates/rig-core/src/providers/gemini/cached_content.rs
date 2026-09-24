@@ -21,6 +21,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation;
 use crate::providers::internal::{
@@ -180,12 +181,11 @@ impl NewCachedContent {
         self
     }
 
-    fn validate(&self) -> Result<(), ProviderError> {
+    fn validate(&self) -> Result<(), EncodeError> {
         if self.contents.is_empty() && self.system_instruction.is_none() {
-            return Err(ProviderError::Request(
+            return Err(EncodeError::request(
                 "a cached content needs contents or a system instruction; an empty cache would \
-                 bill for storage and cache nothing"
-                    .into(),
+                 bill for storage and cache nothing",
             ));
         }
         Ok(())
@@ -370,7 +370,7 @@ impl Wire for CachedContents {
     /// A resource call never streams, so both modes send the one request.
     /// A handle is validated by `resource_path` before anything is built,
     /// and an empty cache is refused before it bills.
-    fn encode(&self, request: CachedContentRequest, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: CachedContentRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = match request {
             CachedContentRequest::Create(new) => {
                 new.validate()?;
@@ -460,7 +460,7 @@ fn as_resource(data: &str) -> WireEvent<CachedContentReply> {
 }
 
 /// Serialize the expiry patch with an update mask naming its only field.
-fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), ProviderError> {
+fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), EncodeError> {
     let (field, value) = match expiry {
         CacheExpiry::Ttl(ttl) => ("ttl", CacheExpiry::ttl_string(ttl)),
         CacheExpiry::ExpireTime(at) => ("expireTime", at),
@@ -481,19 +481,16 @@ fn qualify_model(model: &str) -> String {
 /// Build `/v1beta/cachedContents/<id>` from a bare id or prefixed handle.
 /// Reject empty ids and characters other than ASCII letters, digits, `-`, and
 /// `_` to prevent path traversal, query injection, or resource retargeting.
-fn resource_path(name: &str) -> Result<String, ProviderError> {
+fn resource_path(name: &str) -> Result<String, EncodeError> {
     let id = name.strip_prefix("cachedContents/").unwrap_or(name);
     let is_id_char = |ch: char| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_');
     if id.is_empty() || !id.chars().all(is_id_char) {
-        return Err(ProviderError::Request(
-            format!(
-                "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
+        return Err(EncodeError::request(format!(
+            "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
                  `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
                  where a `?`, `#` or `/` silently retargets the call at a different resource — \
                  and this is the path that deletes"
-            )
-            .into(),
-        ));
+        )));
     }
     Ok(format!("{CACHED_CONTENTS_PATH}/{id}"))
 }

@@ -15,7 +15,7 @@
 //! Bind a wire to a transport to execute it. `Ollama::from_env` reads
 //! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
 use crate::completion::Usage;
-use crate::error::ProviderError;
+use crate::error::EncodeError;
 use crate::message::DocumentSourceKind;
 use crate::model::Model;
 use crate::operation::Completion;
@@ -202,7 +202,7 @@ pub(super) struct OllamaCompletionRequest {
 }
 
 impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
-    type Error = ProviderError;
+    type Error = EncodeError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let chat_history = req.chat_history_with_documents();
@@ -253,15 +253,14 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                             "high" => Level::High,
                             "max" => Level::Max,
                             _ => {
-                                return Err(ProviderError::Request(
-                                    "`think` must be a 'low', 'medium', 'high', 'max' or bool"
-                                        .into(),
+                                return Err(EncodeError::request(
+                                    "`think` must be a 'low', 'medium', 'high', 'max' or bool",
                                 ));
                             }
                         }),
                         _ => {
-                            return Err(ProviderError::Request(
-                                "`think` must be a 'low', 'medium', 'high', 'max' or bool".into(),
+                            return Err(EncodeError::request(
+                                "`think` must be a 'low', 'medium', 'high', 'max' or bool",
                             ));
                         }
                     });
@@ -271,9 +270,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                     keep_alive = Some(
                         keep_alive_val
                             .as_str()
-                            .ok_or_else(|| {
-                                ProviderError::Request("`keep_alive` must be a string".into())
-                            })?
+                            .ok_or_else(|| EncodeError::request("`keep_alive` must be a string"))?
                             .to_string(),
                     );
                 }

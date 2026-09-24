@@ -52,7 +52,7 @@ fn resource_path_accepts_server_assigned_ids_and_refuses_everything_else() {
         ("", None),
         ("cachedContents/", None),
     ] {
-        match (resource_path(input), expected) {
+        match (resource_path(input).map_err(ProviderError::from), expected) {
             (Ok(path), Some(expected)) => assert_eq!(path, expected, "input {input:?}"),
             (Err(ProviderError::Request(message)), None) => assert!(
                 message.to_string().contains(input),

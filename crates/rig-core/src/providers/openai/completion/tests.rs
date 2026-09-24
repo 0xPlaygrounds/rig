@@ -80,6 +80,7 @@ fn minted_tool_ids_replay_as_a_consistent_pair() {
 
 use super::*;
 use crate::completion::CompletionRequestBuilder;
+use crate::error::ProviderError;
 use crate::test_utils::MockCompletionModel;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -1168,7 +1169,10 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
         supports_tools: true,
     });
 
-    assert!(matches!(result, Err(ProviderError::Request(_))));
+    assert!(matches!(
+        result.map_err(ProviderError::from),
+        Err(ProviderError::Request(_))
+    ));
 }
 
 #[test]

@@ -470,11 +470,11 @@ impl ProviderError {
             Self::Url(_) => ErrorKind::Url,
             Self::Request(_)
             | Self::UnsupportedParameter { .. }
-            | Self::InvalidParameterValue { .. } => ErrorKind::Request,
-            Self::Response(_)
-            | Self::UnsupportedResponseEncoding { .. }
-            | Self::MissingUsage { .. }
-            | Self::MismatchedDimensions { .. } => ErrorKind::Response,
+            | Self::InvalidParameterValue { .. }
+            | Self::UnsupportedResponseEncoding { .. } => ErrorKind::Request,
+            Self::Response(_) | Self::MissingUsage { .. } | Self::MismatchedDimensions { .. } => {
+                ErrorKind::Response
+            }
             Self::Provider(_) => ErrorKind::Provider,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
@@ -623,6 +623,84 @@ impl ProviderError {
 impl From<http_client::Error> for ProviderError {
     fn from(error: http_client::Error) -> Self {
         Self::from_transport_error(error)
+    }
+}
+
+/// A failure to build a provider request, returned by
+/// [`Wire::encode`](crate::wire::Wire::encode). It converts only into a
+/// request-building [`ProviderError`], `Request` or a typed request parameter
+/// variant, so every provider classifies its encode failures alike.
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct EncodeError(ProviderError);
+
+impl EncodeError {
+    /// A request that could not be built, for the given reason.
+    pub fn request(reason: impl Into<BoxError>) -> Self {
+        Self(ProviderError::Request(reason.into()))
+    }
+
+    /// See [`ProviderError::UnsupportedParameter`].
+    pub fn unsupported_parameter(provider: &'static str, parameter: &'static str) -> Self {
+        Self(ProviderError::UnsupportedParameter {
+            provider,
+            parameter,
+        })
+    }
+
+    /// See [`ProviderError::InvalidParameterValue`].
+    pub fn invalid_parameter_value(
+        provider: &'static str,
+        parameter: &'static str,
+        requirement: &'static str,
+    ) -> Self {
+        Self(ProviderError::InvalidParameterValue {
+            provider,
+            parameter,
+            requirement,
+        })
+    }
+
+    /// See [`ProviderError::UnsupportedResponseEncoding`].
+    pub fn unsupported_response_encoding(
+        provider: &'static str,
+        encoding_format: &'static str,
+    ) -> Self {
+        Self(ProviderError::UnsupportedResponseEncoding {
+            provider,
+            encoding_format,
+        })
+    }
+}
+
+impl From<EncodeError> for ProviderError {
+    fn from(error: EncodeError) -> Self {
+        debug_assert_eq!(error.0.kind(), ErrorKind::Request);
+        error.0
+    }
+}
+
+impl From<http::Error> for EncodeError {
+    fn from(error: http::Error) -> Self {
+        Self::request(error)
+    }
+}
+
+impl From<serde_json::Error> for EncodeError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::request(error)
+    }
+}
+
+impl From<crate::message::MessageError> for EncodeError {
+    fn from(error: crate::message::MessageError) -> Self {
+        Self::request(error)
+    }
+}
+
+impl From<BoxError> for EncodeError {
+    fn from(error: BoxError) -> Self {
+        Self(ProviderError::Request(error))
     }
 }
 
@@ -825,5 +903,7 @@ const _: fn() = || {
     assert_wire::<ErrorKind>();
 };
 
+#[cfg(test)]
+mod encode_tests;
 #[cfg(test)]
 mod tests;

@@ -703,3 +703,17 @@ fn only_gemini_reasoning_is_replayed() {
         .collect();
     assert_eq!(signatures, vec![b"grpc".as_slice(), b"rest".as_slice()]);
 }
+
+/// A tool schema the shared Gemini conversion cannot flatten is a request that
+/// could not be built, as it is on the HTTP wire.
+#[test]
+fn an_unflattenable_tool_schema_is_a_request_failure() {
+    let parameters = serde_json::json!({
+        "type": "object",
+        "$defs": 5,
+        "properties": {"a": {"$ref": "#/$defs/x"}},
+    });
+    let error = tool_parameters_to_proto_schema(&parameters).expect_err("schema must not convert");
+    assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
+    assert_eq!(error.to_string(), "RequestError: $defs must be an object");
+}

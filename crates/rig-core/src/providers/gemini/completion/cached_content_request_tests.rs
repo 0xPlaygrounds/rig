@@ -1,6 +1,6 @@
 use super::gemini_api_types::GenerateContentRequest;
 use crate::completion::CompletionRequest;
-use crate::error::ProviderError;
+use crate::error::EncodeError;
 use crate::message::{Message, UserContent};
 
 fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
@@ -187,7 +187,7 @@ fn a_clean_request_accepts_the_handle_and_puts_it_on_the_wire() {
 fn build_with(
     preamble: Option<&str>,
     additional: Option<serde_json::Value>,
-) -> Result<GenerateContentRequest, ProviderError> {
+) -> Result<GenerateContentRequest, EncodeError> {
     super::create_request_body(CompletionRequest {
         chat_history: preamble
             .map(Message::system)

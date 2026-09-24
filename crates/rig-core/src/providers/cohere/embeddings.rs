@@ -7,7 +7,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
-use crate::error::ProviderError;
+use crate::error::EncodeError;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 
@@ -130,17 +130,15 @@ pub(super) enum ImageInputError {
 
 /// Detect an accepted image media type. Returns a document error for unsupported
 /// formats or inputs exceeding 5,000,000 bytes.
-pub(super) fn validate_image(bytes: &[u8]) -> Result<&'static str, ProviderError> {
+pub(super) fn validate_image(bytes: &[u8]) -> Result<&'static str, EncodeError> {
     if bytes.len() > MAX_IMAGE_BYTES {
-        return Err(ProviderError::Request(Box::new(
-            ImageInputError::TooLarge {
-                actual_bytes: bytes.len(),
-            },
-        )));
+        return Err(EncodeError::request(ImageInputError::TooLarge {
+            actual_bytes: bytes.len(),
+        }));
     }
 
     crate::embeddings::image_media_type(bytes)
-        .ok_or_else(|| ProviderError::Request(Box::new(ImageInputError::UnsupportedFormat)))
+        .ok_or_else(|| EncodeError::request(ImageInputError::UnsupportedFormat))
 }
 
 pub(super) fn image_data_url(bytes: &[u8], media_type: &str) -> String {

@@ -341,7 +341,7 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
 
     let conversion = panic_result.expect("request conversion should not panic");
     assert!(matches!(
-        conversion,
+        conversion.map_err(ProviderError::from),
         Err(ProviderError::Request(error))
             if error
                 .to_string()
@@ -504,7 +504,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
 
     let conversion = panic_result.expect("request conversion should not panic");
     assert!(matches!(
-        conversion,
+        conversion.map_err(ProviderError::from),
         Err(ProviderError::Request(error))
             if error
                 .to_string()

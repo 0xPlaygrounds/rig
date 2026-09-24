@@ -7,6 +7,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
     completion, json_utils,
@@ -410,21 +411,19 @@ pub enum CohereToolChoice {
 }
 
 impl TryFrom<ToolChoice> for CohereToolChoice {
-    type Error = ProviderError;
+    type Error = EncodeError;
 
     fn try_from(tool_choice: ToolChoice) -> Result<Self, Self::Error> {
         match tool_choice {
             ToolChoice::Required => Ok(Self::Required),
             ToolChoice::None => Ok(Self::None),
-            ToolChoice::Auto => Err(ProviderError::Request(
+            ToolChoice::Auto => Err(EncodeError::request(
                 "\"auto\" is not an allowed tool_choice value in the Cohere API; \
-                 omit tool_choice to let the model decide"
-                    .into(),
+                 omit tool_choice to let the model decide",
             )),
-            ToolChoice::Specific { .. } => Err(ProviderError::Request(
+            ToolChoice::Specific { .. } => Err(EncodeError::request(
                 "the Cohere API cannot be forced to call specific tools by name; \
-                 use ToolChoice::Required and restrict the tools you pass instead"
-                    .into(),
+                 use ToolChoice::Required and restrict the tools you pass instead",
             )),
         }
     }
@@ -448,7 +447,7 @@ pub(super) struct CohereCompletionRequest {
 }
 
 impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
-    type Error = ProviderError;
+    type Error = EncodeError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let documents = req
@@ -469,7 +468,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
 
         let tool_ids =
             crate::providers::internal::tool_call_ids::ToolCallIds::new(&partial_history)
-                .map_err(|error| ProviderError::Request(Box::new(error)))?;
+                .map_err(EncodeError::request)?;
         for (position, message) in partial_history.into_iter().enumerate() {
             let mut messages = Vec::<Message>::try_from(message)?;
             let slots: Vec<&mut String> = messages
@@ -485,7 +484,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                 .collect();
             tool_ids
                 .apply(position, slots)
-                .map_err(|error| ProviderError::Request(Box::new(error)))?;
+                .map_err(EncodeError::request)?;
             full_history.extend(messages);
         }
 
@@ -504,8 +503,8 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                 .and_then(serde_json::Value::as_array)
                 .is_some_and(|tools| !tools.is_empty());
         if matches!(tool_choice, Some(CohereToolChoice::Required)) && !has_tools {
-            return Err(ProviderError::Request(
-                "Cohere requires at least one tool when tool_choice is REQUIRED".into(),
+            return Err(EncodeError::request(
+                "Cohere requires at least one tool when tool_choice is REQUIRED",
             ));
         }
 

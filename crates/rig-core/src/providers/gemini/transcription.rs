@@ -4,6 +4,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use mime_guess;
 use serde_json::{Map, Value};
 
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
     completion::Usage,
@@ -26,7 +27,7 @@ const TRANSCRIPTION_PREAMBLE: &str =
 /// Reject invalid generation parameters or JSON serialization failures.
 fn transcription_body(
     request: transcription::TranscriptionRequest,
-) -> Result<Vec<u8>, ProviderError> {
+) -> Result<Vec<u8>, EncodeError> {
     let additional_params = request
         .additional_params
         .unwrap_or_else(|| Value::Object(Map::new()));
@@ -117,7 +118,7 @@ impl Wire for Transcriptions {
         &self,
         request: transcription::TranscriptionRequest,
         _mode: Mode,
-    ) -> Result<Encoded, ProviderError> {
+    ) -> Result<Encoded, EncodeError> {
         let body = transcription_body(request)?;
         let request = http::Request::post(format!(
             "{}/v1beta/models/{}:generateContent?key={}",
@@ -126,8 +127,7 @@ impl Wire for Transcriptions {
             self.provider.api_key.expose()
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(body))
-        .map_err(|error| ProviderError::Http(error.into()))?;
+        .body(Body::Bytes(body))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))
     }

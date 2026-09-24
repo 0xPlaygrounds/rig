@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities};
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::observe::ObservedError;
 use crate::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
@@ -62,7 +63,7 @@ impl Chat {
             &CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
-    ) -> Result<Encoded, ProviderError> {
+    ) -> Result<Encoded, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
         // Azure's deployment URL remains pinned to the handle, not a request override.
         let uri = self.provider.uri(
@@ -126,9 +127,7 @@ impl Chat {
             &body,
         );
 
-        let request = builder
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Response(error.to_string()))?;
+        let request = builder.body(Body::Bytes(serde_json::to_vec(&body)?))?;
 
         let framing = match mode {
             Mode::Streaming => Framing::Sse,
@@ -169,7 +168,7 @@ impl Chat {
     }
 
     /// Apply typed dialect rewrites, rejecting unsupported tool choices or parameters.
-    fn prepare(&self, request: &mut unary::CompletionRequest) -> Result<(), ProviderError> {
+    fn prepare(&self, request: &mut unary::CompletionRequest) -> Result<(), EncodeError> {
         match self.provider.dialect.quirks.rewrite {
             BodyRewrite::GroqCompoundTools => {
                 fold_groq_native_tools(request)?;
@@ -177,7 +176,7 @@ impl Chat {
             }
             BodyRewrite::LlamaCpp => {
                 if let Some(ToolChoice::Function { name }) = &request.tool_choice {
-                    return Err(ProviderError::Provider(format!(
+                    return Err(EncodeError::request(format!(
                         "llama.cpp cannot force a specific tool: `llama-server` accepts only \
                          `auto`, `none` or `required` for tool_choice and silently treats \
                          anything else as `auto`, so requesting `{name}` would return whichever \
@@ -212,7 +211,7 @@ impl Chat {
 
     /// Apply dialect body rewrites after merging streaming parameters.
     /// Return conversion errors for unsupported content.
-    fn finalize(&self, body: &mut serde_json::Value) -> Result<(), ProviderError> {
+    fn finalize(&self, body: &mut serde_json::Value) -> Result<(), EncodeError> {
         let Some(map) = body.as_object_mut() else {
             return Ok(());
         };
@@ -271,7 +270,7 @@ fn strip_assistant_reasoning(request: &mut unary::CompletionRequest) {
 /// …) arrive through `additional_params.tools`. Left there they would clobber
 /// the function-tool array on serialization, because `additional_params` is
 /// flattened into the body and the flattened key wins.
-fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), ProviderError> {
+fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), EncodeError> {
     let Some(map) = request
         .additional_params
         .as_mut()
@@ -283,8 +282,8 @@ fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), 
         return Ok(());
     };
     let serde_json::Value::Array(native_tools) = raw_tools else {
-        return Err(ProviderError::Request(
-            "Groq `additional_params.tools` must be an array of native tool objects".into(),
+        return Err(EncodeError::request(
+            "Groq `additional_params.tools` must be an array of native tool objects",
         ));
     };
 
@@ -316,9 +315,9 @@ fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), 
 
 /// Moonshot supports only `auto`/`none`: forcing one specific tool has no
 /// workaround, and `required` is steered with an extra user message.
-fn steer_moonshot_tool_choice(request: &mut unary::CompletionRequest) -> Result<(), ProviderError> {
+fn steer_moonshot_tool_choice(request: &mut unary::CompletionRequest) -> Result<(), EncodeError> {
     if matches!(request.tool_choice, Some(ToolChoice::Function { .. })) {
-        return Err(ProviderError::Provider(
+        return Err(EncodeError::request(
             "Moonshot does not support forcing a specific tool".to_owned(),
         ));
     }
@@ -398,7 +397,7 @@ fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
 /// Its multimodal content mapping is [`mistral_content`].
 fn finalize_mistral(
     map: &mut serde_json::Map<String, serde_json::Value>,
-) -> Result<(), ProviderError> {
+) -> Result<(), EncodeError> {
     // Mistral spells the "must call some tool" mode `any`, not `required`.
     if let Some(tool_choice) = map.get_mut("tool_choice")
         && tool_choice.as_str() == Some("required")
@@ -502,7 +501,7 @@ fn is_mistral_text_part(part: &serde_json::Value) -> bool {
     }
 }
 
-fn mistral_unsupported(what: &str) -> ProviderError {
+fn mistral_unsupported(what: &str) -> EncodeError {
     crate::message::MessageError::ConversionError(format!(
         "Mistral cannot carry {what}. Mistral messages accept text, `{MISTRAL_IMAGE}`, \
          `{MISTRAL_AUDIO}`, `{MISTRAL_DOCUMENT}` and `{MISTRAL_FILE}` content; convert the \
@@ -514,7 +513,7 @@ fn mistral_unsupported(what: &str) -> ProviderError {
 /// Convert file data to a document URL or a file reference to a top-level file ID.
 /// Preserve optional filenames for inline documents. Return a conversion error
 /// when neither file data nor a file ID is present.
-fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, ProviderError> {
+fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
     let file = part.get(MISTRAL_FILE);
     let field = |name: &str| {
         file.and_then(|file| file.get(name))
@@ -548,7 +547,7 @@ fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Pro
 
 /// Convert string or object audio payloads to Mistral's base64-string form.
 /// Return a conversion error for missing or nonstring audio data.
-fn mistral_audio_chunk(part: &serde_json::Value) -> Result<serde_json::Value, ProviderError> {
+fn mistral_audio_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
     let payload = part.get(MISTRAL_AUDIO).ok_or_else(|| {
         mistral_unsupported("an audio content part carrying no `input_audio` payload")
     })?;
@@ -573,10 +572,10 @@ fn mistral_audio_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Pr
 /// Dispatched on the `type` tag, which the shared conversion always emits, so
 /// a part naming a chunk kind is converted as that kind regardless of what
 /// other keys it carries.
-fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, ProviderError> {
+fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
     /// Text and refusal parts are both re-tagged `text`: Mistral's schema has
     /// no `refusal` field and every chunk forbids unknown keys.
-    fn text_chunk(part: &serde_json::Value) -> Result<serde_json::Value, ProviderError> {
+    fn text_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
         let text = mistral_part_text(part)
             .ok_or_else(|| mistral_unsupported("a text content part carrying no text"))?;
         Ok(serde_json::json!({"type": MISTRAL_TEXT, MISTRAL_TEXT: text}))
@@ -616,7 +615,7 @@ fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Provider
 /// Flatten text-only arrays and convert mixed arrays to Mistral content chunks.
 /// Nonarrays remain unchanged. Unsupported mixed content returns a conversion
 /// error; text-only parts without string payloads are omitted.
-fn mistral_content(content: &mut serde_json::Value) -> Result<(), ProviderError> {
+fn mistral_content(content: &mut serde_json::Value) -> Result<(), EncodeError> {
     let Some(parts) = content.as_array() else {
         return Ok(());
     };
@@ -721,13 +720,11 @@ fn apply_openrouter_prompt_caching(map: &mut serde_json::Map<String, serde_json:
 }
 
 /// Return a request error for document or image inputs using provider file IDs.
-fn refuse_file_ids(request: &CompletionRequest) -> Result<(), ProviderError> {
+fn refuse_file_ids(request: &CompletionRequest) -> Result<(), EncodeError> {
     use crate::message::{DocumentSourceKind, Message, UserContent};
 
     let refusal = || {
-        ProviderError::Request(
-            "Provider file IDs are not supported for OpenRouter document inputs".into(),
-        )
+        EncodeError::request("Provider file IDs are not supported for OpenRouter document inputs")
     };
     for message in &request.chat_history {
         let Message::User { content, .. } = message else {
@@ -772,7 +769,7 @@ impl Wire for Chat {
         Some(self.provider.dialect.quirks.completion_path)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         self.encode_with_headers(request, mode, OpenAI::completion_headers)
     }
 
