@@ -23,7 +23,7 @@ fn build_counter_extractor(
     openai: &Model<OpenAI, BoxedHttpClient>,
 ) -> rig::extractor::Extractor<Counter> {
     rig::extractor::ExtractorBuilder::new(
-        openai.endpoint(|provider_config| provider_config.completion(openai::GPT_4)),
+        openai.endpoint(|provider| provider.completion(openai::GPT_4)),
     )
     .append_preamble(
         "

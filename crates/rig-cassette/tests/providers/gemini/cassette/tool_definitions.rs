@@ -164,7 +164,7 @@ async fn rich_json_schema_survives_gemini_conversion() {
         "tool_definitions/rich_json_schema_survives_gemini_conversion",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
                 .preamble("You are a travel planner. You must use the plan_trip tool to plan trips, then confirm the booking to the user.")
                 .temperature(0.0)
                 .tool(PlanTrip)
@@ -202,9 +202,7 @@ async fn duplicate_tool_name_uses_last_registration() {
         "tool_definitions/duplicate_tool_name_uses_last_registration",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble("You must use the echo tool, then report its output exactly.")
                 .temperature(0.0)
@@ -273,7 +271,7 @@ mod derive_macro {
             "tool_definitions/rig_tool_macro_schema_round_trips",
             |client| async move {
                 let agent = client
-                    .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
+                    .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
                     .preamble("You must use the macro_calculator tool for arithmetic, then report the result.")
                     .temperature(0.0)
                     .tool(MacroCalculator)

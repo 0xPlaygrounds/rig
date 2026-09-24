@@ -28,8 +28,7 @@ async fn nonstreaming_response_carries_identity() {
     with_anthropic_cassette(
         "response_identity/nonstreaming_response_carries_identity",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
+            let model = client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .max_tokens(32)
@@ -56,8 +55,7 @@ async fn streaming_terminal_carries_identity() {
     with_anthropic_cassette(
         "response_identity/streaming_terminal_carries_identity",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
+            let model = client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6));
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .max_tokens(32)
@@ -135,7 +133,7 @@ async fn agent_run_records_per_attempt_identity() {
         |client| async move {
             let hook = IdentityCapture::default();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
@@ -204,7 +202,7 @@ async fn streamed_agent_run_hook_observes_identity() {
         |client| async move {
             let hook = IdentityCapture::default();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble("You are a terse assistant.")
                 .max_tokens(64)
@@ -259,7 +257,7 @@ async fn streamed_agent_tool_run_reports_per_attempt_identity() {
         |client| async move {
             let probe = IdentityProbe::default();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)

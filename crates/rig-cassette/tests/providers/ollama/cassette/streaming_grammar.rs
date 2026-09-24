@@ -116,7 +116,7 @@ async fn thinking_and_tool_call_in_one_stream() {
     with_ollama_cassette(
         "streaming_grammar/thinking_and_tool_call",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
@@ -181,7 +181,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
     with_ollama_cassette(
         "streaming_grammar/parallel_tool_calls",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let request = model
                 .completion_request(
                     "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
@@ -265,7 +265,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
 #[tokio::test]
 async fn same_tool_called_twice_in_one_turn_stays_distinct() {
     with_ollama_cassette("streaming_grammar/same_tool_twice", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+        let model = client.endpoint(|provider| provider.completion(MODEL));
         let request = model
             .completion_request(
                 "/no_think Use the `add` tool twice in this single reply, before any text: \
@@ -350,7 +350,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
     with_ollama_cassette(
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let history = vec![
                 rig::message::Message::user(
                     "/no_think Use the add tool to compute 2 + 3, then state the result.",

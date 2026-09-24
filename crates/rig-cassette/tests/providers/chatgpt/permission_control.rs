@@ -156,7 +156,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 
     let agent = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
@@ -192,7 +192,7 @@ async fn permission_control_streaming_example() -> Result<()> {
 
     let agent = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)

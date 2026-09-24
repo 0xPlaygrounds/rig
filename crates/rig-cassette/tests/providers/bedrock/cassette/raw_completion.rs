@@ -2,7 +2,6 @@
 
 use rig::bedrock;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::telemetry::ProviderResponseExt;
 
 use super::super::support::with_bedrock_cassette;

@@ -1,7 +1,7 @@
 //! Experimental typed Jev evaluations alongside Rig agents.
 //!
 //! Pair [`Jev`] with any Rig HTTP transport in a
-//! [`Model`](rig_core::driver::Model), then use [`Evaluate::evaluate`]
+//! [`rig_core::driver::Model`], then use [`Evaluate::evaluate`]
 //! with serializable state and a named [`Query`]. Its associated output type
 //! fixes the answer structure at compile time. Decisions
 //! retain distributions; routing and threshold policy remain in application code.

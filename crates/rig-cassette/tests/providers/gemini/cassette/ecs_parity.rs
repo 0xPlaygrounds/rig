@@ -26,8 +26,8 @@ async fn completion_smoke() {
         async {
             with_gemini_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                    client.endpoint(|provider| {
+                        provider.completion(gemini::completion::GEMINI_2_5_FLASH)
                     }),
                     BASIC_PREAMBLE,
                     1,
@@ -49,8 +49,8 @@ async fn streaming_smoke() {
         async {
             with_gemini_cassette("streaming/streaming_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                    client.endpoint(|provider| {
+                        provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                     }),
                     STREAMING_PREAMBLE,
                     1,
@@ -101,8 +101,8 @@ async fn streaming_tools_smoke() {
                 "streaming_tools/streaming_tools_smoke",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| {
-                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        client.endpoint(|provider| {
+                            provider.completion(gemini::completion::GEMINI_2_5_FLASH)
                         }),
                         STREAMING_TOOLS_PREAMBLE,
                         1,
@@ -144,8 +144,8 @@ async fn example_streaming_prompt() {
         async {
             with_gemini_cassette("streaming/example_streaming_prompt", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                    client.endpoint(|provider| {
+                        provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                     }),
                     "Be precise and concise.",
                     1,
@@ -193,8 +193,8 @@ async fn example_streaming_with_tools() {
                 "streaming_tools/example_streaming_with_tools",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| {
-                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        client.endpoint(|provider| {
+                            provider.completion(gemini::completion::GEMINI_2_5_FLASH)
                         }),
                         "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question.",

@@ -71,9 +71,8 @@ async fn vector_search_test() {
         .bound()
         .unwrap();
 
-    let model = openai_client.endpoint(|provider_config| {
-        provider_config.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None)
-    });
+    let model = openai_client
+        .endpoint(|provider| provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None));
 
     // create test documents with mocked embeddings
     let words = vec![

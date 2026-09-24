@@ -63,7 +63,7 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
     );
 
     let extracted = client
-        .endpoint(|provider_config| provider_config.completion("gpt-oss-120b"))
+        .endpoint(|provider| provider.completion("gpt-oss-120b"))
         .into_extractor_builder::<KeywordPayload>()
         .build()
         .extract("What fruit is mentioned in the database?")

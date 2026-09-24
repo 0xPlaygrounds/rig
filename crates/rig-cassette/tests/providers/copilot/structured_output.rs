@@ -49,7 +49,7 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .endpoint(|provider| provider.completion(LIVE_MODEL))
                 .into_agent_builder()
                 .build();
 
@@ -71,7 +71,7 @@ async fn prompt_typed_and_output_schema() {
         "structured_output/prompt_typed_and_output_schema",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .endpoint(|provider| provider.completion(LIVE_MODEL))
                 .into_agent_builder()
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",
@@ -96,7 +96,7 @@ async fn prompt_typed_and_output_schema() {
             );
 
             let agent_with_schema = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .endpoint(|provider| provider.completion(LIVE_MODEL))
                 .into_agent_builder()
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",

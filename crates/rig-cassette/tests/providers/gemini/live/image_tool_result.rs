@@ -8,7 +8,7 @@ async fn test_gemini_agent_with_image_tool_result_e2e() -> anyhow::Result<()> {
     let client = Gemini::from_env()?.bound()?;
 
     let agent = client
-        .endpoint(|provider_config| provider_config.completion("gemini-3-flash-preview"))
+        .endpoint(|provider| provider.completion("gemini-3-flash-preview"))
         .into_agent_builder()
         .preamble(
             "You are a helpful assistant. When asked about images, use the \

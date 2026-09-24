@@ -15,9 +15,7 @@ async fn streaming_smoke() {
         .bound()
         .expect("transport should build");
     let agent = provider
-        .endpoint(|provider_config| {
-            provider_config.completion("meta-llama/Meta-Llama-3.1-8B-Instruct")
-        })
+        .endpoint(|provider| provider.completion("meta-llama/Meta-Llama-3.1-8B-Instruct"))
         .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .build();
@@ -38,7 +36,7 @@ async fn together_subprovider_streaming() {
         .with_sub_route(SubRoute::Together)
         .bound()
         .expect("transport should build")
-        .endpoint(|provider_config| provider_config.completion("deepseek-ai/DeepSeek-R1"))
+        .endpoint(|provider| provider.completion("deepseek-ai/DeepSeek-R1"))
         .into_agent_builder()
         .preamble("Be precise and concise.")
         .temperature(0.5)

@@ -25,9 +25,9 @@ fn models(
     impl CompletionModel + Clone + 'static,
 ) {
     (
-        client.endpoint(|provider_config| provider_config.completion("grok-3-mini")),
-        client.endpoint(|provider_config| provider_config.completion("grok-3-mini")),
-        client.endpoint(|provider_config| provider_config.completion("grok-3-mini-fast")),
+        client.endpoint(|provider| provider.completion("grok-3-mini")),
+        client.endpoint(|provider| provider.completion("grok-3-mini")),
+        client.endpoint(|provider| provider.completion("grok-3-mini-fast")),
     )
 }
 

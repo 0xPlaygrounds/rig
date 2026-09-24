@@ -325,9 +325,8 @@ async fn capture_terminal_pair(
     build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: Observed<(StreamFinal, StreamFinal)>,
 ) {
-    let model = client.endpoint(|provider_config| {
-        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
-    });
+    let model =
+        client.endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
 
     let normalized = collect_required_terminal(
         model
@@ -386,8 +385,8 @@ async fn text_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                client.endpoint(|provider| {
+                    provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                 }),
                 text_request,
                 sink,
@@ -412,8 +411,8 @@ async fn tool_call_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                client.endpoint(|provider| {
+                    provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                 }),
                 tool_request,
                 sink,

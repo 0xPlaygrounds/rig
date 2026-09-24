@@ -342,7 +342,7 @@ async fn hooks_observe_raw_blocking() {
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .temperature(0.0)
                 .add_hook(hook)
@@ -393,7 +393,7 @@ async fn hooks_observe_raw_streamed() {
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .temperature(0.0)
                 .add_hook(hook)
@@ -457,7 +457,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -532,7 +532,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)

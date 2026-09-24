@@ -130,19 +130,19 @@ fn completion_client_single_import_surface() {
     )
     .bound()
     .expect("the bundled transport builds");
-    let _model = bound.endpoint(|provider_config| provider_config.completion("gpt-4o"));
+    let _model = bound.endpoint(|provider| provider.completion("gpt-4o"));
     let _agent = bound
-        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .endpoint(|provider| provider.completion("gpt-4o"))
         .into_agent_builder()
         .build();
     let _extractor = bound
-        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .endpoint(|provider| provider.completion("gpt-4o"))
         .into_extractor_builder::<Extracted>()
         .build();
 }
 
 /// The same surface is reachable through explicit imports, without the
-/// prelude glob: `Bind`/`DefaultTransport` for construction and
+/// prelude glob: `DefaultTransport` for construction and
 /// `AgentModelExt` for the agent sugar.
 #[test]
 fn completion_provider_explicit_facade_import_surface() {
@@ -160,13 +160,13 @@ fn completion_provider_explicit_facade_import_surface() {
     )
     .bound() // DefaultTransport
     .expect("the bundled transport builds");
-    let _model = bound.endpoint(|provider_config| provider_config.completion("gpt-4o")); // Bound::completion
+    let _model = bound.endpoint(|provider| provider.completion("gpt-4o")); // Model::endpoint
     let _agent = bound
-        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .endpoint(|provider| provider.completion("gpt-4o"))
         .into_agent_builder()
         .build(); // AgentModelExt
     let _extractor = bound
-        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .endpoint(|provider| provider.completion("gpt-4o"))
         .into_extractor_builder::<Extracted>()
         .build(); // AgentModelExt
 }

@@ -10,7 +10,6 @@
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -34,7 +33,7 @@ fn thinking_disabled() -> serde_json::Value {
 fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.endpoint(|provider_config| provider_config.completion("deepseek-chat")),
+        model: client.endpoint(|provider| provider.completion("deepseek-chat")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -45,8 +44,7 @@ fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> 
 fn missing(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client
-            .endpoint(|provider_config| provider_config.completion("deepseek-v9-nonexistent")),
+        model: client.endpoint(|provider| provider.completion("deepseek-v9-nonexistent")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -109,7 +107,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.endpoint(|provider_config| provider_config.completion("deepseek-chat")),
+        model: client.endpoint(|provider| provider.completion("deepseek-chat")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -125,7 +123,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.endpoint(|provider_config| provider_config.completion("deepseek-chat")),
+        model: client.endpoint(|provider| provider.completion("deepseek-chat")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

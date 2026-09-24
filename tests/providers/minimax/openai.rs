@@ -13,7 +13,7 @@ async fn openai_compatible_completion_smoke() {
         .expect("MINIMAX_API_KEY should be set")
         .bound()
         .expect("client should build")
-        .endpoint(|provider_config| provider_config.completion(minimax::MINIMAX_M2_7))
+        .endpoint(|provider| provider.completion(minimax::MINIMAX_M2_7))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()

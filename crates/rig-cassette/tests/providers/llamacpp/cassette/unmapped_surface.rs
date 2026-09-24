@@ -70,7 +70,7 @@ use super::super::cassette_support::*;
 async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
         let models = client
-            .endpoint(|provider_config| provider_config.models())
+            .endpoint(|provider| provider.models())
             .list_all()
             .await
             .expect("listing llama.cpp models should succeed");
@@ -143,7 +143,7 @@ async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
 /// `multimodal_matrix.rs` a question worth asking rather than an assumption.
 ///
 /// It doubles as the evidence for the dialect's `verify_path`: this is the
-/// route `Bound::verify()` issues, so a successful verification is a
+/// route `Model::verify()` issues, so a successful verification is a
 /// successful `/props`.
 #[tokio::test]
 async fn props_states_which_model_and_modalities_produced_this_corpus() {
@@ -152,7 +152,7 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
         // accessor, which is itself part of the exclude decision for the
         // operational routes.
         client
-            .endpoint(|provider_config| provider_config.verify())
+            .endpoint(|provider| provider.verify())
             .verify()
             .await
             .expect("an unkeyed server verifies successfully");
@@ -213,7 +213,7 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
         // The wrapper hands out the plain OpenAI configuration; the Responses
         // surface is a *different* wire over the same socket and the same
         // base URL, which is the whole shape of the exclusion.
-        let model = client.endpoint(|provider_config| provider_config.responses(CASSETTE_MODEL));
+        let model = client.endpoint(|provider| provider.responses(CASSETTE_MODEL));
         let response = model
             .complete(
                 model

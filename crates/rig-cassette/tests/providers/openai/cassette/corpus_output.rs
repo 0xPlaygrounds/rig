@@ -37,7 +37,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .endpoint(|provider| provider.completion(openai::GPT_4O))
             .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -65,7 +65,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .endpoint(|provider| provider.completion(openai::GPT_4O))
             .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)

@@ -115,7 +115,7 @@ async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_reasoner_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(
                     model
@@ -146,7 +146,7 @@ async fn streaming_reasoner_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_reasoner_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(
@@ -184,7 +184,7 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_reasoner_parallel_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(
                     model
@@ -230,7 +230,7 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_reasoner_parallel_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(
@@ -274,7 +274,7 @@ async fn blocking_reasoner_text_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_reasoner_text_turn_leads_with_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(
                     model
@@ -303,7 +303,7 @@ async fn streaming_reasoner_text_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_reasoner_text_turn_leads_with_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(
@@ -339,7 +339,7 @@ async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_non_thinking_tool_turn_has_no_reasoning_block",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(
                     model
@@ -372,7 +372,7 @@ async fn streaming_non_thinking_tool_turn_has_no_reasoning_block() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_non_thinking_tool_turn_has_no_reasoning_block",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(
@@ -418,7 +418,7 @@ async fn agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(thinking_params())
@@ -467,7 +467,7 @@ async fn agent_streaming_reasoner_roundtrip_streams_reasoning_first() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(thinking_params())

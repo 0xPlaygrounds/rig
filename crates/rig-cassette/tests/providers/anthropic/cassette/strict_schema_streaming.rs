@@ -21,9 +21,7 @@ async fn assert_streaming_strict_tool_call(
     expected_arguments: Value,
 ) {
     let model = client
-        .endpoint(|provider_config| {
-            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        })
+        .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
         .endpoint(|wire| wire.clone().with_strict_tools());
     assert_model_streaming_tool_call(
         model,
@@ -214,9 +212,7 @@ async fn structured_output_and_strict_tool_use_stream_together() {
         "strict_schema_streaming/structured_output_and_strict_tool_use_stream_together",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let output_schema = serde_json::from_value(json!({
                 "type": "object",
@@ -249,9 +245,7 @@ async fn manual_prompt_caching_and_strict_tools_stream_together() {
         "strict_schema_streaming/manual_prompt_caching_and_strict_tools_stream_together",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching().with_strict_tools());
             assert_model_streaming_tool_call(
                 model,
@@ -278,9 +272,7 @@ async fn automatic_prompt_caching_and_strict_tools_stream_together() {
         "strict_schema_streaming/automatic_prompt_caching_and_strict_tools_stream_together",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_automatic_caching().with_strict_tools());
             assert_model_streaming_tool_call(
                 model,

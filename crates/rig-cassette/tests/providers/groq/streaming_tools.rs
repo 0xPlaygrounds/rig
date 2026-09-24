@@ -25,8 +25,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         .expect("GROQ_API_KEY should be set")
         .bound()
         .expect("transport should build");
-    let model =
-        groq.endpoint(|provider_config| provider_config.completion(STREAMING_TOOLS_RAW_MODEL));
+    let model = groq.endpoint(|provider| provider.completion(STREAMING_TOOLS_RAW_MODEL));
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .tool(zero_arg_tool_definition("ping"))
@@ -44,8 +43,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         .expect("GROQ_API_KEY should be set")
         .bound()
         .expect("transport should build");
-    let model =
-        groq.endpoint(|provider_config| provider_config.completion(STREAMING_TOOLS_RAW_MODEL));
+    let model = groq.endpoint(|provider| provider.completion(STREAMING_TOOLS_RAW_MODEL));
     let request = model
         .completion_request(TWO_TOOL_STREAM_PROMPT)
         .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -75,7 +73,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         .bound()
         .expect("transport should build");
     let agent = groq
-        .endpoint(|provider_config| provider_config.completion(STREAMING_TOOLS_MULTI_MODEL))
+        .endpoint(|provider| provider.completion(STREAMING_TOOLS_MULTI_MODEL))
         .into_agent_builder()
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
@@ -100,7 +98,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
         .bound()
         .expect("transport should build");
     let agent = groq
-        .endpoint(|provider_config| provider_config.completion(STREAMING_TOOLS_ORDERED_MODEL))
+        .endpoint(|provider| provider.completion(STREAMING_TOOLS_ORDERED_MODEL))
         .into_agent_builder()
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
@@ -126,8 +124,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         .expect("GROQ_API_KEY should be set")
         .bound()
         .expect("transport should build");
-    let model =
-        groq.endpoint(|provider_config| provider_config.completion(STREAMING_TOOLS_RAW_MODEL));
+    let model = groq.endpoint(|provider| provider.completion(STREAMING_TOOLS_RAW_MODEL));
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

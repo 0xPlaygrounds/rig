@@ -51,7 +51,7 @@ fn audio_content() -> UserContent {
 async fn image_analysis_prompt() {
     with_openrouter_cassette("multimodal/image_analysis_prompt", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+            .endpoint(|provider| provider.completion(VISION_MODEL))
             .into_agent_builder()
             .preamble("You are a helpful assistant that describes images in detail.")
             .build();
@@ -75,7 +75,7 @@ async fn image_analysis_prompt() {
 async fn pdf_analysis_prompt() {
     with_openrouter_cassette("multimodal/pdf_analysis_prompt", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+            .endpoint(|provider| provider.completion(VISION_MODEL))
             .into_agent_builder()
             .preamble("You are a helpful assistant that summarizes documents.")
             .build();
@@ -99,7 +99,7 @@ async fn pdf_analysis_prompt() {
 async fn mixed_multimodal_prompt() {
     with_openrouter_cassette("multimodal/mixed_multimodal_prompt", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+            .endpoint(|provider| provider.completion(VISION_MODEL))
             .into_agent_builder()
             .preamble("You are a helpful assistant.")
             .build();
@@ -125,7 +125,7 @@ async fn mixed_multimodal_prompt() {
 async fn video_analysis_prompt() {
     with_openrouter_cassette("multimodal/video_analysis_prompt", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+            .endpoint(|provider| provider.completion(VISION_MODEL))
             .into_agent_builder()
             .preamble("You are a helpful assistant that describes videos.")
             .build();
@@ -149,7 +149,7 @@ async fn video_analysis_prompt() {
 async fn audio_analysis_prompt() {
     with_openrouter_cassette("multimodal/audio_analysis_prompt", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+            .endpoint(|provider| provider.completion(VISION_MODEL))
             .into_agent_builder()
             .preamble("You are a helpful assistant that transcribes and describes audio.")
             .build();

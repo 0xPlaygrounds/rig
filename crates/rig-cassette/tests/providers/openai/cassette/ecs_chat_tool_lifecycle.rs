@@ -6,7 +6,7 @@ use super::chat_tool_lifecycle_matrix::{
 };
 use crate::ecs_agent::EcsAgent;
 use anyhow::Result;
-use rig::{prelude::*, providers::openai, tool::Tool};
+use rig::{providers::openai, tool::Tool};
 use rig_ecs::{
     agent::{AdditionalParams, Failure, MaxTokens, ToolCallSlot},
     bus::{PendingEffect, Streamed},
@@ -94,7 +94,7 @@ async fn run_cell(
     assert_eq!(cell.surface, Surface::Agent);
     let invocations = InvocationLog::default();
     let mut ecs = EcsAgent::new(
-        client.endpoint(|provider_config| provider_config.chat(model_name(cell.model))),
+        client.endpoint(|provider| provider.chat(model_name(cell.model))),
         PREAMBLE,
         1,
     );

@@ -130,7 +130,7 @@ async fn effort_max() {
     with_openai_cassette("gpt_5_6_reasoning/effort_max", |client| async move {
         let model = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
+            .endpoint(|provider| provider.completion(openai::GPT_5_6));
         let (response, raw_response) =
             prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
         assert_has_text(&response);
@@ -154,7 +154,7 @@ async fn mode_pro_with_independent_effort() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
+                .endpoint(|provider| provider.completion(openai::GPT_5_6_SOL));
             let (response, raw_response) =
                 prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
             assert_has_text(&response);
@@ -179,7 +179,7 @@ async fn context_current_turn() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
+                .endpoint(|provider| provider.completion(openai::GPT_5_6_SOL));
             let (response, raw_response) = prompt_with_reasoning(
                 &model,
                 json!({ "effort": "low", "context": "current_turn" }),
@@ -207,7 +207,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
+                .endpoint(|provider| provider.completion(openai::GPT_5_6_SOL));
             let expected_metadata = json!({
                 "context": "all_turns",
                 "effort": "low",
@@ -321,7 +321,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
+                .endpoint(|provider| provider.completion(openai::GPT_5_6_SOL));
             let expected_metadata = json!({
                 "context": "all_turns",
                 "effort": "low",
@@ -484,7 +484,7 @@ async fn streaming_reasoning_metadata() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
+                .endpoint(|provider| provider.completion(openai::GPT_5_6_SOL));
             let request = model
                 .completion_request(PROMPT)
                 .additional_params(json!({

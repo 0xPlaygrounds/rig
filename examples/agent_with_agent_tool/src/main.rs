@@ -108,7 +108,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = openai_client
-        .endpoint(|provider_config| provider_config.completion(providers::openai::GPT_4O)).into_agent_builder()
+        .endpoint(|provider| provider.completion(providers::openai::GPT_4O)).into_agent_builder()
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)
@@ -118,7 +118,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent which has the calculator_agent as a tool
     let agent_using_agent = openai_client
-        .endpoint(|provider_config| provider_config.completion(providers::openai::GPT_4O)).into_agent_builder()
+        .endpoint(|provider| provider.completion(providers::openai::GPT_4O)).into_agent_builder()
         .preamble("You are a helpful assistant that can solve problems. Use the tool provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)

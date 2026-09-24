@@ -183,9 +183,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenAI embeddings provider from the environment
     let openai_client = OpenAI::from_env()?.bound()?;
     // Convert it to an EmbeddingModel
-    let embedding_model = openai_client.endpoint(|provider_config| {
-        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
-    });
+    let embedding_model = openai_client
+        .endpoint(|provider| provider.embeddings(openai::TEXT_EMBEDDING_ADA_002, None));
 
     // Create the Redis vector store
     let mut store =

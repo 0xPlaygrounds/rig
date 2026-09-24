@@ -14,8 +14,8 @@ async fn extract_backward_compatibility() -> Result<()> {
                 "extractor_usage/extract_backward_compatibility",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
-                        client.openai.endpoint(|provider_config| {
-                            provider_config.completion(providers::openai::GPT_4O_MINI)
+                        client.openai.endpoint(|provider| {
+                            provider.completion(providers::openai::GPT_4O_MINI)
                         }),
                         None,
                         None,
@@ -50,8 +50,8 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
                 "extractor_usage/extract_with_usage_returns_data_and_usage",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
-                        client.openai.endpoint(|provider_config| {
-                            provider_config.completion(providers::openai::GPT_4O_MINI)
+                        client.openai.endpoint(|provider| {
+                            provider.completion(providers::openai::GPT_4O_MINI)
                         }),
                         None,
                         None,
@@ -91,8 +91,8 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
                 "extractor_usage/extract_with_chat_history_with_usage_works",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Address>::new(
-                        client.openai.endpoint(|provider_config| {
-                            provider_config.completion(providers::openai::GPT_4O_MINI)
+                        client.openai.endpoint(|provider| {
+                            provider.completion(providers::openai::GPT_4O_MINI)
                         }),
                         None,
                         None,
@@ -136,8 +136,8 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
                 "extractor_usage/extract_and_extract_with_usage_return_same_data",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
-                        client.openai.endpoint(|provider_config| {
-                            provider_config.completion(providers::openai::GPT_4O_MINI)
+                        client.openai.endpoint(|provider| {
+                            provider.completion(providers::openai::GPT_4O_MINI)
                         }),
                         None,
                         None,
@@ -180,8 +180,8 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 "extractor_usage/usage_tracking_works_for_different_schemas",
                 |client| async move {
                     let mut person_extractor = EcsExtractor::<Person>::new(
-                        client.openai.endpoint(|provider_config| {
-                            provider_config.completion(providers::openai::GPT_4O_MINI)
+                        client.openai.endpoint(|provider| {
+                            provider.completion(providers::openai::GPT_4O_MINI)
                         }),
                         None,
                         None,

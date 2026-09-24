@@ -397,9 +397,7 @@ fn setup<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
     client: &Model<Gemini, H>,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        client.endpoint(|provider_config| {
-            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-        }),
+        client.endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)),
         FORCE_TOOLS_PREAMBLE,
         1,
     );

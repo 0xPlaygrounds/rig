@@ -76,7 +76,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+                .endpoint(|provider| provider.completion(deepseek::DEEPSEEK_V4_FLASH))
                 .into_agent_builder()
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();

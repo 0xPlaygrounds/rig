@@ -194,8 +194,7 @@ impl Tool for FileReport {
 }
 
 async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
-    let model =
-        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
+    let model = client.endpoint(|provider| provider.completion(model_name(cell.model)));
     match cell.transport {
         Transport::Blocking => match model.complete(request(&model, cell)).await {
             Ok(response) => Observation {
@@ -243,7 +242,7 @@ async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
 async fn run_agent(client: BoundMistral, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(model_name(cell.model)))
+        .endpoint(|provider| provider.completion(model_name(cell.model)))
         .into_agent_builder()
         .preamble(PREAMBLE)
         .tool(FileReport {

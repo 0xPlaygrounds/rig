@@ -43,7 +43,7 @@ async fn temperature_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/temperature_from_the_typed_builder",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             model
                 .complete(
                     model
@@ -66,7 +66,7 @@ async fn max_tokens_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/max_tokens_from_the_typed_builder",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             model
                 .complete(model.completion_request(PROMPT).max_tokens(7).build())
                 .await
@@ -83,7 +83,7 @@ async fn top_p_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/top_p_from_additional_params",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             model
                 .complete(
                     model
@@ -106,7 +106,7 @@ async fn seed_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/seed_from_additional_params",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             model
                 .complete(
                     model
@@ -129,7 +129,7 @@ async fn stop_sequence_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/stop_sequence_from_additional_params",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             model
                 .complete(
                     model
@@ -153,7 +153,7 @@ async fn json_object_response_format_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/json_object_response_format_from_additional_params",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             model
                 .complete(
                     model

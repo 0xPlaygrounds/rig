@@ -13,8 +13,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
     with_cohere_cassette(
         "response_identity/nonstreaming_request_id_is_none_by_design",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .max_tokens(32)
@@ -41,8 +40,7 @@ async fn streaming_request_id_is_none_by_design() {
     with_cohere_cassette(
         "response_identity/streaming_request_id_is_none_by_design",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .max_tokens(32)

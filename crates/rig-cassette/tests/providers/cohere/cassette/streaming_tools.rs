@@ -17,7 +17,7 @@ async fn streaming_tool_call_roundtrip() {
         "streaming_tools/streaming_tool_call_roundtrip",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(IntegerAdder)

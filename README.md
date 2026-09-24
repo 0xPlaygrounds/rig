@@ -139,8 +139,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // completion route is the Responses API; `.with_route(Route::Chat)` on the
     // configuration selects Chat Completions for every agent built on it.
     let comedian_agent = OpenAI::from_env()?
+        .completion(openai::GPT_5_2)
         .bound()?
-        .agent(openai::GPT_5_2)
+        .into_agent_builder()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

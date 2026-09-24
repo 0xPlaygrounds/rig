@@ -51,9 +51,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
@@ -106,9 +105,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let response = model
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
@@ -161,9 +159,7 @@ async fn none_streaming_does_not_emit_tool_calls() {
         "tool_choice/none_streaming_no_tools",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble("You are a deterministic calculator test. Answer directly in text.")
                 .temperature(0.0)
@@ -210,9 +206,7 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
         "tool_choice/none_nonstreaming_no_tools",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble("You are a deterministic calculator test. Answer directly in text.")
                 .temperature(0.0)

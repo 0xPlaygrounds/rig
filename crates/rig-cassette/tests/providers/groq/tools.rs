@@ -15,7 +15,7 @@ async fn tools_smoke() {
         .bound()
         .expect("transport should build");
     let agent = groq
-        .endpoint(|provider_config| provider_config.completion(TOOLS_MODEL)).into_agent_builder()
+        .endpoint(|provider| provider.completion(TOOLS_MODEL)).into_agent_builder()
         .preamble(
             "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
              After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",

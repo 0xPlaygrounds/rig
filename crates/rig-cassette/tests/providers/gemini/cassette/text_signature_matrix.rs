@@ -214,7 +214,7 @@ async fn run(client: BoundGemini, cell: Cell) {
     match cell.api {
         Api::GenerateContent => {
             conversation(
-                client.endpoint(|provider_config| provider_config.completion(cell.model)),
+                client.endpoint(|provider| provider.completion(cell.model)),
                 cell,
             )
             .await

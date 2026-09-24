@@ -10,7 +10,7 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson};
 async fn extractor_smoke() {
     with_venice_cassette("extractor/extractor_smoke", |client| async move {
         let response = client
-            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .endpoint(|provider| provider.completion(DEFAULT_MODEL))
             .into_extractor_builder::<SmokePerson>()
             .build()
             .extract(EXTRACTOR_TEXT)

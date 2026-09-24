@@ -17,7 +17,7 @@ async fn list_models_smoke() {
         .bound()
         .expect("client should build");
     let models = match client
-        .endpoint(|provider_config| provider_config.models())
+        .endpoint(|provider| provider.models())
         .list_all()
         .await
     {

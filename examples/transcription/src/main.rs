@@ -31,8 +31,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn whisper(file_path: &str) -> Result<(), anyhow::Error> {
     let openai = OpenAI::from_env()?.bound()?;
-    let whisper =
-        openai.endpoint(|provider_config| provider_config.transcriptions(openai::WHISPER_1));
+    let whisper = openai.endpoint(|provider| provider.transcriptions(openai::WHISPER_1));
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
@@ -42,9 +41,8 @@ async fn whisper(file_path: &str) -> Result<(), anyhow::Error> {
 
 async fn gemini(file_path: &str) -> Result<(), anyhow::Error> {
     let gemini = Gemini::from_env()?.bound()?;
-    let model = gemini.endpoint(|provider_config| {
-        provider_config.transcriptions(gemini::completion::GEMINI_3_FLASH_PREVIEW)
-    });
+    let model = gemini
+        .endpoint(|provider| provider.transcriptions(gemini::completion::GEMINI_3_FLASH_PREVIEW));
     let response = TranscriptionRequestBuilder::from_file(model, file_path)?
         .send()
         .await?;
@@ -54,7 +52,7 @@ async fn gemini(file_path: &str) -> Result<(), anyhow::Error> {
 
 async fn azure(file_path: &str) -> Result<(), anyhow::Error> {
     let azure = OpenAI::from_env_with(&AZURE)?.bound()?;
-    let whisper = azure.endpoint(|provider_config| provider_config.transcriptions("whisper"));
+    let whisper = azure.endpoint(|provider| provider.transcriptions("whisper"));
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
@@ -64,8 +62,7 @@ async fn azure(file_path: &str) -> Result<(), anyhow::Error> {
 
 async fn groq(file_path: &str) -> Result<(), anyhow::Error> {
     let groq = OpenAI::from_env_with(&GROQ)?.bound()?;
-    let whisper =
-        groq.endpoint(|provider_config| provider_config.transcriptions(groq::WHISPER_LARGE_V3));
+    let whisper = groq.endpoint(|provider| provider.transcriptions(groq::WHISPER_LARGE_V3));
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
@@ -75,8 +72,7 @@ async fn groq(file_path: &str) -> Result<(), anyhow::Error> {
 
 async fn huggingface(file_path: &str) -> Result<(), anyhow::Error> {
     let huggingface = OpenAI::from_env_with(&HUGGINGFACE)?.bound()?;
-    let whisper =
-        huggingface.endpoint(|provider_config| provider_config.transcriptions("whisper-large-v3"));
+    let whisper = huggingface.endpoint(|provider| provider.transcriptions("whisper-large-v3"));
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
@@ -86,8 +82,7 @@ async fn huggingface(file_path: &str) -> Result<(), anyhow::Error> {
 
 async fn mistral(file_path: &str) -> Result<(), anyhow::Error> {
     let client = OpenAI::from_env_with(&MISTRAL)?.bound()?;
-    let model =
-        client.endpoint(|provider_config| provider_config.transcriptions(mistral::VOXTRAL_MINI));
+    let model = client.endpoint(|provider| provider.transcriptions(mistral::VOXTRAL_MINI));
     let response = TranscriptionRequestBuilder::from_file(model, file_path)?
         .send()
         .await?;

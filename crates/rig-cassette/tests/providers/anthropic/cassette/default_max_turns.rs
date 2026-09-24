@@ -91,9 +91,7 @@ async fn default_max_turns_allows_multi_step_tool_use() -> Result<()> {
         "default_max_turns/default_max_turns_allows_multi_step_tool_use",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble(
                     "You are an assistant that must use the available tools for arithmetic. \

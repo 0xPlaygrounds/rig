@@ -561,7 +561,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -607,7 +607,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/tool_choice_auto_required_specific_and_none",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
 
             let auto = model
                 .complete(
@@ -675,7 +675,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 "specific tool choice should force only lookup_orchard_label, saw {specific_calls:?}"
             );
 
-            let none_model = client.endpoint(|provider_config| provider_config.completion(TOOL_CHOICE_NONE_MODEL));
+            let none_model = client.endpoint(|provider| provider.completion(TOOL_CHOICE_NONE_MODEL));
             let none = none_model
                 .complete(
                     none_model
@@ -707,7 +707,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(JSON_OBJECT_MODEL));
+            let model = client.endpoint(|provider| provider.completion(JSON_OBJECT_MODEL));
             let request = model
                 .completion_request(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
@@ -753,8 +753,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(JSON_SCHEMA_MODEL));
+            let model = client.endpoint(|provider| provider.completion(JSON_SCHEMA_MODEL));
             let request = model
                 .completion_request(
                     "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
@@ -786,7 +785,7 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let mut stream = model
                 .stream(
                     model

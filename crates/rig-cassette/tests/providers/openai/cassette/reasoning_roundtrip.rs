@@ -14,7 +14,7 @@ async fn streaming() {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
             client
                 .openai
-                .endpoint(|provider_config| provider_config.completion("gpt-5.2")),
+                .endpoint(|provider| provider.completion("gpt-5.2")),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),
@@ -30,7 +30,7 @@ async fn nonstreaming() {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
             client
                 .openai
-                .endpoint(|provider_config| provider_config.completion("gpt-5.2")),
+                .endpoint(|provider| provider.completion("gpt-5.2")),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),
@@ -46,7 +46,7 @@ async fn reasoning_delta_hook_streaming() {
         reasoning::run_reasoning_delta_hook_streaming(
             client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6)),
+                .endpoint(|provider| provider.completion(openai::GPT_5_6)),
             serde_json::json!({
                 "reasoning": { "effort": "high", "summary": "detailed" }
             }),

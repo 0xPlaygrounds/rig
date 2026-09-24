@@ -16,7 +16,7 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let response: SmokeStructuredOutput = client
-                .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+                .endpoint(|provider| provider.completion(TOOL_MODEL))
                 .into_agent_builder()
                 .build()
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)

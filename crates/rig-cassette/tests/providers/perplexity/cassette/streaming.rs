@@ -13,7 +13,7 @@ use super::super::support::with_perplexity_cassette;
 async fn streaming_smoke() {
     with_perplexity_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(perplexity::SONAR))
+            .endpoint(|provider| provider.completion(perplexity::SONAR))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .max_tokens(16)

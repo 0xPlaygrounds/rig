@@ -8,7 +8,7 @@
 //! hand with no provider payload behind it.
 //!
 //! **What `raw` is.** The driver sets it from the reply's bytes
-//! (`driver::call`), so it is the provider's response *document*, not a
+//! (`Model::call`), so it is the provider's response *document*, not a
 //! round-trip through whatever type the decoder happened to parse. That
 //! matters here more than for any other provider in this family: Perplexity's
 //! wire carries `citations` and `search_results`, which no shared
@@ -68,7 +68,7 @@ async fn raw_is_the_verbatim_response_body() {
         "raw_capture_matrix/raw_round_trips_openai_type",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -115,7 +115,7 @@ async fn raw_exposes_object_and_citations() {
         "raw_capture_matrix/raw_exposes_object_not_citations",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -169,7 +169,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )

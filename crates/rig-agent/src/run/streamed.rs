@@ -823,7 +823,7 @@ impl StreamedTurnAssembler {
                 let usage = final_response.usage;
                 let emit_final = self.saw_text;
                 self.saw_text = false;
-                // `StreamingCompletionResponse` has already reconciled this
+                // `CompletionStream` has already reconciled this
                 // against the tool calls the accumulator actually saw (see
                 // `FinishReason::reconcile_with_output`), so it is consumed
                 // as-is and never re-reconciled here.
@@ -961,8 +961,8 @@ impl StreamedTurnAssembler {
 
     /// Assemble the completed turn. `final_choice` is the provider's
     /// aggregated choice for the turn
-    /// (`StreamingCompletionResponse::choice`) and `issuer` the service its
-    /// reasoning came from (`StreamingCompletionResponse::reasoning_issuer`),
+    /// (the folded `CompletionStream` choice) and `issuer` the service its
+    /// reasoning came from (`CompletionStream::reasoning_issuer`),
     /// recorded on every reasoning part that names none. With no issuer the
     /// reasoning keeps unknown provenance, which every request replays.
     pub fn finish(

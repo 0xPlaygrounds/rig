@@ -9,9 +9,8 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[tokio::test]
 async fn embeddings_smoke() {
     with_doubleword_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.endpoint(|provider_config| {
-            provider_config.embeddings(doubleword::QWEN3_EMBEDDING_8B, None)
-        });
+        let model =
+            client.endpoint(|provider| provider.embeddings(doubleword::QWEN3_EMBEDDING_8B, None));
         let embeddings = model
             .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
             .await

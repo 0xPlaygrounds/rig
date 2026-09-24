@@ -23,7 +23,7 @@ async fn completion_smoke() {
                 let mut ecs = EcsAgent::new(
                     client
                         .openai
-                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
+                        .endpoint(|provider| provider.completion(openai::GPT_4O)),
                     BASIC_PREAMBLE,
                     1,
                 );
@@ -46,7 +46,7 @@ async fn streaming_smoke() {
                 let mut ecs = EcsAgent::new(
                     client
                         .openai
-                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
+                        .endpoint(|provider| provider.completion(openai::GPT_4O)),
                     STREAMING_PREAMBLE,
                     1,
                 );
@@ -84,7 +84,7 @@ async fn streaming_tools_smoke() {
                     let mut ecs = EcsAgent::new(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
+                            .endpoint(|provider| provider.completion(openai::GPT_4O)),
                         STREAMING_TOOLS_PREAMBLE,
                         2,
                     );
@@ -116,7 +116,7 @@ async fn example_streaming_prompt() {
                 let mut ecs = EcsAgent::new(
                     client
                         .openai
-                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
+                        .endpoint(|provider| provider.completion(openai::GPT_4O)),
                     "Be precise and concise.",
                     1,
                 );
@@ -154,7 +154,7 @@ async fn example_streaming_with_tools() {
                     let mut ecs = EcsAgent::new(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
+                            .endpoint(|provider| provider.completion(openai::GPT_4O)),
                         "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",
                         2,

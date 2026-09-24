@@ -102,7 +102,7 @@ fn assert_recorded_top_p_is_number(scenario: &str) {
 async fn assert_blocking_tool_call(client: OpenAiCassette) {
     let model = client
         .openai
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI));
+        .endpoint(|provider| provider.completion(openai::GPT_4O_MINI));
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .preamble(PREAMBLE.to_string())
@@ -131,7 +131,7 @@ async fn assert_blocking_tool_call(client: OpenAiCassette) {
 async fn assert_streaming_terminal_usage(client: OpenAiCassette) {
     let model = client
         .openai
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI));
+        .endpoint(|provider| provider.completion(openai::GPT_4O_MINI));
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .preamble(PREAMBLE.to_string())

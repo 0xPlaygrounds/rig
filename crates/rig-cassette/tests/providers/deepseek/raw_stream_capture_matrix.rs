@@ -151,7 +151,7 @@ async fn stream_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| {
             capture_text_and_terminal(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -184,7 +184,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
         |client| {
             capture_terminal(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -246,7 +246,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let stream = model.stream(reasoning_request(&model)).await?;
             sink.put(collect_reasoning_text_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())

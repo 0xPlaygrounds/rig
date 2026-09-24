@@ -166,8 +166,7 @@ async fn llama_family_calls_a_tool() {
     with_llamacpp_llama_family_cassette(
         "model_family_matrix/llama_blocking_tool_call",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_LLAMA_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_LLAMA_MODEL));
             let response = model
                 .complete(
                     model
@@ -210,8 +209,7 @@ async fn llama_family_streams_tool_call_arguments_as_deltas() {
     with_llamacpp_llama_family_cassette(
         "model_family_matrix/llama_streaming_tool_call",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_LLAMA_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_LLAMA_MODEL));
             let observation = crate::support::collect_raw_stream_observation(
                 model
                     .stream(
@@ -249,8 +247,7 @@ async fn mistral_family_calls_a_tool() {
     with_llamacpp_mistral_family_cassette(
         "model_family_matrix/mistral_blocking_tool_call",
         |client| async move {
-            let model = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MISTRAL_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MISTRAL_MODEL));
             let response = model
                 .complete(
                     model
@@ -287,8 +284,7 @@ async fn mistral_family_streams_tool_call_arguments_as_deltas() {
     with_llamacpp_mistral_family_cassette(
         "model_family_matrix/mistral_streaming_tool_call",
         |client| async move {
-            let model = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MISTRAL_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MISTRAL_MODEL));
             let observation = crate::support::collect_raw_stream_observation(
                 model
                     .stream(
@@ -335,8 +331,7 @@ async fn gemma_family_has_no_tool_calling_in_its_template() {
     with_llamacpp_gemma_family_cassette(
         "model_family_matrix/gemma_tool_request_degrades_to_text",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_GEMMA_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_GEMMA_MODEL));
             let response = model
                 .complete(
                     model

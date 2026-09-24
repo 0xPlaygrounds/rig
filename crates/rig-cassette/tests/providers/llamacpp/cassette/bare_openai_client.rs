@@ -54,7 +54,7 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
         "bare_openai_client/caller_supplies_the_v1_prefix",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble("You are a concise assistant.")
                 .max_tokens(256)
@@ -110,7 +110,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         );
         let bare = rig::driver::Model::new(OpenAI::new("llamacpp-local"), recorder.clone());
         let _ = bare
-            .endpoint(|provider_config| provider_config.embeddings("m", Some(1)))
+            .endpoint(|provider| provider.embeddings("m", Some(1)))
             .embed_texts(["probe".to_string()])
             .await;
         let sent = &recorder.requests()[0];
@@ -128,7 +128,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         );
         let provider = rig::driver::Model::new(OpenAI::with_key(&LLAMACPP, ""), recorder.clone());
         let _ = provider
-            .endpoint(|provider_config| provider_config.embeddings("m", Some(1)))
+            .endpoint(|provider| provider.embeddings("m", Some(1)))
             .embed_texts(["probe".to_string()])
             .await;
         assert!(
@@ -145,7 +145,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/authorization_header_is_always_sent",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.chat(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.chat(CASSETTE_MODEL));
             let response = model
                 .complete(
                     model
@@ -205,7 +205,7 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
@@ -264,7 +264,7 @@ async fn agent_prompt_through_completions_api() {
         "bare_openai_client/agent_prompt_through_completions_api",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble("You are a helpful assistant.")
                 .build();
@@ -287,7 +287,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.chat(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.chat(CASSETTE_MODEL));
             let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())

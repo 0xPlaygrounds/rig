@@ -65,7 +65,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_xai_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(xai::GROK_4));
+            let model = client.endpoint(|provider| provider.completion(xai::GROK_4));
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
@@ -85,7 +85,7 @@ async fn responses_stream_preserves_tool_result_flow() {
         "streaming_tools/responses_stream_preserves_tool_result_flow",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(xai::GROK_4))
+                .endpoint(|provider| provider.completion(xai::GROK_4))
                 .into_agent_builder()
                 .preamble(XAI_STATUS_TOOL_PREAMBLE)
                 .tool(StatusWordTool)
@@ -109,7 +109,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_xai_cassette(
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(xai::GROK_4));
+            let model = client.endpoint(|provider| provider.completion(xai::GROK_4));
             let request = model
                 .completion_request(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())

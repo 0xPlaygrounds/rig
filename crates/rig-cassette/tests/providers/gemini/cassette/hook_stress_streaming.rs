@@ -29,9 +29,7 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
         "hook_stress_streaming/streaming_text_only_emits_text_deltas_and_stream_finish",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .name("stress-agent")
                 .preamble("You are a concise assistant. Answer directly in plain text.")
@@ -83,9 +81,7 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
         "hook_stress_streaming/streaming_tool_turns_fire_model_turn_finished",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)
@@ -137,9 +133,7 @@ async fn streaming_result_redaction_reaches_final_response() {
         "hook_stress_streaming/streaming_result_redaction_reaches_final_response",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .name("stress-agent")
                 .preamble(
@@ -186,9 +180,7 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
         "hook_stress_streaming/streaming_active_tools_narrowing_filters_a_tool",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .name("stress-agent")
                 .preamble(
@@ -235,9 +227,7 @@ async fn streaming_skip_leaves_tool_unexecuted() {
         "hook_stress_streaming/streaming_skip_leaves_tool_unexecuted",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .name("stress-agent")
                 .preamble(
@@ -285,9 +275,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
         "hook_stress_streaming/parity_blocking",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)
@@ -312,9 +300,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
         "hook_stress_streaming/parity_streaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)

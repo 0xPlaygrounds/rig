@@ -86,7 +86,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| {
             capture_sole_terminal(
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                 request,
                 sink.clone(),
             )
@@ -126,7 +126,7 @@ async fn stream_raw_exposes_envelope_fields() {
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| {
             capture_sole_terminal(
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                 request,
                 sink.clone(),
             )
@@ -208,7 +208,7 @@ async fn stream_raw_preserves_llamacpp_timings() {
         "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
         |client| {
             capture_sole_terminal(
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                 request,
                 sink.clone(),
             )

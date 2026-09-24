@@ -17,7 +17,7 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
         thinking: cells::ThinkingWire::OpenAiResponses,
         model: client
             .openai
-            .endpoint(|provider_config| provider_config.completion(GPT_5_MINI)),
+            .endpoint(|provider| provider.completion(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,

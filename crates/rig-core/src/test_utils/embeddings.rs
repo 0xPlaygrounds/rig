@@ -13,7 +13,6 @@ use crate::{
     wasm_compat::WasmCompatSend,
 };
 
-/// A deterministic [`EmbeddingModel`] that returns a fixed vector for each input document.
 /// The mock embedding endpoint: every text embeds as the same fixed
 /// 10-dimension vector, at most five texts per request.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

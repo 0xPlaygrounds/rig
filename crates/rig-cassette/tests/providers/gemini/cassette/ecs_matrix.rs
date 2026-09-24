@@ -21,13 +21,8 @@ fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
-        route: Some(
-            client.endpoint(|provider_config| {
-                provider_config.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)
-            }),
-        ),
+        model: client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
+        route: Some(client.endpoint(|provider| provider.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -40,7 +35,7 @@ fn legacy<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH)),
+        model: client.endpoint(|provider| provider.completion(GEMINI_2_5_FLASH)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -308,8 +303,7 @@ fn reasoning_wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'st
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion("gemini-3-flash-preview")),
+        model: client.endpoint(|provider| provider.completion("gemini-3-flash-preview")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

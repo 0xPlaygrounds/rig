@@ -15,7 +15,7 @@ async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)

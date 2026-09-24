@@ -4,7 +4,7 @@
 //! # The feature
 //!
 //! Capture is always on. Every response `completion` returns carries `raw`:
-//! Anthropic's reply document, verbatim — `driver::call` deserializes the
+//! Anthropic's reply document, verbatim — `Model::call` deserializes the
 //! response body onto it, so `raw` keeps every field the provider sent,
 //! including the ones `anthropic::completion::CompletionResponse` does not
 //! model (`type`, `stop_details`, the usage tier). `raw` is `Value::Null`
@@ -236,8 +236,8 @@ async fn raw_round_trips_into_provider_type() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                client.endpoint(|provider| {
+                    provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                 }),
                 probe_request,
                 sink,
@@ -301,8 +301,8 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                client.endpoint(|provider| {
+                    provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                 }),
                 |model| {
                     model
@@ -378,8 +378,8 @@ async fn normalized_fields_match_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_completion(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    client.endpoint(|provider| {
+                        provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                     }),
                     probe_request,
                     sink,
@@ -459,8 +459,8 @@ async fn raw_exposes_thinking_block_and_signature() {
             let sink = sink.clone();
             move |client| async move {
                 capture_completion(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    client.endpoint(|provider| {
+                        provider.completion(anthropic::completion::CLAUDE_SONNET_4_6)
                     }),
                     thinking_request,
                     sink,
@@ -599,8 +599,8 @@ async fn raw_exposes_tool_use_block() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                client.endpoint(|provider| {
+                    provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                 }),
                 tool_request,
                 sink,

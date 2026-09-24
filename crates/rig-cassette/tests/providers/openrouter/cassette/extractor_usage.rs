@@ -44,7 +44,7 @@ async fn extract_backward_compatibility() -> Result<()> {
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
             let extractor = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .into_extractor_builder::<Person>()
                 .build();
 
@@ -69,7 +69,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
             let extractor = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .into_extractor_builder::<Person>()
                 .build();
 
@@ -96,7 +96,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
         "extractor_usage/extract_with_chat_history_with_usage_works",
         |client| async move {
             let extractor = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .into_extractor_builder::<Address>()
                 .build();
 
@@ -128,7 +128,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
             let extractor = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .into_extractor_builder::<Person>()
                 .build();
 
@@ -162,7 +162,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
             let person_extractor = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .into_extractor_builder::<Person>()
                 .build();
             let person_response = person_extractor
@@ -171,7 +171,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
             let address_extractor = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .into_extractor_builder::<Address>()
                 .build();
             let address_response = address_extractor

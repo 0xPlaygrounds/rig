@@ -38,9 +38,7 @@ async fn manual_prompt_caching_reuses_tool_cache() {
         "prompt_caching/manual_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching());
             let tools = cache_probe_tools();
 
@@ -73,9 +71,7 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
         "prompt_caching/streaming_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching());
             let tools = cache_probe_tools_for("streaming prompt caching");
 
@@ -113,9 +109,7 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
         "prompt_caching/prompt_and_automatic_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching().with_automatic_caching());
             let tools = cache_probe_tools_for("manual plus automatic prompt caching");
 
@@ -179,9 +173,8 @@ fn matrix_model(
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
 ) -> Model<Messages> {
-    let mut model = client.endpoint(|provider_config| {
-        provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-    });
+    let mut model =
+        client.endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
     if mode.manual() {
         model = model.endpoint(|wire| wire.clone().with_prompt_caching());
     }
@@ -1617,9 +1610,7 @@ async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
         "prompt_caching/conformance_blocking_probe",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching());
             let observation = run_cache_probe(&model, &conformance_probe()).await;
             assert_cache_conformance(
@@ -1643,9 +1634,7 @@ async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
         "prompt_caching/conformance_streaming_probe",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching());
             let observation = run_cache_probe_streaming(&model, &conformance_probe()).await;
             assert_cache_conformance(
@@ -1682,9 +1671,7 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
             // busts the cache" result (zero cached tokens on every turn) that
             // was really just caching switched off.
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching());
             let response = rig::agent::AgentBuilder::new(model)
                 .preamble(&conformance_probe().preamble)

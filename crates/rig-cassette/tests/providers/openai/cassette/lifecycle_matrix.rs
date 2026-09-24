@@ -28,7 +28,7 @@ async fn middleware_phases_observe_a_unary_completion() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(BASIC_PREAMBLE)
                 .build();
@@ -55,7 +55,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
                 .add_hook(settle_hook)
@@ -88,7 +88,7 @@ async fn run_start_rewrite_reaches_the_provider() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(BASIC_PREAMBLE)
                 .add_hook(agent_hook)
@@ -121,7 +121,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble("You are a calculator. Use the add tool for arithmetic.")
                 .tool(Adder)
@@ -157,7 +157,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble("You are a calculator. Use the add tool for arithmetic.")
                 .tool(Adder)

@@ -4,7 +4,6 @@ use rig::agent::AgentBuilder;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::responses_api::wire::Responses;
 use serde::Deserialize;
 
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
@@ -19,7 +18,7 @@ async fn responses_api_no_think_returns_text() {
             // mistral.rs does not accept top-level `instructions`, so the
             // placement is a wire option rather than a client setting.
             let model = client
-                .endpoint(|provider_config| provider_config.responses(model_name()))
+                .endpoint(|provider| provider.responses(model_name()))
                 .endpoint(|wire| wire.clone().with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)
@@ -44,7 +43,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
         "responses_api/responses_api_reasoning_plus_answer_completes",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| provider_config.responses(model_name()))
+                .endpoint(|provider| provider.responses(model_name()))
                 .endpoint(|wire| wire.clone().with_system_instructions_as_messages());
             let request = model
                 .completion_request(
@@ -93,7 +92,7 @@ async fn responses_api_multi_turn_replays_history() {
         "responses_api/responses_api_multi_turn_replays_history",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| provider_config.responses(model_name()))
+                .endpoint(|provider| provider.responses(model_name()))
                 .endpoint(|wire| wire.clone().with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)

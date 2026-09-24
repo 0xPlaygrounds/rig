@@ -85,7 +85,7 @@ async fn file_id_chain() {
                     UserContent::text("How many pages does this PDF have? Answer with a number."),
                 ],
             };
-            let model = client.endpoint(|provider_config| provider_config.completion(xai::GROK_4));
+            let model = client.endpoint(|provider| provider.completion(xai::GROK_4));
             let first = model
                 .complete(request(vec![document.clone()]))
                 .await

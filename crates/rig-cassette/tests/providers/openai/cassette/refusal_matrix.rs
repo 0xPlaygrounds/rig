@@ -146,7 +146,7 @@ async fn chat_blocking_raw_model_surfaces_refusal() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
@@ -176,7 +176,7 @@ async fn chat_blocking_agent_prompt_surfaces_refusal() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL))
+                .endpoint(|provider| provider.completion(REFUSING_MODEL))
                 .into_agent_builder()
                 .additional_params(chat_response_format())
                 .build();
@@ -207,7 +207,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
@@ -247,7 +247,7 @@ async fn chat_blocking_refusal_finishes_with_stop() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
@@ -276,7 +276,7 @@ async fn chat_streaming_raw_model_surfaces_refusal() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
@@ -306,7 +306,7 @@ async fn chat_streaming_agent_surfaces_refusal() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL))
+                .endpoint(|provider| provider.completion(REFUSING_MODEL))
                 .into_agent_builder()
                 .additional_params(chat_response_format())
                 .build();
@@ -333,7 +333,7 @@ async fn chat_streaming_terminal_carries_usage() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
@@ -377,7 +377,7 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
 
             let blocking = model
                 .complete(
@@ -444,7 +444,7 @@ async fn chat_refusal_turn_survives_into_history() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL))
+                .endpoint(|provider| provider.completion(REFUSING_MODEL))
                 .into_agent_builder()
                 .additional_params(chat_response_format())
                 .build();
@@ -487,7 +487,7 @@ async fn chat_control_non_refusing_prompt_is_unchanged() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model
                 .completion_request(ANSWERABLE_PROMPT)
                 .additional_params(chat_response_format())
@@ -516,7 +516,7 @@ async fn chat_control_non_refusing_stream_is_unchanged() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model
                 .completion_request(ANSWERABLE_PROMPT)
                 .additional_params(chat_response_format())
@@ -548,7 +548,7 @@ async fn chat_control_mini_answers_inside_schema() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
@@ -577,7 +577,7 @@ async fn chat_control_plain_refusal_is_content_not_refusal() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let request = model.completion_request(REFUSED_PROMPT).build();
 
             let response = model.complete(request).await.expect("turn");
@@ -605,7 +605,7 @@ async fn responses_blocking_refusal_part_surfaces() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL));
+                .endpoint(|provider| provider.completion(REFUSING_MODEL));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(responses_text_format())
@@ -632,7 +632,7 @@ async fn responses_streaming_refusal_delta_surfaces() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL));
+                .endpoint(|provider| provider.completion(REFUSING_MODEL));
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .additional_params(responses_text_format())
@@ -658,7 +658,7 @@ async fn responses_agent_blocking_refusal_surfaces() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL))
+                .endpoint(|provider| provider.completion(REFUSING_MODEL))
                 .into_agent_builder()
                 .additional_params(responses_text_format())
                 .build();
@@ -686,7 +686,7 @@ async fn responses_agent_streaming_refusal_surfaces() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL))
+                .endpoint(|provider| provider.completion(REFUSING_MODEL))
                 .into_agent_builder()
                 .additional_params(responses_text_format())
                 .build();
@@ -714,7 +714,7 @@ async fn cross_surface_refusal_parity() {
         |client| async move {
             let responses_model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(REFUSING_MODEL));
+                .endpoint(|provider| provider.completion(REFUSING_MODEL));
             let responses_text = assistant_text_response(
                 &responses_model
                     .complete(
@@ -731,7 +731,7 @@ async fn cross_surface_refusal_parity() {
 
             let chat_model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(REFUSING_MODEL));
+                .endpoint(|provider| provider.chat(REFUSING_MODEL));
             let chat_text = assistant_text_response(
                 &chat_model
                     .complete(

@@ -78,15 +78,15 @@ async fn batch_multi_extract_chain() -> Result<()> {
     with_xai_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
         |client| async move {
-            let names_extractor = client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)).into_extractor_builder::<Names>()
+            let names_extractor = client.endpoint(|provider| provider.completion(xai::GROK_3_MINI)).into_extractor_builder::<Names>()
                 .append_preamble("Extract names from the given text.")
                 .retries(2)
                 .build();
-            let topics_extractor = client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)).into_extractor_builder::<Topics>()
+            let topics_extractor = client.endpoint(|provider| provider.completion(xai::GROK_3_MINI)).into_extractor_builder::<Topics>()
                 .append_preamble("Extract topics from the given text.")
                 .retries(2)
                 .build();
-            let sentiment_extractor = client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)).into_extractor_builder::<Sentiment>()
+            let sentiment_extractor = client.endpoint(|provider| provider.completion(xai::GROK_3_MINI)).into_extractor_builder::<Sentiment>()
                 .append_preamble(
                     "Extract sentiment and confidence from the given text. \
                      Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",

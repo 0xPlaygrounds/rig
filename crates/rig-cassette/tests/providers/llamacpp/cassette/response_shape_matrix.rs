@@ -73,8 +73,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/reasoning_blocking",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let response = model
                 .complete(
                     model
@@ -129,8 +128,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/reasoning_streaming",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let mut stream = model
                 .stream(
                     model
@@ -237,8 +235,7 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/two_candidates_blocking",
         move |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let response = model
                 .complete(
                     model
@@ -261,8 +258,7 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/two_candidates_streaming",
         move |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let mut stream = model
                 .stream(
                     model
@@ -364,7 +360,7 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
 #[tokio::test]
 async fn logprobs_survive_into_the_raw_response() {
     with_llamacpp_cassette("response_shape_matrix/logprobs", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+        let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
         let response = model
             .complete(
                 model

@@ -15,7 +15,7 @@ async fn extractor_smoke() {
         .bound()
         .expect("transport should build");
     let extractor = groq
-        .endpoint(|provider_config| provider_config.completion(EXTRACTOR_MODEL))
+        .endpoint(|provider| provider.completion(EXTRACTOR_MODEL))
         .into_extractor_builder::<SmokePerson>()
         .build();
 

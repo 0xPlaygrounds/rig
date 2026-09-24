@@ -104,7 +104,7 @@ async fn cached_content_lifecycle_chain() {
     with_gemini_prompt_caching_cassette(
         "stateful_chain_matrix/cached_content_lifecycle_chain",
         |client: BoundGemini| async move {
-            let caches = client.endpoint(|provider_config| provider_config.cached_contents());
+            let caches = client.endpoint(|provider| provider.cached_contents());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -140,7 +140,7 @@ async fn cached_content_lifecycle_chain() {
                 }
                 let model = generator
                     .clone()
-                    .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                    .endpoint(|provider| provider.completion(CACHE_MODEL))
                     .endpoint(|wire| wire.clone().with_cached_content(name.clone()));
                 let reply = model
                     .complete(ask(
@@ -163,7 +163,7 @@ async fn cached_content_lifecycle_chain() {
             .await;
 
             let refused = client
-                .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                .endpoint(|provider| provider.completion(CACHE_MODEL))
                 .endpoint(|wire| wire.clone().with_cached_content(created.name.clone()))
                 .complete(ask("What is the code of record alpha?"))
                 .await;
@@ -478,7 +478,7 @@ async fn file_uri_chain() {
                         ),
                     ],
                 };
-                let model = client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH));
+                let model = client.endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
                 let first = model
                     .complete(ask_with(vec![document.clone()]))
                     .await

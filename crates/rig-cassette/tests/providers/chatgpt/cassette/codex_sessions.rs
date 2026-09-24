@@ -99,7 +99,7 @@ async fn sequential_tool_calls_nonstreaming() {
         "codex_sessions/sequential_tool_calls_nonstreaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
@@ -172,7 +172,7 @@ async fn sequential_tool_calls_streaming() {
         "codex_sessions/sequential_tool_calls_streaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
@@ -220,7 +220,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
         "codex_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -282,7 +282,7 @@ async fn parallel_tool_calls_single_turn_streaming() {
         "codex_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -307,8 +307,7 @@ async fn long_history_replay_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4));
+            let model = client.endpoint(|provider| provider.completion(chatgpt::GPT_5_4));
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool call so the follow-up can echo
@@ -409,7 +408,7 @@ async fn reasoning_session_two_tool_calls_streaming() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(6000)
@@ -481,7 +480,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
         "codex_sessions/usage_accumulates_across_streaming_multi_turn",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)

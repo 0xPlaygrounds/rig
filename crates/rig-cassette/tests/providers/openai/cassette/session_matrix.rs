@@ -29,13 +29,13 @@ fn models(
     (
         client
             .openai
-            .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
+            .endpoint(|provider| provider.responses("gpt-5-mini")),
         client
             .openai
-            .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
+            .endpoint(|provider| provider.responses("gpt-5-mini")),
         client
             .openai
-            .endpoint(|provider_config| provider_config.responses("gpt-5.2")),
+            .endpoint(|provider| provider.responses("gpt-5.2")),
     )
 }
 

@@ -11,7 +11,6 @@
 
 use rig::completion::CompletionModel;
 use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
 use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -32,7 +31,7 @@ fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
+        model: client.endpoint(|provider| provider.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -45,9 +44,8 @@ fn missing<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.endpoint(|provider_config| {
-            provider_config.completion("rig/definitely-not-a-doubleword-model")
-        }),
+        model: client
+            .endpoint(|provider| provider.completion("rig/definitely-not-a-doubleword-model")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -109,7 +107,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
+        model: client.endpoint(|provider| provider.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -125,7 +123,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
+        model: client.endpoint(|provider| provider.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),

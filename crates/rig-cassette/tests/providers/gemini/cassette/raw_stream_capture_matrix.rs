@@ -207,7 +207,7 @@ async fn raw_roundtrips_streaming_completion_response() {
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
             capture_text_and_sole_terminal(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -260,7 +260,7 @@ async fn raw_exposes_terminal_only_fields() {
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
             capture_text_and_sole_terminal(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -317,7 +317,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             sink.put(drain_stream(&model, forced_tool_request(&model)).await);
         },
     )

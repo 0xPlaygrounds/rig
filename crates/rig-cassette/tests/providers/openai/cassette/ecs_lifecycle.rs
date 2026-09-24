@@ -25,7 +25,7 @@ async fn middleware_phases_observe_a_unary_completion() {
                     let mut ecs = ecs_lifecycle::agent(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(MODEL)),
+                            .endpoint(|provider| provider.completion(MODEL)),
                         BASIC_PREAMBLE,
                     );
                     let response = ecs.prompt(BASIC_PROMPT, false).await;
@@ -59,7 +59,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
                     let mut ecs = ecs_lifecycle::agent(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(MODEL)),
+                            .endpoint(|provider| provider.completion(MODEL)),
                         STREAMING_PREAMBLE,
                     );
                     ecs_lifecycle::install(&mut ecs, settle_hook);
@@ -100,7 +100,7 @@ async fn run_start_rewrite_reaches_the_provider() {
                     let mut ecs = ecs_lifecycle::agent(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(MODEL)),
+                            .endpoint(|provider| provider.completion(MODEL)),
                         BASIC_PREAMBLE,
                     );
                     ecs_lifecycle::install(&mut ecs, agent_hook);
@@ -142,7 +142,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
                     let mut ecs = ecs_lifecycle::agent(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(MODEL)),
+                            .endpoint(|provider| provider.completion(MODEL)),
                         "You are a calculator. Use the add tool for arithmetic.",
                     );
                     ecs.tool(Adder);
@@ -189,7 +189,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
                     let mut ecs = ecs_lifecycle::agent(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(MODEL)),
+                            .endpoint(|provider| provider.completion(MODEL)),
                         "You are a calculator. Use the add tool for arithmetic.",
                     );
                     ecs.tool(Adder);

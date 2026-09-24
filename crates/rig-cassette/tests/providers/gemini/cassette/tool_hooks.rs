@@ -26,9 +26,7 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
         "tool_hooks/on_tool_call_skip_returns_reason_without_executing",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -71,9 +69,7 @@ async fn on_tool_call_terminate_cancels_run() {
         "tool_hooks/on_tool_call_terminate_cancels_run",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -117,9 +113,7 @@ async fn hooks_observe_every_tool_call_and_result() {
         "tool_hooks/hooks_observe_every_tool_call_and_result",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)

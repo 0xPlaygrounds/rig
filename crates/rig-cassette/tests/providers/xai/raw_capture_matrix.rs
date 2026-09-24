@@ -73,7 +73,7 @@ async fn raw_round_trips_responses_type() {
         "raw_capture_matrix/raw_round_trips_responses_type",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -115,7 +115,7 @@ async fn raw_exposes_status_and_service_tier() {
         "raw_capture_matrix/raw_exposes_status_and_service_tier",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -164,7 +164,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )

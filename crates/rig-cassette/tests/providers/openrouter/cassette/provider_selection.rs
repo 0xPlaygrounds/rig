@@ -50,7 +50,7 @@ async fn provider_selection_scenarios() {
 
             for (prompt, params) in scenarios {
                 let agent = client
-                    .endpoint(|provider_config| provider_config.completion(DEEPSEEK_V3_2))
+                    .endpoint(|provider| provider.completion(DEEPSEEK_V3_2))
                     .into_agent_builder()
                     .preamble("You are a helpful assistant.")
                     .additional_params(params)

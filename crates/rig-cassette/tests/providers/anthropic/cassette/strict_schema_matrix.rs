@@ -17,9 +17,7 @@ async fn assert_strict_schema_rejected(
     parameters: Value,
 ) {
     let model = client
-        .endpoint(|provider_config| {
-            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        })
+        .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
         .endpoint(|wire| wire.clone().with_strict_tools());
     let request = model
         .completion_request(prompt)
@@ -1087,9 +1085,7 @@ async fn required_and_optional_property_order_schema_is_accepted() {
         "strict_schema_matrix/required_and_optional_property_order_schema_is_accepted",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request(

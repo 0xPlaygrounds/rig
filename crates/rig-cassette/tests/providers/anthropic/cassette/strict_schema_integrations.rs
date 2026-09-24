@@ -57,9 +57,8 @@ async fn default_model_remains_non_strict() {
     with_anthropic_cassette(
         "strict_schema_integrations/default_model_remains_non_strict",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request("Call default_mode with value = unchanged.")
                 .max_tokens(1024)
@@ -83,9 +82,7 @@ async fn strict_mode_without_tools_is_a_noop() {
         "strict_schema_integrations/strict_mode_without_tools_is_a_noop",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let response = model
                 .complete(
@@ -116,9 +113,7 @@ async fn automatic_choice_calls_a_strict_tool() {
         "strict_schema_integrations/automatic_choice_calls_a_strict_tool",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("You must call strict_auto with value = automatic.")
@@ -144,9 +139,7 @@ async fn none_choice_suppresses_a_strict_tool() {
         "strict_schema_integrations/none_choice_suppresses_a_strict_tool",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Reply with exactly: strict tool suppressed")
@@ -171,9 +164,7 @@ async fn specific_choice_selects_one_of_multiple_strict_tools() {
         "strict_schema_integrations/specific_choice_selects_one_of_multiple_strict_tools",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Call strict_second with value = chosen.")
@@ -203,9 +194,7 @@ async fn rig_strict_and_provider_non_strict_tools_coexist() {
         "strict_schema_integrations/rig_strict_and_provider_non_strict_tools_coexist",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Call raw_provider_tool with value = raw.")
@@ -243,7 +232,7 @@ async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
         "strict_schema_integrations/twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Call raw_boundary_tool with an empty object.")
@@ -281,9 +270,7 @@ async fn manual_prompt_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/manual_prompt_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching().with_strict_tools());
             let request = model
                 .completion_request("Call cached_strict with value = manual.")
@@ -309,9 +296,7 @@ async fn automatic_prompt_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/automatic_prompt_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_automatic_caching().with_strict_tools());
             let request = model
                 .completion_request("Call cached_strict with value = automatic.")
@@ -336,9 +321,7 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/static_prefix_ttl_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| {
                     let wire = wire.clone();
                     wire.with_automatic_caching()
@@ -382,9 +365,7 @@ async fn one_hour_automatic_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_automatic_caching_1h().with_strict_tools());
             let request = model
                 .completion_request("Call cached_strict with value = one-hour.")
@@ -409,9 +390,7 @@ async fn structured_output_and_strict_tool_use_coexist() {
         "strict_schema_integrations/structured_output_and_strict_tool_use_coexist",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let output_schema: schemars::Schema = serde_json::from_value(json!({
                 "type": "object",
@@ -447,7 +426,7 @@ async fn parallel_strict_tool_calls_preserve_each_schema() {
         "strict_schema_integrations/parallel_strict_tool_calls_preserve_each_schema",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request(

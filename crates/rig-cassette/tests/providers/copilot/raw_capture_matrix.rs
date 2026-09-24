@@ -5,7 +5,7 @@
 //!
 //! Capture is always on. Every completion the driver returns carries `raw`:
 //! the route's own reply *document*, set from the reply's bytes
-//! (`driver::call` does `serde_json::from_slice(&body)`), untagged. So it is
+//! (`Model::call` does `serde_json::from_slice(&body)`), untagged. So it is
 //! not a round trip through whatever type the decoder parsed — it is the body
 //! Copilot sent, and it reads back into the type that route owns
 //! ([`openai::CompletionResponse`] on chat completions,
@@ -156,7 +156,7 @@ async fn chat_raw_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_raw_round_trips_provider_type",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(CHAT_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CHAT_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -206,7 +206,7 @@ async fn chat_raw_exposes_system_fingerprint() {
         "raw_capture_matrix/chat_raw_exposes_system_fingerprint",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(CHAT_MODEL)),
+                client.endpoint(|provider| provider.completion(CHAT_MODEL)),
                 request,
                 sink,
             )
@@ -248,7 +248,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
         "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(CHAT_MODEL)),
+                client.endpoint(|provider| provider.completion(CHAT_MODEL)),
                 request,
                 sink,
             )
@@ -296,8 +296,7 @@ async fn responses_raw_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_capture_matrix/responses_raw_round_trips_provider_type",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(RESPONSES_MODEL));
+            let model = client.endpoint(|provider| provider.completion(RESPONSES_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
@@ -340,7 +339,7 @@ async fn responses_raw_exposes_envelope() {
         "raw_capture_matrix/responses_raw_exposes_envelope",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(RESPONSES_MODEL)),
+                client.endpoint(|provider| provider.completion(RESPONSES_MODEL)),
                 request,
                 sink,
             )
@@ -381,7 +380,7 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
         "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(RESPONSES_MODEL)),
+                client.endpoint(|provider| provider.completion(RESPONSES_MODEL)),
                 request,
                 sink,
             )

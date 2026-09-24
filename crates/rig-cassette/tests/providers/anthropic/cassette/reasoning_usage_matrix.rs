@@ -368,9 +368,8 @@ async fn blocking_budget_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_budget_thinking",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
@@ -393,9 +392,8 @@ async fn blocking_adaptive_declines_to_think() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_adaptive_declines_to_think",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_OPUS_4_7)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_OPUS_4_7));
             slot.record(
                 blocking_usage(
                     &model,
@@ -419,9 +417,8 @@ async fn blocking_larger_budget() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_larger_budget",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
@@ -444,9 +441,8 @@ async fn blocking_with_tools() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_with_tools",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request("Say the single word READY.")
                 .max_tokens(2048)
@@ -469,9 +465,8 @@ async fn blocking_tool_use_terminal() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_tool_use_terminal",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request("Use the multiply tool to compute 17 times 23.")
                 .max_tokens(2048)
@@ -494,9 +489,8 @@ async fn blocking_with_preamble() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_with_preamble",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant.".to_string())
@@ -520,9 +514,7 @@ async fn blocking_with_prompt_caching() {
         "reasoning_usage_matrix/blocking_with_prompt_caching",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| {
                     let wire = wire.clone();
                     wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
@@ -549,9 +541,8 @@ async fn blocking_redacted_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_redacted_thinking",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let prompt = format!("{REDACTED_THINKING_MAGIC_STRING} Reply with the single word OK.");
             slot.record(
                 blocking_usage(
@@ -579,9 +570,8 @@ async fn blocking_max_tokens_truncation() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_max_tokens_truncation",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
@@ -612,9 +602,8 @@ async fn blocking_opus_model() {
             // Opus 4.8 rejects `thinking.type.enabled` outright — it takes
             // `adaptive` plus `output_config.effort` instead — so the second
             // model family can only be covered on the adaptive path.
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_OPUS_4_8)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_OPUS_4_8));
             slot.record(
                 blocking_usage(
                     &model,
@@ -637,9 +626,8 @@ async fn blocking_long_reasoning() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_long_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
@@ -667,9 +655,8 @@ async fn blocking_thinking_disabled_control() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_thinking_disabled_control",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .max_tokens(64)
@@ -690,9 +677,8 @@ async fn blocking_haiku_no_thinking_control() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_haiku_no_thinking_control",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .max_tokens(64)
@@ -715,9 +701,8 @@ async fn streaming_budget_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_budget_thinking",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
@@ -740,9 +725,8 @@ async fn streaming_adaptive_declines_to_think() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_adaptive_declines_to_think",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_OPUS_4_7)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_OPUS_4_7));
             slot.record(
                 streamed_usage(
                     &model,
@@ -766,9 +750,8 @@ async fn streaming_larger_budget() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_larger_budget",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
@@ -791,9 +774,8 @@ async fn streaming_with_tools() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_with_tools",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request("Say the single word READY.")
                 .max_tokens(2048)
@@ -816,9 +798,8 @@ async fn streaming_tool_use_terminal() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_tool_use_terminal",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request("Use the multiply tool to compute 17 times 23.")
                 .max_tokens(2048)
@@ -841,9 +822,8 @@ async fn streaming_with_preamble() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_with_preamble",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant.".to_string())
@@ -867,9 +847,7 @@ async fn streaming_with_prompt_caching() {
         "reasoning_usage_matrix/streaming_with_prompt_caching",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| {
                     let wire = wire.clone();
                     wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
@@ -896,9 +874,8 @@ async fn streaming_redacted_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_redacted_thinking",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let prompt = format!("{REDACTED_THINKING_MAGIC_STRING} Reply with the single word OK.");
             slot.record(
                 streamed_usage(
@@ -922,9 +899,8 @@ async fn streaming_max_tokens_truncation() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_max_tokens_truncation",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
@@ -953,9 +929,8 @@ async fn streaming_opus_model() {
         "reasoning_usage_matrix/streaming_opus_model",
         |client| async move {
             // Opus 4.8 rejects `thinking.type.enabled`; see the blocking twin.
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_OPUS_4_8)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_OPUS_4_8));
             slot.record(
                 streamed_usage(
                     &model,
@@ -978,9 +953,8 @@ async fn streaming_long_reasoning() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_long_reasoning",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
@@ -1008,9 +982,8 @@ async fn streaming_thinking_disabled_control() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_thinking_disabled_control",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .max_tokens(64)
@@ -1035,9 +1008,8 @@ async fn normalized_stream_budget_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/normalized_stream_budget_thinking",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let mut stream = model
                 .stream(request(
                     &model,
@@ -1072,9 +1044,7 @@ async fn agent_blocking_thinking() {
         "reasoning_usage_matrix/agent_blocking_thinking",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble("You are a meticulous arithmetic assistant.")
                 .max_tokens(2048)

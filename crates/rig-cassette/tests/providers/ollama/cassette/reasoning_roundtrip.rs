@@ -17,7 +17,7 @@ fn think_params() -> Option<serde_json::Value> {
 async fn nonstreaming() {
     with_ollama_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.endpoint(|provider_config| provider_config.completion(MODEL)),
+            client.endpoint(|provider| provider.completion(MODEL)),
             think_params(),
         ))
         .await;
@@ -29,7 +29,7 @@ async fn nonstreaming() {
 async fn streaming() {
     with_ollama_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.endpoint(|provider_config| provider_config.completion(MODEL)),
+            client.endpoint(|provider| provider.completion(MODEL)),
             think_params(),
         ))
         .await;

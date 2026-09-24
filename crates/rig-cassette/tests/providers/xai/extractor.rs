@@ -10,7 +10,7 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 async fn extractor_smoke() {
     with_xai_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
-            .endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI))
+            .endpoint(|provider| provider.completion(xai::GROK_3_MINI))
             .into_extractor_builder::<SmokePerson>()
             .build();
 

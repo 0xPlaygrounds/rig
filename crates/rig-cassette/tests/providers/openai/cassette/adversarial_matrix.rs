@@ -21,7 +21,7 @@ async fn colliding_ids_chat() {
         adversarial::colliding_ids(
             &client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+                .endpoint(|provider| provider.chat("gpt-4.1-mini")),
             "call_dup",
             None,
         )
@@ -38,7 +38,7 @@ async fn colliding_ids_responses() {
         adversarial::colliding_ids(
             &client
                 .openai
-                .endpoint(|provider_config| provider_config.responses("gpt-4.1-mini")),
+                .endpoint(|provider| provider.responses("gpt-4.1-mini")),
             "call_dup",
             Some(json!({ "store": false })),
         )
@@ -57,7 +57,7 @@ async fn out_of_order_results_chat() {
             adversarial::out_of_order_results(
                 &client
                     .openai
-                    .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+                    .endpoint(|provider| provider.chat("gpt-4.1-mini")),
                 None,
             )
             .await;
@@ -76,7 +76,7 @@ async fn out_of_order_results_responses() {
             adversarial::out_of_order_results(
                 &client
                     .openai
-                    .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
+                    .endpoint(|provider| provider.responses("gpt-5-mini")),
                 reasoning("low"),
             )
             .await;
@@ -95,7 +95,7 @@ async fn long_encrypted_payload() {
         adversarial::reasoning_round_trip(
             &client
                 .openai
-                .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
+                .endpoint(|provider| provider.responses("gpt-5-mini")),
             "Work this out carefully before acting. Let n be the number of primes below 600 \
              and s the sum of the decimal digits of the 90th prime. Count the primes in \
              blocks of 100 and verify each block. If n + s is even, the record is alpha, \
@@ -119,7 +119,7 @@ async fn three_provider_round_trip() {
             adversarial::round_trip_hop(
                 &client
                     .openai
-                    .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
+                    .endpoint(|provider| provider.responses("gpt-5-mini")),
                 Hop::OpenAiResponses,
                 reasoning("low"),
             )

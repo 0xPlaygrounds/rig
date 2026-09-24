@@ -7,7 +7,7 @@
 //! hand with no provider payload behind it.
 //!
 //! **What `raw` is.** The driver sets it from the reply's bytes
-//! (`driver::call`), so it is the provider's response *document* rather than a
+//! (`Model::call`), so it is the provider's response *document* rather than a
 //! round-trip through whatever type the decoder parsed. Two things follow for
 //! Groq specifically. Its timing accounting (`usage.queue_time`,
 //! `prompt_time`, `completion_time`, `total_time`) is reachable through the
@@ -70,7 +70,7 @@ async fn raw_is_the_verbatim_response_body() {
     let sink = Observed::default();
     with_groq_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
         capture_completion(
-            client.endpoint(|provider_config| provider_config.completion(RAW_CAPTURE_MATRIX_MODEL)),
+            client.endpoint(|provider| provider.completion(RAW_CAPTURE_MATRIX_MODEL)),
             request,
             sink.clone(),
         )
@@ -134,7 +134,7 @@ async fn raw_exposes_queue_time() {
     let sink = Observed::default();
     with_groq_cassette_result("raw_capture_matrix/raw_exposes_queue_time", |client| {
         capture_completion(
-            client.endpoint(|provider_config| provider_config.completion(RAW_CAPTURE_MATRIX_MODEL)),
+            client.endpoint(|provider| provider.completion(RAW_CAPTURE_MATRIX_MODEL)),
             request,
             sink.clone(),
         )
@@ -192,9 +192,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(RAW_CAPTURE_MATRIX_MODEL)
-                }),
+                client.endpoint(|provider| provider.completion(RAW_CAPTURE_MATRIX_MODEL)),
                 request,
                 sink.clone(),
             )

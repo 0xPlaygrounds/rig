@@ -13,17 +13,14 @@ async fn generated_image_as_user_content() {
         "image_input_matrix/generated_image_as_user_content",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.endpoint(|provider_config| {
-                    provider_config.images(gemini::GEMINI_2_5_FLASH_IMAGE)
-                }),
+                &client.endpoint(|provider| provider.images(gemini::GEMINI_2_5_FLASH_IMAGE)),
                 None,
                 None,
             )
             .await;
             image_inputs::as_user_content(
-                &client.endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                }),
+                &client
+                    .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 &bytes,
                 None,
             )
@@ -43,16 +40,14 @@ async fn generated_image_as_tool_result() {
         "image_input_matrix/generated_image_as_tool_result",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.endpoint(|provider_config| {
-                    provider_config.images(gemini::GEMINI_2_5_FLASH_IMAGE)
-                }),
+                &client.endpoint(|provider| provider.images(gemini::GEMINI_2_5_FLASH_IMAGE)),
                 None,
                 None,
             )
             .await;
             image_inputs::as_tool_result(
-                &client.endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                &client.endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 }),
                 &bytes,
                 None,

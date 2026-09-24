@@ -17,7 +17,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        model: client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

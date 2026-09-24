@@ -453,7 +453,7 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .endpoint(|provider| provider.completion(SESSION_MODEL))
                 .into_agent_builder()
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
@@ -499,7 +499,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .endpoint(|provider| provider.completion(SESSION_MODEL))
                 .into_agent_builder()
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
@@ -562,7 +562,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .endpoint(|provider| provider.completion(SESSION_MODEL))
                 .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -613,7 +613,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .endpoint(|provider| provider.completion(SESSION_MODEL))
                 .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -645,7 +645,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -687,7 +687,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
@@ -736,7 +736,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
 
             let required = model
                 .complete(
@@ -821,7 +821,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
     with_deepseek_cassette_result(
         "agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
@@ -891,8 +891,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/chat_alias_vs_reasoner_alias_behavior",
         |client| async move {
-            let chat_model =
-                client.endpoint(|provider_config| provider_config.completion(CHAT_ALIAS_MODEL));
+            let chat_model = client.endpoint(|provider| provider.completion(CHAT_ALIAS_MODEL));
             let chat = chat_model
                 .complete(
                     chat_model
@@ -911,7 +910,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
             );
 
             let reasoner_model =
-                client.endpoint(|provider_config| provider_config.completion(REASONER_ALIAS_MODEL));
+                client.endpoint(|provider| provider.completion(REASONER_ALIAS_MODEL));
             let reasoner = reasoner_model
                 .complete(
                     reasoner_model
@@ -945,7 +944,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",

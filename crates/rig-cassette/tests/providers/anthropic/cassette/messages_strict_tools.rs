@@ -30,9 +30,7 @@ pub(super) async fn strict_tool_call_arguments(
     parameters: serde_json::Value,
 ) -> serde_json::Value {
     let model = client
-        .endpoint(|provider_config| {
-            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        })
+        .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
         .endpoint(|wire| wire.clone().with_strict_tools());
     let request = model
         .completion_request(prompt)
@@ -77,9 +75,7 @@ async fn strict_tools_opt_in_roundtrip() {
         "messages_strict_tools/strict_tools_opt_in_roundtrip",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request(

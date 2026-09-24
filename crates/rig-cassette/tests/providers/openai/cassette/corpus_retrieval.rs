@@ -55,14 +55,14 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
             let index = facts_index(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.embeddings(EMBEDDING, None)),
+                    .endpoint(|provider| provider.embeddings(EMBEDDING, None)),
                 &FACTS,
             )
             .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
@@ -92,14 +92,14 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
             let index = facts_index(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.embeddings(EMBEDDING, None)),
+                    .endpoint(|provider| provider.embeddings(EMBEDDING, None)),
                 &FACTS,
             )
             .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
@@ -132,14 +132,14 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
             let index = tool_index(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.embeddings(EMBEDDING, None)),
+                    .endpoint(|provider| provider.embeddings(EMBEDDING, None)),
                 &toolset,
             )
             .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
@@ -180,14 +180,14 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
             let index = tool_index(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.embeddings(EMBEDDING, None)),
+                    .endpoint(|provider| provider.embeddings(EMBEDDING, None)),
                 &toolset,
             )
             .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
@@ -225,7 +225,7 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
             let facts = facts_index(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.embeddings(EMBEDDING, None)),
+                    .endpoint(|provider| provider.embeddings(EMBEDDING, None)),
                 &FACTS,
             )
             .await;
@@ -233,14 +233,14 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
             let tools = tool_index(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.embeddings(EMBEDDING, None)),
+                    .endpoint(|provider| provider.embeddings(EMBEDDING, None)),
                 &toolset,
             )
             .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)

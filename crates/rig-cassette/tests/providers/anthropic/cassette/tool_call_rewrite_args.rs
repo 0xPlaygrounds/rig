@@ -148,9 +148,7 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
         "tool_call_rewrite_args/tool_call_args_rewritten_by_hook_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
                 .tool(weather)
@@ -181,9 +179,7 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
         "tool_call_rewrite_args/tool_call_args_rewritten_by_hook_streaming",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
                 .tool(weather)

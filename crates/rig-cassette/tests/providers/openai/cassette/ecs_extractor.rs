@@ -12,7 +12,7 @@ async fn extractor_smoke() {
                 let mut extractor = EcsExtractor::<SmokePerson>::new(
                     client
                         .openai
-                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
+                        .endpoint(|provider| provider.completion(openai::GPT_4O)),
                     None,
                     None,
                 );

@@ -10,7 +10,7 @@ async fn completion_smoke() {
         async {
             with_ollama_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                    client.endpoint(|provider| provider.completion(MODEL)),
                     BASIC_PREAMBLE,
                     1,
                 );
@@ -56,7 +56,7 @@ async fn completion_respects_max_tokens() {
         async {
             with_ollama_cassette("agent/max_tokens", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                    client.endpoint(|provider| provider.completion(MODEL)),
                     BASIC_PREAMBLE,
                     1,
                 );

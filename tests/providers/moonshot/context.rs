@@ -18,7 +18,7 @@ async fn context_smoke() {
         .copied()
         .fold(
             client
-                .endpoint(|provider_config| provider_config.completion(moonshot::KIMI_K3))
+                .endpoint(|provider| provider.completion(moonshot::KIMI_K3))
                 .into_agent_builder(),
             |builder, doc| builder.context(doc),
         )

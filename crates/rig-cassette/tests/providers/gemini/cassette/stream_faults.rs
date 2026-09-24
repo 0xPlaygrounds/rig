@@ -68,7 +68,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MISSING_MODEL))
+                .endpoint(|provider| provider.completion(MISSING_MODEL))
                 .into_agent_builder()
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_to(recorder.clone())
@@ -105,7 +105,7 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
     let client = scripted_client(vec![gemini_sse(&[BLOCKED_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .endpoint(|provider| provider.completion(GEMINI_2_5_FLASH))
         .into_agent_builder()
         .record_to(recorder.clone())
         .build();
@@ -147,7 +147,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     let client = scripted_client(vec![gemini_sse(&[CONTENT_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .endpoint(|provider| provider.completion(GEMINI_2_5_FLASH))
         .into_agent_builder()
         .record_to(recorder.clone())
         .build();
@@ -181,7 +181,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
     let client = scripted_client(vec![gemini_sse(&[CONTENT_FRAME, IN_BAND_ERROR_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .endpoint(|provider| provider.completion(GEMINI_2_5_FLASH))
         .into_agent_builder()
         .record_to(recorder.clone())
         .build();
@@ -232,9 +232,8 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
 async fn multi_frame_stream_recording() {
     with_gemini_cassette("stream_faults/multi_frame_stream", |client| async move {
         let agent = client
-            .endpoint(|provider_config| {
-                provider_config
-                    .completion(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            .endpoint(|provider| {
+                provider.completion(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
             })
             .into_agent_builder()
             .preamble(crate::support::STREAMING_PREAMBLE)
@@ -272,7 +271,7 @@ async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
     let client = scripted_client(vec![crate::stream_faults::sse_bytes(&prefix)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .endpoint(|provider| provider.completion(GEMINI_2_5_FLASH))
         .into_agent_builder()
         .record_to(recorder.clone())
         .build();

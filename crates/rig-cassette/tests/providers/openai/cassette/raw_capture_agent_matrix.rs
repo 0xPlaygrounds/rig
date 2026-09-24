@@ -81,11 +81,11 @@ impl Route {
         match self {
             Route::Chat => client
                 .chat
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder(),
             Route::Responses => client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder(),
         }
     }
@@ -675,7 +675,7 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
         |client| async move {
             let response = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(
                     "Follow this protocol exactly. For the initial request, reply exactly \

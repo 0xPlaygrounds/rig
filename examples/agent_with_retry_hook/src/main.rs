@@ -100,7 +100,7 @@ impl AgentHook for RetryOnMarker {
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?.bound()?;
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+        .endpoint(|provider| provider.completion(openai::GPT_4O_MINI))
         .into_agent_builder()
         .preamble(
             "Follow this protocol exactly. For the initial request, reply exactly \
@@ -128,7 +128,7 @@ async fn main() -> Result<()> {
     // request. It is configured here but not run because this deterministic
     // protocol deliberately returns the same marker each time.
     let _repeat_agent = client
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+        .endpoint(|provider| provider.completion(openai::GPT_4O_MINI))
         .into_agent_builder()
         .default_max_turns(2)
         .add_hook(RetryOnMarker::repeat("RETRY:", 1))

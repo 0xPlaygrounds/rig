@@ -44,7 +44,7 @@ enum Streamed {
     Note,
 }
 fn agent(client: &Model<Anthropic>, ending: Ending, preamble: &str, streamed: bool) -> EcsAgent {
-    let model = client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
+    let model = client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6));
     // Backpressure after the real first delta lets the native policy cancel
     // before transport scheduling can publish additional chunks.
     let mut ecs = match ending {

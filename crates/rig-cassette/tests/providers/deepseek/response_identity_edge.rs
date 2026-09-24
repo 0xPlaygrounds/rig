@@ -11,9 +11,8 @@ async fn blocking_contract_captures_none() {
     with_deepseek_cassette(
         "response_identity_edge/blocking_contract_captures_none",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(deepseek::DEEPSEEK_V4_FLASH)
-            });
+            let model =
+                client.endpoint(|provider| provider.completion(deepseek::DEEPSEEK_V4_FLASH));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()

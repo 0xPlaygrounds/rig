@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     with_copilot_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+            .endpoint(|provider| provider.completion(LIVE_MODEL))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();
@@ -33,7 +33,7 @@ async fn all_models_completion_smoke() {
     let client = live_client().await;
 
     let models = client
-        .endpoint(|provider_config| provider_config.models())
+        .endpoint(|provider| provider.models())
         .list_all()
         .await
         .expect("listing Copilot models should succeed");
@@ -54,7 +54,7 @@ async fn all_models_completion_smoke() {
     for model in models.iter() {
         println!("Testing {:#?}...", model.id);
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(model.id.as_str()))
+            .endpoint(|provider| provider.completion(model.id.as_str()))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();

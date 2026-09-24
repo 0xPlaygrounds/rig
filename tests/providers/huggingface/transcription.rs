@@ -13,8 +13,7 @@ async fn transcription_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model =
-        provider.endpoint(|provider_config| provider_config.transcriptions("whisper-large-v3"));
+    let model = provider.endpoint(|provider| provider.transcriptions("whisper-large-v3"));
     let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
         .expect("should be able to load audio fixture")
         .send()

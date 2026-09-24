@@ -147,7 +147,7 @@ async fn rest_raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/rest_raw_try_into_matches_completion",
         |client| async move {
             capture_completion_pair(
-                client.endpoint(|provider_config| provider_config.completion(REST_MODEL)),
+                client.endpoint(|provider| provider.completion(REST_MODEL)),
                 request,
                 sink,
             )

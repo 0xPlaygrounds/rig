@@ -22,7 +22,7 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
                     let mut ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                        client.endpoint(|provider| provider.completion(MODEL)),
                         TOOL_PREAMBLE,
                         1,
                     );
@@ -91,7 +91,7 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
                     let mut ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                        client.endpoint(|provider| provider.completion(MODEL)),
                         TOOL_PREAMBLE,
                         1,
                     );
@@ -163,7 +163,7 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
                     let mut ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                        client.endpoint(|provider| provider.completion(MODEL)),
                         TOOL_PREAMBLE,
                         1,
                     );
@@ -233,7 +233,7 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
                     let mut ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                        client.endpoint(|provider| provider.completion(MODEL)),
                         TOOL_PREAMBLE,
                         1,
                     );

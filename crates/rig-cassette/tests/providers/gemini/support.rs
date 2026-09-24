@@ -553,7 +553,7 @@ async fn always_deleting_cached_contents_reporting<Fut, R>(
 {
     let outcome = AssertUnwindSafe(body).catch_unwind().await;
 
-    let caches = client.endpoint(|provider_config| provider_config.cached_contents());
+    let caches = client.endpoint(|provider| provider.cached_contents());
     let mut failures = Vec::new();
     for handle in handles {
         if let Err(error) = caches.delete(handle).await {

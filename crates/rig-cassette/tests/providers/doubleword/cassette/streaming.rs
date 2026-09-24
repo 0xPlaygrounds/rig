@@ -11,7 +11,7 @@ use crate::support::{
 async fn streaming_smoke() {
     with_doubleword_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .endpoint(|provider| provider.completion(DEFAULT_MODEL))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();

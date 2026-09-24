@@ -13,9 +13,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client
-            .openai
-            .endpoint(|provider_config| provider_config.chat(GPT_5_MINI)),
+        model: client.openai.endpoint(|provider| provider.chat(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,
@@ -28,7 +26,7 @@ fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'stat
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .openai
-            .endpoint(|provider_config| provider_config.chat("gpt-5-mini-nonexistent-rig-test")),
+            .endpoint(|provider| provider.chat("gpt-5-mini-nonexistent-rig-test")),
         route: None,
         temperature: None,
         additional_params: None,

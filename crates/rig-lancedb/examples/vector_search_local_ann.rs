@@ -19,9 +19,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?.bound()?;
 
     // Select an embedding model.
-    let model = openai_client.endpoint(|provider_config| {
-        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
-    });
+    let model = openai_client
+        .endpoint(|provider| provider.embeddings(openai::TEXT_EMBEDDING_ADA_002, None));
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;

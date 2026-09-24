@@ -15,8 +15,8 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
                 |client| async move {
                     let ecs = EcsAgent::new(
                         client
-                            .endpoint(|provider_config| {
-                                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                            .endpoint(|provider| {
+                                provider.completion(anthropic::completion::CLAUDE_SONNET_4_6)
                             })
                             .endpoint(|wire| wire.clone().with_prompt_caching()),
                         &conformance_probe().preamble,

@@ -74,7 +74,7 @@ impl AgentHook for SessionIdHook<'_> {
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();

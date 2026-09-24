@@ -12,7 +12,7 @@ use super::super::support::with_perplexity_cassette;
 async fn chat_history_smoke() {
     with_perplexity_cassette("chat/chat_history_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(perplexity::SONAR))
+            .endpoint(|provider| provider.completion(perplexity::SONAR))
             .into_agent_builder()
             .preamble("You are a memory test assistant. Keep answers short.")
             .max_tokens(48)

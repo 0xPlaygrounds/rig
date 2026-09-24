@@ -11,7 +11,7 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(client: BoundOllama, cell: Cell) -> impl CompletionModel + 'static {
-    client.endpoint(|provider_config| provider_config.completion(cell.model))
+    client.endpoint(|provider| provider.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

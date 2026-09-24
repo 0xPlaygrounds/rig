@@ -80,7 +80,7 @@ async fn default_body_returns_mp3() {
         |client| async move {
             let response = client
                 .openai
-                .endpoint(|provider_config| provider_config.speech(openai::TTS_1))
+                .endpoint(|provider| provider.speech(openai::TTS_1))
                 .audio_generation_request(TEXT, VOICE)
                 .send()
                 .await
@@ -99,7 +99,7 @@ async fn response_format_wav_changes_the_container() {
         |client| async move {
             let response = client
                 .openai
-                .endpoint(|provider_config| provider_config.speech(openai::TTS_1))
+                .endpoint(|provider| provider.speech(openai::TTS_1))
                 .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "response_format": "wav" }))
                 .send()
@@ -123,7 +123,7 @@ async fn response_format_flac_changes_the_container() {
         |client| async move {
             let response = client
                 .openai
-                .endpoint(|provider_config| provider_config.speech(openai::TTS_1))
+                .endpoint(|provider| provider.speech(openai::TTS_1))
                 .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "response_format": "flac" }))
                 .send()
@@ -146,7 +146,7 @@ async fn instructions_reach_the_tts_model() {
         |client| async move {
             let response = client
                 .openai
-                .endpoint(|provider_config| provider_config.speech("gpt-4o-mini-tts"))
+                .endpoint(|provider| provider.speech("gpt-4o-mini-tts"))
                 .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
                 .send()
@@ -172,7 +172,7 @@ async fn completions_client_shares_the_fixed_body() {
         |client| async move {
             let response = client
                 .openai
-                .endpoint(|provider_config| provider_config.speech(openai::TTS_1))
+                .endpoint(|provider| provider.speech(openai::TTS_1))
                 .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "response_format": "wav" }))
                 .send()
@@ -193,7 +193,7 @@ async fn additional_params_can_override_voice() {
         |client| async move {
             let response = client
                 .openai
-                .endpoint(|provider_config| provider_config.speech(openai::TTS_1))
+                .endpoint(|provider| provider.speech(openai::TTS_1))
                 .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "voice": "nova" }))
                 .send()
@@ -214,7 +214,7 @@ async fn non_object_additional_params_are_a_no_op() {
         |client| async move {
             let response = client
                 .openai
-                .endpoint(|provider_config| provider_config.speech(openai::TTS_1))
+                .endpoint(|provider| provider.speech(openai::TTS_1))
                 .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!("not-an-object"))
                 .send()

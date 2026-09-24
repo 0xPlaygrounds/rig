@@ -18,7 +18,7 @@ use super::support::{with_mistral_cassette_bogus_key_result, with_mistral_casset
 async fn list_models_smoke() -> Result<()> {
     with_mistral_cassette_result("models/list_models_smoke", |client| async move {
         let models = client
-            .endpoint(|provider_config| provider_config.models())
+            .endpoint(|provider| provider.models())
             .list_all()
             .await?;
 
@@ -51,7 +51,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .endpoint(|provider_config| provider_config.models())
+                .endpoint(|provider| provider.models())
                 .list_all()
                 .await
                 .expect_err("a bogus key must not list models");

@@ -262,8 +262,7 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
-    let model =
-        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
+    let model = client.endpoint(|provider| provider.completion(model_name(cell.model)));
     match cell.transport {
         Transport::Blocking => match model.complete(request(&model, cell)).await {
             Ok(response) => {
@@ -318,7 +317,7 @@ async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
 async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
     let builder = client
-        .endpoint(|provider_config| provider_config.completion(model_name(cell.model)))
+        .endpoint(|provider| provider.completion(model_name(cell.model)))
         .into_agent_builder()
         .preamble(PREAMBLE)
         .additional_params(json!({

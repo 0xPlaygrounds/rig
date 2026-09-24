@@ -33,7 +33,7 @@ async fn assert_nonstreaming_http_error(
     expected_status: http::StatusCode,
     expected_message: &str,
 ) {
-    let model = client.endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4));
+    let model = client.endpoint(|provider| provider.completion(chatgpt::GPT_5_4));
     let request = model.completion_request("hello").build();
 
     let error = model

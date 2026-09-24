@@ -18,7 +18,7 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            groq.endpoint(|provider_config| provider_config.completion(CONTEXT_MODEL))
+            groq.endpoint(|provider| provider.completion(CONTEXT_MODEL))
                 .into_agent_builder(),
             |builder, doc| builder.context(doc),
         )

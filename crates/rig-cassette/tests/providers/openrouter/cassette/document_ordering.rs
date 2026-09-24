@@ -45,7 +45,7 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))

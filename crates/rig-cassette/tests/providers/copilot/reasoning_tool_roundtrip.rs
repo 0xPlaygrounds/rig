@@ -15,7 +15,7 @@ async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(live_responses_model()))
+        .endpoint(|provider| provider.completion(live_responses_model()))
         .into_agent_builder()
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
@@ -50,7 +50,7 @@ async fn nonstreaming() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(live_responses_model()))
+                .endpoint(|provider| provider.completion(live_responses_model()))
                 .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)

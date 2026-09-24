@@ -196,7 +196,7 @@ impl Tool for FileReport {
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
     let model = client
         .openai
-        .endpoint(|provider_config| provider_config.chat(model_name(cell.model)));
+        .endpoint(|provider| provider.chat(model_name(cell.model)));
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
@@ -247,7 +247,7 @@ async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
     let agent = client
         .chat
-        .endpoint(|provider_config| provider_config.completion(model_name(cell.model)))
+        .endpoint(|provider| provider.completion(model_name(cell.model)))
         .into_agent_builder()
         .preamble(PREAMBLE)
         .tool(FileReport {

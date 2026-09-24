@@ -17,7 +17,7 @@ async fn cached_oauth_allows_noninteractive_streaming_completion() {
             // device flow — the yielded provider holds it — so the only thing
             // left to prove is that a turn goes out on it.
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble(BASIC_PREAMBLE)
                 .build();

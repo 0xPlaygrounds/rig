@@ -219,8 +219,7 @@ async fn host_bus_memory_effect_log() {
             "corpus_memory/host_bus_memory",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );

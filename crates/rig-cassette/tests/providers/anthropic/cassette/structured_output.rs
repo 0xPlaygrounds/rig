@@ -62,7 +62,7 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()
                 .build();
@@ -87,7 +87,7 @@ async fn classic_tool_mode_maps_through_anthropic_messages() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
     let client = rig::driver::Model::new(Anthropic::new("test-key"), http.clone());
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
@@ -117,7 +117,7 @@ async fn classic_prompted_mode_maps_through_anthropic_messages() {
     let http = RecordingHttpClient::new(text_response(&output.to_string()));
     let client = rig::driver::Model::new(Anthropic::new("test-key"), http.clone());
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Prompted)

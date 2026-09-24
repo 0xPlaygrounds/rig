@@ -10,8 +10,7 @@ async fn completion_smoke() {
         async {
             with_perplexity_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(perplexity::SONAR)),
+                    client.endpoint(|provider| provider.completion(perplexity::SONAR)),
                     BASIC_PREAMBLE,
                     1,
                 );
@@ -45,9 +44,7 @@ async fn completion_with_perplexity_options() {
                 "agent/completion_with_perplexity_options",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| {
-                            provider_config.completion(perplexity::SONAR)
-                        }),
+                        client.endpoint(|provider| provider.completion(perplexity::SONAR)),
                         "Answer briefly and include the date or time context if relevant.",
                         1,
                     );

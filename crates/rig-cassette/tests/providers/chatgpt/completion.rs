@@ -34,7 +34,7 @@ async fn default_instructions_fill_required_instructions() {
     });
 
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .build();
     let mut stream = agent
@@ -52,7 +52,7 @@ async fn default_instructions_fill_required_instructions() {
 async fn system_messages_are_lifted_into_instructions() {
     let model = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL));
+        .endpoint(|provider| provider.completion(LIVE_MODEL));
 
     let request = model
         .completion_request("Reply with the exact word from the system message.")

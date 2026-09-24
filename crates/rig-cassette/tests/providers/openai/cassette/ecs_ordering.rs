@@ -21,7 +21,7 @@ async fn responses_stream_preserves_tool_result_flow() {
                     let mut ecs = EcsAgent::new(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
+                            .endpoint(|provider| provider.completion(openai::GPT_4O)),
                         ORDERED_TOOL_STREAM_PREAMBLE,
                         1,
                     );

@@ -10,7 +10,6 @@
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::GPT_5_MINI;
 use rig::providers::openai::wire::OpenAI;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -31,9 +30,7 @@ use crate::stream_faults::{
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client
-            .openai
-            .endpoint(|provider_config| provider_config.chat(GPT_5_MINI)),
+        model: client.openai.endpoint(|provider| provider.chat(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,
@@ -46,7 +43,7 @@ fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'stat
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .openai
-            .endpoint(|provider_config| provider_config.chat("gpt-5-mini-nonexistent-rig-test")),
+            .endpoint(|provider| provider.chat("gpt-5-mini-nonexistent-rig-test")),
         route: None,
         temperature: None,
         additional_params: None,
@@ -101,7 +98,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
         rig::driver::Model::new(OpenAI::new(SCRIPTED_KEY), scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.endpoint(|provider_config| provider_config.chat(GPT_5_MINI)),
+        model: client.endpoint(|provider| provider.chat(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,
@@ -115,7 +112,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         rig::driver::Model::new(OpenAI::new(SCRIPTED_KEY), SequencedHttpClient::new(replies));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.endpoint(|provider_config| provider_config.chat(GPT_5_MINI)),
+        model: client.endpoint(|provider| provider.chat(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,

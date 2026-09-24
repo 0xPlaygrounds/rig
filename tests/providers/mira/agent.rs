@@ -16,7 +16,7 @@ async fn completion_smoke() {
         .bound()
         .expect("transport should build");
     let agent = provider
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .endpoint(|provider| provider.completion(openai::GPT_4O))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();

@@ -31,7 +31,7 @@ struct Host {
 }
 async fn over_host(client: Model<Anthropic>, host: Host) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         TOOLS_PREAMBLE,
         host.streamed,
     );

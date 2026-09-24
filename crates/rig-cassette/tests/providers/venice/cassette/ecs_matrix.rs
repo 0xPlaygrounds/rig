@@ -15,10 +15,8 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.endpoint(|provider_config| provider_config.completion(MISTRAL_SMALL_3_2_24B)),
-        route: Some(
-            client.endpoint(|provider_config| provider_config.completion(MISTRAL_SMALL_3_2_24B)),
-        ),
+        model: client.endpoint(|provider| provider.completion(MISTRAL_SMALL_3_2_24B)),
+        route: Some(client.endpoint(|provider| provider.completion(MISTRAL_SMALL_3_2_24B))),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -242,8 +240,8 @@ crate::matrix::case_matrix! {
 fn reasoning_wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Venice,
-        model: client.endpoint(|provider_config| {
-            provider_config.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING)
+        model: client.endpoint(|provider| {
+            provider.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING)
         }),
         route: None,
         temperature: Some(0.0),

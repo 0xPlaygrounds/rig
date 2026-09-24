@@ -121,7 +121,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             capture_sole_terminal(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -173,7 +173,7 @@ async fn stream_raw_exposes_terminal_durations() {
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
             capture_sole_terminal(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )

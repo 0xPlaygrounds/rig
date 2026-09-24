@@ -53,7 +53,7 @@ async fn two_tools(
     events: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let builder = client
-        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .name("golden")
         .configure_bus(bus)
@@ -182,7 +182,7 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .configure_bus(rig::serve::ServingPolicy {
@@ -228,14 +228,14 @@ async fn model_route_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_serving_cassette("corpus_serving/model_route", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
             .model_route(
                 "fast",
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5)),
+                client.endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5)),
             )
             .tool(Adder)
             .add_hook(RouteAfterFirstTurn)
@@ -278,14 +278,14 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
             .model_route(
                 "fast",
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5)),
+                client.endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5)),
             )
             .tool(Adder)
             .record_to(recorder.clone())
@@ -337,7 +337,7 @@ async fn over_host_bus(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::completion(
                 "default",
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
             )),
         )
         .expect("a fresh key");

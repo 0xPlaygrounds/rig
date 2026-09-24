@@ -121,7 +121,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
         "turn_termination_matrix/blocking_truncated_turn",
         |client| async move {
             client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
@@ -168,7 +168,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
         "turn_termination_matrix/streaming_truncated_turn",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
@@ -203,7 +203,7 @@ async fn blocking_completed_turn_reports_stop() {
         "turn_termination_matrix/blocking_completed_turn",
         |client| async move {
             client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
@@ -243,7 +243,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
         "turn_termination_matrix/blocking_tool_turn",
         |client| async move {
             client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble(TOOL_PREAMBLE)
                 .temperature(0.0)
@@ -285,7 +285,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
         "turn_termination_matrix/escalating_retry",
         |client| async move {
             client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)

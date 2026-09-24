@@ -351,7 +351,7 @@ async fn run_scenario(
     api_key: &str,
 ) -> anyhow::Result<Report> {
     let client = Gemini::from_env()?.bound()?;
-    let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+    let model = client.endpoint(|provider| provider.completion(MODEL));
 
     let stream = model
         .completion_request(prompt)

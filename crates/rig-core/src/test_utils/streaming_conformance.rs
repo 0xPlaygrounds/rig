@@ -3,7 +3,7 @@
 //! The streaming sibling of `rig-agent`'s `model_conformance`: each scenario
 //! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
 //! streaming path — bytes → decode → normalize → aggregated
-//! [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse)
+//! [`CompletionStream`](crate::streaming::CompletionStream)
 //! — and asserts the [`StreamFinal`] contract
 //! table documented on that type. Scenarios state the contract; a per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells

@@ -65,7 +65,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_deepseek_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
+        let model = client.endpoint(|provider| provider.completion(CACHE_MODEL));
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_conformance(&observation, &DEEPSEEK_CACHE_SUPPORT, "blocking probe");
     })
@@ -79,7 +79,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_deepseek_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
+        let model = client.endpoint(|provider| provider.completion(CACHE_MODEL));
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_conformance(&observation, &DEEPSEEK_CACHE_SUPPORT, "streaming probe");
     })
@@ -102,7 +102,7 @@ async fn live_cache_economics() {
         .expect("DEEPSEEK_API_KEY")
         .bound()
         .expect("the bundled transport should build");
-    let model = bound.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
+    let model = bound.endpoint(|provider| provider.completion(CACHE_MODEL));
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(
         &observation,

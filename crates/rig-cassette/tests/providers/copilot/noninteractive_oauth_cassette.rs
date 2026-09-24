@@ -17,7 +17,7 @@ async fn cached_oauth_allows_noninteractive_completion() {
             // failed there rather than prompting.
 
             let response = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .endpoint(|provider| provider.completion(LIVE_MODEL))
                 .into_agent_builder()
                 .preamble(BASIC_PREAMBLE)
                 .build()

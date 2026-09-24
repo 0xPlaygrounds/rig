@@ -24,7 +24,7 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
         .expect("MOONSHOT_API_KEY should be set")
         .bound()
         .expect("moonshot client should build")
-        .endpoint(|provider_config| provider_config.completion(moonshot::KIMI_K3));
+        .endpoint(|provider| provider.completion(moonshot::KIMI_K3));
     let assistant = Message::Assistant {
         id: None,
         content: vec![

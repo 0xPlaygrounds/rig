@@ -12,8 +12,7 @@ fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion("gemini-2.5-flash-lite")),
+        model: client.endpoint(|provider| provider.completion("gemini-2.5-flash-lite")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

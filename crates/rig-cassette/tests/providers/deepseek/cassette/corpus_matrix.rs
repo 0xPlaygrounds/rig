@@ -17,10 +17,8 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.endpoint(|provider_config| provider_config.completion("deepseek-chat")),
-        route: Some(
-            client.endpoint(|provider_config| provider_config.completion("deepseek-reasoner")),
-        ),
+        model: client.endpoint(|provider| provider.completion("deepseek-chat")),
+        route: Some(client.endpoint(|provider| provider.completion("deepseek-reasoner"))),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -229,7 +227,7 @@ crate::matrix::case_matrix! {
 fn reasoning_wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: client.endpoint(|provider_config| provider_config.completion("deepseek-flash")),
+        model: client.endpoint(|provider| provider.completion("deepseek-flash")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -15,7 +15,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn reasoning_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.endpoint(|provider_config| provider_config.completion("claude-haiku-4-5")),
+        model: client.endpoint(|provider| provider.completion("claude-haiku-4-5")),
         route: None,
         // Extended thinking requires the default temperature.
         temperature: None,

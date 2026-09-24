@@ -15,7 +15,7 @@ async fn parsed_reasoning_stream() {
         .bound()
         .expect("transport should build");
     let agent = groq
-        .endpoint(|provider_config| provider_config.completion(STREAMING_REASONING_MODEL))
+        .endpoint(|provider| provider.completion(STREAMING_REASONING_MODEL))
         .into_agent_builder()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))

@@ -13,7 +13,7 @@ async fn image_generation_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = client.endpoint(|provider_config| provider_config.images(openai::DALL_E_2));
+    let model = client.endpoint(|provider| provider.images(openai::DALL_E_2));
 
     let response = model
         .image_generation_request(IMAGE_PROMPT)
@@ -33,7 +33,7 @@ async fn gpt_image_2_image_generation_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = client.endpoint(|provider_config| provider_config.images(openai::GPT_IMAGE_2));
+    let model = client.endpoint(|provider| provider.images(openai::GPT_IMAGE_2));
 
     let response = model
         .image_generation_request(IMAGE_PROMPT)

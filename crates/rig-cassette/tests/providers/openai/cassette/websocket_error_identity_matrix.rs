@@ -103,7 +103,7 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
         |client| async move {
             let error = client
                 .openai
-                .endpoint(|provider_config| provider_config.responses("gpt-4o-mini"))
+                .endpoint(|provider| provider.responses("gpt-4o-mini"))
                 .responses_websocket()
                 .await
                 .err()
@@ -145,7 +145,7 @@ async fn handshake_rejection_matches_the_http_twin() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.responses("gpt-4o-mini"));
+                .endpoint(|provider| provider.responses("gpt-4o-mini"));
             let websocket_error = model
                 .responses_websocket()
                 .await

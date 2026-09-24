@@ -88,7 +88,7 @@ impl Tool for Subtract {
 async fn tools_smoke() {
     with_xai_cassette("tools/tools_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI))
+            .endpoint(|provider| provider.completion(xai::GROK_3_MINI))
             .into_agent_builder()
             .preamble(TOOLS_PREAMBLE)
             .tool(Adder)

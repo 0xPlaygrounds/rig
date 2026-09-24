@@ -16,7 +16,7 @@ const ADDER_PREAMBLE: &str =
 
 fn build_rng_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
     openai
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .endpoint(|provider| provider.completion(openai::GPT_4))
         .into_agent_builder()
         .preamble(RNG_PREAMBLE)
         .build()
@@ -24,7 +24,7 @@ fn build_rng_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent
 
 fn build_adder_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
     openai
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .endpoint(|provider| provider.completion(openai::GPT_4))
         .into_agent_builder()
         .preamble(ADDER_PREAMBLE)
         .build()

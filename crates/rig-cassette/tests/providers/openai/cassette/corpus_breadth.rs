@@ -75,7 +75,7 @@ fn host_bus(
                 "default",
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.completion(MODEL)),
+                    .endpoint(|provider| provider.completion(MODEL)),
             )),
         )
         .expect("a fresh key");
@@ -93,8 +93,8 @@ fn host_bus(
                 HandlerKey::from(EMBED_KEY),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::embedding(
                     "host",
-                    client.openai.endpoint(|provider_config| {
-                        provider_config.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None)
+                    client.openai.endpoint(|provider| {
+                        provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None)
                     }),
                 )),
             )
@@ -113,7 +113,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
@@ -143,7 +143,7 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(MODEL))
+            .endpoint(|provider| provider.completion(MODEL))
             .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -187,7 +187,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -258,7 +258,7 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(MODEL))
+            .endpoint(|provider| provider.completion(MODEL))
             .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -286,7 +286,7 @@ async fn memory_two_runs_effect_log_is_the_golden_fixture() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(MODEL))
+            .endpoint(|provider| provider.completion(MODEL))
             .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)

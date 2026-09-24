@@ -17,7 +17,7 @@ async fn loaders_smoke() {
             .into_iter();
 
         let agent = examples
-            .fold(client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)).into_agent_builder(), |builder, (path, content)| {
+            .fold(client.endpoint(|provider| provider.completion(CASSETTE_MODEL)).into_agent_builder(), |builder, (path, content)| {
                 builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
             })
             .preamble(

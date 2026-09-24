@@ -14,7 +14,7 @@ async fn streaming_smoke() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .endpoint(|provider| provider.completion(openai::GPT_4O))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();
@@ -40,7 +40,7 @@ async fn example_streaming_prompt() {
     with_openai_cassette("streaming/example_streaming_prompt", |client| async move {
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .endpoint(|provider| provider.completion(openai::GPT_4O))
             .into_agent_builder()
             .preamble("Be precise and concise.")
             .temperature(0.5)

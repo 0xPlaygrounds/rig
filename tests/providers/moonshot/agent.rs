@@ -14,7 +14,7 @@ async fn completion_smoke() {
         .bound()
         .expect("moonshot client should build");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(moonshot::KIMI_K3))
+        .endpoint(|provider| provider.completion(moonshot::KIMI_K3))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .temperature(0.5)

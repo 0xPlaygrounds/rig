@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
     let client = Gemini::from_env()?.bound()?;
     let additional_params = build_additional_params()?;
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(MODEL))
+        .endpoint(|provider| provider.completion(MODEL))
         .into_agent_builder()
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)

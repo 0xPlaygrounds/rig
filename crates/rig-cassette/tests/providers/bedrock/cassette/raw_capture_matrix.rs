@@ -59,7 +59,6 @@
 use rig::bedrock;
 use rig::bedrock::types::assistant_content::AwsConverseOutput;
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
-use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 

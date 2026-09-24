@@ -19,9 +19,7 @@ use crate::support::{
 async fn completion_smoke_through_boxed_transport() {
     with_anthropic_boxed_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            })
+            .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();
@@ -41,9 +39,7 @@ async fn completion_smoke_through_boxed_transport() {
 async fn streaming_smoke_through_boxed_transport() {
     with_anthropic_boxed_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            })
+            .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();

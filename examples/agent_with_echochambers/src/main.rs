@@ -329,7 +329,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with all tools
     let echochambers_agent = openai_client
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)).into_agent_builder()
+        .endpoint(|provider| provider.completion(openai::GPT_4O)).into_agent_builder()
         .preamble(
             "You are an assistant designed to help users interact with EchoChambers rooms.
             You can send messages, retrieve message history, and analyze various metrics.

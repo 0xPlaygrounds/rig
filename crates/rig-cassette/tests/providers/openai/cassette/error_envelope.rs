@@ -18,9 +18,9 @@ async fn nonexistent_model_error_preserves_status_and_body() {
     with_openai_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.openai.endpoint(|provider_config| {
-                provider_config.completion("gpt-4o-mini-nonexistent-rig-test")
-            });
+            let model = client
+                .openai
+                .endpoint(|provider| provider.completion("gpt-4o-mini-nonexistent-rig-test"));
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             let error = model
@@ -55,9 +55,9 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_openai_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.openai.endpoint(|provider_config| {
-                provider_config.completion("gpt-4o-mini-nonexistent-rig-test")
-            });
+            let model = client
+                .openai
+                .endpoint(|provider| provider.completion("gpt-4o-mini-nonexistent-rig-test"));
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             // The SSE connection opens lazily, so the HTTP error may surface

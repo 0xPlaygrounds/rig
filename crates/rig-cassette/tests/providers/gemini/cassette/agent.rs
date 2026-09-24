@@ -10,9 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     with_gemini_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            })
+            .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();

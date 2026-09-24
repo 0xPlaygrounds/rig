@@ -10,7 +10,7 @@ use rig::completion::{
 };
 use rig::driver::Model;
 use rig::providers::copilot;
-use rig::streaming::{CompletionStream, StreamEvent};
+use rig::streaming::StreamEvent;
 
 use crate::copilot::{live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
@@ -83,7 +83,7 @@ async fn streaming() {
             "effort": "medium",
             "summary": null
         });
-        let model = CapturingProviderFinals::new(client.endpoint(|provider_config| provider_config.completion(live_responses_model())));
+        let model = CapturingProviderFinals::new(client.endpoint(|provider| provider.completion(live_responses_model())));
         let finals = model.finals();
 
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
@@ -113,7 +113,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_copilot_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.endpoint(|provider_config| provider_config.completion(live_responses_model())),
+            client.endpoint(|provider| provider.completion(live_responses_model())),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),

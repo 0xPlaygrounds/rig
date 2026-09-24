@@ -95,7 +95,7 @@ async fn raw_roundtrips_cohere_completion_response() {
         "raw_capture_matrix/raw_roundtrips_cohere_completion_response",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                 request,
                 sink,
             )
@@ -165,7 +165,7 @@ async fn raw_exposes_billing_metadata() {
         "raw_capture_matrix/raw_exposes_billing_metadata",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                 request,
                 sink,
             )

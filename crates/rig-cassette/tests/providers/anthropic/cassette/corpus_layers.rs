@@ -61,7 +61,7 @@ async fn own_bus(
 ) -> rig::cassette::effect_log::EffectLog {
     let server = add_tool_under(layers);
     let builder = client
-        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
@@ -155,8 +155,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 ErasedHandler::new(rig::serve::adapters::ModelAdapter::completion(
                     "default",
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 )),
             )
             .expect("a fresh key");
@@ -222,7 +221,7 @@ async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
             .layered(ReplaceLoadLayer);
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)).into_agent_builder()
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)).into_agent_builder()
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)

@@ -16,7 +16,7 @@ use crate::support::{
 async fn completion_smoke() {
     with_cohere_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .endpoint(|provider| provider.completion(CASSETTE_MODEL))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .temperature(0.2)
@@ -37,7 +37,7 @@ async fn usage_is_reported_from_token_counts() {
     with_cohere_cassette(
         "agent/usage_is_reported_from_token_counts",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request(BASIC_PROMPT)
                 .preamble(BASIC_PREAMBLE.to_string())
@@ -100,8 +100,7 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
     with_cohere_cassette(
         "agent/max_tokens_sets_max_tokens_finish_reason",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Write a detailed fifty-word description of the ocean.")
                 .max_tokens(4)
@@ -123,7 +122,7 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
 #[tokio::test]
 async fn multiturn_history_is_accepted() {
     with_cohere_cassette("agent/multiturn_history_is_accepted", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+        let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
         let request = model
             .completion_request("What code word did I ask you to remember?")
             .message(Message::user(
@@ -156,7 +155,7 @@ async fn multiturn_history_is_accepted() {
 #[tokio::test]
 async fn stop_sequences_are_forwarded() {
     with_cohere_cassette("agent/stop_sequences_are_forwarded", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+        let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
         let request = model
             .completion_request("Output exactly this sequence: alpha<END>omega")
             .temperature(0.0)
@@ -184,8 +183,7 @@ async fn sampling_parameters_are_forwarded() {
     with_cohere_cassette(
         "agent/sampling_parameters_are_forwarded",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Reply with one short sentence about rain.")
                 .temperature(0.2)

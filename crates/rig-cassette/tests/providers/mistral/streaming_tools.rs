@@ -21,7 +21,7 @@ async fn streaming_tools_smoke() {
         .bound()
         .expect("client should build");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .endpoint(|provider| provider.completion(TOOL_MODEL))
         .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(256)
@@ -45,7 +45,7 @@ async fn example_streaming_with_tools() {
         .bound()
         .expect("client should build");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .endpoint(|provider| provider.completion(TOOL_MODEL))
         .into_agent_builder()
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
@@ -72,7 +72,7 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
         .bound()
         .expect("client should build");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .endpoint(|provider| provider.completion(TOOL_MODEL))
         .into_agent_builder()
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
@@ -100,7 +100,7 @@ async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
         .bound()
         .expect("client should build");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .endpoint(|provider| provider.completion(TOOL_MODEL))
         .into_agent_builder()
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)

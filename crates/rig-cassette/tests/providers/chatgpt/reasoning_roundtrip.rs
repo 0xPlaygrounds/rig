@@ -9,7 +9,7 @@ async fn streaming() {
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
         live_client()
             .await
-            .endpoint(|provider_config| provider_config.completion(LIVE_MODEL)),
+            .endpoint(|provider| provider.completion(LIVE_MODEL)),
         Some(serde_json::json!({
             "reasoning": { "effort": "medium" }
         })),

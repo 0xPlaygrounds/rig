@@ -465,7 +465,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .endpoint(|provider| provider.completion(SESSION_MODEL))
                 .into_agent_builder()
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
@@ -525,7 +525,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -566,7 +566,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
@@ -623,7 +623,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
 
             let required = model
                 .complete(
@@ -705,7 +705,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
     with_xai_cassette_result(
         "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(REASONING_MODEL));
+            let model = client.endpoint(|provider| provider.completion(REASONING_MODEL));
             let request = model
                 .completion_request(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
@@ -763,7 +763,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
@@ -847,7 +847,7 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
         "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .endpoint(|provider| provider.completion(VISION_MODEL))
                 .into_agent_builder()
                 .preamble("You answer image questions concisely and directly.")
                 .build();

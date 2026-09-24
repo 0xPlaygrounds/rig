@@ -14,7 +14,7 @@ async fn streaming_tools_smoke() {
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+                .endpoint(|provider| provider.completion(TOOL_MODEL))
                 .into_agent_builder()
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)

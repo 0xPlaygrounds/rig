@@ -12,7 +12,7 @@ use crate::support::{
 async fn tools_smoke() {
     with_deepseek_cassette("tools/tools_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+            .endpoint(|provider| provider.completion(deepseek::DEEPSEEK_V4_FLASH))
             .into_agent_builder()
             .preamble(TOOLS_PREAMBLE)
             .tool(Adder)

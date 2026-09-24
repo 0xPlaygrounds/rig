@@ -30,9 +30,8 @@ impl std::fmt::Display for WordDefinition {
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.endpoint(|provider_config| {
-        provider_config.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None)
-    });
+    let model = openai_client
+        .endpoint(|provider| provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None));
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;
     let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;

@@ -16,8 +16,9 @@ use rig_core::providers::openai::{self, OpenAI};
 use rig_reqwest::prelude::*;
 
 let agent = OpenAI::from_env()?
+    .completion(openai::GPT_5_2)
     .bound()?
-    .agent(openai::GPT_5_2)
+    .into_agent_builder()
     .build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```

@@ -157,7 +157,7 @@ async fn permission_control_prompt_example() -> Result<()> {
             let _cleanup = FileCleanup::new()?;
 
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+                .endpoint(|provider| provider.completion(LIVE_LIGHT_MODEL))
                 .into_agent_builder()
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
@@ -201,7 +201,7 @@ async fn permission_control_streaming_example() -> Result<()> {
 
     let agent = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_LIGHT_MODEL))
         .into_agent_builder()
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)

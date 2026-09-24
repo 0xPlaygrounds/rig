@@ -9,7 +9,7 @@ use rig::providers::ollama::wire::Ollama;
 async fn list_models_smoke() {
     let ollama = Ollama::new().bound().expect("transport should build");
     let models = match ollama
-        .endpoint(|provider_config| provider_config.models())
+        .endpoint(|provider| provider.models())
         .list_all()
         .await
     {

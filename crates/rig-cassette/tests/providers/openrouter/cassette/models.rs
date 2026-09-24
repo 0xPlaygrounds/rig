@@ -8,7 +8,7 @@ use super::super::support::with_openrouter_cassette;
 async fn list_models_smoke() {
     with_openrouter_cassette("models/list_models_smoke", |client| async move {
         let models = match client
-            .endpoint(|provider_config| provider_config.models())
+            .endpoint(|provider| provider.models())
             .list_all()
             .await
         {
@@ -41,7 +41,7 @@ async fn list_models_preserves_context_and_output_limits() -> anyhow::Result<()>
         "models/list_models_smoke",
         |client| async move {
             let models = client
-                .endpoint(|provider_config| provider_config.models())
+                .endpoint(|provider| provider.models())
                 .list_all()
                 .await?;
 
@@ -77,7 +77,7 @@ async fn list_models_is_public_and_ignores_a_rejected_key() -> anyhow::Result<()
         "models/list_models_is_public_and_ignores_a_rejected_key",
         |client| async move {
             let models = client
-                .endpoint(|provider_config| provider_config.models())
+                .endpoint(|provider| provider.models())
                 .list_all()
                 .await
                 .expect("OpenRouter lists models without a valid key");

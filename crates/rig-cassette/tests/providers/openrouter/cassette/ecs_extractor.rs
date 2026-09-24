@@ -8,7 +8,7 @@ async fn extractor_smoke() {
         async {
             with_openrouter_cassette("extractor/extractor_smoke", |client| async move {
                 let mut extractor = EcsExtractor::<SmokePerson>::new(
-                    client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                    client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                     None,
                     None,
                 );

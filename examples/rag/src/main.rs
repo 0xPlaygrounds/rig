@@ -28,9 +28,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // One OpenAI config serves both: completions go to the Responses API,
     // embeddings to the shared REST surface.
     let openai_client = OpenAI::from_env()?.bound()?;
-    let embedding_model = openai_client.endpoint(|provider_config| {
-        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
-    });
+    let embedding_model = openai_client
+        .endpoint(|provider| provider.embeddings(openai::TEXT_EMBEDDING_ADA_002, None));
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -68,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
     let rag_agent = openai_client
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)).into_agent_builder()
+        .endpoint(|provider| provider.completion(openai::GPT_4O)).into_agent_builder()
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

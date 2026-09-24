@@ -179,9 +179,7 @@ async fn stored_chain_with_tool_call() {
         |client| async move {
             let resources = Created::default();
             cleaned(&client, &resources, async {
-                let model = client
-                    .openai
-                    .endpoint(|provider_config| provider_config.responses(MODEL));
+                let model = client.openai.endpoint(|provider| provider.responses(MODEL));
                 let stored = |previous: Option<&str>| {
                     let mut params = json!({ "store": true, "reasoning": { "effort": "low" } });
                     if let Some(previous) = previous {
@@ -275,9 +273,7 @@ async fn stored_then_stateless_mid_conversation() {
         |client| async move {
             let resources = Created::default();
             cleaned(&client, &resources, async {
-                let model = client
-                    .openai
-                    .endpoint(|provider_config| provider_config.responses(MODEL));
+                let model = client.openai.endpoint(|provider| provider.responses(MODEL));
                 let params = |previous: Option<&str>, store: bool| {
                     let mut params = json!({
                         "store": store,
@@ -415,7 +411,7 @@ async fn file_id_chain() {
             };
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.responses("gpt-4.1-mini"));
+                .endpoint(|provider| provider.responses("gpt-4.1-mini"));
             let params = json!({ "store": false });
             let first = model
                 .complete(request(vec![document.clone()], vec![], params.clone()))

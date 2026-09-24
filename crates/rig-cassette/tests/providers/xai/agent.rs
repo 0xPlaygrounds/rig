@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     with_xai_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI))
+            .endpoint(|provider| provider.completion(xai::GROK_3_MINI))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();

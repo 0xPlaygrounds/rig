@@ -24,8 +24,7 @@ async fn nonstreaming_response_carries_identity() {
     with_xai_cassette(
         "response_identity/nonstreaming_response_carries_identity",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI));
+            let model = client.endpoint(|provider| provider.completion(xai::GROK_3_MINI));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -51,8 +50,7 @@ async fn streaming_terminal_carries_identity() {
     with_xai_cassette(
         "response_identity/streaming_terminal_carries_identity",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI));
+            let model = client.endpoint(|provider| provider.completion(xai::GROK_3_MINI));
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -87,7 +85,7 @@ async fn streamed_agent_run_reports_identity() {
         |client| async move {
             let probe = IdentityProbe::default();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI))
+                .endpoint(|provider| provider.completion(xai::GROK_3_MINI))
                 .into_agent_builder()
                 .preamble("You are a terse assistant.")
                 .add_hook(probe.clone())
@@ -123,8 +121,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
     with_xai_cassette(
         "response_identity/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI));
+            let model = client.endpoint(|provider| provider.completion(xai::GROK_3_MINI));
             let request = model
                 .completion_request("Reply with exactly: two views probe")
                 .build();
@@ -160,8 +157,8 @@ async fn provider_error_classifies_with_contract_but_reports_no_id() {
     with_xai_cassette(
         "response_identity/provider_error_classifies_with_contract_but_reports_no_id",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion("grok-nonexistent-model-for-identity-edge")
+            let model = client.endpoint(|provider| {
+                provider.completion("grok-nonexistent-model-for-identity-edge")
             });
             let error = model
                 .completion_request("Never answered")
@@ -193,8 +190,7 @@ async fn auth_rejection_classifies_with_contract() {
     with_xai_cassette_bogus_key(
         "response_identity/auth_rejection_classifies_with_contract",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI));
+            let model = client.endpoint(|provider| provider.completion(xai::GROK_3_MINI));
             let error = model
                 .completion_request("Never authenticated")
                 .send()

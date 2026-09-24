@@ -46,7 +46,7 @@ async fn api_key_completion_smoke() {
     );
 
     let response = client
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()
@@ -72,7 +72,7 @@ async fn github_access_token_completion_smoke() {
     );
 
     let response = client
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()
@@ -108,7 +108,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     );
 
     let response = rig::driver::Model::new(provider.clone(), transport())
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()
@@ -119,7 +119,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     assert_nonempty_response(&response.output);
 
     let cached_response = rig::driver::Model::new(authorize_oauth(token_dir).await, transport())
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .build()
         .prompt("Reply with the single word cached.")
@@ -177,7 +177,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
     }
 
     let response = client
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()

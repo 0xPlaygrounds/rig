@@ -8,7 +8,7 @@ use super::super::cassette_support::*;
 async fn list_models_smoke() {
     with_llamacpp_cassette("models/list_models_smoke", |client| async move {
         let models = match client
-            .endpoint(|provider_config| provider_config.models())
+            .endpoint(|provider| provider.models())
             .list_all()
             .await
         {

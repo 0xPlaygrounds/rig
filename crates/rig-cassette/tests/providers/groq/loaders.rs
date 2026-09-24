@@ -22,7 +22,7 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(groq.endpoint(|provider_config| provider_config.completion(LOADERS_MODEL)).into_agent_builder(), |builder, (path, content)| {
+        .fold(groq.endpoint(|provider| provider.completion(LOADERS_MODEL)).into_agent_builder(), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble(

@@ -70,7 +70,7 @@ async fn raw_round_trips_venice_type() {
     let sink = Observed::default();
     with_venice_cassette_result("raw_capture_matrix/raw_round_trips_venice_type", |client| {
         capture_completion(
-            client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+            client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
             request,
             sink.clone(),
         )
@@ -121,7 +121,7 @@ async fn raw_exposes_venice_parameters_and_cost() {
         "raw_capture_matrix/raw_exposes_venice_parameters_and_cost",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                 request,
                 sink.clone(),
             )
@@ -168,7 +168,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                 request,
                 sink.clone(),
             )

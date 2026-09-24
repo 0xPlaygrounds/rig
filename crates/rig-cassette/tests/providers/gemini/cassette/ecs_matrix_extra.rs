@@ -25,13 +25,8 @@ fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
-        route: Some(
-            client.endpoint(|provider_config| {
-                provider_config.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)
-            }),
-        ),
+        model: client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
+        route: Some(client.endpoint(|provider| provider.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -43,7 +38,7 @@ fn legacy<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH)),
+        model: client.endpoint(|provider| provider.completion(GEMINI_2_5_FLASH)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -74,9 +69,7 @@ async fn error_facts_unary() {
             "error_envelope/nonexistent_model_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion("gemini-nonexistent-rig-test")
-                    }),
+                    client.endpoint(|provider| provider.completion("gemini-nonexistent-rig-test")),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),
@@ -108,9 +101,7 @@ async fn error_facts_streamed() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion("gemini-nonexistent-rig-test")
-                    }),
+                    client.endpoint(|provider| provider.completion("gemini-nonexistent-rig-test")),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),

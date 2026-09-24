@@ -18,7 +18,7 @@ async fn streaming() {
         let call_count = Arc::new(AtomicUsize::new(0));
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion("gpt-5.2"))
+            .endpoint(|provider| provider.completion("gpt-5.2"))
             .into_agent_builder()
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
@@ -56,7 +56,7 @@ async fn nonstreaming() {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion("gpt-5.2"))
+                .endpoint(|provider| provider.completion("gpt-5.2"))
                 .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)

@@ -74,7 +74,7 @@ async fn turn(
     match route {
         Route::Chat => {
             run(
-                client.endpoint(|provider_config| provider_config.completion(model)),
+                client.endpoint(|provider| provider.completion(model)),
                 request,
                 streamed,
             )
@@ -82,7 +82,7 @@ async fn turn(
         }
         Route::Responses => {
             run(
-                client.endpoint(|provider_config| provider_config.responses(model)),
+                client.endpoint(|provider| provider.responses(model)),
                 request,
                 streamed,
             )

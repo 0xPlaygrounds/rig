@@ -18,9 +18,7 @@ async fn context_smoke() {
         .copied()
         .fold(
             provider
-                .endpoint(|provider_config| {
-                    provider_config.completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1)
-                })
+                .endpoint(|provider| provider.completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1))
                 .into_agent_builder(),
             rig::AgentBuilder::context,
         )

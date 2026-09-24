@@ -8,7 +8,7 @@ use rig::model::ModelLister;
 async fn list_models_smoke() {
     with_anthropic_cassette("models/list_models_smoke", |client| async move {
         let models = match client
-            .endpoint(|provider_config| provider_config.models())
+            .endpoint(|provider| provider.models())
             .list_all()
             .await
         {
@@ -39,7 +39,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .endpoint(|provider_config| provider_config.models())
+                .endpoint(|provider| provider.models())
                 .list_all()
                 .await
                 .expect_err("a bogus key must not list models");

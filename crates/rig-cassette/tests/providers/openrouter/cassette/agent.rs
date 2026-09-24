@@ -10,7 +10,7 @@ use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 async fn completion_smoke() {
     with_openrouter_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .endpoint(|provider| provider.completion(DEFAULT_MODEL))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();

@@ -13,9 +13,7 @@ async fn completion_smoke() {
         .bound()
         .expect("transport should build");
     let agent = provider
-        .endpoint(|provider_config| {
-            provider_config.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
-        })
+        .endpoint(|provider| provider.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();

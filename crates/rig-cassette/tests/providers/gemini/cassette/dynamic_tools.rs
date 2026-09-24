@@ -30,9 +30,8 @@ async fn build_tool_index<H: rig::http_client::HttpClientExt + Clone + Send + Sy
     rig::embeddings::ToolSchema,
     Model<gemini::embedding::Embeddings, H>,
 > {
-    let embedding_model = client.endpoint(|provider_config| {
-        provider_config.embeddings(gemini::embedding::EMBEDDING_001, None)
-    });
+    let embedding_model =
+        client.endpoint(|provider| provider.embeddings(gemini::embedding::EMBEDDING_001, None));
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -66,9 +65,7 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -116,9 +113,7 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -163,9 +158,7 @@ async fn sample_caps_retrieved_definitions() {
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)

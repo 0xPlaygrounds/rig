@@ -159,7 +159,7 @@ impl AgentHook for ApprovalPolicy {
 async fn main() -> Result<()> {
     let agent = OpenAI::from_env()?
         .bound()?
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .endpoint(|provider| provider.completion(openai::GPT_4O))
         .into_agent_builder()
         .preamble(
             "You are a banking assistant. Use the tools to carry out the user's request. \

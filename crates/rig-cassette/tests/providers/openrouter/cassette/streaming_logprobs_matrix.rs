@@ -132,8 +132,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model =
-        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
+    let model = client.endpoint(|provider| provider.completion(model_name(cell.model)));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))

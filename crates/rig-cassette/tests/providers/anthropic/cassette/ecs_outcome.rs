@@ -49,14 +49,13 @@ async fn cancel_after_tool_call_delta_effect_log() {
         with_anthropic_corpus_outcome_cassette(
             "corpus_outcome/cancel_after_tool_call_delta",
             |client| async move {
-                let mut ecs =
-                    EcsAgent::for_golden(
-                        delivery::FirstDelta::tool(client.endpoint(|provider_config| {
-                            provider_config.completion(CLAUDE_SONNET_4_6)
-                        })),
-                        NOTE_PREAMBLE,
-                        true,
-                    );
+                let mut ecs = EcsAgent::for_golden(
+                    delivery::FirstDelta::tool(
+                        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
+                    ),
+                    NOTE_PREAMBLE,
+                    true,
+                );
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -108,7 +107,7 @@ async fn tool_error_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_corpus_outcome_cassette("corpus_outcome/tool_error", |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 TOOLS_PREAMBLE,
                 false,
             );
@@ -147,8 +146,7 @@ async fn tool_error_streamed_effect_log() {
             "corpus_outcome/tool_error_streamed",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     TOOLS_PREAMBLE,
                     true,
                 );
@@ -189,7 +187,7 @@ async fn model_error_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_cassette_bogus_key("corpus_outcome/model_error", |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 BASIC_PREAMBLE,
                 false,
             );
@@ -234,8 +232,7 @@ async fn model_error_streamed_effect_log() {
             "corpus_outcome/model_error_streamed",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     true,
                 );
@@ -287,8 +284,7 @@ async fn max_turns_exhausted_effect_log() {
             "corpus_outcome/max_turns_exhausted",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -332,7 +328,7 @@ async fn default_max_turns_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 TOOLS_PREAMBLE,
                 false,
             );

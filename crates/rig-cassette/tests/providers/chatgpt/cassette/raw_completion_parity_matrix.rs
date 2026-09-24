@@ -162,7 +162,7 @@ async fn raw_normalize_reproduces_completion() {
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -223,7 +223,7 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 tool_request,
                 sink,
             )
@@ -327,7 +327,7 @@ async fn empty_output_fallback_still_carries_raw() {
         "raw_completion_parity_matrix/empty_output_fallback_still_carries_raw",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )

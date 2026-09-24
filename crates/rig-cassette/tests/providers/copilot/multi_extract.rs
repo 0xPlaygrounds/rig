@@ -33,17 +33,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
         crate::cassettes::CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
         |client| async move {
             let names_extractor = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL)).into_extractor_builder::<Names>()
+                .endpoint(|provider| provider.completion(LIVE_LIGHT_MODEL)).into_extractor_builder::<Names>()
                 .append_preamble("Extract names from the given text.")
                 .retries(2)
                 .build();
             let topics_extractor = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL)).into_extractor_builder::<Topics>()
+                .endpoint(|provider| provider.completion(LIVE_LIGHT_MODEL)).into_extractor_builder::<Topics>()
                 .append_preamble("Extract topics from the given text.")
                 .retries(2)
                 .build();
             let sentiment_extractor = client
-                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL)).into_extractor_builder::<Sentiment>()
+                .endpoint(|provider| provider.completion(LIVE_LIGHT_MODEL)).into_extractor_builder::<Sentiment>()
                 .append_preamble("Extract sentiment and confidence from the given text.")
                 .retries(2)
                 .build();

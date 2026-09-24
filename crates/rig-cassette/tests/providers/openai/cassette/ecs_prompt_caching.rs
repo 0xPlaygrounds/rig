@@ -13,7 +13,7 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
                 "prompt_caching/chat_completions_agent_loop",
                 |client| async move {
                     let ecs = EcsAgent::new(
-                        client.endpoint(|provider_config| provider_config.chat(CACHE_MODEL)),
+                        client.endpoint(|provider| provider.chat(CACHE_MODEL)),
                         &probe().preamble,
                         1,
                     );
@@ -50,7 +50,7 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
                     let mut ecs = EcsAgent::new(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(CACHE_MODEL)),
+                            .endpoint(|provider| provider.completion(CACHE_MODEL)),
                         &probe().preamble,
                         1,
                     );

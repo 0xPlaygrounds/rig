@@ -98,7 +98,7 @@ async fn over_host(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::completion(
                 "default",
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
             )),
         )
         .expect("a fresh key");

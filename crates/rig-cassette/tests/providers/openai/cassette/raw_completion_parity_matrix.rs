@@ -362,9 +362,7 @@ async fn chat_text_turn_parity() {
         "raw_completion_parity_matrix/chat_text_turn_parity",
         |client| {
             capture_completion_pair(
-                client
-                    .openai
-                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                client.openai.endpoint(|provider| provider.chat(MODEL)),
                 text_request,
                 observed.clone(),
             )
@@ -383,9 +381,7 @@ async fn chat_tool_turn_parity() {
         "raw_completion_parity_matrix/chat_tool_turn_parity",
         |client| {
             capture_completion_pair(
-                client
-                    .openai
-                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                client.openai.endpoint(|provider| provider.chat(MODEL)),
                 tool_request,
                 observed.clone(),
             )
@@ -409,9 +405,7 @@ async fn chat_plain_raw_completion_lacks_request_id() {
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
         |client| {
             capture_completion_pair(
-                client
-                    .openai
-                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                client.openai.endpoint(|provider| provider.chat(MODEL)),
                 text_request,
                 observed.clone(),
             )
@@ -593,7 +587,7 @@ async fn responses_text_turn_parity() {
             capture_completion_pair(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.completion(MODEL)),
+                    .endpoint(|provider| provider.completion(MODEL)),
                 text_request,
                 observed.clone(),
             )
@@ -618,7 +612,7 @@ async fn responses_tool_turn_parity() {
             capture_completion_pair(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.completion(MODEL)),
+                    .endpoint(|provider| provider.completion(MODEL)),
                 tool_request,
                 observed.clone(),
             )

@@ -143,7 +143,7 @@ fn build(cell: Cell) -> NewCachedContent {
 /// of billed caches if one assertion took the test down with it.
 async fn run_cell(client: BoundGemini, cell: Cell) {
     let created: CachedContent = client
-        .endpoint(|provider_config| provider_config.cached_contents())
+        .endpoint(|provider| provider.cached_contents())
         .create(build(cell))
         .await
         .expect("creating a cached content should succeed");
@@ -151,7 +151,7 @@ async fn run_cell(client: BoundGemini, cell: Cell) {
     let outcome = check(&created, cell);
 
     client
-        .endpoint(|provider_config| provider_config.cached_contents())
+        .endpoint(|provider| provider.cached_contents())
         .delete(&created.name)
         .await
         .expect("delete should succeed — storage bills until it lands");
@@ -345,7 +345,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 
     let agent = AgentBuilder::new(
         client
-            .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+            .endpoint(|provider| provider.completion(CACHE_MODEL))
             .endpoint(|wire| {
                 wire.clone()
                     .with_cached_content("cachedContents/agent-guard")
@@ -392,7 +392,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
         "cached_content_matrix/edge_cached_code_execution",
         |client| async move {
             let cache = client
-                .endpoint(|provider_config| provider_config.cached_contents())
+                .endpoint(|provider| provider.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -410,7 +410,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
             always_deleting_cached_contents(&client, &handles, async {
                 let agent = AgentBuilder::new(
                     client
-                        .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                        .endpoint(|provider| provider.completion(CACHE_MODEL))
                         .endpoint(|wire| wire.clone().with_cached_content(cache.name.clone())),
                 )
                 .build();
@@ -473,7 +473,7 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
         "cached_content_matrix/edge_agent_active_tools_suppressed",
         |client| async move {
             let cache = client
-                .endpoint(|provider_config| provider_config.cached_contents())
+                .endpoint(|provider| provider.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -487,7 +487,7 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
             always_deleting_cached_contents(&client, &handles, async {
                 let agent = AgentBuilder::new(
                     client
-                        .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                        .endpoint(|provider| provider.completion(CACHE_MODEL))
                         .endpoint(|wire| wire.clone().with_cached_content(cache.name.clone())),
                 )
                 .tool(CountingPing::default())
@@ -706,7 +706,7 @@ async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
         "cached_content_matrix/edge_below_minimum",
         |client| async move {
             let refusal = client
-                .endpoint(|provider_config| provider_config.cached_contents())
+                .endpoint(|provider| provider.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(crate::cache_conformance::cache_padding(4))
@@ -721,7 +721,7 @@ async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
                 Err(error) => error,
                 Ok(created) => {
                     let _ = client
-                        .endpoint(|provider_config| provider_config.cached_contents())
+                        .endpoint(|provider| provider.cached_contents())
                         .delete(&created.name)
                         .await;
                     panic!("a cache under the minimum should be refused");
@@ -751,7 +751,7 @@ async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
         "cached_content_matrix/edge_expiry_in_the_past",
         |client| async move {
             let created = client
-                .endpoint(|provider_config| provider_config.cached_contents())
+                .endpoint(|provider| provider.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -772,7 +772,7 @@ async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
             // Delete before asserting: a failed assertion in record mode would
             // otherwise leave a billed cache behind.
             let _ = client
-                .endpoint(|provider_config| provider_config.cached_contents())
+                .endpoint(|provider| provider.cached_contents())
                 .delete(&created.name)
                 .await;
             outcome.unwrap_or_else(|failure| panic!("{failure}"));
@@ -788,7 +788,7 @@ async fn omitting_expiry_defaults_to_one_hour() {
         "cached_content_matrix/edge_default_expiry_is_one_hour",
         |client| async move {
             let created = client
-                .endpoint(|provider_config| provider_config.cached_contents())
+                .endpoint(|provider| provider.cached_contents())
                 .create(NewCachedContent::new(CACHE_MODEL).system_instruction(pad()))
                 .await
                 .expect("a cache with no expiry should be created");
@@ -827,7 +827,7 @@ async fn list_follows_the_cursor_across_pages() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_list_pagination",
         |client| async move {
-            let caches = client.endpoint(|provider_config| provider_config.cached_contents());
+            let caches = client.endpoint(|provider| provider.cached_contents());
             // The creates are collected rather than unwrapped: a second cache
             // that fails to create still has to delete the first, or the very
             // failure leaks three times the storage a passing run does.
@@ -884,7 +884,7 @@ async fn deleting_twice_reports_the_second_as_expired() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_double_delete",
         |client| async move {
-            let caches = client.endpoint(|provider_config| provider_config.cached_contents());
+            let caches = client.endpoint(|provider| provider.cached_contents());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -923,7 +923,7 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_update_expiry_absolute",
         |client| async move {
-            let caches = client.endpoint(|provider_config| provider_config.cached_contents());
+            let caches = client.endpoint(|provider| provider.cached_contents());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -963,7 +963,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
         "cached_content_matrix/use_streaming",
         |client| async move {
             let cache = client
-                .endpoint(|provider_config| provider_config.cached_contents())
+                .endpoint(|provider| provider.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -975,7 +975,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
-                    .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                    .endpoint(|provider| provider.completion(CACHE_MODEL))
                     .endpoint(|wire| wire.clone().with_cached_content(cache.name.clone()));
 
                 let request = rig::completion::CompletionRequest {

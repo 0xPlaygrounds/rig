@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
     let cohere = Cohere::from_env()?.bound()?;
     // Embed v3 embeds images with one fixed model at one fixed width, so the
     // image-embedding wire takes neither a model name nor a dimension count.
-    let model = cohere.endpoint(|provider_config| provider_config.image_embeddings());
+    let model = cohere.endpoint(|provider| provider.image_embeddings());
     let embedding = model.embed_image(&image).await?;
 
     println!(

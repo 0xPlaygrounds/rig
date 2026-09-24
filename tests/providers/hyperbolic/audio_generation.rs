@@ -13,7 +13,7 @@ async fn audio_generation_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = provider.endpoint(|provider_config| provider_config.speech("EN"));
+    let model = provider.endpoint(|provider| provider.speech("EN"));
 
     let response = model
         .audio_generation_request(AUDIO_TEXT, "EN-US")

@@ -45,9 +45,7 @@ async fn generate_content_keeps_documents_after_system_before_history() {
         "document_ordering/generate_content_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))

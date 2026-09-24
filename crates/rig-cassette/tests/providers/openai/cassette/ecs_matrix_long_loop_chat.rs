@@ -9,7 +9,6 @@
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::wire::OpenAI;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
@@ -20,7 +19,7 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
         thinking: cells::ThinkingWire::OpenAiChat,
         model: client
             .openai
-            .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+            .endpoint(|provider| provider.chat("gpt-4.1-mini")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -65,7 +64,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         rig::driver::Model::new(OpenAI::new(SCRIPTED_KEY), SequencedHttpClient::new(replies));
     Wire {
         thinking: THINKING,
-        model: client.endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+        model: client.endpoint(|provider| provider.chat("gpt-4.1-mini")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

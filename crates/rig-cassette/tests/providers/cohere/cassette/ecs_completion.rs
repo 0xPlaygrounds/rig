@@ -10,7 +10,7 @@ async fn completion_smoke() {
         async {
             with_cohere_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                    client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                     BASIC_PREAMBLE,
                     1,
                 );

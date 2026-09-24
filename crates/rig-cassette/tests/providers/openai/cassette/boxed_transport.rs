@@ -20,7 +20,7 @@ async fn completion_smoke_through_boxed_transport() {
     with_openai_boxed_cassette("agent/completion_smoke", |client| async move {
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .endpoint(|provider| provider.completion(openai::GPT_4O))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();
@@ -41,7 +41,7 @@ async fn streaming_smoke_through_boxed_transport() {
     with_openai_boxed_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .endpoint(|provider| provider.completion(openai::GPT_4O))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();

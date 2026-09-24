@@ -50,7 +50,6 @@ use rig::bedrock;
 use rig::bedrock::streaming::BedrockStreamingResponse;
 use rig::bedrock::types::converse_output::StopReason;
 use rig::completion::CompletionModel as _;
-use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 

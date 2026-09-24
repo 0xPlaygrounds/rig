@@ -13,9 +13,8 @@ async fn image_generation_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = provider.endpoint(|provider_config| {
-        provider_config.images("stabilityai/stable-diffusion-3-medium-diffusers")
-    });
+    let model = provider
+        .endpoint(|provider| provider.images("stabilityai/stable-diffusion-3-medium-diffusers"));
 
     let response = model
         .image_generation_request(IMAGE_PROMPT)

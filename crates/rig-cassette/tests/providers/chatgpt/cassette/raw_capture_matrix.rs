@@ -116,7 +116,7 @@ async fn raw_round_trips_provider_type() {
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -170,7 +170,7 @@ async fn raw_exposes_response_envelope() {
         "raw_capture_matrix/raw_exposes_response_envelope",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )
@@ -224,7 +224,7 @@ async fn normalized_fields_equal_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink,
             )

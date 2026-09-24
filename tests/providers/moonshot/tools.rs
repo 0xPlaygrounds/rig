@@ -16,7 +16,7 @@ async fn required_tool_choice_agent_roundtrip() {
         .expect("MOONSHOT_API_KEY should be set")
         .bound()
         .expect("moonshot client should build")
-        .endpoint(|provider_config| provider_config.completion(moonshot::KIMI_K3))
+        .endpoint(|provider| provider.completion(moonshot::KIMI_K3))
         .into_agent_builder()
         .preamble(TOOLS_PREAMBLE)
         .tool_choice(ToolChoice::Required)

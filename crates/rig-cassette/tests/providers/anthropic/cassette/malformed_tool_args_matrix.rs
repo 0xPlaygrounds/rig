@@ -157,9 +157,7 @@ impl AgentHook for OnMalformed {
 
 fn agent(client: Model<Anthropic>) -> rig::agent::Agent {
     client
-        .endpoint(|provider_config| {
-            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        })
+        .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)

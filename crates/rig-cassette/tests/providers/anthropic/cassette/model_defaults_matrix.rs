@@ -129,7 +129,7 @@ fn assert_recorded_system_role_hoisted(scenario: &str) {
 }
 
 async fn assert_uncapped_turn(client: Model<Anthropic>, model_id: &str) {
-    let model = client.endpoint(|provider_config| provider_config.completion(model_id));
+    let model = client.endpoint(|provider| provider.completion(model_id));
     let request = model.completion_request(PROMPT).build();
     let response = model
         .complete(request)
@@ -140,7 +140,7 @@ async fn assert_uncapped_turn(client: Model<Anthropic>, model_id: &str) {
 }
 
 async fn assert_mid_conversation_system_turn(client: Model<Anthropic>, model_id: &str) {
-    let model = client.endpoint(|provider_config| provider_config.completion(model_id));
+    let model = client.endpoint(|provider| provider.completion(model_id));
     let request = model
         .completion_request(SKY_PROMPT)
         .messages([

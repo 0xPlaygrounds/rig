@@ -136,7 +136,7 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
         |client| {
             capture_completion_pair(
-                client.endpoint(|provider_config| provider_config.completion(RAW_CAPTURE_MODEL)),
+                client.endpoint(|provider| provider.completion(RAW_CAPTURE_MODEL)),
                 request,
                 sink.clone(),
             )
@@ -194,7 +194,7 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
         "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(RAW_CAPTURE_MODEL)),
+                client.endpoint(|provider| provider.completion(RAW_CAPTURE_MODEL)),
                 request,
                 sink.clone(),
             )

@@ -24,7 +24,7 @@ async fn tool_prompt_across_subproviders() {
             .bound()
             .expect("transport should build");
         let agent = provider
-            .endpoint(|provider_config| provider_config.completion(model))
+            .endpoint(|provider| provider.completion(model))
             .into_agent_builder()
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \

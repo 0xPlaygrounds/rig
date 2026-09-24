@@ -29,9 +29,7 @@ async fn streaming_smoke() {
 
     super::super::support::with_gemini_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
-            })
+            .endpoint(|provider| provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .additional_params(
@@ -67,8 +65,8 @@ async fn example_streaming_prompt() {
         "streaming/example_streaming_prompt",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 })
                 .into_agent_builder()
                 .preamble("Be precise and concise.")
@@ -94,9 +92,8 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request("Reply with exactly: final metadata ok")
                 .temperature(0.0)
@@ -150,9 +147,8 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_handles_terminal_finish_reason_chunk",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request("Reply with exactly: contentless final metadata ok")
                 .temperature(0.0)

@@ -99,7 +99,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
             |client| async move {
                 {
                     client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
@@ -150,7 +150,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
             |client| async move {
                 {
                     let agent = client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
@@ -193,7 +193,7 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
             |client| async move {
                 {
                     client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
@@ -235,7 +235,7 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
             |client| async move {
                 {
                     let agent = client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
@@ -274,7 +274,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
             |client| async move {
                 {
                     client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(TOOL_PREAMBLE)
@@ -321,7 +321,7 @@ async fn streaming_tool_turn_reports_tool_calls() {
             |client| async move {
                 {
                     let agent = client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(TOOL_PREAMBLE)
@@ -371,7 +371,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
             |client| async move {
                 {
                     client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
@@ -430,7 +430,7 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
             |client| async move {
                 {
                     let agent = client
-                        .endpoint(|provider_config| provider_config.completion(MODEL))
+                        .endpoint(|provider| provider.completion(MODEL))
                         .into_agent_builder()
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)

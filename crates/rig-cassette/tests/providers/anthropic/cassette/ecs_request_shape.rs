@@ -31,8 +31,7 @@ async fn tool_choice_auto_effect_log() {
             "corpus_request_shape/tool_choice_auto",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -84,8 +83,7 @@ async fn tool_choice_required_effect_log() {
             "corpus_request_shape/tool_choice_required",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -139,8 +137,7 @@ async fn tool_choice_specific_effect_log() {
             "corpus_request_shape/tool_choice_specific",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -202,7 +199,7 @@ async fn tool_choice_none_effect_log() {
         "corpus_request_shape/tool_choice_none",
         |client| async move {
             let mut ecs =
-            EcsAgent::for_golden(client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)), BASIC_PREAMBLE, false);
+            EcsAgent::for_golden(client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)), BASIC_PREAMBLE, false);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(Temperature(Some(0.0)));
             ecs.tool(Adder);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(ToolChoiceSpec(Some(ToolChoice::None)));
@@ -239,8 +236,7 @@ async fn max_tokens_effect_log() {
             "corpus_request_shape/max_tokens",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -286,8 +282,7 @@ async fn thinking_unary_effect_log() {
             "corpus_request_shape/thinking_unary",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -328,8 +323,7 @@ async fn thinking_streamed_effect_log() {
             "corpus_request_shape/thinking_streamed",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     true,
                 );
@@ -370,8 +364,7 @@ async fn static_context_effect_log() {
             "corpus_request_shape/static_context",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -425,8 +418,7 @@ async fn append_preamble_effect_log() {
             "corpus_request_shape/append_preamble",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -468,8 +460,7 @@ async fn without_preamble_effect_log() {
             "corpus_request_shape/without_preamble",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -516,8 +507,7 @@ async fn output_schema_unary_effect_log() {
             "corpus_request_shape/output_schema_unary",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -563,8 +553,7 @@ async fn output_schema_streamed_effect_log() {
             "corpus_request_shape/output_schema_streamed",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     true,
                 );
@@ -611,8 +600,7 @@ async fn prior_history_effect_log() {
             "corpus_request_shape/prior_history",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );

@@ -150,7 +150,7 @@ async fn main() -> Result<()> {
     // configured `Agent` execution instead always goes through `AgentRunner`.
     let model = OpenAI::from_env()?
         .bound()?
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+        .endpoint(|provider| provider.completion(openai::GPT_4O));
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
     let mut tools = ToolSet::default();

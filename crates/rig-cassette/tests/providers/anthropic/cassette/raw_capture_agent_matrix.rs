@@ -266,7 +266,7 @@ async fn hooks_observe_raw_blocking() {
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5))
+                .endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5))
                 .into_agent_builder()
                 .max_tokens(32)
                 .add_hook(hook)
@@ -313,7 +313,7 @@ async fn hooks_observe_raw_streamed() {
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5))
+                .endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5))
                 .into_agent_builder()
                 .max_tokens(32)
                 .add_hook(hook)
@@ -371,7 +371,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5))
+                .endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5))
                 .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
@@ -420,7 +420,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5))
+                .endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5))
                 .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
@@ -477,7 +477,7 @@ async fn streamed_final_carries_final_turn_raw() {
         "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5))
+                .endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5))
                 .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
@@ -536,7 +536,7 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
         "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5))
+                .endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5))
                 .into_agent_builder()
                 .max_tokens(32)
                 .add_hook(hook)
@@ -585,7 +585,7 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
         "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5))
+                .endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5))
                 .into_agent_builder()
                 .max_tokens(32)
                 .add_hook(hook)

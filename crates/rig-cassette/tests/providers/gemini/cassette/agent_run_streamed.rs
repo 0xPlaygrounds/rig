@@ -185,7 +185,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             );
 
             let agent = GeminiAgent::new(
-                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                client.endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -271,7 +271,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
         "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                client.endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -330,9 +330,8 @@ async fn streamed_repair_continues_the_same_stream() {
         "agent_run_streamed/streamed_repair_continues_the_same_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                }),
+                client
+                    .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -404,7 +403,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
         "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                client.endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,
@@ -503,9 +502,7 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
         "agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .tool(Add)
@@ -579,9 +576,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
         "agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .tool(Add)

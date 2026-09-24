@@ -86,7 +86,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(MISSING_MODEL))
+                .endpoint(|provider| provider.completion(MISSING_MODEL))
                 .into_agent_builder()
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_to(recorder.clone())
@@ -125,7 +125,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     let client = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GPT_4O))
+        .endpoint(|provider| provider.completion(GPT_4O))
         .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .record_to(recorder.clone())
@@ -162,7 +162,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     let client = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GPT_4O))
+        .endpoint(|provider| provider.completion(GPT_4O))
         .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
@@ -203,7 +203,7 @@ async fn error_event_after_content_fails_with_the_provider_error() {
     let client = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GPT_4O))
+        .endpoint(|provider| provider.completion(GPT_4O))
         .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .record_to(recorder.clone())
@@ -252,7 +252,7 @@ async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(GPT_4O))
+            .endpoint(|provider| provider.completion(GPT_4O))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .record_to(recorder.clone())

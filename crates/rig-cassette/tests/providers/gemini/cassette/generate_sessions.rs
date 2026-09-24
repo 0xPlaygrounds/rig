@@ -95,9 +95,7 @@ async fn sequential_tool_calls_ordering_nonstreaming() {
         "generate_sessions/sequential_tool_calls_ordering_nonstreaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -150,9 +148,7 @@ async fn sequential_tool_calls_ordering_streaming() {
         "generate_sessions/sequential_tool_calls_ordering_streaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -200,9 +196,8 @@ async fn long_history_replay_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
 
             // A finished prior session replayed statelessly: Gemini pairs
             // functionResponse parts to functionCall parts by name, so a fully
@@ -287,9 +282,8 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
     with_gemini_cassette(
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request(
                     "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \

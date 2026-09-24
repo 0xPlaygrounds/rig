@@ -12,7 +12,7 @@ use crate::support::{
 async fn streaming_smoke() {
     with_xai_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI))
+            .endpoint(|provider| provider.completion(xai::GROK_3_MINI))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();

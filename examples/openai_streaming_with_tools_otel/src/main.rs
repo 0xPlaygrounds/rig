@@ -137,7 +137,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create agent with a single context prompt and two tools
     let calculator_agent = OpenAI::from_env()?
         .bound()?
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .endpoint(|provider| provider.completion(openai::GPT_4O))
         .into_agent_builder()
         .preamble(
             "You are a calculator here to help the user perform arithmetic

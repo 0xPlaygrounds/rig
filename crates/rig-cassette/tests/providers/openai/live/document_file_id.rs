@@ -189,7 +189,7 @@ async fn responses_document_file_id_roundtrip_live() {
             .bound()
             .expect("transport should build");
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5)).into_agent_builder()
+            .endpoint(|provider| provider.completion(openai::GPT_5_5)).into_agent_builder()
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();
@@ -230,7 +230,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
             .with_route(Route::Chat)
             .bound()
             .expect("transport should build");
-        let agent = client.endpoint(|provider_config| provider_config.completion(openai::GPT_5_5)).into_agent_builder()
+        let agent = client.endpoint(|provider| provider.completion(openai::GPT_5_5)).into_agent_builder()
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();

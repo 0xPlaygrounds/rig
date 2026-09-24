@@ -29,7 +29,7 @@ async fn strict_tools_opt_in_roundtrip() {
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the backend.
             let model = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
@@ -82,8 +82,7 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
     with_chatgpt_cassette(
         "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4));
+            let model = client.endpoint(|provider| provider.completion(chatgpt::GPT_5_4));
             // `store` and `prompt_cache_key` are Responses-API wire fields
             // with no normalized home, so they are read off the backend's own
             // response type — deserialized from the one reply's `raw`, which
@@ -155,7 +154,7 @@ async fn explicit_preamble_and_mid_conversation_system_messages_are_instructions
             // body locks that the provider lifts both the preamble and later
             // system messages into the top-level `instructions` field.
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4))
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4))
                 .into_agent_builder()
                 .preamble("You are a concise assistant.")
                 .build();
@@ -188,7 +187,7 @@ async fn default_instructions_merge_with_explicit_preamble() {
         "Default instruction marker: always include DEFAULT-CODEX-MARKER when asked for the default marker.",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4)).into_agent_builder()
+                .endpoint(|provider| provider.completion(chatgpt::GPT_5_4)).into_agent_builder()
                 .preamble("Explicit instruction marker: also include EXPLICIT-CODEX-MARKER.")
                 .build();
             let mut history = Vec::<Message>::new();

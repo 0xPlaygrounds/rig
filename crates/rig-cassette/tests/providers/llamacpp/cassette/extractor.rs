@@ -9,7 +9,7 @@ use super::super::cassette_support::*;
 async fn extractor_smoke() {
     with_llamacpp_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
-            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .endpoint(|provider| provider.completion(CASSETTE_MODEL))
             .into_extractor_builder::<SmokePerson>()
             .build();
 

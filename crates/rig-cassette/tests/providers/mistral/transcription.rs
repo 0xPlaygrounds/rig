@@ -14,8 +14,7 @@ async fn transcription_smoke() {
         .expect("MISTRAL_API_KEY should be set")
         .bound()
         .expect("client should build");
-    let model =
-        client.endpoint(|provider_config| provider_config.transcriptions(mistral::VOXTRAL_MINI));
+    let model = client.endpoint(|provider| provider.transcriptions(mistral::VOXTRAL_MINI));
     let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
         .expect("should be able to load audio fixture")
         .send()

@@ -43,8 +43,8 @@ async fn agent_max_tokens_reaches_generation_config_without_additional_params() 
         "regression/agent_max_tokens_without_additional_params",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 })
                 .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
@@ -100,8 +100,8 @@ async fn structured_output_without_max_tokens_sends_no_sampling_fields() {
         "regression/structured_output_without_max_tokens",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 })
                 .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()
@@ -141,8 +141,8 @@ async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
         "regression/structured_output_with_max_tokens",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 })
                 .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()
@@ -184,8 +184,8 @@ async fn temperature_without_max_tokens_sends_no_max_output_tokens() {
         "regression/temperature_without_max_tokens",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 })
                 .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
@@ -232,8 +232,8 @@ async fn thinking_config_without_max_tokens_sends_no_sampling_fields() {
             let params = AdditionalParameters::default().with_config(config);
 
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 })
                 .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
@@ -279,8 +279,8 @@ async fn streaming_structured_output_without_max_tokens_sends_no_sampling_fields
         "regression/streaming_structured_output_without_max_tokens",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .endpoint(|provider| {
+                    provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 })
                 .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()

@@ -7,8 +7,7 @@ use rig::embeddings::EmbeddingModel;
 #[tokio::test]
 async fn embeddings_smoke() {
     with_copilot_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client
-            .endpoint(|provider_config| provider_config.embeddings(live_embedding_model(), None));
+        let model = client.endpoint(|provider| provider.embeddings(live_embedding_model(), None));
 
         let embeddings = model
             .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))

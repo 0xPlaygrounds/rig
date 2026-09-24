@@ -15,8 +15,7 @@ async fn audio_generation_smoke() {
         .expect("OPENROUTER_API_KEY")
         .bound()
         .expect("transport should build");
-    let model =
-        bound.endpoint(|provider_config| provider_config.speech(openrouter::GPT_4O_MINI_TTS));
+    let model = bound.endpoint(|provider| provider.speech(openrouter::GPT_4O_MINI_TTS));
     let response = model
         .audio_generation_request(AUDIO_TEXT, "alloy")
         .send()

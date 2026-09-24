@@ -51,7 +51,7 @@ pub(super) fn agent(
     streamed: bool,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden_with_setup(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         preamble,
         streamed,
         |world| {

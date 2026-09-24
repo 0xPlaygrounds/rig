@@ -14,7 +14,7 @@ use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_
 async fn tools_roundtrip() {
     with_llamacpp_cassette("tools/tools_roundtrip", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .endpoint(|provider| provider.completion(CASSETTE_MODEL))
             .into_agent_builder()
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
@@ -37,7 +37,7 @@ async fn tools_smoke() {
     with_llamacpp_cassette("tools/tools_smoke", |client| async move {
 
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)).into_agent_builder()
+            .endpoint(|provider| provider.completion(CASSETTE_MODEL)).into_agent_builder()
             .preamble(
                 "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
                  After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",

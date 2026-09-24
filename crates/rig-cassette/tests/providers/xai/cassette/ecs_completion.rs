@@ -10,7 +10,7 @@ async fn completion_smoke() {
         async {
             with_xai_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)),
+                    client.endpoint(|provider| provider.completion(xai::GROK_3_MINI)),
                     BASIC_PREAMBLE,
                     1,
                 );

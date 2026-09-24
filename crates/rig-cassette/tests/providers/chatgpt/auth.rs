@@ -90,7 +90,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     );
 
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();
@@ -104,7 +104,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     let cached_client = oauth_client_with_auth_file(&auth_file).await;
 
     let cached_agent = cached_client
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .build();
     let mut cached_stream = cached_agent
@@ -145,7 +145,7 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
     );
 
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .build();
     let mut stream = agent

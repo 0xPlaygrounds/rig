@@ -13,7 +13,7 @@ async fn context_smoke() {
             .copied()
             .fold(
                 client
-                    .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                    .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                     .into_agent_builder(),
                 |builder, doc| builder.context(doc),
             )

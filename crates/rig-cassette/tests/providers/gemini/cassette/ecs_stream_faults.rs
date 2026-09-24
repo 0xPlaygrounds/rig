@@ -37,7 +37,7 @@ use crate::{
 fn scripted_model(
     chunks: Vec<Bytes>,
 ) -> Model<gemini::completion::GenerateContent, SequencedStreamingHttpClient> {
-    scripted_client(chunks).endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+    scripted_client(chunks).endpoint(|provider| provider.completion(GEMINI_2_5_FLASH))
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -79,7 +79,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 let run = native_run(
-                    client.endpoint(|provider_config| provider_config.completion(MISSING_MODEL)),
+                    client.endpoint(|provider| provider.completion(MISSING_MODEL)),
                     "",
                     SETUP_PROMPT,
                     witness,
@@ -387,9 +387,7 @@ async fn witnessed_success_matches_the_unwitnessed_run() {
             let runs = &mut runs;
             with_gemini_cassette("streaming/streaming_smoke", |client| async move {
                 let run = native_run(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(GEMINI_3_FLASH_PREVIEW)
-                    }),
+                    client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
                     STREAMING_PREAMBLE,
                     STREAMING_PROMPT,
                     witness,

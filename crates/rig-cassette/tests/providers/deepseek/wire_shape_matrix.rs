@@ -115,7 +115,7 @@ async fn blocking_image_base64_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_base64_part_reaches_the_wire",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let error = model
                 .complete(
                     model
@@ -146,7 +146,7 @@ async fn blocking_image_url_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_url_part_reaches_the_wire",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let error = model
                 .complete(
                     model
@@ -180,7 +180,7 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let error = model
                 .complete(
                     model
@@ -216,7 +216,7 @@ async fn blocking_audio_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_audio_part_reaches_the_wire",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let error = model
                 .complete(
                     model
@@ -249,7 +249,7 @@ async fn blocking_video_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_video_part_reaches_the_wire",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let error = model
                 .complete(
                     model
@@ -291,7 +291,7 @@ async fn blocking_image_only_message_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_only_message_reaches_the_wire",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let error = model
                 .complete(
                     model
@@ -324,7 +324,7 @@ async fn streaming_image_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/streaming_image_part_reaches_the_wire",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             // The SSE connect may surface the rejection as a connect error or
             // as the stream's first item, depending on how the transport
             // reports a 400 on an event-stream request; both are the provider
@@ -376,7 +376,7 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let response = model
                 .complete(
                     model
@@ -421,7 +421,7 @@ async fn blocking_text_document_still_flattens_to_a_string() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_text_document_still_flattens_to_a_string",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let response = model
                 .complete(
                     model
@@ -458,7 +458,7 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_assistant_and_tool_history_still_flattens",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let response = model
                 .complete(
                     model
@@ -599,7 +599,7 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/rig_suppresses_a_forced_tool_choice_while_thinking_is_on",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let response = model
                 .complete(
                     model
@@ -634,7 +634,7 @@ async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/rig_keeps_a_forced_tool_choice_when_thinking_is_disabled",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let response = model
                 .complete(
                     model
@@ -671,7 +671,7 @@ async fn chat_completion_rejects_an_unknown_model_with_the_provider_body() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion("deepseek-v9-nonexistent"));
+            let model = client.endpoint(|provider| provider.completion("deepseek-v9-nonexistent"));
             let error = model
                 .complete(
                     model
@@ -699,7 +699,7 @@ async fn chat_completion_rejects_a_bogus_key_with_the_provider_body() {
     with_deepseek_cassette_bogus_key_result(
         "wire_shape_matrix/chat_completion_rejects_a_bogus_key_with_the_provider_body",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let error = model
                 .complete(
                     model
@@ -739,7 +739,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_repeated_prompt_reports_the_cache_split",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let build = || {
                 model
                     .completion_request(cache_probe_prompt())
@@ -798,7 +798,7 @@ async fn streaming_repeated_prompt_reports_the_cache_split() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/streaming_repeated_prompt_reports_the_cache_split",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let build = || {
                 model
                     .completion_request(cache_probe_prompt())

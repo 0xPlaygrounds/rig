@@ -156,9 +156,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
         "generate_tool_args/nested_arguments_roundtrip_nonstreaming",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(NESTED_ARGS_PREAMBLE)
                 .temperature(0.0)
@@ -204,9 +202,8 @@ async fn nested_arguments_streaming() {
     with_gemini_cassette(
         "generate_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
@@ -243,9 +240,8 @@ async fn unicode_arguments_streaming() {
     with_gemini_cassette(
         "generate_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request(
                     "Call the echo tool exactly once with the message argument set to \
@@ -310,9 +306,8 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
     with_gemini_cassette(
         "generate_tool_args/optional_nullable_argument_omitted_when_not_requested",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request(
                     "Log an event named \"deploy\" using the log_event tool. \

@@ -163,7 +163,7 @@ fn request(
 }
 
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedChoice) -> Result<()> {
-    let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+    let model = client.endpoint(|provider| provider.completion(MODEL));
     let choice = match cell.transport {
         Transport::Blocking => model.complete(request(&model, cell)).await?.choice,
         Transport::Streaming => {
@@ -186,7 +186,7 @@ async fn run_signed_agent(
     invocations: Arc<AtomicUsize>,
 ) -> Result<()> {
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+        .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
         .preamble(
             "Reason before the requested first tool call. After its result, answer exactly DONE without calling another tool.",
         )

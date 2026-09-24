@@ -10,7 +10,7 @@ use crate::zai::general_client;
 #[ignore = "requires ZAI_API_KEY"]
 async fn general_openai_compatible_completion_smoke() {
     let response = general_client()
-        .endpoint(|provider_config| provider_config.completion(zai::GLM_4_6))
+        .endpoint(|provider| provider.completion(zai::GLM_4_6))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()

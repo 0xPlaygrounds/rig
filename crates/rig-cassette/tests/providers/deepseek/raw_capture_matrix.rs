@@ -145,7 +145,7 @@ async fn raw_round_trips_deepseek_type() {
         "raw_capture_matrix/raw_round_trips_deepseek_type",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -185,7 +185,7 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
         "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -236,7 +236,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -281,7 +281,7 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 reasoning_request,
                 sink.clone(),
             )

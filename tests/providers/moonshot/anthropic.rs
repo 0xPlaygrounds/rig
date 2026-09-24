@@ -13,7 +13,7 @@ async fn anthropic_compatible_completion_smoke() {
         .expect("MOONSHOT_API_KEY should be set")
         .bound()
         .expect("moonshot anthropic client should build")
-        .endpoint(|provider_config| provider_config.completion(moonshot::KIMI_K3))
+        .endpoint(|provider| provider.completion(moonshot::KIMI_K3))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()

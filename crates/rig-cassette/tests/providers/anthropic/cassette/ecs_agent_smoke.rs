@@ -27,7 +27,7 @@ async fn completion_smoke_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_cassette("agent/completion_smoke", |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 BASIC_PREAMBLE,
                 false,
             );
@@ -58,7 +58,7 @@ async fn memory_conversation_effect_log() {
         with_anthropic_cassette("agent/completion_smoke", |client| async move {
             let mut memory = None;
             let mut ecs = EcsAgent::for_golden_with_setup(
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 BASIC_PREAMBLE,
                 false,
                 |world| {

@@ -57,8 +57,7 @@ async fn blocking_response_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/blocking_response_carries_the_correlation_id",
         |client| async move {
-            let model = client
-                .endpoint(|provider_config| provider_config.completion(mistral::MISTRAL_SMALL));
+            let model = client.endpoint(|provider| provider.completion(mistral::MISTRAL_SMALL));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -76,7 +75,7 @@ async fn streaming_terminal_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/streaming_terminal_carries_the_correlation_id",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(mistral::MISTRAL_SMALL))
+                .endpoint(|provider| provider.completion(mistral::MISTRAL_SMALL))
                 .into_agent_builder()
                 .build();
             let mut stream = agent.prompt("Reply with exactly: identity probe").stream();
@@ -100,7 +99,7 @@ async fn verify_succeeds_against_the_versioned_models_route() -> Result<()> {
         "response_identity_edge/verify_succeeds_against_the_versioned_models_route",
         |client| async move {
             client
-                .endpoint(|provider_config| provider_config.verify())
+                .endpoint(|provider| provider.verify())
                 .verify()
                 .await
                 .map_err(|error| anyhow::anyhow!("verification should succeed: {error:?}"))?;
@@ -119,7 +118,7 @@ async fn blocking_error_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/blocking_error_carries_the_correlation_id",
         |client| async move {
             let error = client
-                .endpoint(|provider_config| provider_config.completion("definitely-not-a-model"))
+                .endpoint(|provider| provider.completion("definitely-not-a-model"))
                 .completion_request("Reply with exactly: identity probe")
                 .send()
                 .await
@@ -144,7 +143,7 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/streaming_error_carries_the_correlation_id",
         |client| async move {
             let error = match client
-                .endpoint(|provider_config| provider_config.completion("definitely-not-a-model"))
+                .endpoint(|provider| provider.completion("definitely-not-a-model"))
                 .completion_request("Reply with exactly: identity probe")
                 .stream()
                 .await
@@ -176,7 +175,7 @@ async fn blocking_unauthorized_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/blocking_unauthorized_carries_the_correlation_id",
         |client| async move {
             let error = client
-                .endpoint(|provider_config| provider_config.completion(mistral::MISTRAL_SMALL))
+                .endpoint(|provider| provider.completion(mistral::MISTRAL_SMALL))
                 .completion_request("Reply with exactly: identity probe")
                 .send()
                 .await

@@ -264,9 +264,7 @@ async fn chat_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result("raw_capture_matrix/chat_raw_round_trips_typed", |client| {
         capture_completion(
-            client
-                .openai
-                .endpoint(|provider_config| provider_config.chat(MODEL)),
+            client.openai.endpoint(|provider| provider.chat(MODEL)),
             request,
             observed.clone(),
         )
@@ -318,9 +316,7 @@ async fn chat_raw_exposes_service_tier() {
         "raw_capture_matrix/chat_raw_exposes_service_tier",
         |client| {
             capture_completion(
-                client
-                    .openai
-                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                client.openai.endpoint(|provider| provider.chat(MODEL)),
                 request,
                 observed.clone(),
             )
@@ -371,7 +367,7 @@ async fn responses_raw_round_trips_typed() {
             capture_completion(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.completion(MODEL)),
+                    .endpoint(|provider| provider.completion(MODEL)),
                 request,
                 observed.clone(),
             )
@@ -424,7 +420,7 @@ async fn responses_raw_exposes_service_tier_and_store() {
             capture_completion(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.completion(MODEL)),
+                    .endpoint(|provider| provider.completion(MODEL)),
                 request,
                 observed.clone(),
             )
@@ -502,7 +498,7 @@ async fn responses_reasoning_raw_round_trips_typed() {
             capture_completion(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.completion(REASONING_MODEL)),
+                    .endpoint(|provider| provider.completion(REASONING_MODEL)),
                 reasoning_request,
                 observed.clone(),
             )
@@ -603,9 +599,7 @@ async fn chat_tool_call_raw_round_trips_typed() {
         "raw_capture_matrix/chat_tool_call_raw_round_trips_typed",
         |client| {
             capture_completion(
-                client
-                    .openai
-                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                client.openai.endpoint(|provider| provider.chat(MODEL)),
                 tool_request,
                 observed.clone(),
             )
@@ -716,9 +710,7 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
         "raw_capture_matrix/chat_structured_output_raw_exposes_system_fingerprint",
         |client| {
             capture_completion(
-                client
-                    .openai
-                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                client.openai.endpoint(|provider| provider.chat(MODEL)),
                 structured_request,
                 observed.clone(),
             )

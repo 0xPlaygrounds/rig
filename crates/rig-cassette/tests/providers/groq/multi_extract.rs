@@ -37,19 +37,19 @@ async fn batch_multi_extract_chain() -> Result<()> {
         .bound()
         .expect("transport should build");
     let names_extractor = groq
-        .endpoint(|provider_config| provider_config.completion(MULTI_EXTRACT_NAMES_MODEL))
+        .endpoint(|provider| provider.completion(MULTI_EXTRACT_NAMES_MODEL))
         .into_extractor_builder::<Names>()
         .append_preamble("Extract names from the given text.")
         .retries(2)
         .build();
     let topics_extractor = groq
-        .endpoint(|provider_config| provider_config.completion(MULTI_EXTRACT_TOPICS_MODEL))
+        .endpoint(|provider| provider.completion(MULTI_EXTRACT_TOPICS_MODEL))
         .into_extractor_builder::<Topics>()
         .append_preamble("Extract topics from the given text.")
         .retries(2)
         .build();
     let sentiment_extractor = groq
-        .endpoint(|provider_config| provider_config.completion(MULTI_EXTRACT_SENTIMENT_MODEL))
+        .endpoint(|provider| provider.completion(MULTI_EXTRACT_SENTIMENT_MODEL))
         .into_extractor_builder::<Sentiment>()
         .append_preamble("Extract sentiment and confidence from the given text.")
         .retries(2)

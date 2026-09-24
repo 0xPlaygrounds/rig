@@ -518,7 +518,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -554,7 +554,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/tool_choice_auto_any_specific_and_none",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
+            let model = client.endpoint(|provider| provider.completion(SESSION_MODEL));
 
             let auto = model
                 .complete(
@@ -649,7 +649,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(STRUCTURED_MODEL));
+            let model = client.endpoint(|provider| provider.completion(STRUCTURED_MODEL));
             let request = model
                 .completion_request(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
@@ -691,8 +691,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(STRUCTURED_MODEL));
+            let model = client.endpoint(|provider| provider.completion(STRUCTURED_MODEL));
             let request = model
                 .completion_request(
                     "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",

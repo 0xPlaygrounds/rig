@@ -1355,7 +1355,7 @@ fn scripted_turn() -> Vec<StreamEvent> {
 
 /// The accumulator owns no transport: driven over `futures::stream::iter`
 /// with no provider behind it, it folds the events into the same choice
-/// a `StreamingCompletionResponse` would, and reports each finalized
+/// a `CompletionStream` would, and reports each finalized
 /// block as the end that finalized it is applied.
 #[test]
 fn folds_a_provider_less_event_stream() {

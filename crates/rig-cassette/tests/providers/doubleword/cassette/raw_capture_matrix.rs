@@ -73,7 +73,7 @@ async fn raw_round_trips_openai_type() {
     let sink = Observed::default();
     with_doubleword_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
         capture_completion(
-            client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+            client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
             request,
             sink.clone(),
         )
@@ -114,7 +114,7 @@ async fn raw_exposes_object() {
     let sink = Observed::default();
     with_doubleword_cassette_result("raw_capture_matrix/raw_exposes_object", |client| {
         capture_completion(
-            client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+            client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
             request,
             sink.clone(),
         )
@@ -165,7 +165,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                 request,
                 sink.clone(),
             )

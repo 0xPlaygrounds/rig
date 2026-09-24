@@ -18,10 +18,8 @@ async fn chat_completions() {
                 cell,
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.chat("gpt-4.1-nano")),
-                client
-                    .openai
-                    .endpoint(|provider_config| provider_config.chat(REJECTED)),
+                    .endpoint(|provider| provider.chat("gpt-4.1-nano")),
+                client.openai.endpoint(|provider| provider.chat(REJECTED)),
                 None,
                 |request| request,
             )
@@ -43,10 +41,10 @@ async fn responses() {
             cell,
             client
                 .openai
-                .endpoint(|provider_config| provider_config.responses("gpt-4.1-nano")),
+                .endpoint(|provider| provider.responses("gpt-4.1-nano")),
             client
                 .openai
-                .endpoint(|provider_config| provider_config.responses(REJECTED)),
+                .endpoint(|provider| provider.responses(REJECTED)),
             Some(serde_json::json!({ "store": false })),
             |request| request,
         )

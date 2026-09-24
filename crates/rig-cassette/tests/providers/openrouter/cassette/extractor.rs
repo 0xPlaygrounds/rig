@@ -10,7 +10,7 @@ use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 async fn extractor_smoke() {
     with_openrouter_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
-            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .endpoint(|provider| provider.completion(DEFAULT_MODEL))
             .into_extractor_builder::<SmokePerson>()
             .build();
 

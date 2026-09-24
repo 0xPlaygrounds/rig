@@ -20,7 +20,7 @@ async fn context_smoke() {
             .copied()
             .fold(
                 client
-                    .endpoint(|provider_config| provider_config.completion(xai::GROK_4))
+                    .endpoint(|provider| provider.completion(xai::GROK_4))
                     .into_agent_builder(),
                 |builder, doc| builder.context(doc),
             )

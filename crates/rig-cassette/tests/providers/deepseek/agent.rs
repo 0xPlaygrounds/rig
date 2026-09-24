@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     with_deepseek_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+            .endpoint(|provider| provider.completion(deepseek::DEEPSEEK_V4_FLASH))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();

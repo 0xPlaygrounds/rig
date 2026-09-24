@@ -12,7 +12,7 @@ use super::super::{DEFAULT_MODEL, TOOL_MODEL, support::with_venice_cassette};
 async fn zero_argument_tool_roundtrip() {
     with_venice_cassette("conformance/zero_argument_tool", |client| async move {
         zero_argument_tool(
-            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+            client.endpoint(|provider| provider.completion(TOOL_MODEL)),
             |builder| builder,
         )
         .await
@@ -25,7 +25,7 @@ async fn zero_argument_tool_roundtrip() {
 async fn parallel_tool_calls_roundtrip() {
     with_venice_cassette("conformance/parallel_tools", |client| async move {
         parallel_tools(
-            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+            client.endpoint(|provider| provider.completion(TOOL_MODEL)),
             |builder| builder,
             None,
         )
@@ -41,7 +41,7 @@ async fn cancellation_and_max_turn_diagnostics() {
         "conformance/cancellation_and_max_turns",
         |client| async move {
             cancellation_and_max_turns(
-                client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+                client.endpoint(|provider| provider.completion(TOOL_MODEL)),
                 |builder| builder,
             )
             .await
@@ -57,7 +57,7 @@ async fn tool_output_types_roundtrip() {
         "conformance/tool_output_serialization",
         |client| async move {
             tool_output_serialization(
-                client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+                client.endpoint(|provider| provider.completion(TOOL_MODEL)),
                 |builder| builder,
             )
             .await
@@ -71,7 +71,7 @@ async fn tool_output_types_roundtrip() {
 async fn invalid_tool_call_recovers() {
     with_venice_cassette("conformance/invalid_tool_recovery", |client| async move {
         invalid_tool_recovery(
-            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+            client.endpoint(|provider| provider.completion(TOOL_MODEL)),
             |builder| builder,
         )
         .await
@@ -86,7 +86,7 @@ async fn hooks_rewrite_tool_flow() {
         "conformance/hook_rewrites_and_request_patch",
         |client| async move {
             hook_rewrites_and_request_patch(
-                client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+                client.endpoint(|provider| provider.completion(TOOL_MODEL)),
                 |builder| builder,
             )
             .await
@@ -100,7 +100,7 @@ async fn hooks_rewrite_tool_flow() {
 async fn streaming_tool_roundtrip() {
     with_venice_cassette("conformance/streaming_tool", |client| async move {
         streaming_tool(
-            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+            client.endpoint(|provider| provider.completion(TOOL_MODEL)),
             |builder| builder,
         )
         .await
@@ -113,7 +113,7 @@ async fn streaming_tool_roundtrip() {
 async fn structured_output_after_tool() {
     with_venice_cassette("conformance/structured_after_tool", |client| async move {
         structured_after_tool(
-            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+            client.endpoint(|provider| provider.completion(TOOL_MODEL)),
             |builder| builder,
         )
         .await
@@ -128,7 +128,7 @@ async fn streaming_structured_output_after_tool() {
         "conformance/streaming_structured_after_tool",
         |client| async move {
             streaming_structured_after_tool(
-                client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+                client.endpoint(|provider| provider.completion(TOOL_MODEL)),
                 |builder| builder,
             )
             .await
@@ -141,11 +141,9 @@ async fn streaming_structured_output_after_tool() {
 #[tokio::test]
 async fn structured_extraction_roundtrip() {
     with_venice_cassette("conformance/structured_extraction", |client| async move {
-        structured_extraction(
-            client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
-        )
-        .await
-        .expect("structured extraction should succeed");
+        structured_extraction(client.endpoint(|provider| provider.completion(DEFAULT_MODEL)))
+            .await
+            .expect("structured extraction should succeed");
     })
     .await;
 }
@@ -153,11 +151,9 @@ async fn structured_extraction_roundtrip() {
 #[tokio::test]
 async fn tool_choice_modes_roundtrip() {
     with_venice_cassette("conformance/tool_choice_modes", |client| async move {
-        tool_choice_modes(
-            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
-        )
-        .await
-        .expect("tool choice modes should succeed");
+        tool_choice_modes(client.endpoint(|provider| provider.completion(TOOL_MODEL)))
+            .await
+            .expect("tool choice modes should succeed");
     })
     .await;
 }

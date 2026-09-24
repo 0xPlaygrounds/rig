@@ -7,7 +7,6 @@ use crate::support::{
 };
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use rig::bedrock;
-use rig::prelude::*;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {

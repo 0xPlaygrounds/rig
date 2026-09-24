@@ -168,7 +168,7 @@ async fn stream_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| {
             capture_text_and_terminal(
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                 request,
                 observed.clone(),
             )
@@ -213,7 +213,7 @@ async fn stream_raw_exposes_terminal_service_tier() {
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier",
         |client| {
             capture_terminal(
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                 request,
                 observed.clone(),
             )
@@ -258,8 +258,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
         |client| async move {
             // No shared capture helper collects completed tool calls beside
             // the terminal record, so this cell drives the stream itself.
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL));
+            let model = client.endpoint(|provider| provider.completion(DEFAULT_MODEL));
             let stream = model.stream(tool_request(&model)).await?;
             sink.put(collect_tool_calls_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())

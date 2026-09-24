@@ -20,9 +20,8 @@ async fn required_maps_to_any_and_forces_function_call() {
     with_gemini_cassette(
         "generate_tool_modes/required_maps_to_any_and_forces_function_call",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())

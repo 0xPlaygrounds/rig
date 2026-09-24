@@ -33,7 +33,7 @@ fn sample_history() -> Vec<Message> {
 async fn main() -> Result<()> {
     let agent = OpenAI::from_env()?
         .bound()?
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .endpoint(|provider| provider.completion(openai::GPT_4))
         .into_agent_builder()
         .preamble(PREAMBLE)
         .build();

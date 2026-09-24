@@ -19,8 +19,7 @@ const THINKING: cells::ThinkingWire = cells::ThinkingWire::Anthropic;
 fn wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client
-            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001")),
+        model: client.endpoint(|provider| provider.completion("claude-haiku-4-5-20251001")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -31,7 +30,7 @@ fn task_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + '
     Wire {
         thinking: THINKING,
         model: client
-            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001"))
+            .endpoint(|provider| provider.completion("claude-haiku-4-5-20251001"))
             .endpoint(|wire| wire.clone().with_prompt_caching()),
         route: None,
         temperature: Some(0.0),
@@ -43,7 +42,7 @@ fn automatic_task_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel +
     Wire {
         thinking: THINKING,
         model: client
-            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001"))
+            .endpoint(|provider| provider.completion("claude-haiku-4-5-20251001"))
             .endpoint(|wire| wire.clone().with_automatic_caching_1h()),
         route: None,
         temperature: Some(0.0),
@@ -55,7 +54,7 @@ fn mixed_task_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clo
     Wire {
         thinking: THINKING,
         model: client
-            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001"))
+            .endpoint(|provider| provider.completion("claude-haiku-4-5-20251001"))
             .endpoint(|wire| {
                 let wire = wire.clone();
                 wire.with_automatic_caching().with_static_prefix_cache_ttl(
@@ -112,8 +111,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     );
     Wire {
         thinking: THINKING,
-        model: client
-            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001")),
+        model: client.endpoint(|provider| provider.completion("claude-haiku-4-5-20251001")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

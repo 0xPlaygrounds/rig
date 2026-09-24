@@ -16,7 +16,7 @@ const ROUTER_PREAMBLE: &str = "
 
 fn build_router_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
     openai
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .endpoint(|provider| provider.completion(openai::GPT_4))
         .into_agent_builder()
         .preamble(ROUTER_PREAMBLE)
         .build()
@@ -24,7 +24,7 @@ fn build_router_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Ag
 
 fn build_response_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
     openai
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .endpoint(|provider| provider.completion(openai::GPT_4))
         .into_agent_builder()
         .build()
 }

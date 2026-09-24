@@ -344,7 +344,7 @@ async fn run_workspace_canary_attempt(
         .map_err(|error| error.to_string())?;
     let agent_name = format!("workspace-default-api-canary-{attempt}");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(GEMINI_CANARY_MODEL))
+        .endpoint(|provider| provider.completion(GEMINI_CANARY_MODEL))
         .into_agent_builder()
         .name(&agent_name)
         .preamble(WORKSPACE_STYLE_PREAMBLE)

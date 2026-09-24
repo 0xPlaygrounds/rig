@@ -9,7 +9,7 @@ use rig::prelude::*;
 async fn chat_models_route_through_chat_completions() {
     let response = live_client()
         .await
-        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .endpoint(|provider| provider.completion(LIVE_MODEL))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()
@@ -26,7 +26,7 @@ async fn codex_models_route_through_responses() {
         "routing/codex_models_route_through_responses",
         |client| async move {
             let response = client
-                .endpoint(|provider_config| provider_config.completion(live_responses_model()))
+                .endpoint(|provider| provider.completion(live_responses_model()))
                 .into_agent_builder()
                 .preamble(BASIC_PREAMBLE)
                 .build()

@@ -11,7 +11,7 @@ async fn completion_smoke() {
     with_openai_cassette("agent/completion_smoke", |client| async move {
         let agent = client
             .openai
-            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .endpoint(|provider| provider.completion(openai::GPT_4O))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();

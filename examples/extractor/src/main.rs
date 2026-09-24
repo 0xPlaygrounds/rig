@@ -25,7 +25,7 @@ const SECOND_INPUT: &str = "Jane Smith is a data scientist.";
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?.bound()?;
     let extractor = client
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .endpoint(|provider| provider.completion(openai::GPT_4))
         .into_extractor_builder::<Person>()
         .build();
 

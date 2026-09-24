@@ -9,7 +9,7 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 async fn extractor_smoke() {
     with_copilot_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
-            .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+            .endpoint(|provider| provider.completion(LIVE_MODEL))
             .into_extractor_builder::<SmokePerson>()
             .build();
 

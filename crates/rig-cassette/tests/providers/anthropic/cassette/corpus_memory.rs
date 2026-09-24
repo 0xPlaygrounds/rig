@@ -110,7 +110,7 @@ async fn remembers(
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let builder = client
-        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .name("golden")
         .preamble(BASIC_PREAMBLE)
@@ -237,7 +237,7 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/history_bypass", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -279,8 +279,7 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::completion(
                     "default",
-                    client
-                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 )),
             )
             .expect("a fresh key");
@@ -318,7 +317,7 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/serial_two_tools", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .configure_bus(ServingPolicy {
@@ -366,7 +365,7 @@ async fn append_fails(
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let builder = client
-        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .name("golden")
         .preamble(BASIC_PREAMBLE)

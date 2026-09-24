@@ -253,9 +253,8 @@ async fn main() -> Result<(), anyhow::Error> {
     toolset.add_retrieved_tool(Subtract)?;
     toolset.add_retrieved_tool(Multiply)?;
     toolset.add_retrieved_tool(Divide)?;
-    let embedding_model = openai_client.endpoint(|provider_config| {
-        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
-    });
+    let embedding_model = openai_client
+        .endpoint(|provider| provider.embeddings(openai::TEXT_EMBEDDING_ADA_002, None));
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?
         .build()
@@ -267,7 +266,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4)).into_agent_builder()
+        .endpoint(|provider| provider.completion(openai::GPT_4)).into_agent_builder()
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

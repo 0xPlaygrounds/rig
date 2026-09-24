@@ -95,7 +95,7 @@ async fn reasoning_gpt5_nano_blocking_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let response = model
@@ -118,7 +118,7 @@ async fn reasoning_gpt5_nano_streaming_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let stream = model
@@ -138,9 +138,7 @@ async fn reasoning_o4_mini_blocking_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_o4_mini_blocking_cap",
         |client| async move {
-            let model = client
-                .openai
-                .endpoint(|provider_config| provider_config.chat("o4-mini"));
+            let model = client.openai.endpoint(|provider| provider.chat("o4-mini"));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let response = model
@@ -161,9 +159,7 @@ async fn reasoning_o4_mini_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_o4_mini_streaming_cap",
         |client| async move {
-            let model = client
-                .openai
-                .endpoint(|provider_config| provider_config.chat("o4-mini"));
+            let model = client.openai.endpoint(|provider| provider.chat("o4-mini"));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let stream = model
@@ -185,7 +181,7 @@ async fn reasoning_gpt5_nano_agent_blocking_cap() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"))
+                .endpoint(|provider| provider.completion("gpt-5-nano"))
                 .into_agent_builder()
                 .preamble(PREAMBLE)
                 .max_tokens(CAP)
@@ -210,7 +206,7 @@ async fn reasoning_gpt5_nano_agent_streaming_cap() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"))
+                .endpoint(|provider| provider.completion("gpt-5-nano"))
                 .into_agent_builder()
                 .preamble(PREAMBLE)
                 .max_tokens(CAP)
@@ -233,7 +229,7 @@ async fn reasoning_gpt5_nano_tool_turn_cap() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"))
+                .endpoint(|provider| provider.completion("gpt-5-nano"))
                 .into_agent_builder()
                 .preamble("Use the add tool to answer arithmetic questions.")
                 .max_tokens(TOOL_CAP)
@@ -260,7 +256,7 @@ async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"))
+                .endpoint(|provider| provider.completion("gpt-5-nano"))
                 .into_agent_builder()
                 .preamble("Use the add tool to answer arithmetic questions.")
                 .max_tokens(TOOL_CAP)
@@ -289,7 +285,7 @@ async fn legacy_gpt_4o_mini_blocking_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let response = model
@@ -312,7 +308,7 @@ async fn legacy_gpt_4o_mini_streaming_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let stream = model.stream(request).await.expect("stream should connect");
@@ -331,7 +327,7 @@ async fn legacy_gpt_4_1_nano_blocking_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4_1_NANO));
+                .endpoint(|provider| provider.chat(openai::GPT_4_1_NANO));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let response = model.complete(request).await.expect("capped turn");
@@ -352,7 +348,7 @@ async fn legacy_gpt_3_5_turbo_blocking_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-3.5-turbo"));
+                .endpoint(|provider| provider.chat("gpt-3.5-turbo"));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let response = model
@@ -375,7 +371,7 @@ async fn legacy_gpt_3_5_turbo_streaming_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-3.5-turbo"));
+                .endpoint(|provider| provider.chat("gpt-3.5-turbo"));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let stream = model.stream(request).await.expect("stream should connect");
@@ -400,7 +396,7 @@ async fn uncapped_blocking_sends_neither_spelling() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model.completion_request(PROMPT).build();
 
             let response = model.complete(request).await.expect("uncapped turn");
@@ -420,7 +416,7 @@ async fn uncapped_streaming_sends_neither_spelling() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model.completion_request(PROMPT).build();
 
             let stream = model.stream(request).await.expect("stream should connect");
@@ -445,7 +441,7 @@ async fn caller_modern_spelling_wins_over_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request(PROMPT)
                 .max_tokens(16)
@@ -470,7 +466,7 @@ async fn caller_modern_spelling_alone_survives() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request(PROMPT)
                 .additional_params(json!({ "max_completion_tokens": CAP }))
@@ -496,7 +492,7 @@ async fn caller_legacy_spelling_is_upgraded() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request(PROMPT)
                 .additional_params(json!({ "max_tokens": CAP }))
@@ -526,7 +522,7 @@ async fn responses_surface_keeps_max_output_tokens() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.completion(openai::GPT_4O_MINI));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let response = model.complete(request).await.expect("capped turn");
@@ -546,7 +542,7 @@ async fn responses_surface_reasoning_model_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"));
+                .endpoint(|provider| provider.completion("gpt-5-nano"));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let response = model.complete(request).await.expect("capped turn");
@@ -566,7 +562,7 @@ async fn responses_surface_streaming_cap() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.completion(openai::GPT_4O_MINI));
             let request = model.completion_request(PROMPT).max_tokens(CAP).build();
 
             let stream = model.stream(request).await.expect("stream should connect");
@@ -588,7 +584,7 @@ async fn capped_extractor_turn_on_reasoning_model() {
             let extractor: rig::extractor::Extractor<SmokePerson> = ExtractorBuilder::new(
                 client
                     .openai
-                    .endpoint(|provider_config| provider_config.chat("gpt-5-nano")),
+                    .endpoint(|provider| provider.chat("gpt-5-nano")),
             )
             .max_tokens(TOOL_CAP)
             .build();

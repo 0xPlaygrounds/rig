@@ -11,7 +11,7 @@ async fn colliding_ids() {
     const SCENARIO: &str = "adversarial/colliding_ids";
     with_gemini_cassette("adversarial/colliding_ids", |client| async move {
         adversarial::colliding_ids(
-            &client.endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
+            &client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
             "call_dup",
             None,
         )
@@ -26,7 +26,7 @@ async fn out_of_order_results() {
     const SCENARIO: &str = "adversarial/out_of_order_results";
     with_gemini_cassette("adversarial/out_of_order_results", |client| async move {
         adversarial::out_of_order_results(
-            &client.endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
+            &client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
             None,
         )
         .await;
@@ -42,8 +42,7 @@ async fn three_provider_round_trip() {
         "adversarial/three_provider_round_trip",
         |client| async move {
             adversarial::round_trip_hop(
-                &client
-                    .endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
+                &client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
                 Hop::Gemini,
                 None,
             )

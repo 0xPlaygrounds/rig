@@ -86,7 +86,7 @@ async fn raw_normalize_reproduces_completion() {
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| {
             capture_completion_pair(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )
@@ -142,7 +142,7 @@ async fn raw_completion_carries_request_id_on_the_type() {
         "raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                client.endpoint(|provider| provider.completion(MODEL)),
                 request,
                 sink.clone(),
             )

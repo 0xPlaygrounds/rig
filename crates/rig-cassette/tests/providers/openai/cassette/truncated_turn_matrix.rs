@@ -116,7 +116,7 @@ async fn chat_blocking_reasoning_budget_exhausted() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -143,9 +143,7 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_o4_mini_budget_exhausted",
         |client| async move {
-            let model = client
-                .openai
-                .endpoint(|provider_config| provider_config.chat("o4-mini"));
+            let model = client.openai.endpoint(|provider| provider.chat("o4-mini"));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -168,9 +166,7 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_gpt_5_1_budget_exhausted",
         |client| async move {
-            let model = client
-                .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5.1"));
+            let model = client.openai.endpoint(|provider| provider.chat("gpt-5.1"));
             // gpt-5.1 reasons only as much as it judges necessary; at its
             // default effort this prompt yields partial *text* under the same
             // cap (cell 8's shape). Asking for high effort makes the reasoning
@@ -202,7 +198,7 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -233,7 +229,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -273,7 +269,7 @@ async fn chat_blocking_tools_present_budget_exhausted() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request("What is 3 + 4? Use the add tool.")
                 .max_tokens(TINY_CAP)
@@ -302,7 +298,7 @@ async fn chat_blocking_agent_reports_the_truncation() {
         |client| async move {
             let agent = client
                 .chat
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"))
+                .endpoint(|provider| provider.completion("gpt-5-nano"))
                 .into_agent_builder()
                 .max_tokens(TINY_CAP)
                 .build();
@@ -343,7 +339,7 @@ async fn chat_blocking_partial_text_truncation() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -376,7 +372,7 @@ async fn chat_streaming_reasoning_budget_exhausted() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -406,7 +402,7 @@ async fn chat_streaming_partial_text_truncation() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -438,7 +434,7 @@ async fn chat_transports_agree_on_truncation() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
 
             let blocking = model
                 .complete(
@@ -487,7 +483,7 @@ async fn chat_blocking_completed_turn_is_unaffected() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.chat(openai::GPT_4O_MINI));
             let request = model.completion_request("Reply with the word OK.").build();
 
             let response = model.complete(request).await.expect("completed turn");
@@ -514,7 +510,7 @@ async fn responses_blocking_reasoning_budget_exhausted() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"));
+                .endpoint(|provider| provider.completion("gpt-5-nano"));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -539,7 +535,7 @@ async fn responses_streaming_reasoning_budget_exhausted() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"));
+                .endpoint(|provider| provider.completion("gpt-5-nano"));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -568,7 +564,7 @@ async fn responses_blocking_partial_text_truncation() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI));
+                .endpoint(|provider| provider.completion(openai::GPT_4O_MINI));
             let request = model
                 .completion_request(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
@@ -599,7 +595,7 @@ async fn cross_surface_truncation_parity() {
         |client| async move {
             let responses_model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion("gpt-5-nano"));
+                .endpoint(|provider| provider.completion("gpt-5-nano"));
             let responses = responses_model
                 .complete(
                     responses_model
@@ -612,7 +608,7 @@ async fn cross_surface_truncation_parity() {
 
             let chat_model = client
                 .openai
-                .endpoint(|provider_config| provider_config.chat("gpt-5-nano"));
+                .endpoint(|provider| provider.chat("gpt-5-nano"));
             let chat = chat_model
                 .complete(
                     chat_model

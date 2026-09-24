@@ -10,7 +10,7 @@ use super::super::cassette_support::*;
 async fn completion_smoke() {
     with_llamacpp_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .endpoint(|provider| provider.completion(CASSETTE_MODEL))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();

@@ -72,7 +72,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     with_copilot_cassette_result("typed_prompt_tools/prompt_typed_with_tool_call_roundtrip", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(live_responses_model())).into_agent_builder()
+            .endpoint(|provider| provider.completion(live_responses_model())).into_agent_builder()
             .preamble(
                 "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
                  After calling the tool, return a JSON response with the city name and the weather description. \

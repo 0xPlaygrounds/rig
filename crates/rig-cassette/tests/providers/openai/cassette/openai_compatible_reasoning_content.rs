@@ -38,7 +38,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion("llama-cpp-reasoning-model"))
+                .endpoint(|provider| provider.completion("llama-cpp-reasoning-model"))
                 .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))

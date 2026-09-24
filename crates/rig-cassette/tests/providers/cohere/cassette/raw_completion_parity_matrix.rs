@@ -63,7 +63,7 @@ async fn raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/raw_try_into_matches_completion",
         |client| async move {
             capture_completion_pair(
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                 request,
                 sink,
             )

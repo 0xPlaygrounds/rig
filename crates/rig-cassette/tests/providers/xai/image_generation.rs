@@ -22,8 +22,8 @@ async fn image_generation_smoke() {
                     openai::wire::OpenAI::with_key(&xai::DIALECT, responses.api_key)
                         .with_base_url(responses.base_url)
                 })
-                .endpoint(|provider_config| {
-                    provider_config.images(xai::image_generation::GROK_IMAGINE_IMAGE_PRO)
+                .endpoint(|provider| {
+                    provider.images(xai::image_generation::GROK_IMAGINE_IMAGE_PRO)
                 });
 
             let response = model

@@ -12,7 +12,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     with_xai_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)),
+            client.endpoint(|provider| provider.completion(xai::GROK_3_MINI)),
             None,
         ))
         .await;
@@ -24,7 +24,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_xai_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)),
+            client.endpoint(|provider| provider.completion(xai::GROK_3_MINI)),
             None,
         ))
         .await;

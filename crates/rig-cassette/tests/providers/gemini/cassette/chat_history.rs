@@ -117,9 +117,7 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
         "chat_history/chat_appends_reasoning_tool_turns_to_caller_history",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
@@ -155,7 +153,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
     let subtract_count = Arc::new(AtomicUsize::new(0));
     super::super::support::with_gemini_cassette("chat_history/five_turn_chat_history_stress_preserves_context_and_tools", |client| async move {
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
+        .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
         .preamble(
             "You are running a deterministic Rig integration test. Preserve facts across turns. \
              When a prompt says to use a tool, call exactly that tool before answering. \

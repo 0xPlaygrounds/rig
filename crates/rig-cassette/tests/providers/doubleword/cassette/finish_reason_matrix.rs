@@ -49,8 +49,7 @@ fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
 }
 
 async fn blocking_stop(client: BoundDoubleword) {
-    let model =
-        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
+    let model = client.endpoint(|provider| provider.completion(doubleword::QWEN3_5_9B));
     let response = model
         .complete(
             model
@@ -65,8 +64,7 @@ async fn blocking_stop(client: BoundDoubleword) {
 }
 
 async fn blocking_length(client: BoundDoubleword) {
-    let model =
-        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
+    let model = client.endpoint(|provider| provider.completion(doubleword::QWEN3_5_9B));
     let response = model
         .complete(
             model
@@ -80,8 +78,7 @@ async fn blocking_length(client: BoundDoubleword) {
 }
 
 async fn blocking_tool_calls_body(client: BoundDoubleword) {
-    let model = client
-        .endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_397B_A17B));
+    let model = client.endpoint(|provider| provider.completion(doubleword::QWEN3_5_397B_A17B));
     let response = model
         .complete(
             model
@@ -108,8 +105,7 @@ async fn streaming_reason(
     max_tokens: u64,
     stop_probe: bool,
 ) -> FinishReason {
-    let model =
-        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
+    let model = client.endpoint(|provider| provider.completion(doubleword::QWEN3_5_9B));
     let mut builder = model.completion_request(prompt).max_tokens(max_tokens);
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
@@ -185,9 +181,8 @@ async fn streaming_tool_calls() {
     with_doubleword_cassette(
         "finish_reason_matrix/streaming_tool_calls",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(doubleword::QWEN3_5_397B_A17B)
-            });
+            let model =
+                client.endpoint(|provider| provider.completion(doubleword::QWEN3_5_397B_A17B));
             let stream = model
                 .stream(
                     model

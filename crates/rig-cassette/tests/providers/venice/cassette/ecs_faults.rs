@@ -11,7 +11,6 @@
 
 use rig::completion::CompletionModel;
 use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -32,7 +31,7 @@ fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.endpoint(|provider_config| provider_config.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client.endpoint(|provider| provider.completion(MISTRAL_SMALL_3_2_24B)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -45,8 +44,7 @@ fn missing<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client
-            .endpoint(|provider_config| provider_config.completion("venice-nonexistent-rig-test")),
+        model: client.endpoint(|provider| provider.completion("venice-nonexistent-rig-test")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -103,7 +101,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.endpoint(|provider_config| provider_config.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client.endpoint(|provider| provider.completion(MISTRAL_SMALL_3_2_24B)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -119,7 +117,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.endpoint(|provider_config| provider_config.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client.endpoint(|provider| provider.completion(MISTRAL_SMALL_3_2_24B)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

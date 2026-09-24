@@ -90,9 +90,7 @@ fn observe_turn(
 
 fn setup(client: &Model<Anthropic>) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        client.endpoint(|provider_config| {
-            provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
-        }),
+        client.endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
         "",
         1,
     );

@@ -11,7 +11,7 @@ async fn test_openai_streaming_tools_reasoning() {
         .bound()
         .expect("Failed to build client");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion("gpt-5.2"))
+        .endpoint(|provider| provider.completion("gpt-5.2"))
         .into_agent_builder()
         .max_tokens(8192)
         .tool(MockExampleTool)

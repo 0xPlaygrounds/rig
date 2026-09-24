@@ -10,7 +10,6 @@ use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::completion::CompletionModel;
 use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
@@ -24,7 +23,7 @@ fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.endpoint(|provider_config| provider_config.completion("gemini-2.5-flash")),
+        model: client.endpoint(|provider| provider.completion("gemini-2.5-flash")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -35,7 +34,7 @@ fn task_wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>
     client: &Model<Gemini, H>,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
-        model: client.endpoint(|provider_config| provider_config.completion("gemini-3.8-flash")),
+        model: client.endpoint(|provider| provider.completion("gemini-3.8-flash")),
         thinking: THINKING,
         route: None,
         temperature: Some(0.0),
@@ -78,7 +77,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         rig::driver::Model::new(Gemini::new(SCRIPTED_KEY), SequencedHttpClient::new(replies));
     Wire {
         thinking: THINKING,
-        model: client.endpoint(|provider_config| provider_config.completion("gemini-2.5-flash")),
+        model: client.endpoint(|provider| provider.completion("gemini-2.5-flash")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

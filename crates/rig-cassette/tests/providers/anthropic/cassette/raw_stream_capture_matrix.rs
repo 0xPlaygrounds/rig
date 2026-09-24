@@ -164,7 +164,7 @@ async fn streamed_body(
     build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: Observed<Streamed>,
 ) {
-    let model = client.endpoint(|provider_config| provider_config.completion(model_name));
+    let model = client.endpoint(|provider| provider.completion(model_name));
     let stream = model
         .stream(build(&model))
         .await
@@ -307,8 +307,8 @@ async fn terminal_raw_round_trips_into_provider_type() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    client.endpoint(|provider| {
+                        provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                     }),
                     probe_request,
                     sink,
@@ -412,8 +412,8 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_terminal(
-                client.endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                client.endpoint(|provider| {
+                    provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                 }),
                 |model| {
                     model
@@ -490,8 +490,8 @@ async fn normalized_terminal_matches_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.endpoint(|provider_config| {
-                        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    client.endpoint(|provider| {
+                        provider.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
                     }),
                     probe_request,
                     sink,

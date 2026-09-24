@@ -75,7 +75,7 @@ async fn structured_output_smoke() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()
                 .output_mode(OutputMode::Native)
@@ -98,7 +98,7 @@ async fn classic_tool_mode_maps_through_openai_responses() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
     let client = rig::driver::Model::new(OpenAI::new("test-key"), http.clone());
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .endpoint(|provider| provider.completion(openai::GPT_4O))
         .into_agent_builder()
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
@@ -132,7 +132,7 @@ async fn prompt_typed_and_output_schema() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",
@@ -158,7 +158,7 @@ async fn prompt_typed_and_output_schema() {
 
             let agent_with_schema = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",

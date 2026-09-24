@@ -15,7 +15,7 @@ struct DocumentScore {
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI Responses API to the default transport
     let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.endpoint(|provider_config| provider_config.completion(openai::GPT_4));
+    let model = openai_client.endpoint(|provider| provider.completion(openai::GPT_4));
 
     let manipulation_agent = ExtractorBuilder::<DocumentScore>::new(model.clone())
         .append_preamble(

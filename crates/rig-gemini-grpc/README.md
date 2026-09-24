@@ -32,10 +32,11 @@ use rig_gemini_grpc::Client;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = Client::from_env();
+    let client = Client::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
 
     let agent = client
-        .agent("gemini-2.5-flash")
+        .completion("gemini-2.5-flash")
+        .into_agent_builder()
         .preamble("You are a helpful assistant.")
         .build();
 

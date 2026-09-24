@@ -21,7 +21,7 @@ async fn url_pdf_document_prompt() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble("You are a helpful assistant that analyzes documents.")
                 .temperature(0.0)

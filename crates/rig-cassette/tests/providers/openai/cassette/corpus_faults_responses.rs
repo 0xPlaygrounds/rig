@@ -15,7 +15,7 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client
             .openai
-            .endpoint(|provider_config| provider_config.completion(GPT_5_MINI)),
+            .endpoint(|provider| provider.completion(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,
@@ -26,9 +26,9 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
 fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.endpoint(|provider_config| {
-            provider_config.completion("gpt-4o-mini-nonexistent-rig-test")
-        }),
+        model: client
+            .openai
+            .endpoint(|provider| provider.completion("gpt-4o-mini-nonexistent-rig-test")),
         route: None,
         temperature: None,
         additional_params: None,

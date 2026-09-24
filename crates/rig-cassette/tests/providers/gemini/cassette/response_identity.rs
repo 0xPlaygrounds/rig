@@ -17,9 +17,8 @@ async fn nonstreaming_request_id_is_none_by_design() {
     with_gemini_cassette(
         "response_identity/nonstreaming_request_id_is_none_by_design",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -40,9 +39,8 @@ async fn streaming_request_id_is_none_by_design() {
     with_gemini_cassette(
         "response_identity/streaming_request_id_is_none_by_design",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -78,9 +76,7 @@ async fn agent_run_reports_none_identity() {
         |client| async move {
             let probe = IdentityProbe::default();
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble("You are a terse assistant.")
                 .add_hook(probe.clone())
@@ -113,9 +109,7 @@ async fn streamed_agent_run_reports_none_identity() {
         |client| async move {
             let probe = IdentityProbe::default();
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-                })
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .into_agent_builder()
                 .preamble("You are a terse assistant.")
                 .add_hook(probe.clone())
@@ -146,8 +140,8 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
     with_gemini_cassette(
         "response_identity/provider_error_keeps_transport_shape_and_none_id",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion("gemini-nonexistent-model-for-identity-edge")
+            let model = client.endpoint(|provider| {
+                provider.completion("gemini-nonexistent-model-for-identity-edge")
             });
             let error = model
                 .completion_request("Never answered")
@@ -173,9 +167,8 @@ async fn auth_rejection_keeps_transport_shape() {
     with_gemini_cassette_bogus_key(
         "response_identity/auth_rejection_keeps_transport_shape",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let error = model
                 .completion_request("Never authenticated")
                 .send()

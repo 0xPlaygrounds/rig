@@ -15,7 +15,7 @@ async fn completion_smoke() {
         .bound()
         .expect("transport should build");
     let agent = groq
-        .endpoint(|provider_config| provider_config.completion(AGENT_MODEL))
+        .endpoint(|provider| provider.completion(AGENT_MODEL))
         .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();

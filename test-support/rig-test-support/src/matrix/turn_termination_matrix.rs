@@ -13,7 +13,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(TINY_CAP)
@@ -57,7 +57,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         let agent = client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(TINY_CAP)
@@ -88,7 +88,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -123,7 +123,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         let agent = client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -149,7 +149,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(TOOL_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -190,7 +190,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         let agent = client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(TOOL_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -227,7 +227,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(64)
@@ -272,7 +272,7 @@ macro_rules! turn_termination_matrix_case {
                 $wrapper($scenario, |client| async move {
                     {
                         let agent = client
-                            .endpoint(|provider_config| provider_config.completion(MODEL)).into_agent_builder()
+                            .endpoint(|provider| provider.completion(MODEL)).into_agent_builder()
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(64)

@@ -14,8 +14,7 @@ async fn transcription_smoke() {
         .expect("GROQ_API_KEY should be set")
         .bound()
         .expect("transport should build");
-    let model =
-        bound.endpoint(|provider_config| provider_config.transcriptions(groq::WHISPER_LARGE_V3));
+    let model = bound.endpoint(|provider| provider.transcriptions(groq::WHISPER_LARGE_V3));
     let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
         .expect("should be able to load audio fixture")
         .send()

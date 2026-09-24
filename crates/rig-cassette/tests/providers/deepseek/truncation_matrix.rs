@@ -239,7 +239,7 @@ async fn assert_blocking_truncation_survives(
     client: &BoundDeepSeek,
     max_tokens: u64,
 ) -> Result<()> {
-    let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+    let model = client.endpoint(|provider| provider.completion(MODEL));
     let response = model
         .complete(request(
             &model,
@@ -301,7 +301,7 @@ async fn assert_streaming_truncation_survives(
     client: &BoundDeepSeek,
     max_tokens: u64,
 ) -> Result<()> {
-    let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+    let model = client.endpoint(|provider| provider.completion(MODEL));
     let outcome = collect_raw_stream_outcome(
         model
             .stream(request(
@@ -352,7 +352,7 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_12_truncates_before_any_tool_call",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(request(
                     &model,
@@ -391,7 +391,7 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(request(
                     &model,
@@ -430,7 +430,7 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_20_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(request(
                     &model,
@@ -517,7 +517,7 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_96_complete_arguments_are_untouched",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(request(
                     &model,
@@ -558,7 +558,7 @@ async fn streaming_budget_12_truncates_before_any_tool_call() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_12_truncates_before_any_tool_call",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -593,7 +593,7 @@ async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -696,7 +696,7 @@ async fn streaming_budget_96_complete_arguments_are_untouched() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_96_complete_arguments_are_untouched",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -730,7 +730,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_parallel_calls_keep_the_complete_one",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(request(
                     &model,
@@ -774,7 +774,7 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_parallel_calls_keep_the_complete_one",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -814,7 +814,7 @@ async fn blocking_text_before_a_truncated_call_survives() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_text_before_a_truncated_call_survives",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(request(
                     &model,
@@ -859,7 +859,7 @@ async fn streaming_text_before_a_truncated_call_survives() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_text_before_a_truncated_call_survives",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -898,7 +898,7 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_reasoner_truncated_call_keeps_the_reasoning_block",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let normalized = model
                 .complete(request_for(
                     &model,
@@ -941,7 +941,7 @@ async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_reasoner_truncated_call_keeps_the_reasoning_block",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
+            let model = client.endpoint(|provider| provider.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request_for(
@@ -1071,7 +1071,7 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(TOOL_PREAMBLE)
                 .tool(FileReport {
@@ -1122,7 +1122,7 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(TOOL_PREAMBLE)
                 .tool(FileReport {
@@ -1171,7 +1171,7 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(TOOL_PREAMBLE)
                 .tool(ZeroArgumentFileReport {
@@ -1213,7 +1213,7 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(TOOL_PREAMBLE)
                 .tool(ZeroArgumentFileReport {

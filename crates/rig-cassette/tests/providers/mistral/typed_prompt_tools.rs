@@ -78,7 +78,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         .bound()
         .expect("client should build");
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL)).into_agent_builder()
+        .endpoint(|provider| provider.completion(TOOL_MODEL)).into_agent_builder()
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
              After calling the tool, respond with ONLY minified JSON matching this schema: \

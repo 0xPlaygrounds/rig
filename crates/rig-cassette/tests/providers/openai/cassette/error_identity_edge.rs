@@ -23,7 +23,7 @@ async fn auth_rejection_carries_identity() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let error = model
                 .completion_request("Never authenticated")
                 .send()
@@ -52,7 +52,7 @@ async fn nonexistent_previous_response_reference_carries_identity() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let error = model
                 .completion_request("Continue the conversation")
                 .additional_params(serde_json::json!({
@@ -83,7 +83,7 @@ async fn chat_completions_validation_error_carries_identity() {
     with_openai_completions_cassette(
         "error_identity_edge/chat_completions_validation_error_carries_identity",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.chat(openai::GPT_4O));
+            let model = client.endpoint(|provider| provider.chat(openai::GPT_4O));
             let error = model
                 .completion_request("Never validated")
                 .additional_params(serde_json::json!({"temperature": 99.0}))
@@ -110,9 +110,9 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     with_openai_cassette(
         "error_identity_edge/streaming_connect_4xx_matches_blocking_richness",
         |client| async move {
-            let model = client.openai.endpoint(|provider_config| {
-                provider_config.completion("gpt-nonexistent-model-for-error-edge")
-            });
+            let model = client
+                .openai
+                .endpoint(|provider| provider.completion("gpt-nonexistent-model-for-error-edge"));
             let result = model.completion_request("Never streamed").stream().await;
             let error = match result {
                 Err(error) => ErrorReport::from(&error),
@@ -144,9 +144,9 @@ async fn embeddings_error_preserves_status_and_body() {
     with_openai_cassette(
         "error_identity_edge/embeddings_error_preserves_status_and_body",
         |client| async move {
-            let model = client.openai.endpoint(|provider_config| {
-                provider_config.embeddings("text-embedding-nonexistent-model", None)
-            });
+            let model = client
+                .openai
+                .endpoint(|provider| provider.embeddings("text-embedding-nonexistent-model", None));
             let error = model
                 .embed_text("never embedded")
                 .await
@@ -177,7 +177,7 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
         |client| async move {
             let error = client
                 .openai
-                .endpoint(|provider_config| provider_config.models())
+                .endpoint(|provider| provider.models())
                 .list_all()
                 .await
                 .expect_err("a bogus key must fail the listing");
@@ -205,7 +205,7 @@ async fn verify_reports_invalid_authentication() {
         |client| async move {
             let error = client
                 .openai
-                .endpoint(|provider_config| provider_config.verify())
+                .endpoint(|provider| provider.verify())
                 .verify()
                 .await
                 .expect_err("a bogus key must fail verification");
@@ -235,12 +235,11 @@ async fn extractor_failure_surfaces_provider_error_context() {
     with_openai_cassette(
         "error_identity_edge/extractor_failure_surfaces_provider_error_context",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Probe>::new(client.openai.endpoint(
-                |provider_config| {
-                    provider_config.completion("gpt-nonexistent-model-for-error-edge")
-                },
-            ))
-            .build();
+            let extractor =
+                rig::extractor::ExtractorBuilder::<Probe>::new(client.openai.endpoint(
+                    |provider| provider.completion("gpt-nonexistent-model-for-error-edge"),
+                ))
+                .build();
             let error = extractor
                 .extract("never extracted")
                 .await

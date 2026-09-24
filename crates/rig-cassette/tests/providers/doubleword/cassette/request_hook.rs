@@ -61,7 +61,7 @@ async fn request_hook_records_prompt_and_response() {
         |client| async move {
             let hook = ObservingHook::default();
             let response = client
-                .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+                .endpoint(|provider| provider.completion(DEFAULT_MODEL))
                 .into_agent_builder()
                 .build()
                 .prompt("Entertain me with one short joke.")

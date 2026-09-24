@@ -12,7 +12,7 @@ async fn list_models_smoke() {
         .bound()
         .expect("transport should build");
     let models = provider
-        .endpoint(|provider_config| provider_config.models())
+        .endpoint(|provider| provider.models())
         .list_all()
         .await
         .expect("listing models should succeed");

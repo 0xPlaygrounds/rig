@@ -54,7 +54,7 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .build();
 
@@ -75,7 +75,7 @@ async fn prompt_typed_structured_output() {
     with_llamacpp_cassette("structured_output/prompt_typed_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(model)).into_agent_builder()
+            .endpoint(|provider| provider.completion(model)).into_agent_builder()
             .preamble(WEATHER_PREAMBLE)
             .temperature(0.0)
             .build();
@@ -96,7 +96,7 @@ async fn prompt_typed_extended_details_structured_output() {
     with_llamacpp_cassette("structured_output/prompt_typed_extended_details_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(model)).into_agent_builder()
+            .endpoint(|provider| provider.completion(model)).into_agent_builder()
             .preamble(WEATHER_PREAMBLE)
             .temperature(0.0)
             .build();
@@ -121,7 +121,7 @@ async fn output_schema_structured_output() {
     with_llamacpp_cassette("structured_output/output_schema_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
         let agent_with_schema = client
-            .endpoint(|provider_config| provider_config.completion(model)).into_agent_builder()
+            .endpoint(|provider| provider.completion(model)).into_agent_builder()
             .preamble(WEATHER_PREAMBLE)
             .temperature(0.0)
             .output_schema::<WeatherForecast>()

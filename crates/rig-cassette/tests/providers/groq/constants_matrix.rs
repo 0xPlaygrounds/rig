@@ -52,7 +52,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
     with_groq_cassette_result(
         "constants_matrix/catalog_lists_current_constants",
         |client| async move {
-            let models = client.endpoint(|provider_config| provider_config.models()).list_all().await?;
+            let models = client.endpoint(|provider| provider.models()).list_all().await?;
             let served: Vec<&str> = models.data.iter().map(|model| model.id.as_str()).collect();
             let missing: Vec<&str> = PUBLIC_CONSTANTS
                 .iter()
@@ -70,7 +70,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
 }
 
 async fn assert_completion_smoke(client: BoundGroq, model_id: &str) -> Result<()> {
-    let model = client.endpoint(|provider_config| provider_config.completion(model_id));
+    let model = client.endpoint(|provider| provider.completion(model_id));
     let request = model.completion_request(PROMPT).max_tokens(64).build();
     let response = model.complete(request).await?;
     let text = assistant_text_response(&response.choice)

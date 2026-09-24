@@ -25,9 +25,9 @@ fn models(
     impl CompletionModel + Clone + 'static,
 ) {
     (
-        client.endpoint(|provider_config| provider_config.completion("deepseek-v4-flash")),
-        client.endpoint(|provider_config| provider_config.completion("deepseek-v4-flash")),
-        client.endpoint(|provider_config| provider_config.completion("deepseek-v4-pro")),
+        client.endpoint(|provider| provider.completion("deepseek-v4-flash")),
+        client.endpoint(|provider| provider.completion("deepseek-v4-flash")),
+        client.endpoint(|provider| provider.completion("deepseek-v4-pro")),
     )
 }
 

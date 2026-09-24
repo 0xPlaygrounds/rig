@@ -222,7 +222,7 @@ async fn transcription_body(
     thoughts_expected: bool,
     expected_words: Option<&'static str>,
 ) {
-    let model = client.endpoint(|provider_config| provider_config.transcriptions(model_id));
+    let model = client.endpoint(|provider| provider.transcriptions(model_id));
     let mut request = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
         .expect("audio fixture should load");
     if let Some(params) = params {
@@ -448,7 +448,7 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
         thoughts_expected,
     } = cell;
 
-    let model = client.endpoint(|provider_config| provider_config.completion(model_id));
+    let model = client.endpoint(|provider| provider.completion(model_id));
     let mut request = model.completion_request(prompt).temperature(0.0);
     if let Some(preamble) = preamble {
         request = request.preamble(preamble.to_string());
@@ -726,9 +726,8 @@ async fn text_response_on_a_tool_call_turn() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_on_a_tool_call_turn",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
@@ -831,9 +830,8 @@ async fn text_response_across_two_candidates() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_across_two_candidates",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request("Name one primary colour. Answer with the single word.")
                 .temperature(0.0)
@@ -922,9 +920,8 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             // A budget large enough to start thinking and far too small to answer:
             // the turn truncates with reasoning and no visible text.
             let request = model
@@ -978,9 +975,8 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
-            });
+            let model = client
+                .endpoint(|provider| provider.completion(gemini::completion::GEMINI_2_5_FLASH));
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .temperature(0.0)
@@ -1056,8 +1052,8 @@ async fn blocking_keeps_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/blocking_keeps_a_trailing_thought_signature",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            let model = client.endpoint(|provider| {
+                provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
             });
             let request = model
                 .completion_request(SIGNATURE_PROMPT)
@@ -1110,8 +1106,8 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            let model = client.endpoint(|provider| {
+                provider.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
             });
             let request = model
                 .completion_request(SIGNATURE_PROMPT)
@@ -1144,7 +1140,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 mod unit {
     use rig::completion::{CompletionModel, CompletionResponse};
     use rig::message::{AssistantContent, ReasoningContent};
-    use rig::prelude::*;
+
     use rig::providers::gemini::Gemini;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::test_utils::RecordingHttpClient;

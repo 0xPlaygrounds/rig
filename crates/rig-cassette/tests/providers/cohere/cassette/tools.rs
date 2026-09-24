@@ -15,7 +15,7 @@ use crate::support::{TOOLS_PREAMBLE, TOOLS_PROMPT, assert_mentions_expected_numb
 async fn tool_call_roundtrip() {
     with_cohere_cassette("tools/tool_call_roundtrip", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .endpoint(|provider| provider.completion(CASSETTE_MODEL))
             .into_agent_builder()
             .preamble(TOOLS_PREAMBLE)
             .tool(IntegerAdder)
@@ -41,8 +41,7 @@ async fn required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/required_tool_choice_is_accepted",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request(TOOLS_PROMPT)
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -95,8 +94,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
     with_cohere_cassette(
         "tools/required_tool_choice_selects_from_multiple_tools",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Use the correct tool to calculate 9 - 4.")
                 .tool(rig::tool::tool_definition(&IntegerAdder))
@@ -135,7 +133,7 @@ async fn none_tool_choice_with_tools_returns_text() {
     with_cohere_cassette(
         "tools/none_tool_choice_with_tools_returns_text",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Calculate 9 - 4. Answer directly without calling a tool.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
@@ -173,7 +171,7 @@ async fn none_tool_choice_without_tools_returns_text() {
     with_cohere_cassette(
         "tools/none_tool_choice_without_tools_returns_text",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Reply with the single word ready.")
                 .tool_choice(ToolChoice::None)
@@ -203,8 +201,7 @@ async fn strict_required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/strict_required_tool_choice_is_accepted",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
+            let model = client.endpoint(|provider| provider.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Use the subtract tool to calculate 11 - 6.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))

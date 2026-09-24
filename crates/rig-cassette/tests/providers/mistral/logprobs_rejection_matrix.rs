@@ -61,8 +61,7 @@ fn model_name(model: Model) -> &'static str {
 }
 
 async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Result<()> {
-    let model =
-        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
+    let model = client.endpoint(|provider| provider.completion(model_name(cell.model)));
     let request = model
         .completion_request("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))

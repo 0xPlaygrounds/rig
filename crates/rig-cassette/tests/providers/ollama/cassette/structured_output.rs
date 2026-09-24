@@ -18,7 +18,7 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()
                 .additional_params(serde_json::json!({ "think": false }))

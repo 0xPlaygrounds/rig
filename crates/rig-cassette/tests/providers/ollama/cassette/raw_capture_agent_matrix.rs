@@ -313,7 +313,7 @@ async fn hooks_observe_raw_blocking() {
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .max_tokens(64)
                 .additional_params(json!({ "think": false }))
@@ -361,7 +361,7 @@ async fn hooks_observe_raw_streamed() {
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .max_tokens(64)
                 .additional_params(json!({ "think": false }))
@@ -419,7 +419,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .additional_params(json!({ "think": false }))
@@ -491,7 +491,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(MODEL))
+                .endpoint(|provider| provider.completion(MODEL))
                 .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .additional_params(json!({ "think": false }))

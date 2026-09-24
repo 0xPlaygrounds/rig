@@ -35,7 +35,7 @@ fn layered_agent(
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         TOOLS_PREAMBLE,
         false,
     );
@@ -121,7 +121,7 @@ fn check_history(
 fn memory_agent(client: Model<Anthropic>) -> EcsAgent {
     let mut memory_entity = None;
     let mut ecs = EcsAgent::for_golden_with_setup(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         BASIC_PREAMBLE,
         false,
         |world| {

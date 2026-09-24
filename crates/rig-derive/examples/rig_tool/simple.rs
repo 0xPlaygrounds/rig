@@ -85,7 +85,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let calculator_agent = OpenAI::from_env()?
         .bound()?
-        .endpoint(|provider_config| provider_config.completion(providers::openai::GPT_4O))
+        .endpoint(|provider| provider.completion(providers::openai::GPT_4O))
         .into_agent_builder()
         .preamble("You are an agent with tools access, always use the tools")
         .max_tokens(1024)

@@ -16,8 +16,8 @@ async fn chat_completions() {
         |client| async move {
             request_identity::run(
                 cell,
-                client.endpoint(|provider_config| provider_config.completion(groq::GPT_OSS_20B)),
-                client.endpoint(|provider_config| provider_config.completion("no-such-model")),
+                client.endpoint(|provider| provider.completion(groq::GPT_OSS_20B)),
+                client.endpoint(|provider| provider.completion("no-such-model")),
                 None,
                 |request| request,
             )

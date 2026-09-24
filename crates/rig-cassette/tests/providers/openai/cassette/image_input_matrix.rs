@@ -22,7 +22,7 @@ async fn generated_image_as_user_content() {
             let bytes = image_inputs::generate(
                 &client
                     .openai
-                    .endpoint(|provider_config| provider_config.images(GENERATOR)),
+                    .endpoint(|provider| provider.images(GENERATOR)),
                 Some(1024),
                 quality(),
             )
@@ -30,7 +30,7 @@ async fn generated_image_as_user_content() {
             image_inputs::as_user_content(
                 &client
                     .openai
-                    .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+                    .endpoint(|provider| provider.chat("gpt-4.1-mini")),
                 &bytes,
                 None,
             )
@@ -51,7 +51,7 @@ async fn generated_image_as_tool_result() {
             let bytes = image_inputs::generate(
                 &client
                     .openai
-                    .endpoint(|provider_config| provider_config.images(GENERATOR)),
+                    .endpoint(|provider| provider.images(GENERATOR)),
                 Some(1024),
                 quality(),
             )
@@ -59,7 +59,7 @@ async fn generated_image_as_tool_result() {
             image_inputs::as_tool_result(
                 &client
                     .openai
-                    .endpoint(|provider_config| provider_config.responses(openai::GPT_5_6)),
+                    .endpoint(|provider| provider.responses(openai::GPT_5_6)),
                 &bytes,
                 Some(json!({ "reasoning": { "effort": "low" }, "store": false })),
             )

@@ -212,7 +212,7 @@ async fn document_file_data_roundtrip_live() {
         "document_file_data/document_file_data_roundtrip_live",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(DOCUMENT_MODEL)).into_agent_builder()
+                .endpoint(|provider| provider.completion(DOCUMENT_MODEL)).into_agent_builder()
                 .preamble(DOCUMENT_PREAMBLE)
                 .build();
             let mut history = Vec::new();
@@ -257,7 +257,7 @@ async fn streaming_document_file_data_roundtrip_live() {
         "document_file_data/streaming_document_file_data_roundtrip_live",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(DOCUMENT_MODEL))
+                .endpoint(|provider| provider.completion(DOCUMENT_MODEL))
                 .into_agent_builder()
                 .preamble(DOCUMENT_PREAMBLE)
                 .build();

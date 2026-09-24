@@ -77,7 +77,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         |client| async move {
             let agent = client
                 .clone()
-                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .endpoint(|provider| provider.completion(CASSETTE_MODEL))
                 .into_agent_builder()
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();

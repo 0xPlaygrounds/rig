@@ -193,7 +193,7 @@ async fn main() -> Result<()> {
 
         let policy = next_action(&route, clarification.noul);
         let reply = if let Some(client) = &openai {
-            let agent = client.endpoint(|provider_config| provider_config.completion("gpt-5.6-sol")).into_agent_builder()
+            let agent = client.endpoint(|provider| provider.completion("gpt-5.6-sol")).into_agent_builder()
                 .preamble(format!(
                     "You support a hosted document workspace. {policy} \
                      You have no account access or tools; never claim to change settings or issue refunds. \

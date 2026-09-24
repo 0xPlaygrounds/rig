@@ -174,7 +174,7 @@ async fn over_host(
     hooks: Hooks,
 ) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = agent(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         &host,
         hooks,
     );

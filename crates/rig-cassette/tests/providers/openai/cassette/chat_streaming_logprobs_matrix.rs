@@ -131,7 +131,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client
         .openai
-        .endpoint(|provider_config| provider_config.chat(model_name(cell.model)));
+        .endpoint(|provider| provider.chat(model_name(cell.model)));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))

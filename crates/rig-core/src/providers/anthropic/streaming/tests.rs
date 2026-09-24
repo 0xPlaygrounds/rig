@@ -2046,7 +2046,7 @@ mod terminal_emission {
     }
 
     /// Raw capture on the streaming terminal, through the real
-    /// `CompletionModel::stream` seam on `Bound` over the mock transport:
+    /// `CompletionModel::stream` seam on `Model` over the mock transport:
     /// the decoder serializes the native terminal onto the record it maps,
     /// so the terminal `StreamFinal.raw` is Anthropic's own
     /// `StreamingCompletionResponse`. A `message_delta` with

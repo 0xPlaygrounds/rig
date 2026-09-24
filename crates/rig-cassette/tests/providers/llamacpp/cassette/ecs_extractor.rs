@@ -12,7 +12,7 @@ async fn extractor_smoke() {
         async {
             with_llamacpp_cassette("extractor/extractor_smoke", |client| async move {
                 let mut extractor = EcsExtractor::<SmokePerson>::new(
-                    client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)),
+                    client.endpoint(|provider| provider.completion(CASSETTE_MODEL)),
                     None,
                     None,
                 );

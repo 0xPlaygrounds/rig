@@ -42,7 +42,7 @@ fn route_after_first(
 }
 fn routed_agent(client: &rig::driver::Model<Anthropic>, selected: bool) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         TOOLS_PREAMBLE,
         false,
     );
@@ -56,7 +56,7 @@ fn routed_agent(client: &rig::driver::Model<Anthropic>, selected: bool) -> EcsAg
             RuntimeHandler {
                 inner: Arc::new(ModelAdapter::completion(
                     "fast",
-                    client.endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5)),
                 )),
                 runtime: io_runtime(),
             },
@@ -88,7 +88,7 @@ async fn two_tools(
     events: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         TWO_TOOL_STREAM_PREAMBLE,
         events,
     );
@@ -230,7 +230,7 @@ async fn serial_memory_tools_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
             let mut ecs = EcsAgent::for_golden_with_setup(
-                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+                client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
                 TOOLS_PREAMBLE,
                 false,
                 |world| {
@@ -380,7 +380,7 @@ async fn over_host_bus(
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
+        client.endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6)),
         TOOLS_PREAMBLE,
         streamed,
     );

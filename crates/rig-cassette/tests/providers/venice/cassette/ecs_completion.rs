@@ -10,7 +10,7 @@ async fn completion_smoke() {
         async {
             with_venice_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                    client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                     BASIC_PREAMBLE,
                     1,
                 );

@@ -25,7 +25,7 @@ fn venice_reply(raw: &serde_json::Value) -> venice::CompletionResponse {
 #[tokio::test]
 async fn web_search_on_returns_citations() {
     with_venice_cassette("venice_parameters/web_search_on", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL));
+        let model = client.endpoint(|provider| provider.completion(DEFAULT_MODEL));
         let request = model
             .completion_request("In one sentence, what is the Rust programming language?")
             .max_tokens(64)
@@ -70,7 +70,7 @@ async fn web_search_on_returns_citations() {
 #[tokio::test]
 async fn web_search_auto_is_echoed() {
     with_venice_cassette("venice_parameters/web_search_auto", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL));
+        let model = client.endpoint(|provider| provider.completion(DEFAULT_MODEL));
         let request = model
             .completion_request("What is 2 + 2? Answer with the number only.")
             .max_tokens(16)
@@ -104,7 +104,7 @@ async fn web_search_auto_is_echoed() {
 #[tokio::test]
 async fn disable_thinking_is_applied() {
     with_venice_cassette("venice_parameters/disable_thinking", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL));
+        let model = client.endpoint(|provider| provider.completion(DEFAULT_MODEL));
         let request = model
             .completion_request("Name one primary color. Answer with one word.")
             .max_tokens(16)
@@ -138,8 +138,7 @@ async fn venice_system_prompt_can_be_disabled() {
     with_venice_cassette(
         "venice_parameters/include_venice_system_prompt_false",
         |client| async move {
-            let model =
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL));
+            let model = client.endpoint(|provider| provider.completion(DEFAULT_MODEL));
             let request = model
                 .completion_request("Say hi in three words.")
                 .max_tokens(24)
@@ -179,7 +178,7 @@ async fn venice_system_prompt_can_be_disabled() {
 #[tokio::test]
 async fn character_slug_selects_a_persona() {
     with_venice_cassette("venice_parameters/character_slug", |client| async move {
-        let model = client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL));
+        let model = client.endpoint(|provider| provider.completion(DEFAULT_MODEL));
         let request = model
             .completion_request("Introduce yourself in one sentence.")
             .max_tokens(64)

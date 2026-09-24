@@ -80,9 +80,7 @@ async fn main() -> Result<()> {
         .with_middleware(WireLogger);
 
     let agent = rig::driver::Model::new(Anthropic::new(api_key), http_client)
-        .endpoint(|provider_config| {
-            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        })
+        .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .preamble("You are a helpful assistant.")
         .build();

@@ -96,7 +96,7 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
 async fn two_turn_conversation(client: Model<OpenAI>) -> (ProviderResponse, ProviderResponse) {
-    let model = client.endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
+    let model = client.endpoint(|provider| provider.completion(openai::GPT_5_6_SOL));
     let first = model
         .complete(model.completion_request(TURN_ONE).build())
         .await
@@ -170,7 +170,7 @@ async fn compaction_item_decodes_on_the_response() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
+                .endpoint(|provider| provider.completion(openai::GPT_5_6_SOL));
             let response = model
                 .complete(model.completion_request(TURN_ONE).build())
                 .await

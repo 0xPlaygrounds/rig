@@ -12,7 +12,6 @@
 use rig::completion::CompletionModel;
 use rig::driver::Model;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_2_5_FLASH, GEMINI_3_FLASH_PREVIEW};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -33,8 +32,7 @@ fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
+        model: client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -47,8 +45,7 @@ fn missing<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion("gemini-nonexistent-rig-test")),
+        model: client.endpoint(|provider| provider.completion("gemini-nonexistent-rig-test")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -62,7 +59,7 @@ fn legacy<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH)),
+        model: client.endpoint(|provider| provider.completion(GEMINI_2_5_FLASH)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -117,8 +114,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
         rig::driver::Model::new(Gemini::new(SCRIPTED_KEY), scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
+        model: client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -132,8 +128,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         rig::driver::Model::new(Gemini::new(SCRIPTED_KEY), SequencedHttpClient::new(replies));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client
-            .endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
+        model: client.endpoint(|provider| provider.completion(GEMINI_3_FLASH_PREVIEW)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

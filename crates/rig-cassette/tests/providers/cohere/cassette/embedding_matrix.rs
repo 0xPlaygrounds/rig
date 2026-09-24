@@ -46,7 +46,7 @@ async fn normalized_response_is_complete() {
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| provider_config.embeddings(cohere::EMBED_V4, None))
+                .endpoint(|provider| provider.embeddings(cohere::EMBED_V4, None))
                 .endpoint(|wire| wire.clone().with_input_type(INPUT_TYPE));
             let response = model
                 .embed_texts_response(inputs())
@@ -67,7 +67,7 @@ async fn normalized_response_is_complete() {
 async fn raw_round_trips() {
     with_cohere_cassette("embedding_matrix/raw_round_trips", |client| async move {
         let model = client
-            .endpoint(|provider_config| provider_config.embeddings(cohere::EMBED_V4, None))
+            .endpoint(|provider| provider.embeddings(cohere::EMBED_V4, None))
             .endpoint(|wire| wire.clone().with_input_type(INPUT_TYPE));
         let response = model
             .embed_texts_response(inputs())
@@ -106,7 +106,7 @@ async fn raw_round_trips() {
 async fn raw_route_parity() {
     with_cohere_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = client
-            .endpoint(|provider_config| provider_config.embeddings(cohere::EMBED_V4, None))
+            .endpoint(|provider| provider.embeddings(cohere::EMBED_V4, None))
             .endpoint(|wire| wire.clone().with_input_type(INPUT_TYPE));
         let normalized = model
             .embed_texts_response(inputs())
@@ -130,7 +130,7 @@ async fn single_text_convenience() {
         "embedding_matrix/single_text_convenience",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| provider_config.embeddings(cohere::EMBED_V4, None))
+                .endpoint(|provider| provider.embeddings(cohere::EMBED_V4, None))
                 .endpoint(|wire| wire.clone().with_input_type(INPUT_TYPE));
             let response = model
                 .embed_text_response(EMBEDDING_INPUTS[0])
@@ -150,9 +150,7 @@ async fn error_preserves_provider_body() {
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.embeddings("no-such-embedding-model", None)
-                })
+                .endpoint(|provider| provider.embeddings("no-such-embedding-model", None))
                 .endpoint(|wire| wire.clone().with_input_type(INPUT_TYPE));
             let error = model
                 .embed_texts_response(inputs())

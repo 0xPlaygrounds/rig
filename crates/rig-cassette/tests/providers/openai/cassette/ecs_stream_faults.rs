@@ -43,7 +43,7 @@ use crate::{
 fn scripted_model(
     chunks: Vec<Bytes>,
 ) -> Model<openai::wire::OpenAiWire, SequencedStreamingHttpClient> {
-    scripted_client(chunks).endpoint(|provider_config| provider_config.completion(GPT_4O))
+    scripted_client(chunks).endpoint(|provider| provider.completion(GPT_4O))
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -97,7 +97,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                     let run = native_run(
                         client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(MISSING_MODEL)),
+                            .endpoint(|provider| provider.completion(MISSING_MODEL)),
                         "",
                         SETUP_PROMPT,
                         witness,
@@ -388,7 +388,7 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
                     crate::ecs_matrix::world::FirstDelta {
                         inner: client
                             .openai
-                            .endpoint(|provider_config| provider_config.completion(GPT_4O)),
+                            .endpoint(|provider| provider.completion(GPT_4O)),
                         tool: false,
                         release: std::sync::Arc::new(tokio::sync::Semaphore::new(0)),
                     },

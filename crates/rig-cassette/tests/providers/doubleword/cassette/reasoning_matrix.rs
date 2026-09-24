@@ -25,7 +25,7 @@ const PROMPT: &str = "Compute 17 * 23. Give the number only after thinking.";
 const CAP: u64 = 128;
 
 async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
-    let model = client.endpoint(|provider_config| provider_config.completion(model_name));
+    let model = client.endpoint(|provider| provider.completion(model_name));
     let response = model
         .complete(model.completion_request(PROMPT).max_tokens(CAP).build())
         .await
@@ -57,7 +57,7 @@ async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
 }
 
 async fn exercise_streaming(client: BoundDoubleword, model_name: &'static str) {
-    let model = client.endpoint(|provider_config| provider_config.completion(model_name));
+    let model = client.endpoint(|provider| provider.completion(model_name));
     let stream = model
         .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
         .await

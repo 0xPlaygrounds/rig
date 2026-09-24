@@ -73,8 +73,7 @@ impl Tool for TranslatorTool {
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = OpenAI::from_env()?.bound()?;
-    let model =
-        openai_client.endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+    let model = openai_client.endpoint(|provider| provider.completion(openai::GPT_4O));
 
     let translator_agent = AgentBuilder::new(model.clone())
                 .preamble(

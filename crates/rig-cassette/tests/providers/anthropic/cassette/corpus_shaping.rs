@@ -64,7 +64,7 @@ async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -95,7 +95,7 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -136,7 +136,7 @@ async fn extra_context_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/extra_context", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -168,7 +168,7 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
@@ -203,7 +203,7 @@ async fn merged_three_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/merged_three", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
@@ -247,12 +247,12 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .model_route(
                     "fast",
-                    client.endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5)),
+                    client.endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5)),
                 )
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -280,7 +280,7 @@ async fn late_route_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/late_route", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
@@ -291,7 +291,7 @@ async fn late_route_effect_log_is_the_golden_fixture() {
             .build();
         agent.register_model(
             LATE_ROUTE,
-            client.endpoint(|provider_config| provider_config.completion(CLAUDE_HAIKU_4_5)),
+            client.endpoint(|provider| provider.completion(CLAUDE_HAIKU_4_5)),
         );
         let output = answer(&agent, ADD_PROMPT).await;
         assert!(output.contains("42"), "{output}");
@@ -324,7 +324,7 @@ async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -352,7 +352,7 @@ async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -382,7 +382,7 @@ async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -419,7 +419,7 @@ async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -448,7 +448,7 @@ async fn history_first_turn_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .endpoint(|provider| provider.completion(CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)

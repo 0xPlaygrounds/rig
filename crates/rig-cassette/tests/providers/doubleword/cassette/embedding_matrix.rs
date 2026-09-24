@@ -34,9 +34,8 @@ async fn normalized_response_is_complete() {
     with_doubleword_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.embeddings(doubleword::QWEN3_EMBEDDING_8B, None)
-            });
+            let model = client
+                .endpoint(|provider| provider.embeddings(doubleword::QWEN3_EMBEDDING_8B, None));
             let response = model
                 .embed_texts_response(inputs())
                 .await
@@ -53,9 +52,8 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_doubleword_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.endpoint(|provider_config| {
-            provider_config.embeddings(doubleword::QWEN3_EMBEDDING_8B, None)
-        });
+        let model =
+            client.endpoint(|provider| provider.embeddings(doubleword::QWEN3_EMBEDDING_8B, None));
         let response = model
             .embed_texts_response(inputs())
             .await
@@ -90,9 +88,8 @@ async fn raw_route_parity() {
     const SCENARIO: &str = "embedding_matrix/raw_route_parity";
 
     with_doubleword_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.endpoint(|provider_config| {
-            provider_config.embeddings(doubleword::QWEN3_EMBEDDING_8B, None)
-        });
+        let model =
+            client.endpoint(|provider| provider.embeddings(doubleword::QWEN3_EMBEDDING_8B, None));
         let normalized = model
             .embed_texts_response(inputs())
             .await
@@ -132,9 +129,8 @@ async fn single_text_convenience() {
     with_doubleword_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.embeddings(doubleword::QWEN3_EMBEDDING_8B, None)
-            });
+            let model = client
+                .endpoint(|provider| provider.embeddings(doubleword::QWEN3_EMBEDDING_8B, None));
             let response = model
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
@@ -158,9 +154,8 @@ async fn error_preserves_provider_body() {
     with_doubleword_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.endpoint(|provider_config| {
-                provider_config.embeddings("no-such-embedding-model", None)
-            });
+            let model =
+                client.endpoint(|provider| provider.embeddings("no-such-embedding-model", None));
             let error = model
                 .embed_texts_response(inputs())
                 .await

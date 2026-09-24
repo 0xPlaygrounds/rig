@@ -15,7 +15,7 @@ async fn extractor_smoke() {
         .bound()
         .expect("client should build");
     let extractor = client
-        .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+        .endpoint(|provider| provider.completion(DEFAULT_MODEL))
         .into_extractor_builder::<SmokePerson>()
         .build();
 

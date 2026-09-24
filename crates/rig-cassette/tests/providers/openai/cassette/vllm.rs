@@ -39,7 +39,7 @@ async fn responses_api_accepts_null_metadata() {
     with_openai_vllm_cassette(
         "vllm/responses_api_accepts_null_metadata",
         |client| async move {
-            let model = client.endpoint(|provider_config| provider_config.completion("Qwen/Qwen3-0.6B"));
+            let model = client.endpoint(|provider| provider.completion("Qwen/Qwen3-0.6B"));
             let request = model
                 .completion_request("Reply with a short acknowledgement.")
                 .max_tokens(8)

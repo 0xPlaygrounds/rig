@@ -171,9 +171,7 @@ async fn multi_turn_streaming_tools() {
         "multi_turn_streaming/multi_turn_streaming_tools",
         |client| async move {
             let agent = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .into_agent_builder()
                 .preamble("You must use tools for arithmetic.")
                 .tool(Add::new(add_calls.clone()))

@@ -33,7 +33,7 @@ async fn required_forces_a_tool_call() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let request = model
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -68,7 +68,7 @@ async fn none_suppresses_tool_calls() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let request = model
                 .completion_request("What is 2 plus 3? Reply with just the number.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -110,7 +110,7 @@ async fn specific_single_function_targets_named_tool() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let request = model
                 .completion_request("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -171,7 +171,7 @@ async fn specific_multiple_functions_use_allowed_tools() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let request = model
                 .completion_request("What is 2 plus 3? Use exactly one tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())

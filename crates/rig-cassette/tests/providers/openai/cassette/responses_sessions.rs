@@ -100,7 +100,7 @@ async fn sequential_tool_calls_nonstreaming() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
@@ -175,7 +175,7 @@ async fn sequential_tool_calls_streaming() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
@@ -224,7 +224,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -288,7 +288,7 @@ async fn parallel_tool_calls_single_turn_streaming() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -315,7 +315,7 @@ async fn long_history_replay_nonstreaming() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool call so the follow-up can echo
@@ -417,7 +417,7 @@ async fn reasoning_session_two_tool_calls_streaming() {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_2))
+                .endpoint(|provider| provider.completion(openai::GPT_5_2))
                 .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(6000)
@@ -490,7 +490,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
         |client| async move {
             let agent = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .into_agent_builder()
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)

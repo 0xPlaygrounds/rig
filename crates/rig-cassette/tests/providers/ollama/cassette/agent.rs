@@ -14,7 +14,7 @@ const MODEL: &str = "qwen3:4b";
 async fn completion_smoke() {
     with_ollama_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(MODEL))
+            .endpoint(|provider| provider.completion(MODEL))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .additional_params(serde_json::json!({ "think": false }))
@@ -46,7 +46,7 @@ async fn completion_smoke() {
 async fn completion_respects_max_tokens() {
     with_ollama_cassette("agent/max_tokens", |client| async move {
         let agent = client
-            .endpoint(|provider_config| provider_config.completion(MODEL))
+            .endpoint(|provider| provider.completion(MODEL))
             .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             // Small enough to truncate the answer well before the model would

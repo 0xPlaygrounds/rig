@@ -69,7 +69,7 @@ impl Tool for HybridImageTool {
 async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     super::super::support::with_gemini_cassette("streaming_multimodal_tool_results/streaming_history_preserves_hybrid_tool_result_image_parts", |client| async move {
     let agent = client
-        .endpoint(|provider_config| provider_config.completion(MULTIMODAL_FUNCTION_RESPONSE_MODEL)).into_agent_builder()
+        .endpoint(|provider| provider.completion(MULTIMODAL_FUNCTION_RESPONSE_MODEL)).into_agent_builder()
         .preamble(
             "You are a precise assistant. Call `render_reference_image` exactly once before \
              answering. After the tool result arrives, do not call any more tools. Answer in one \

@@ -27,7 +27,7 @@ async fn strict_tools_opt_in_roundtrip() {
             // false, all properties required) must be accepted by the API.
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|provider| provider.completion(openai::GPT_4O))
                 .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
@@ -81,7 +81,7 @@ async fn incomplete_response_surfaces_partial_output() {
         |client| async move {
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
+                .endpoint(|provider| provider.completion(openai::GPT_4O));
             let request = model
                 .completion_request(
                     "Write a story of at least 150 words about a lighthouse keeper.",
@@ -149,7 +149,7 @@ async fn system_messages_as_input_items_mid_conversation() {
             // items instead of the top-level `instructions` field.
             let model = client
                 .openai
-                .endpoint(|provider_config| provider_config.responses(openai::GPT_4O))
+                .endpoint(|provider| provider.responses(openai::GPT_4O))
                 .endpoint(|wire| wire.clone().with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble("You are a concise assistant.")

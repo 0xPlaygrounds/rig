@@ -91,9 +91,7 @@ const PROMPT: &str = "Calculate (3 + 5) / 4 and describe the result.";
 async fn main() -> Result<()> {
     let agent = Anthropic::from_env()?
         .bound()?
-        .endpoint(|provider_config| {
-            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        })
+        .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
         .into_agent_builder()
         .preamble(
             "You are an assistant that must use the available tools for arithmetic. \

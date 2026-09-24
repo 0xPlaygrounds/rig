@@ -8,7 +8,7 @@
 //! provider payload behind it.
 //!
 //! **What `raw` is.** The driver sets it from the reply's bytes
-//! (`driver::call`), so it is the provider's response *document*, not a
+//! (`Model::call`), so it is the provider's response *document*, not a
 //! round-trip through whatever type the decoder parsed. That matters most for
 //! a gateway: OpenRouter says which upstream served the turn (`provider`) and
 //! what it cost (`usage.cost`), and neither has a slot on the normalized
@@ -65,7 +65,7 @@ async fn raw_reads_back_as_openrouter_type() {
         "raw_capture_matrix/raw_round_trips_openrouter_type",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                 request,
                 sink.clone(),
             )
@@ -116,7 +116,7 @@ async fn raw_exposes_routed_provider() {
     let sink = Observed::default();
     with_openrouter_cassette_result("raw_capture_matrix/raw_exposes_routed_provider", |client| {
         capture_completion(
-            client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+            client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
             request,
             sink.clone(),
         )
@@ -162,7 +162,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                client.endpoint(|provider| provider.completion(DEFAULT_MODEL)),
                 request,
                 sink.clone(),
             )

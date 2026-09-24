@@ -30,9 +30,7 @@ use crate::support::{
 async fn max_tokens_truncation_surfaces_as_length() {
     with_anthropic_cassette("regression/stop_reason_max_tokens", |client| async move {
         let agent = client
-            .endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            })
+            .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .max_tokens(8)
@@ -64,9 +62,7 @@ async fn max_tokens_truncation_surfaces_as_length() {
 async fn natural_stop_surfaces_as_stop() {
     with_anthropic_cassette("regression/stop_reason_end_turn", |client| async move {
         let agent = client
-            .endpoint(|provider_config| {
-                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            })
+            .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
             .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .max_tokens(512)
@@ -111,9 +107,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
         "regression/cache_hit_zero_uncached_input",
         |client| async move {
             let model = client
-                .endpoint(|provider_config| {
-                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                })
+                .endpoint(|provider| provider.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .endpoint(|wire| wire.clone().with_prompt_caching());
 
             // A prefix long enough to clear Anthropic's minimum cacheable size.
