@@ -18,7 +18,8 @@ use crate::{
     completion::CompletionResponse,
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
-    streaming::{BlockAccumulator, StreamEvent, StreamEvents, StreamFinal},
+    operation::CompletionFold,
+    streaming::{StreamEvent, StreamEvents, StreamFinal},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -205,29 +206,6 @@ pub trait Observe: Send + Sync {
     fn patch(&mut self, kind: &EffectKind);
 }
 
-fn finish_unary(
-    accumulator: &mut BlockAccumulator,
-    message_id: Option<String>,
-    terminal: StreamFinal,
-) -> Result<Outcome, ErrorReport> {
-    let choice = crate::streaming::stamp_reasoning(
-        std::mem::replace(accumulator, BlockAccumulator::new()).finish(),
-        terminal.issuer(),
-    );
-    let mut response = CompletionResponse::new(
-        choice,
-        terminal.usage,
-        terminal.provider.clone(),
-        terminal.raw,
-    )
-    .with_optional_finish_reason(terminal.finish_reason.clone());
-    response.message_id = message_id.or(terminal.message_id.clone());
-    response.response_id = terminal.response_id.clone();
-    response.provider_request_id = terminal.provider_request_id.clone();
-    response.model = terminal.model.clone();
-    Ok(Outcome::Completion(response))
-}
-
 /// Re-emits completion content as stream events followed by `Final`. Images
 /// become unknown payloads; serialization failures become error items.
 pub(crate) fn events_from_response(
@@ -311,11 +289,19 @@ pub(crate) fn events_from_response(
 /// The one fold of a stream into the completion a unary consumer, or the
 /// record, holds: what a unary consumer runs over a streaming handler's
 /// events, what the driver's observer runs over a streaming dispatch, what
-/// a layer runs for its verdict.
-#[derive(Default)]
+/// a layer runs for its verdict. It is the [`CompletionFold`] a
+/// [`CompletionStream`](crate::streaming::CompletionStream) keeps, restarted
+/// after each terminal record.
 pub struct StreamTap {
-    accumulator: BlockAccumulator,
-    message_id: Option<String>,
+    fold: CompletionFold,
+}
+
+impl Default for StreamTap {
+    fn default() -> Self {
+        Self {
+            fold: CompletionFold::relayed(""),
+        }
+    }
 }
 
 impl StreamTap {
@@ -330,28 +316,21 @@ impl StreamTap {
         &mut self,
         item: &Result<StreamEvent, ErrorReport>,
     ) -> Option<Result<Outcome, ErrorReport>> {
-        match item {
-            Err(report) => Some(Err(report.clone())),
-            Ok(StreamEvent::Final(terminal)) => Some(finish_unary(
-                &mut self.accumulator,
-                self.message_id.take(),
-                terminal.clone(),
-            )),
-            Ok(event) => {
-                if let StreamEvent::BlockStart {
-                    id,
-                    kind: crate::streaming::BlockKind::Message,
-                } = event
-                    && let Some(wire) = id.wire_str()
-                {
-                    self.message_id = Some(wire.to_owned());
-                }
-                if let Err(report) = self.accumulator.apply(event) {
-                    return Some(Err(report));
-                }
-                None
-            }
+        let event = match item {
+            Err(report) => return Some(Err(report.clone())),
+            Ok(event) => event,
+        };
+        let terminal = matches!(event, StreamEvent::Final(_));
+        if let Some(Err(report)) = self.fold.step(event.clone()) {
+            return Some(Err(report));
         }
+        terminal.then(|| {
+            std::mem::take(self)
+                .fold
+                .finish_stream()
+                .map(Outcome::Completion)
+                .map_err(|error| ErrorReport::from(&error))
+        })
     }
 }
 

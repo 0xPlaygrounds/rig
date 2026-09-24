@@ -658,9 +658,9 @@ fn an_observer_never_changes_what_the_consumer_receives() {
 #[test]
 fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
     use crate::message::{AssistantContent, Reasoning};
-    use crate::streaming::{BlockAccumulator, StreamEvent};
+    use crate::streaming::StreamEvent;
 
-    let mut accumulator = BlockAccumulator::new();
+    let mut tap = StreamTap::new();
     for event in events_from_response(&CompletionResponse::new(
         vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
             "thinking",
@@ -670,15 +670,16 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
         "aws_bedrock",
         serde_json::Value::Null,
     )) {
-        if let Ok(event) = event
+        if let Ok(event) = &event
             && !matches!(event, StreamEvent::Final(_))
         {
-            accumulator.apply(&event).expect("a valid event");
+            assert!(tap.observe(&Ok(event.clone())).is_none(), "a valid event");
         }
     }
     let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
         .with_reasoning_issuer("anthropic");
-    let Ok(Outcome::Completion(response)) = finish_unary(&mut accumulator, None, terminal) else {
+    let Some(Ok(Outcome::Completion(response))) = tap.observe(&Ok(StreamEvent::Final(terminal)))
+    else {
         panic!("a completion outcome");
     };
     let issuers: Vec<_> = response

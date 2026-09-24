@@ -3,8 +3,7 @@
 //! Run it to see a classifier agent choose which second prompt should run.
 
 use anyhow::{Result, bail};
-use rig::driver::Model;
-use rig::http_client::BoxedHttpClient;
+use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
@@ -14,19 +13,12 @@ const ROUTER_PREAMBLE: &str = "
     Return only the category.
 ";
 
-fn build_router_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
-    openai
-        .endpoint(|provider| provider.completion(openai::GPT_4))
-        .into_agent_builder()
-        .preamble(ROUTER_PREAMBLE)
-        .build()
+fn build_router_agent(model: impl CompletionModel + 'static) -> rig::agent::Agent {
+    model.into_agent_builder().preamble(ROUTER_PREAMBLE).build()
 }
 
-fn build_response_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
-    openai
-        .endpoint(|provider| provider.completion(openai::GPT_4))
-        .into_agent_builder()
-        .build()
+fn build_response_agent(model: impl CompletionModel + 'static) -> rig::agent::Agent {
+    model.into_agent_builder().build()
 }
 
 fn follow_up_prompt(category: &str) -> Result<&'static str> {
@@ -40,16 +32,13 @@ fn follow_up_prompt(category: &str) -> Result<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let openai = OpenAI::from_env()?.bound()?;
-    let category = build_router_agent(&openai)
+    let model = OpenAI::from_env()?.completion(openai::GPT_4).bound()?;
+    let category = build_router_agent(model.clone())
         .prompt(INPUT_PROMPT)
         .await?
         .output;
     let follow_up = follow_up_prompt(category.trim())?;
-    let response = build_response_agent(&openai)
-        .prompt(follow_up)
-        .await?
-        .output;
+    let response = build_response_agent(model).prompt(follow_up).await?.output;
 
     println!("Classifier chose: {}", category.trim());
     println!("Follow-up prompt: {follow_up}");

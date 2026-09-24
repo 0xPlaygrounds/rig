@@ -29,8 +29,8 @@ const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
-    // bound provider is `Model<OpenAI, BoxedHttpClient>`, so no
-    // transport type reaches this crate's signatures.
+    // model is a wire on a `BoxedHttpClient`, so no transport type reaches
+    // this crate's signatures.
     let transport = ReqwestClient::default().boxed();
     let agent = Model::new(OpenAI::from_env()?.completion(openai::GPT_4O), transport)
         .into_agent_builder()
