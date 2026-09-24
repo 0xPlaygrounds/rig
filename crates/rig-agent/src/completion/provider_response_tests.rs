@@ -85,7 +85,9 @@ fn prompt_error_forwards_captured_response_headers() {
     for completion_error in [
         // A preserved response, with and without a request id.
         ProviderError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
-            .with_provider_request_id(Some("req_abc".to_string()))
+            .with_provider_request_id(Some(
+                rig_core::id::RequestId::new("req_abc".to_string()).expect("a non-empty id"),
+            ))
             .with_response_headers(Some(headers.clone())),
         ProviderError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
             .with_response_headers(Some(headers.clone())),
@@ -139,8 +141,12 @@ fn prompt_error_reports_no_headers_for_unrelated_variants() {
 #[test]
 fn prompt_error_forwards_the_provider_request_id() {
     let error = PromptError::CompletionError(ProviderError::ProviderResponse(
-        ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}")
-            .with_provider_request_id(Some("req_failed_call".to_string())),
+        ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}").with_provider_request_id(
+            Some(
+                rig_core::id::RequestId::new("req_failed_call".to_string())
+                    .expect("a non-empty id"),
+            ),
+        ),
     ));
     assert_eq!(error.provider_request_id(), Some("req_failed_call"));
 }

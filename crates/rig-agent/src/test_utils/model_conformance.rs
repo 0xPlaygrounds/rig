@@ -1411,7 +1411,7 @@ where
                 return OutcomeAction::proceed();
             };
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                response.message_id.clone(),
+                response.message_id.clone().map(String::from),
                 response.choice.clone(),
                 response.usage,
                 BTreeSet::new(),

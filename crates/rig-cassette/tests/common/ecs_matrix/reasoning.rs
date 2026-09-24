@@ -176,7 +176,7 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             );
         }
         for response in &responses {
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
             assert!(rig_core::message::turn_delivered_no_answer(
                 &response.choice
             ));
@@ -373,7 +373,7 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
     let expected: Vec<_> = completions(log)
         .iter()
         .map(|response| Message::Assistant {
-            id: response.message_id.clone(),
+            id: response.message_id.clone().map(String::from),
             content: if cell.reasoning == Some(ReasoningCase::Output) {
                 // The record retains the output call; committed history keeps
                 // its answer as JSON text, avoiding an unanswered tool call.

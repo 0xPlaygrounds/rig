@@ -218,12 +218,18 @@ async fn normalized_fields_equal_raw_renormalized() {
         .expect("raw must deserialize into AwsConverseOutput")
         .try_into()
         .expect("raw must normalize");
-    let from_raw = from_raw.with_optional_provider_request_id(response.provider_request_id.clone());
+    let from_raw = rig_core::completion::CompletionResponse {
+        provider_request_id: response.provider_request_id.clone(),
+        ..from_raw
+    };
 
     assert_eq!(response.provider, BEDROCK_PROVIDER);
     assert_eq!(from_raw.provider, response.provider);
     assert_eq!(from_raw.model, response.model);
-    assert_eq!(from_raw.finish_reason(), response.finish_reason());
+    assert_eq!(
+        from_raw.finish_reason.clone(),
+        response.finish_reason.clone()
+    );
     assert_eq!(from_raw.identity(), response.identity());
     assert_eq!(from_raw.usage, response.usage);
     assert!(!response.choice.is_empty());

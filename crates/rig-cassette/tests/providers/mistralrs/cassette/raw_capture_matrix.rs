@@ -214,7 +214,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     // vocabulary is unrecorded here, so this claims only that a native reason
     // was reported and that one reached the normalized response.
     assert!(
-        !choice.finish_reason.is_empty() && response.finish_reason().is_some(),
+        !choice.finish_reason.is_empty() && response.finish_reason.clone().is_some(),
         "the native finish reason `{}` must reach the normalized response",
         choice.finish_reason
     );

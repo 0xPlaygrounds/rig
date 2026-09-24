@@ -165,7 +165,7 @@ fn assert_chat_fixture_premise(
         &format!("{scenario}: response_id"),
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(finish),
         "{scenario}: normalized finish reason"
     );

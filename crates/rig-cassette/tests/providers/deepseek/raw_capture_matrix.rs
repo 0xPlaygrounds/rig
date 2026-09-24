@@ -107,11 +107,11 @@ fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &Co
         response.response_id.as_deref(),
         "response id"
     );
-    assert_eq!(typed.model, response.model, "model");
+    assert_eq!(typed.model.as_deref(), response.model.as_deref(), "model");
     let choice = typed.choices.first().expect("a reply carries a choice");
     assert_eq!(
         Some(chat::native_finish_reason(&choice.finish_reason)),
-        response.finish_reason(),
+        response.finish_reason.clone(),
         "finish reason"
     );
     assert_eq!(

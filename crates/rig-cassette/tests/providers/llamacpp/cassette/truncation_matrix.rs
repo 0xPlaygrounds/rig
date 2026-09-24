@@ -99,7 +99,7 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
                 );
 
             assert_eq!(
-                response.finish_reason(),
+                response.finish_reason.clone(),
                 Some(FinishReason::Length),
                 "the turn ran out of budget, and that is what authorizes the tolerance"
             );

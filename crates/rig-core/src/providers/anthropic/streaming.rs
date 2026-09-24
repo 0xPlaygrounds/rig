@@ -1,3 +1,4 @@
+use crate::id::{MessageId, ModelName, RequestId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -753,15 +754,26 @@ fn terminal_record(
     provider: &str,
     response: &StreamingCompletionResponse,
 ) -> Result<StreamFinal, ProviderError> {
-    Ok(StreamFinal::new(
-        provider,
-        crate::completion::Usage::from(&response.usage),
-        serde_json::to_value(response)?,
-    )
-    .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
-    .with_optional_message_id(response.message_id.clone())
-    .with_optional_provider_request_id(response.provider_request_id.clone())
-    .with_optional_model(response.model.clone()))
+    Ok(StreamFinal {
+        finish_reason: response.stop_reason.as_deref().map(map_finish_reason),
+        message_id: response
+            .message_id
+            .clone()
+            .and_then(|id| MessageId::new(id).ok()),
+        provider_request_id: response
+            .provider_request_id
+            .clone()
+            .and_then(|id| RequestId::new(id).ok()),
+        model: response
+            .model
+            .clone()
+            .and_then(|model| ModelName::new(model).ok()),
+        ..StreamFinal::new(
+            provider,
+            crate::completion::Usage::from(&response.usage),
+            serde_json::to_value(response)?,
+        )
+    })
 }
 
 #[cfg(test)]

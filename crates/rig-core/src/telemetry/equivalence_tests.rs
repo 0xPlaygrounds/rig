@@ -220,10 +220,12 @@ fn cases() -> Vec<Value> {
         },
     );
     run("instrument_modality ok", &mut out, || {
-        let response = EmbeddingResponse::new(vec![], "prov")
-            .with_response_id("emb_id")
-            .with_model("emb_model")
-            .with_usage(usage());
+        let response = EmbeddingResponse {
+            response_id: Some("emb_id".try_into().expect("a non-empty id")),
+            model: Some("emb_model".try_into().expect("a non-empty id")),
+            usage: usage(),
+            ..EmbeddingResponse::new(vec![], "prov")
+        };
         let result = futures::executor::block_on(instrument_modality::<Embedding, _>(
             "prov",
             "model",
@@ -253,9 +255,11 @@ fn cases() -> Vec<Value> {
                 Completion::telemetry(false),
                 &request,
             );
-            let response = CompletionResponse::new(vec![], usage(), "prov", Value::Null)
-                .with_message_id("msg_1")
-                .with_model("resp_model");
+            let response = CompletionResponse {
+                message_id: Some("msg_1".try_into().expect("a non-empty id")),
+                model: Some("resp_model".try_into().expect("a non-empty id")),
+                ..CompletionResponse::new(vec![], usage(), "prov", Value::Null)
+            };
             Completion::record(&span, &response);
         },
     );
@@ -268,10 +272,12 @@ fn cases() -> Vec<Value> {
                 .build();
             let span =
                 Completion::span("prov", Some("model"), Completion::telemetry(true), &request);
-            let terminal = StreamFinal::new("prov", usage(), Value::Null)
-                .with_response_id("resp_1")
-                .with_message_id("msg_1")
-                .with_model("m2");
+            let terminal = StreamFinal {
+                response_id: Some("resp_1".try_into().expect("a non-empty id")),
+                message_id: Some("msg_1".try_into().expect("a non-empty id")),
+                model: Some("m2".try_into().expect("a non-empty id")),
+                ..StreamFinal::new("prov", usage(), Value::Null)
+            };
             Completion::record_event(&span, &StreamEvent::Final(terminal));
         },
     );
@@ -282,10 +288,12 @@ fn cases() -> Vec<Value> {
             Embedding::telemetry(false),
             &vec!["a".to_owned()],
         );
-        let response = EmbeddingResponse::new(vec![], "prov")
-            .with_response_id("emb_id")
-            .with_model("emb_model")
-            .with_usage(usage());
+        let response = EmbeddingResponse {
+            response_id: Some("emb_id".try_into().expect("a non-empty id")),
+            model: Some("emb_model".try_into().expect("a non-empty id")),
+            usage: usage(),
+            ..EmbeddingResponse::new(vec![], "prov")
+        };
         Embedding::record(&span, &response);
     });
     run("rerank operation span+record", &mut out, || {
@@ -294,10 +302,12 @@ fn cases() -> Vec<Value> {
             documents: vec!["d".into()],
         };
         let span = Rerank::span("prov", Some("model"), Rerank::telemetry(false), &request);
-        let response = RerankResponse::new(vec![], "prov")
-            .with_response_id("rr_id")
-            .with_model("rr_model")
-            .with_usage(usage());
+        let response = RerankResponse {
+            response_id: Some("rr_id".try_into().expect("a non-empty id")),
+            model: Some("rr_model".try_into().expect("a non-empty id")),
+            usage: usage(),
+            ..RerankResponse::new(vec![], "prov")
+        };
         Rerank::record(&span, &response);
     });
     run("transcription operation span+record", &mut out, || {
@@ -315,9 +325,11 @@ fn cases() -> Vec<Value> {
             Transcription::telemetry(false),
             &request,
         );
-        let response = TranscriptionResponse::new("text", "prov")
-            .with_response_id("tr_id")
-            .with_usage(usage());
+        let response = TranscriptionResponse {
+            response_id: Some("tr_id".try_into().expect("a non-empty id")),
+            usage: usage(),
+            ..TranscriptionResponse::new("text", "prov")
+        };
         Transcription::record(&span, &response);
     });
     run("span combinator on a native response", &mut out, || {

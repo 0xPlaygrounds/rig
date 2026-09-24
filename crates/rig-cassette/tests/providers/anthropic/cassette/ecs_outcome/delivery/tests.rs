@@ -126,14 +126,14 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
             end: BlockClose::Text,
             block: None,
         }),
-        Ok(StreamEvent::Final(
-            StreamFinal::new(
+        Ok(StreamEvent::Final(StreamFinal {
+            message_id: Some("message".try_into().expect("a non-empty id")),
+            ..StreamFinal::new(
                 "anthropic",
                 Usage::default(),
                 serde_json::json!({"stop_reason": "end_turn"}),
             )
-            .with_message_id("message"),
-        )),
+        })),
     ]);
     let polls = Arc::new(AtomicUsize::new(0));
     let dropped = Arc::new(AtomicBool::new(false));

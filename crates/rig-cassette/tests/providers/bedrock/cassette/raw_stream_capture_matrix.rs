@@ -166,7 +166,10 @@ async fn stream_raw_terminal_round_trips_provider_type() {
         Some(usage.output_tokens as u64),
         terminal.usage.output_tokens
     );
-    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+    assert_eq!(
+        typed.provider_request_id.as_deref(),
+        terminal.provider_request_id.as_deref()
+    );
 
     let (_, recorded_usage) = recorded_terminal_events(scenario);
     assert_eq!(raw["usage"]["total_tokens"], recorded_usage["totalTokens"]);

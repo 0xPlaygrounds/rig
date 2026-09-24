@@ -274,7 +274,7 @@ async fn blocking_refusal_finishes_with_stop() {
             let response = model.completion(request).await.expect("refusal turn");
 
             assert_eq!(
-                response.finish_reason(),
+                response.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Stop)
             );
         },

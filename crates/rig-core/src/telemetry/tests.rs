@@ -128,14 +128,16 @@ fn instrument_modality_records_usage_and_identity() {
     });
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     tracing::subscriber::with_default(subscriber, || {
-        let response = crate::embeddings::EmbeddingResponse::new(vec![], "probe")
-            .with_model("probe-embed-v2")
-            .with_response_id("emb_123")
-            .with_usage(Usage {
+        let response = crate::embeddings::EmbeddingResponse {
+            model: Some("probe-embed-v2".try_into().expect("a non-empty id")),
+            response_id: Some("emb_123".try_into().expect("a non-empty id")),
+            usage: Usage {
                 input_tokens: Some(7),
                 total_tokens: Some(7),
                 ..Usage::default()
-            });
+            },
+            ..crate::embeddings::EmbeddingResponse::new(vec![], "probe")
+        };
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
             .expect("runtime");

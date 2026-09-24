@@ -37,9 +37,17 @@ pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
         *raw,
         "the captured value is the typed terminal serialized, nothing more"
     );
-    assert_eq!(typed.response_id, terminal.response_id, "response id");
-    assert_eq!(typed.message_id, terminal.message_id, "message id");
-    assert_eq!(typed.model, terminal.model, "model");
+    assert_eq!(
+        typed.response_id.as_deref(),
+        terminal.response_id.as_deref(),
+        "response id"
+    );
+    assert_eq!(
+        typed.message_id.as_deref(),
+        terminal.message_id.as_deref(),
+        "message id"
+    );
+    assert_eq!(typed.model.as_deref(), terminal.model.as_deref(), "model");
     assert_eq!(
         Usage::from(&typed),
         terminal.usage,
@@ -108,7 +116,7 @@ pub fn assert_reproduces_body(
         "{context}: model"
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(recorded_finish_reason(body)),
         "{context}: finish reason"
     );
@@ -161,7 +169,7 @@ pub fn assert_native_matches_normalized(
         "{context}: native status"
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(FinishReason::Stop),
         "{context}: the normalized reason is that status"
     );

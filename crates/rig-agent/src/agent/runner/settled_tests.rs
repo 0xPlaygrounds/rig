@@ -225,9 +225,10 @@ async fn capped_reasoning_settlement_exposes_only_the_committed_prompt() {
         let model = if streamed {
             MockCompletionModel::from_stream_turns([[
                 MockStreamEvent::reasoning("unfinished reasoning"),
-                MockStreamEvent::FinalResponse(
-                    mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
-                ),
+                MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+                    finish_reason: Some(FinishReason::Length),
+                    ..mock_final(Usage::default())
+                }),
             ]])
         } else {
             MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Reasoning(

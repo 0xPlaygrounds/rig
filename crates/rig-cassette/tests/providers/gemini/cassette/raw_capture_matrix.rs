@@ -277,7 +277,7 @@ async fn raw_roundtrips_generate_content_response() {
         "Gemini's own finish spelling stays on the document"
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and the normalized response reports rig's vocabulary for it"
     );
@@ -396,7 +396,10 @@ async fn raw_exposes_forced_function_call() {
 
     // The normalized response says ToolCalls and carries the call as a typed
     // ToolCall …
-    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(
+        response.finish_reason.clone(),
+        Some(FinishReason::ToolCalls)
+    );
     let call = response
         .choice
         .iter()
@@ -496,7 +499,7 @@ async fn raw_exposes_structured_output_turn() {
     );
 
     // The normalized choice is the schema JSON as text …
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
     let text = match response.choice.first() {
         Some(AssistantContent::Text(text)) => text.text.clone(),
         other => panic!("structured output should arrive as text, got {other:?}"),

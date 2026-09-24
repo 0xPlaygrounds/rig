@@ -61,13 +61,15 @@ impl CompletionModel for BudgetedModel {
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
         let (text, reason) = Self::answer_under(request.max_tokens);
-        Ok(CompletionResponse::new(
-            vec![AssistantContent::text(text)],
-            Usage::default(),
-            "budgeted",
-            serde_json::json!({}),
-        )
-        .with_finish_reason(reason))
+        Ok(CompletionResponse {
+            finish_reason: Some(reason),
+            ..CompletionResponse::new(
+                vec![AssistantContent::text(text)],
+                Usage::default(),
+                "budgeted",
+                serde_json::json!({}),
+            )
+        })
     }
 
     async fn stream(
@@ -81,10 +83,10 @@ impl CompletionModel for BudgetedModel {
             "budgeted",
             Box::pin(stream::iter([
                 Ok(StreamEvent::text(BlockId::wire("text-1"), text)),
-                Ok(StreamEvent::Final(
-                    StreamFinal::new("budgeted", Usage::default(), serde_json::json!({}))
-                        .with_finish_reason(reason),
-                )),
+                Ok(StreamEvent::Final(StreamFinal {
+                    finish_reason: Some(reason),
+                    ..StreamFinal::new("budgeted", Usage::default(), serde_json::json!({}))
+                })),
             ])),
         ))
     }

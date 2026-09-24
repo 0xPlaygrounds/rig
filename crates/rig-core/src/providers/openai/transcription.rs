@@ -97,7 +97,10 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
             | Some(TranscriptionUsage::Other(_))
             | None => Usage::default(),
         };
-        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
+        Ok(transcription::TranscriptionResponse {
+            usage,
+            ..transcription::TranscriptionResponse::new(self.text, provider)
+        })
     }
 }
 

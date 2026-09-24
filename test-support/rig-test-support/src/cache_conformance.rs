@@ -442,7 +442,7 @@ where
     let second = send(model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
     let assistant = Message::Assistant {
-        id: second.message_id.clone(),
+        id: second.message_id.clone().map(String::from),
         content: second.choice.clone(),
     };
     let follow_up = Message::User {
@@ -574,7 +574,7 @@ where
              which is exactly the streaming-path bug class this probe exists to catch"
         )
     });
-    (usage, text, stream.message_id.clone())
+    (usage, text, stream.message_id.clone().map(String::from))
 }
 
 /// Turn 1 must create a cache entry, or read one that was already warm.

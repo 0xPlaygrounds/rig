@@ -71,7 +71,7 @@ fn test_model_list_into_iter() {
 fn a_rejected_listing_names_its_provider_and_path() {
     let error = with_route(
         ProviderError::from_http_response(http::StatusCode::NOT_FOUND, "Not found")
-            .with_provider_request_id(Some("req_1".into())),
+            .with_provider_request_id(Some("req_1".try_into().expect("a non-empty id"))),
         "openai",
         "/v1/models",
     );

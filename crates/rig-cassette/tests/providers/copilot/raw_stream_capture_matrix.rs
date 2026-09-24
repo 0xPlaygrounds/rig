@@ -165,7 +165,10 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     // Copilot's recorded chat stream reports no transport id, so the native
     // record and the normalized terminal agree on its absence — the claim
     // this cell made before the round trip became shared.
-    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+    assert_eq!(
+        typed.provider_request_id.as_deref(),
+        terminal.provider_request_id.as_deref()
+    );
 
     let (_, terminal_frame) = recorded_chat_frames(scenario);
     assert_eq!(
@@ -274,7 +277,10 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
     // Copilot's recorded Responses stream reports no transport id either, so
     // the native record and the normalized terminal agree on its absence —
     // the claim this cell made before the round trip became shared.
-    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+    assert_eq!(
+        typed.provider_request_id.as_deref(),
+        terminal.provider_request_id.as_deref()
+    );
 
     let recorded_terminal = recorded_responses_terminal(scenario);
     assert_eq!(

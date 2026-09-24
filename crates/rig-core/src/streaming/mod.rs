@@ -18,6 +18,7 @@ use futures::StreamExt as _;
 use crate::completion::{CompletionResponse, Usage};
 use crate::error::ErrorReport;
 use crate::error::ProviderError;
+use crate::id::{MessageId, ModelName, RequestId, ResponseId};
 use crate::message::{AssistantContent, ToolResult};
 pub use accumulator::BlockAccumulator;
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
@@ -36,7 +37,7 @@ use std::task::{Context, Poll};
 pub(crate) struct FoldStep<'a> {
     pub accumulator: &'a mut BlockAccumulator,
     pub response: &'a mut Option<StreamFinal>,
-    pub message_id: &'a mut Option<String>,
+    pub message_id: &'a mut Option<MessageId>,
     pub provider: &'a mut String,
     /// Whether the terminal record names the provider (a stream that came
     /// over the bus) rather than the opener.
@@ -62,8 +63,8 @@ pub(crate) fn absorb(step: FoldStep<'_>, event: StreamEvent) -> Absorbed {
         } => {
             // The wire announced the assistant message's own id; it
             // outranks the terminal record's.
-            if let Some(message_id) = id.wire_str() {
-                *step.message_id = Some(message_id.to_owned());
+            if let Some(message_id) = id.wire_str().and_then(|id| MessageId::new(id).ok()) {
+                *step.message_id = Some(message_id);
             }
             Absorbed::Yield(StreamEvent::BlockStart {
                 id,
@@ -135,28 +136,35 @@ pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<Assis
 pub(crate) fn fold_finish(
     mut accumulator: BlockAccumulator,
     terminal: Option<&StreamFinal>,
-    message_id: Option<String>,
+    message_id: Option<MessageId>,
     provider: String,
     issuer: &str,
     raw: serde_json::Value,
 ) -> CompletionResponse {
     let choice = stamp_reasoning(accumulator.finish(), issuer);
-    CompletionResponse::new(
+    let has_tool_call = choice
+        .iter()
+        .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+    let mut response = CompletionResponse::new(
         choice,
         terminal.map(|response| response.usage).unwrap_or_default(),
         provider,
         raw,
-    )
-    // An explicit message-id block outranks the terminal record's ID.
-    .with_optional_message_id(
-        message_id.or_else(|| terminal.and_then(|response| response.message_id.clone())),
-    )
-    .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
-    .with_optional_provider_request_id(
-        terminal.and_then(|response| response.provider_request_id.clone()),
-    )
-    .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
-    .with_optional_model(terminal.and_then(|response| response.model.clone()))
+    );
+    if let Some(terminal) = terminal {
+        // An explicit message-id block outranks the terminal record's ID.
+        response.message_id = message_id.or_else(|| terminal.message_id.clone());
+        response.response_id = terminal.response_id.clone();
+        response.provider_request_id = terminal.provider_request_id.clone();
+        response.finish_reason = terminal
+            .finish_reason
+            .clone()
+            .map(|reason| reason.reconcile_with_output(has_tool_call));
+        response.model = terminal.model.clone();
+    } else {
+        response.message_id = message_id;
+    }
+    response
 }
 
 /// Pause flag and single-consumer waker. Must not be shared across streams.
@@ -247,27 +255,26 @@ pub struct ToolCallDecoration {
 /// before the final error, then end without a terminal record. Consumers must
 /// drain to `None` rather than treating every error item as terminal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(from = "StreamFinalRepr")]
 pub struct StreamFinal {
     /// Token usage reported by the provider for this streamed completion.
     /// A counter the provider did not report is `None`.
     pub usage: Usage,
-    /// Provider-reported finish reason. [`StreamingCompletionResponse`] reconciles
-    /// it with the completed tool calls before yielding the terminal event.
+    /// Provider-reported finish reason. The fold reconciles it with the
+    /// completed tool calls before yielding the terminal event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned assistant message ID suitable for replay.
     /// Response-scoped identifiers belong in [`Self::response_id`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
+    pub message_id: Option<MessageId>,
     /// Provider-assigned response ID. Must not be replayed as a message ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Request identifier from the HTTP headers of the connection delivering
     /// this terminal record, including after reconnects. `None` if unreported;
     /// never the body's message or response ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
     /// Stable descriptor name of the provider that produced this stream.
     pub provider: String,
     /// The service whose reasoning this stream carries, when it is not
@@ -278,7 +285,7 @@ pub struct StreamFinal {
     pub reasoning_issuer: Option<String>,
     /// Provider-reported model identifier, when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// Required provider terminal document serialized from the adapter's parsed
     /// wire type, not a transcript of frames. Unmodeled fields may be absent.
     /// This metadata does not override normalized fields and can be deserialized
@@ -290,7 +297,7 @@ pub struct StreamFinal {
 impl StreamFinal {
     /// Create a terminal record for `provider` with `usage` and the
     /// provider's own terminal document `raw` (see [`Self::raw`]); optional
-    /// metadata starts unset and is filled in with the `with_*` helpers.
+    /// metadata starts unset.
     pub fn new(provider: impl Into<String>, usage: Usage, raw: serde_json::Value) -> Self {
         Self {
             usage,
@@ -318,20 +325,6 @@ impl StreamFinal {
         self.reasoning_issuer.as_deref().unwrap_or(&self.provider)
     }
 
-    /// Attach the normalized finish reason.
-    pub fn with_finish_reason(self, finish_reason: crate::completion::FinishReason) -> Self {
-        self.with_optional_finish_reason(Some(finish_reason))
-    }
-
-    /// Attach the normalized finish reason when the provider reported one.
-    pub fn with_optional_finish_reason(
-        mut self,
-        finish_reason: Option<crate::completion::FinishReason>,
-    ) -> Self {
-        self.finish_reason = finish_reason;
-        self
-    }
-
     /// This terminal record's identity metadata as one
     /// [`crate::completion::ResponseIdentity`] carrier.
     pub fn identity(&self) -> crate::completion::ResponseIdentity {
@@ -340,53 +333,6 @@ impl StreamFinal {
             response_id: self.response_id.clone(),
             provider_request_id: self.provider_request_id.clone(),
         }
-    }
-}
-
-crate::provider_response::response_metadata_setters!(StreamFinal);
-
-/// Deserialization shape routed through setters to normalize empty identifiers.
-#[derive(Deserialize)]
-struct StreamFinalRepr {
-    usage: Usage,
-    #[serde(default)]
-    finish_reason: Option<crate::completion::FinishReason>,
-    #[serde(default)]
-    message_id: Option<String>,
-    #[serde(default)]
-    response_id: Option<String>,
-    #[serde(default)]
-    provider_request_id: Option<String>,
-    provider: String,
-    #[serde(default)]
-    reasoning_issuer: Option<String>,
-    #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
-    raw: serde_json::Value,
-}
-
-impl From<StreamFinalRepr> for StreamFinal {
-    fn from(repr: StreamFinalRepr) -> Self {
-        let StreamFinalRepr {
-            usage,
-            finish_reason,
-            message_id,
-            response_id,
-            provider_request_id,
-            provider,
-            reasoning_issuer,
-            model,
-            raw,
-        } = repr;
-        let mut terminal = Self::new(provider, usage, raw)
-            .with_optional_finish_reason(finish_reason)
-            .with_optional_message_id(message_id)
-            .with_optional_response_id(response_id)
-            .with_optional_provider_request_id(provider_request_id)
-            .with_optional_model(model);
-        terminal.reasoning_issuer = reasoning_issuer;
-        terminal
     }
 }
 
@@ -471,7 +417,7 @@ pub struct StreamingCompletionResponse {
     /// yields it (and forever on truncation or a terminal error).
     pub response: Option<StreamFinal>,
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
-    pub message_id: Option<String>,
+    pub message_id: Option<MessageId>,
 }
 
 impl StreamingCompletionResponse {

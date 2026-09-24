@@ -102,7 +102,7 @@ async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, Prov
         .await
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
-        id: first.message_id.clone(),
+        id: first.message_id.clone().map(String::from),
         content: first.choice.clone(),
     };
     let second = model

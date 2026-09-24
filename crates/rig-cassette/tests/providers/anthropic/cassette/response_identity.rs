@@ -115,8 +115,8 @@ impl AgentHook for IdentityCapture {
         self.seen.lock().expect("snapshots").push((
             ctx.is_streaming(),
             (
-                response.message_id.clone(),
-                response.provider_request_id.clone(),
+                response.message_id.clone().map(String::from),
+                response.provider_request_id.clone().map(String::from),
             ),
         ));
         OutcomeAction::proceed()

@@ -201,7 +201,7 @@ async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
     match cell.transport {
         Transport::Blocking => match model.completion(request(&model, cell)).await {
             Ok(response) => Observation {
-                finish_reason: response.finish_reason(),
+                finish_reason: response.finish_reason.clone(),
                 arguments: calls(&response.choice),
                 ..Default::default()
             },

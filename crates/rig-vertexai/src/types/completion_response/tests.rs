@@ -381,7 +381,10 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
     let original: CompletionResponse = raw.try_into().expect("original converts");
     let restored: CompletionResponse = back.try_into().expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
-    assert_eq!(restored.finish_reason(), original.finish_reason());
+    assert_eq!(
+        restored.finish_reason.clone(),
+        original.finish_reason.clone()
+    );
     assert_eq!(restored.model, original.model);
     assert_eq!(restored.usage, original.usage);
     assert_eq!(restored.choice, original.choice);

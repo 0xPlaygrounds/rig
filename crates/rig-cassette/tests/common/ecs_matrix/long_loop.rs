@@ -1473,7 +1473,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                             serde_json::json!({
                                 "cut_turn": cut,
                                 "outcome": "ok",
-                                "finish_reason": response.finish_reason().map(|reason| format!("{reason:?}")),
+                                "finish_reason": response.finish_reason.clone().map(|reason| format!("{reason:?}")),
                                 "raw_finish": raw_finish_reason(thinking, &response.raw),
                             })
                         }
@@ -1490,7 +1490,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         panic!("{}: the capped completion answered", cell.name)
                     };
                     assert_eq!(
-                        response.finish_reason(),
+                        response.finish_reason.clone(),
                         Some(rig_agent::completion::FinishReason::Length),
                         "{}: the last completion was cut by the cap",
                         cell.name

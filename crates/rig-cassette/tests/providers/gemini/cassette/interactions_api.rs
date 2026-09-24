@@ -106,7 +106,7 @@ async fn followup_with_previous_interaction_id() {
                         .completion_request("Now answer with a short analogy.")
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
-                                previous_interaction_id: Some(interaction_id),
+                                previous_interaction_id: Some(interaction_id.into()),
                                 ..Default::default()
                             })
                             .expect("params should serialize"),
@@ -220,7 +220,7 @@ async fn tool_result_roundtrip() {
                         )))
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
-                                previous_interaction_id: Some(interaction_id),
+                                previous_interaction_id: Some(interaction_id.into()),
                                 ..Default::default()
                             })
                             .expect("params should serialize"),

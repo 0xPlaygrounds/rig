@@ -141,23 +141,25 @@ fn run_step_and_outcome_round_trip_through_serde() {
 
 #[test]
 fn from_response_matches_hand_assembly_field_for_field() {
-    let resp = CompletionResponse::new(
-        vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
-        usage(11, 7),
-        "openai",
-        json!({"provider": "payload"}),
-    )
-    .with_message_id("msg_1".to_string())
-    .with_response_id("chatcmpl_1".to_string())
-    .with_provider_request_id("req_1".to_string())
-    .with_finish_reason(FinishReason::ToolCalls);
+    let resp = CompletionResponse {
+        message_id: Some("msg_1".to_string().try_into().expect("a non-empty id")),
+        response_id: Some("chatcmpl_1".to_string().try_into().expect("a non-empty id")),
+        provider_request_id: Some("req_1".to_string().try_into().expect("a non-empty id")),
+        finish_reason: Some(FinishReason::ToolCalls),
+        ..CompletionResponse::new(
+            vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
+            usage(11, 7),
+            "openai",
+            json!({"provider": "payload"}),
+        )
+    };
 
     let executable = tool_names(&["add"]);
     let allowed = tool_names(&["add", "final_output"]);
     let turn = ModelTurn::from_response_parts(&resp, executable.clone(), allowed.clone());
 
     let expected = ModelTurn::new(
-        resp.message_id.clone(),
+        resp.message_id.clone().map(String::from),
         resp.choice.clone(),
         resp.usage,
         executable,
@@ -165,7 +167,7 @@ fn from_response_matches_hand_assembly_field_for_field() {
         resp.raw.clone(),
     )
     .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
-    .with_finish_reason(resp.finish_reason());
+    .with_finish_reason(resp.finish_reason.clone());
 
     assert_eq!(turn.message_id, expected.message_id);
     assert_eq!(turn.response_id, expected.response_id);

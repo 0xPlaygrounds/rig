@@ -220,7 +220,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "the typed view keeps the wire's own finish spelling"
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(chat::recorded_chat_finish_reason(&response.raw)),
         "and the normalized reason is that same spelling, mapped"
     );
@@ -315,7 +315,10 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
 
     // The normalized view maps both: an object for the arguments and
     // `ToolCalls` for the finish reason.
-    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(
+        response.finish_reason.clone(),
+        Some(FinishReason::ToolCalls)
+    );
     let normalized_calls = response
         .choice
         .iter()

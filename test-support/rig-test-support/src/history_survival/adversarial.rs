@@ -86,7 +86,7 @@ fn result(call: ToolCallId, provider: Option<ProviderCallId>, record: &str) -> U
 
 fn assistant(reply: &CompletionResponse) -> Message {
     Message::Assistant {
-        id: reply.message_id.clone(),
+        id: reply.message_id.clone().map(String::from),
         content: reply.choice.clone(),
     }
 }

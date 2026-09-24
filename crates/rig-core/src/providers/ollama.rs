@@ -342,9 +342,11 @@ impl From<&StreamingCompletionResponse> for Usage {
 fn stream_final(response: StreamingCompletionResponse, raw: serde_json::Value) -> StreamFinal {
     // Ollama's `/api/chat` stream assigns no message identifier, so the
     // normalized `message_id` stays unset.
-    StreamFinal::new(PROVIDER_NAME, Usage::from(&response), raw)
-        .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
-        .with_model(response.model)
+    StreamFinal {
+        finish_reason: response.done_reason.as_deref().map(map_done_reason),
+        model: crate::id::ModelName::new(response.model.clone()).ok(),
+        ..StreamFinal::new(PROVIDER_NAME, Usage::from(&response), raw)
+    }
 }
 
 /// Decode unary or streaming `/api/chat` records. Only `done: true` emits a

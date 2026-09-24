@@ -7,6 +7,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
+use crate::id::ResponseId;
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::providers::cohere::completion::{
@@ -367,11 +368,11 @@ impl ChatDecoder {
         };
         // Cohere's `/v2/chat` reports no model identifier in either mode, so
         // the normalized `model` stays unset.
-        out.final_record(
-            StreamFinal::new(PROVIDER_NAME, recorded_usage, raw)
-                .with_optional_finish_reason(native.finish_reason.as_ref().map(map_finish_reason))
-                .with_optional_response_id(native.message_id),
-        );
+        out.final_record(StreamFinal {
+            finish_reason: native.finish_reason.as_ref().map(map_finish_reason),
+            response_id: native.message_id.and_then(|id| ResponseId::new(id).ok()),
+            ..StreamFinal::new(PROVIDER_NAME, recorded_usage, raw)
+        });
     }
 }
 

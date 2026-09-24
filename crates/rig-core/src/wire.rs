@@ -210,7 +210,7 @@ pub trait Operation: Sized + 'static {
     /// Stamp the transport request id read off the reply's headers onto a
     /// terminal event. Operations whose events carry no transport id do
     /// nothing.
-    fn stamp_request_id(_event: &mut Self::Event, _request_id: &Option<String>) {}
+    fn stamp_request_id(_event: &mut Self::Event, _request_id: &Option<crate::id::RequestId>) {}
 
     /// Stamp what the driver learned about a unary reply beyond its events.
     fn stamp_reply(_response: &mut Self::Response, _reply: Reply) {}
@@ -259,7 +259,7 @@ pub struct Reply {
     /// The reply body parsed as JSON, `Null` when it is not JSON.
     pub raw: serde_json::Value,
     /// The provider's transport request id from the reply headers.
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<crate::id::RequestId>,
 }
 
 /// Where a decoder writes the events of one `interpret` step.

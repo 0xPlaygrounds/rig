@@ -303,12 +303,16 @@ impl Decoder<Completion> for GenerateContentDecoder {
             }
         };
         let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
-        out.final_record(
-            streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
-                .with_optional_finish_reason(finish_reason)
-                .with_optional_response_id(native.response_id)
-                .with_optional_model(native.model_version),
-        );
+        out.final_record(streaming::StreamFinal {
+            finish_reason,
+            response_id: native
+                .response_id
+                .and_then(|id| crate::id::ResponseId::new(id).ok()),
+            model: native
+                .model_version
+                .and_then(|model| crate::id::ModelName::new(model).ok()),
+            ..streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
+        });
     }
 
     fn is_finished(&self) -> bool {

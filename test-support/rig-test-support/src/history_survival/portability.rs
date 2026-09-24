@@ -161,7 +161,7 @@ impl Source {
         vec![
             Message::user(TOOL_USER_PROMPT),
             Message::Assistant {
-                id: reply.message_id,
+                id: reply.message_id.map(String::from),
                 content: reply.choice,
             },
             Message::User { content: results },

@@ -125,7 +125,7 @@ async fn chat_blocking_reasoning_budget_exhausted() {
                 .await
                 .expect("a truncated turn is a diagnostic, not a malformed response");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
             assert!(response.choice.is_empty());
         },
     )
@@ -149,7 +149,7 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
 
             let response = model.completion(request).await.expect("truncated turn");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
         },
     )
     .await;
@@ -177,7 +177,7 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
 
             let response = model.completion(request).await.expect("truncated turn");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
         },
     )
     .await;
@@ -244,7 +244,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
                 Some("length")
             );
             assert_eq!(reply.choices.first().and_then(provider_choice_text), None);
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
         },
     )
     .await;
@@ -270,7 +270,7 @@ async fn chat_blocking_tools_present_budget_exhausted() {
 
             let response = model.completion(request).await.expect("truncated turn");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
             assert!(response.choice.is_empty());
         },
     )
@@ -332,7 +332,7 @@ async fn chat_blocking_partial_text_truncation() {
 
             let response = model.completion(request).await.expect("truncated turn");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
             assert!(
                 assistant_text_response(&response.choice)
                     .is_some_and(|text| !text.trim().is_empty())
@@ -437,7 +437,7 @@ async fn chat_transports_agree_on_truncation() {
             let (streamed_text, terminal) = collect_text_and_terminal(stream).await;
 
             assert_eq!(
-                blocking.finish_reason(),
+                blocking.finish_reason.clone(),
                 terminal.and_then(|terminal| terminal.finish_reason)
             );
             assert_eq!(
@@ -465,7 +465,7 @@ async fn chat_blocking_completed_turn_is_unaffected() {
 
             let response = model.completion(request).await.expect("completed turn");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
             assert!(!response.choice.is_empty());
         },
     )
@@ -493,7 +493,7 @@ async fn responses_blocking_reasoning_budget_exhausted() {
 
             let response = model.completion(request).await.expect("truncated turn");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
         },
     )
     .await;
@@ -543,7 +543,7 @@ async fn responses_blocking_partial_text_truncation() {
 
             let response = model.completion(request).await.expect("truncated turn");
 
-            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
             assert!(
                 assistant_text_response(&response.choice)
                     .is_some_and(|text| !text.trim().is_empty())
@@ -586,8 +586,8 @@ async fn cross_surface_truncation_parity() {
                 .await
                 .expect("chat truncated turn");
 
-            assert_eq!(responses.finish_reason(), Some(FinishReason::Length));
-            assert_eq!(chat.finish_reason(), responses.finish_reason());
+            assert_eq!(responses.finish_reason.clone(), Some(FinishReason::Length));
+            assert_eq!(chat.finish_reason.clone(), responses.finish_reason.clone());
         },
     )
     .await;

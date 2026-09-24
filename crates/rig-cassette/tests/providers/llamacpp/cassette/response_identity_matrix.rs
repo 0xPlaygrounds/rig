@@ -267,7 +267,7 @@ async fn the_typed_route_reproduces_the_normalized_one() {
             // Across the two turns: everything the wire makes equal.
             assert_eq!(first.provider, second.provider);
             assert_eq!(first.model, second.model);
-            assert_eq!(first.finish_reason(), second.finish_reason());
+            assert_eq!(first.finish_reason.clone(), second.finish_reason.clone());
             assert_eq!(
                 first.provider_request_id, second.provider_request_id,
                 "both are None, and neither turn may invent one"

@@ -144,7 +144,10 @@ async fn a_unary_body_and_the_stream_of_the_same_turn_fold_alike() {
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
     assert_eq!(buffered.model, streamed.model);
     assert_eq!(buffered.message_id, streamed.message_id);
     assert_eq!(buffered.response_id, streamed.response_id);
@@ -167,7 +170,10 @@ async fn a_unary_tool_turn_and_its_stream_fold_alike() {
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
     assert!(
         buffered
             .choice
@@ -191,7 +197,10 @@ async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
     assert_eq!(buffered.provider, "chatgpt");
     assert!(
         buffered

@@ -586,12 +586,16 @@ impl InferredCompletion {
     /// Returns serialization errors.
     pub(crate) fn into_normalized(self) -> Result<CompletionResponse, serde_json::Error> {
         let usage = (&self.response).into();
-        let finish_reason = self.response.finish_reason.into();
+        let finish_reason: rig_core::completion::FinishReason = self.response.finish_reason.into();
         let raw = serde_json::to_value(&self.response)?;
-        Ok(
-            CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME, raw)
-                .with_finish_reason(finish_reason),
-        )
+        let has_tool_call = self
+            .choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+        Ok(CompletionResponse {
+            finish_reason: Some(finish_reason.reconcile_with_output(has_tool_call)),
+            ..CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME, raw)
+        })
     }
 }
 

@@ -1724,7 +1724,7 @@ pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outp
                 } else {
                     response.choice.clone()
                 };
-                outputs.message_id = response.message_id.clone();
+                outputs.message_id = response.message_id.clone().map(String::from);
                 outputs.done = true;
             }
             Some(EffectOutcome(Ok(_))) | Some(EffectOutcome(Err(_))) => {
@@ -2455,7 +2455,8 @@ pub fn read_turn(
         };
         if turn_delivered_no_answer(&outs.content)
             && let Some(reason) = response
-                .finish_reason()
+                .finish_reason
+                .clone()
                 .filter(|reason| reason.truncated_output())
         {
             let report = rig_core::error::ErrorReport::from(
@@ -2468,7 +2469,7 @@ pub fn read_turn(
         let granted = granted_tools(turn, &children, &adverts, &bound, access);
         let allowed = access.and_then(|access| access.allowed.as_ref());
         let read = TurnRead {
-            message_id: response.message_id.clone(),
+            message_id: response.message_id.clone().map(String::from),
             content: outs.content.clone(),
             granted,
             assistant: None,

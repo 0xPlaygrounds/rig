@@ -3802,7 +3802,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                     continue;
                                 };
                                 let partial = assembler.partial_turn(
-                                    stream.message_id.clone(),
+                                    stream.message_id.clone().map(String::from),
                                     stream.reasoning_issuer(),
                                 );
                                 let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
@@ -3911,7 +3911,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         let raw = terminal.raw.clone();
                         let snapshot = stream.snapshot();
                         let streamed = assembler.finish(
-                            stream.message_id.clone(),
+                            stream.message_id.clone().map(String::from),
                             &snapshot,
                             stream.reasoning_issuer(),
                         );

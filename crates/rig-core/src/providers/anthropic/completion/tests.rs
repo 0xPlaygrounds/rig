@@ -2609,7 +2609,10 @@ fn empty_end_turn_response_normalizes_to_an_empty_choice() {
     assert_eq!(parsed.provider, "anthropic");
     assert_eq!(parsed.message_id.as_deref(), Some("msg_123"));
     assert_eq!(parsed.model.as_deref(), Some(CLAUDE_SONNET_4_6));
-    assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
+    assert_eq!(
+        parsed.finish_reason.clone(),
+        Some(completion::FinishReason::Stop)
+    );
 }
 
 /// Build an empty-content response with the given terminal, for exercising
@@ -2676,7 +2679,10 @@ fn empty_stop_sequence_response_naming_its_sequence_is_a_completed_turn() {
     .expect("a completed stop-sequence turn must not fold into an error");
 
     assert!(parsed.choice.is_empty());
-    assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
+    assert_eq!(
+        parsed.finish_reason.clone(),
+        Some(completion::FinishReason::Stop)
+    );
 }
 
 #[test]
@@ -2748,7 +2754,7 @@ fn end_turn_with_a_tool_call_is_reconciled_to_tool_calls() {
         .expect("tool-use response should fold");
 
     assert_eq!(
-        parsed.finish_reason(),
+        parsed.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
 }
@@ -3043,7 +3049,7 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
     ));
 
     let round_trip: Message = message::Message::Assistant {
-        id: converted.message_id.clone(),
+        id: converted.message_id.clone().map(String::from),
         content: converted.choice,
     }
     .try_into()
@@ -3107,7 +3113,7 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
     );
 
     let round_trip: Message = message::Message::Assistant {
-        id: converted.message_id,
+        id: converted.message_id.map(String::from),
         content: converted.choice,
     }
     .try_into()
@@ -3210,7 +3216,7 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
     );
 
     let round_trip: Message = message::Message::Assistant {
-        id: converted.message_id,
+        id: converted.message_id.map(String::from),
         content: converted.choice,
     }
     .try_into()
@@ -3617,7 +3623,7 @@ mod raw_capture {
         // The normalized response reports the reason and drops which
         // sequence fired — the whole reason `raw` is worth capturing.
         assert_eq!(
-            response.finish_reason(),
+            response.finish_reason.clone(),
             Some(completion::FinishReason::Stop)
         );
         assert_eq!(response.model.as_deref(), Some("claude-sonnet-4-6"));

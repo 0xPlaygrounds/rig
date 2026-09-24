@@ -93,10 +93,12 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
                     .raw_image_generation_with_request_id(generation_request)
                     .await?;
                 let captured = serde_json::to_value(&response)?;
-                Ok(response
-                    .normalize(PROVIDER_NAME)?
-                    .with_optional_provider_request_id(provider_request_id)
-                    .with_raw(captured))
+                Ok(ImageGenerationResponse {
+                    provider_request_id: provider_request_id
+                        .and_then(|id| rig_core::id::RequestId::new(id).ok()),
+                    raw: captured,
+                    ..response.normalize(PROVIDER_NAME)?
+                })
             },
         )
         .await

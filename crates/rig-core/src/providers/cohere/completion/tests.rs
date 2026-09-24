@@ -152,7 +152,7 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
     assert_eq!(normalized.message_id, None);
     assert_eq!(normalized.model, None);
     assert_eq!(
-        normalized.finish_reason(),
+        normalized.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
     assert_eq!(normalized.usage.input_tokens, Some(10));

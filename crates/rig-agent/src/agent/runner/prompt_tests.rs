@@ -2290,9 +2290,9 @@ fn completion_call_without_identity_fields_deserializes() {
 fn completion_call_identity_round_trips() {
     let call = CompletionCall::new(0, crate::completion::Usage::default(), json!({}))
         .with_identity(ResponseIdentity {
-            message_id: Some("msg_1".into()),
-            response_id: Some("resp_1".into()),
-            provider_request_id: Some("req_1".into()),
+            message_id: Some("msg_1".try_into().expect("a non-empty id")),
+            response_id: Some("resp_1".try_into().expect("a non-empty id")),
+            provider_request_id: Some("req_1".try_into().expect("a non-empty id")),
         });
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");

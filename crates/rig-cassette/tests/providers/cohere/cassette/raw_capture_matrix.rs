@@ -129,7 +129,7 @@ async fn raw_roundtrips_cohere_completion_response() {
         "the recorded turn completed naturally in Cohere's own vocabulary"
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and the decoder maps COMPLETE onto a natural stop"
     );
@@ -179,7 +179,7 @@ async fn raw_exposes_billing_metadata() {
         Some(&Value::String("COMPLETE".to_string())),
         "the normalized finish reason is rig's spelling, not Cohere's"
     );
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
 
     let raw = &response.raw;
     let body = assert_recorded_complete_turn(SCENARIO);

@@ -115,7 +115,7 @@ async fn incomplete_response_surfaces_partial_output() {
             );
 
             assert_eq!(
-                response.finish_reason(),
+                response.finish_reason.clone(),
                 Some(FinishReason::Length),
                 "the incomplete/max_output_tokens pair should normalize to a length stop"
             );

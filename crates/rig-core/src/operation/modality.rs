@@ -251,9 +251,9 @@ pub struct Embedded {
 /// What an embedding reply reports besides its vectors.
 struct Metadata {
     provider: String,
-    model: Option<String>,
-    response_id: Option<String>,
-    provider_request_id: Option<String>,
+    model: Option<crate::id::ModelName>,
+    response_id: Option<crate::id::ResponseId>,
+    provider_request_id: Option<crate::id::RequestId>,
     raw: serde_json::Value,
 }
 

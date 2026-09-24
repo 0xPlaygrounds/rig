@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
+use rig_core::id::{MessageId, RequestId, ResponseId};
 use rig_core::streaming::BlockId;
 
 use rig_core::message::{
@@ -170,9 +171,9 @@ pub struct ModelTurn {
     /// Provider-assigned assistant message ID, when available.
     pub message_id: Option<String>,
     /// Provider-assigned response-scoped ID, when available.
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// The provider's transport request id for this attempt, when reported.
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
     /// The assistant content returned by the model.
     pub choice: Vec<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
@@ -208,7 +209,7 @@ impl ModelTurn {
         allowed_tool_names: BTreeSet<String>,
     ) -> Self {
         Self::new(
-            resp.message_id.clone(),
+            resp.message_id.clone().map(String::from),
             resp.choice.clone(),
             resp.usage,
             executable_tool_names,
@@ -216,7 +217,7 @@ impl ModelTurn {
             resp.raw.clone(),
         )
         .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
-        .with_finish_reason(resp.finish_reason())
+        .with_finish_reason(resp.finish_reason.clone())
     }
 
     /// Create a model turn from response parts, the tool names advertised
@@ -246,8 +247,8 @@ impl ModelTurn {
     /// Attach the remaining response identity metadata this attempt reported.
     pub fn with_identity(
         mut self,
-        response_id: Option<String>,
-        provider_request_id: Option<String>,
+        response_id: Option<ResponseId>,
+        provider_request_id: Option<RequestId>,
     ) -> Self {
         self.response_id = response_id;
         self.provider_request_id = provider_request_id;
@@ -1114,7 +1115,10 @@ impl AgentRun {
             turn.usage,
             ResponseIdentity {
                 // The message id is also written into run history below.
-                message_id: turn.message_id.clone(),
+                message_id: turn
+                    .message_id
+                    .clone()
+                    .and_then(|id| MessageId::new(id).ok()),
                 response_id: turn.response_id,
                 provider_request_id: turn.provider_request_id,
             },

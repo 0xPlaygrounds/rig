@@ -139,8 +139,9 @@ impl Decoder<Completion> for EchoDecoder {
 
 fn terminal(out: &mut Output<Completion>, usage: Usage) {
     out.close_active_blocks();
-    out.final_record(
-        StreamFinal::new(
+    out.final_record(StreamFinal {
+        model: Some("echo-1".try_into().expect("a non-empty id")),
+        ..StreamFinal::new(
             "echo",
             crate::completion::Usage {
                 output_tokens: Some(usage.output_tokens),
@@ -148,8 +149,7 @@ fn terminal(out: &mut Output<Completion>, usage: Usage) {
             },
             serde_json::json!({}),
         )
-        .with_model("echo-1"),
-    );
+    });
 }
 
 impl Wire for Echo {
@@ -228,7 +228,10 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
     assert_eq!(buffered.model, streamed.model);
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
     assert_eq!(
         buffered.choice.first().and_then(|block| match block {
             crate::message::AssistantContent::Text(text) => Some(text.text.as_str()),
@@ -400,7 +403,7 @@ async fn a_reply_with_no_frames_folds_to_an_empty_response_with_no_terminal() {
         .await
         .expect("an empty body yields an empty choice");
     assert!(response.choice.is_empty());
-    assert_eq!(response.finish_reason(), None);
+    assert_eq!(response.finish_reason.clone(), None);
     assert_eq!(response.usage, crate::completion::Usage::default());
 }
 

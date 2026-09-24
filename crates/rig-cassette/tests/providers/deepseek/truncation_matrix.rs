@@ -269,7 +269,7 @@ async fn assert_blocking_truncation_survives(
     );
 
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(rig::completion::FinishReason::Length),
         "the surviving turn reports the truncation"
     );
@@ -363,7 +363,7 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
                 ))
                 .await?;
             assert_eq!(
-                normalized.finish_reason(),
+                normalized.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length)
             );
             assert!(
@@ -443,7 +443,7 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
             let calls = tool_calls(&normalized.choice);
             assert!(calls.is_empty());
             assert_eq!(
-                normalized.finish_reason(),
+                normalized.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length),
                 "the boundary is a `length` turn, not a natural stop"
             );
@@ -535,7 +535,7 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
                 calls[0].function.arguments
             );
             assert_eq!(
-                normalized.finish_reason(),
+                normalized.finish_reason.clone(),
                 Some(rig::completion::FinishReason::ToolCalls)
             );
             Ok::<(), anyhow::Error>(())
@@ -753,7 +753,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
             );
             assert_eq!(calls[0].function.arguments, json!({ "team": "platform" }));
             assert_eq!(
-                normalized.finish_reason(),
+                normalized.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length)
             );
             Ok::<(), anyhow::Error>(())
@@ -832,7 +832,7 @@ async fn blocking_text_before_a_truncated_call_survives() {
             );
             assert!(tool_calls(&normalized.choice).is_empty());
             assert_eq!(
-                normalized.finish_reason(),
+                normalized.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Length)
             );
             Ok::<(), anyhow::Error>(())

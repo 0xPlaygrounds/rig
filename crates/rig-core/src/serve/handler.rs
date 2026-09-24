@@ -18,6 +18,7 @@ use crate::{
     completion::CompletionResponse,
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
+    id::MessageId,
     streaming::{BlockAccumulator, StreamEvent, StreamEvents, StreamFinal},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -207,25 +208,17 @@ pub trait Observe: Send + Sync {
 
 fn finish_unary(
     accumulator: &mut BlockAccumulator,
-    message_id: Option<String>,
-    terminal: StreamFinal,
+    message_id: Option<MessageId>,
+    terminal: &StreamFinal,
 ) -> Result<Outcome, ErrorReport> {
-    let choice = crate::streaming::stamp_reasoning(
-        std::mem::replace(accumulator, BlockAccumulator::new()).finish(),
-        terminal.issuer(),
-    );
-    let mut response = CompletionResponse::new(
-        choice,
-        terminal.usage,
+    Ok(Outcome::Completion(crate::streaming::fold_finish(
+        std::mem::replace(accumulator, BlockAccumulator::new()),
+        Some(terminal),
+        message_id,
         terminal.provider.clone(),
-        terminal.raw,
-    )
-    .with_optional_finish_reason(terminal.finish_reason.clone());
-    response.message_id = message_id.or(terminal.message_id.clone());
-    response.response_id = terminal.response_id.clone();
-    response.provider_request_id = terminal.provider_request_id.clone();
-    response.model = terminal.model.clone();
-    Ok(Outcome::Completion(response))
+        terminal.issuer(),
+        terminal.raw.clone(),
+    )))
 }
 
 /// Re-emits completion content as stream events followed by `Final`. Images
@@ -294,8 +287,8 @@ pub(crate) fn events_from_response(
         response.provider.clone(),
         response.usage,
         response.raw.clone(),
-    )
-    .with_optional_finish_reason(response.finish_reason());
+    );
+    terminal.finish_reason = response.finish_reason.clone();
     terminal.message_id = response.message_id.clone();
     terminal.response_id = response.response_id.clone();
     terminal.provider_request_id = response.provider_request_id.clone();
@@ -315,7 +308,7 @@ pub(crate) fn events_from_response(
 #[derive(Default)]
 pub struct StreamTap {
     accumulator: BlockAccumulator,
-    message_id: Option<String>,
+    message_id: Option<MessageId>,
 }
 
 impl StreamTap {
@@ -335,16 +328,16 @@ impl StreamTap {
             Ok(StreamEvent::Final(terminal)) => Some(finish_unary(
                 &mut self.accumulator,
                 self.message_id.take(),
-                terminal.clone(),
+                terminal,
             )),
             Ok(event) => {
                 if let StreamEvent::BlockStart {
                     id,
                     kind: crate::streaming::BlockKind::Message,
                 } = event
-                    && let Some(wire) = id.wire_str()
+                    && let Some(wire) = id.wire_str().and_then(|id| MessageId::new(id).ok())
                 {
-                    self.message_id = Some(wire.to_owned());
+                    self.message_id = Some(wire);
                 }
                 if let Err(report) = self.accumulator.apply(event) {
                     return Some(Err(report));

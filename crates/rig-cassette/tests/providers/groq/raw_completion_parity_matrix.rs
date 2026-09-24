@@ -171,7 +171,7 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
     // Where the wire makes the two turns equal, they are equal.
     assert_eq!(second.provider, first.provider);
     assert_eq!(second.model, first.model);
-    assert_eq!(second.finish_reason(), first.finish_reason());
+    assert_eq!(second.finish_reason.clone(), first.finish_reason.clone());
     assert_eq!(second.identity().message_id, first.identity().message_id);
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.

@@ -90,8 +90,9 @@ fn funnel_preserves_status_and_body() {
         E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body),
         E::from_http_response(StatusCode::OK, body),
         E::from_provider_body(body),
-        E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
-            .with_provider_request_id(Some("req_abc".to_string())),
+        E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body).with_provider_request_id(Some(
+            crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id"),
+        )),
     ] {
         assert!(
             err.provider_response_headers().is_none(),
@@ -109,7 +110,9 @@ fn funnel_preserves_status_and_body() {
     let without_id = E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
         .with_response_headers(Some(retry_after_headers()));
     let with_id = E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
-        .with_provider_request_id(Some("req_abc".to_string()))
+        .with_provider_request_id(Some(
+            crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id"),
+        ))
         .with_response_headers(Some(retry_after_headers()));
 
     for (label, err) in [("without id", without_id), ("with id", with_id)] {
@@ -155,7 +158,9 @@ fn stamping_a_request_id_keeps_status_body_and_names_the_id() {
         StatusCode::NOT_FOUND,
         r#"{"error":"nope"}"#,
     )
-    .with_provider_request_id(Some("req_abc".to_string()));
+    .with_provider_request_id(Some(
+        crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id"),
+    ));
     assert!(matches!(
         error,
         crate::error::ProviderError::ProviderResponse(_)
@@ -178,7 +183,7 @@ fn stamping_a_request_id_keeps_status_body_and_names_the_id() {
 fn an_absent_id_leaves_the_message_unchanged() {
     for id in [None, Some(String::new())] {
         let error = crate::error::ProviderError::from_http_response(StatusCode::BAD_REQUEST, "bad")
-            .with_provider_request_id(id);
+            .with_provider_request_id(id.and_then(|id| crate::id::RequestId::new(id).ok()));
         assert_eq!(error.provider_request_id(), None);
         assert!(!error.to_string().contains("request id"));
     }
@@ -190,12 +195,18 @@ fn an_absent_id_leaves_the_message_unchanged() {
 #[test]
 fn stamping_never_overwrites_an_earlier_id_and_is_a_no_op_without_a_slot() {
     let error = crate::error::ProviderError::from_http_response(StatusCode::BAD_REQUEST, "bad")
-        .with_provider_request_id(Some("first".to_string()))
-        .with_provider_request_id(Some("second".to_string()));
+        .with_provider_request_id(Some(
+            crate::id::RequestId::new("first".to_string()).expect("a non-empty id"),
+        ))
+        .with_provider_request_id(Some(
+            crate::id::RequestId::new("second".to_string()).expect("a non-empty id"),
+        ));
     assert_eq!(error.provider_request_id(), Some("first"));
 
     let error = crate::error::ProviderError::Provider("rig diagnostic".to_string())
-        .with_provider_request_id(Some("req_abc".to_string()));
+        .with_provider_request_id(Some(
+            crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id"),
+        ));
     assert!(matches!(error, crate::error::ProviderError::Provider(_)));
     assert_eq!(error.provider_request_id(), None);
 }
@@ -208,7 +219,9 @@ fn request_id_and_headers_coexist_on_one_error() {
         StatusCode::TOO_MANY_REQUESTS,
         r#"{"error":"slow down"}"#,
     )
-    .with_provider_request_id(Some("req_abc".to_string()))
+    .with_provider_request_id(Some(
+        crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id"),
+    ))
     .with_response_headers(Some(retry_after_headers()));
 
     assert_eq!(error.provider_request_id(), Some("req_abc"));
@@ -232,8 +245,9 @@ fn attaching_headers_never_overwrites_an_earlier_capture() {
     for build in [
         crate::error::ProviderError::from_http_response,
         |status, body| {
-            crate::error::ProviderError::from_http_response(status, body)
-                .with_provider_request_id(Some("req_abc".to_string()))
+            crate::error::ProviderError::from_http_response(status, body).with_provider_request_id(
+                Some(crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id")),
+            )
         },
     ] {
         let error = build(StatusCode::TOO_MANY_REQUESTS, "slow down")
@@ -279,7 +293,9 @@ fn display_goldens_for_error_shapes() {
         StatusCode::NOT_FOUND,
         r#"{"error":"nope"}"#,
     )
-    .with_provider_request_id(Some("req_abc".to_string()));
+    .with_provider_request_id(Some(
+        crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id"),
+    ));
     assert_eq!(
         with_id.to_string(),
         r#"ProviderResponseError: status 404 Not Found: {"error":"nope"} (request id: req_abc)"#
@@ -314,8 +330,9 @@ fn display_goldens_for_error_shapes() {
     for build in [
         crate::error::ProviderError::from_http_response,
         |status, body| {
-            crate::error::ProviderError::from_http_response(status, body)
-                .with_provider_request_id(Some("req_abc".to_string()))
+            crate::error::ProviderError::from_http_response(status, body).with_provider_request_id(
+                Some(crate::id::RequestId::new("req_abc".to_string()).expect("a non-empty id")),
+            )
         },
     ] {
         let bare = build(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#);
@@ -341,7 +358,7 @@ fn provider_response_error_round_trips_its_identity_and_not_its_headers() {
         http::HeaderValue::from_static("Thu, 03 Sep 2026 21:39:09 GMT"),
     );
     let error = ProviderResponseError::new(http::StatusCode::TOO_MANY_REQUESTS, "slow")
-        .with_provider_request_id(Some("req-1".into()))
+        .with_provider_request_id(Some("req-1".try_into().expect("a non-empty id")))
         .with_headers(Some(headers));
     let json = serde_json::to_string(&error).unwrap();
     assert!(!json.contains("headers"), "{json}");

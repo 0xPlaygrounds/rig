@@ -259,13 +259,12 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                 vec,
             })
             .collect();
-        out.push(Ok(crate::embeddings::EmbeddingResponse::new(
-            vectors,
-            PROVIDER_NAME,
-        )
-        .with_model(reply.model)
-        .with_usage(usage)
-        .with_raw(raw)));
+        out.push(Ok(crate::embeddings::EmbeddingResponse {
+            model: crate::id::ModelName::new(reply.model).ok(),
+            usage,
+            raw,
+            ..crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+        }));
     }
 }
 

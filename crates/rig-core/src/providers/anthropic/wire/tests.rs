@@ -83,7 +83,9 @@ fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
         crate::wire::Reply {
             provider: "anthropic".to_owned(),
             raw: serde_json::from_str(body).unwrap_or(serde_json::Value::Null),
-            provider_request_id: Some("req_REDACTED_1".to_owned()),
+            provider_request_id: Some(
+                crate::id::RequestId::new("req_REDACTED_1".to_owned()).expect("a non-empty id"),
+            ),
         },
     )
     .expect("the fold produces a response")
@@ -97,7 +99,10 @@ fn the_same_turn_folds_identically_whether_it_was_buffered_or_streamed() {
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
     assert_eq!(buffered.model, streamed.model);
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
     assert_eq!(buffered.message_id, streamed.message_id);
     assert_eq!(buffered.provider_request_id, streamed.provider_request_id);
     assert_eq!(

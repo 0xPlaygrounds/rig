@@ -232,13 +232,12 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                 vec: embedding.embedding,
             })
             .collect();
-        out.push(Ok(crate::embeddings::EmbeddingResponse::new(
-            vectors,
-            PROVIDER_NAME,
-        )
-        .with_model(reply.model)
-        .with_usage(usage)
-        .with_raw(raw)));
+        out.push(Ok(crate::embeddings::EmbeddingResponse {
+            model: crate::id::ModelName::new(reply.model).ok(),
+            usage,
+            raw,
+            ..crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+        }));
     }
 }
 
@@ -398,10 +397,12 @@ impl Decoder<RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        out.push(Ok(RerankResponse::new(results, PROVIDER_NAME)
-            .with_model(reply.model)
-            .with_usage(usage)
-            .with_raw(raw)));
+        out.push(Ok(RerankResponse {
+            model: crate::id::ModelName::new(reply.model).ok(),
+            usage,
+            raw,
+            ..RerankResponse::new(results, PROVIDER_NAME)
+        }));
     }
 }
 

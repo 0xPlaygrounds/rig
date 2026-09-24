@@ -232,7 +232,7 @@ async fn turn_one<A: CompletionModel>(first: &A, cell: Cell) -> Vec<Message> {
     let history = vec![
         prompt,
         Message::Assistant {
-            id: reply.message_id.clone(),
+            id: reply.message_id.clone().map(String::from),
             content: reply.choice.clone(),
         },
         Message::User {

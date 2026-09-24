@@ -16,6 +16,7 @@ use super::completion::gemini_api_types::{
 use crate::completion::Usage;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
+use crate::id::{ModelName, ResponseId};
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
 use crate::operation::ImageGeneration;
@@ -42,12 +43,14 @@ impl NormalizeImageGenerationResponse for GenerateContentResponse {
             .map(Usage::from)
             .unwrap_or_default();
 
-        Ok(
-            image_generation::ImageGenerationResponse::new(image, provider)
-                .with_optional_model(self.model_version)
-                .with_response_id(self.response_id)
-                .with_usage(usage),
-        )
+        Ok(image_generation::ImageGenerationResponse {
+            model: self
+                .model_version
+                .and_then(|model| ModelName::new(model).ok()),
+            response_id: ResponseId::new(self.response_id).ok(),
+            usage,
+            ..image_generation::ImageGenerationResponse::new(image, provider)
+        })
     }
 }
 

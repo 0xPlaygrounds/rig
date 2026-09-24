@@ -62,7 +62,7 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
                 .build();
             let response = model.completion(request).await?;
             assert_eq!(
-                response.finish_reason(),
+                response.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Stop)
             );
             Ok::<(), rig::error::ProviderError>(())

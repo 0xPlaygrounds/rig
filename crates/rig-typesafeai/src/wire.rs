@@ -2,6 +2,7 @@
 
 use rig_core::client::{EnvError, env};
 use rig_core::error::EncodeError;
+use rig_core::id::RequestId;
 use rig_core::operation::{One, Take};
 use rig_core::wire::{
     Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
@@ -28,11 +29,11 @@ impl Operation for Evaluation {
         true
     }
     fn telemetry(_streaming: bool) {}
-    fn stamp_request_id(event: &mut Response, request_id: &Option<String>) {
-        event.provider_request_id.clone_from(request_id);
+    fn stamp_request_id(event: &mut Response, request_id: &Option<RequestId>) {
+        event.provider_request_id = request_id.as_deref().map(str::to_owned);
     }
     fn stamp_reply(response: &mut Response, reply: Reply) {
-        response.provider_request_id = reply.provider_request_id;
+        response.provider_request_id = reply.provider_request_id.map(String::from);
     }
 }
 

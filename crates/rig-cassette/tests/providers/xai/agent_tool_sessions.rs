@@ -424,7 +424,7 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
             .expect("normalized xAI response should report the provider model"),
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(rig::completion::FinishReason::Stop),
         "xAI `status: completed` should normalize to a stop finish reason"
     );

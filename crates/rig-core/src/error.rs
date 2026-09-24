@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     http_client,
+    id::RequestId,
     memory::MemoryError,
     observe::AdapterErrorBoundary,
     provider_response::ProviderResponseError,
@@ -132,7 +133,7 @@ pub struct ErrorReport {
     /// The provider's request id, when the failure had a response that
     /// carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub request_id: Option<String>,
+    pub request_id: Option<RequestId>,
     /// Preserved provider failure response, including available status, body,
     /// headers, and request ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -214,8 +215,8 @@ impl ErrorReport {
     }
 
     /// Attach the provider's request id.
-    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
-        self.request_id = Some(request_id.into());
+    pub fn with_request_id(mut self, request_id: RequestId) -> Self {
+        self.request_id = Some(request_id);
         self
     }
 
@@ -554,9 +555,8 @@ impl ProviderError {
             .and_then(|response| response.headers.as_ref())
     }
 
-    /// Fills an absent request ID on the preserved reply, ignoring empty
-    /// strings.
-    pub fn with_provider_request_id(self, request_id: Option<String>) -> Self {
+    /// Fills an absent request ID on the preserved reply.
+    pub fn with_provider_request_id(self, request_id: Option<RequestId>) -> Self {
         self.map_response(|response| match response.provider_request_id {
             Some(_) => response,
             None => response.with_provider_request_id(request_id),

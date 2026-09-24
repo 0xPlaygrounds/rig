@@ -212,12 +212,12 @@ fn assert_parity(
     expected_finish: FinishReason,
 ) {
     assert_eq!(
-        typed.finish_reason(),
+        typed.finish_reason.clone(),
         Some(expected_finish.clone()),
         "{scenario}: typed route finish reason"
     );
     assert_eq!(
-        normalized.finish_reason(),
+        normalized.finish_reason.clone(),
         Some(expected_finish),
         "{scenario}: completion() finish reason"
     );
@@ -430,8 +430,8 @@ async fn chat_plain_raw_completion_lacks_request_id() {
         plain.usage.input_tokens,
         first["usage"]["prompt_tokens"].as_u64()
     );
-    assert_eq!(plain.finish_reason(), Some(FinishReason::Stop));
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(plain.finish_reason.clone(), Some(FinishReason::Stop));
+    assert_eq!(normalized.finish_reason.clone(), Some(FinishReason::Stop));
     assert_eq!(plain.model, normalized.model);
 }
 

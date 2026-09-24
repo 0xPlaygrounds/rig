@@ -130,7 +130,7 @@ async fn incomplete_turn_keeps_streamed_partial_output() {
     assert_response_create(&script.sent()[0]);
     // The streamed partial text survives, and normalization maps the incomplete
     // status to the same finish reason as the unary path.
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::Length));
+    assert_eq!(normalized.finish_reason.clone(), Some(FinishReason::Length));
     assert_eq!(normalized.usage.input_tokens, Some(1));
     assert_eq!(normalized.usage.output_tokens, Some(2));
     assert_eq!(normalized.usage.total_tokens, Some(3));
@@ -246,7 +246,7 @@ async fn incomplete_turn_without_deltas_normalizes_terminal_body_output() {
         normalized.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "partial from body"
     ));
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::Length));
+    assert_eq!(normalized.finish_reason.clone(), Some(FinishReason::Length));
     assert_eq!(normalized.message_id.as_deref(), Some("msg_body_only_1"));
 }
 
@@ -732,7 +732,10 @@ async fn websocket_conformance_replays_sse_fixture_frames() {
     // The fixture's expected finish reason applies to its text-only sequences;
     // this combined replay carries a tool call, which the shared normalization
     // maps to `ToolCalls` on every transport.
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(
+        normalized.finish_reason.clone(),
+        Some(FinishReason::ToolCalls)
+    );
 }
 
 /// Regression for the diverged websocket dispatch: `response.reasoning_text.delta`

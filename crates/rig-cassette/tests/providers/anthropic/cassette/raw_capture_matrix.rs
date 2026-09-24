@@ -152,7 +152,7 @@ fn contains_string(value: &Value, needle: &str) -> bool {
 fn assert_matches_fixture(scenario: &str, response: &RigCompletionResponse) {
     let body = assert_identity_matches_fixture(scenario, response);
     assert_eq!(body["stop_reason"], "end_turn", "{scenario}: premise");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
     let recorded_text = body["content"]
         .as_array()
         .expect("content array")
@@ -336,7 +336,7 @@ async fn raw_exposes_stop_sequence() {
         !raw.is_null(),
         "every response `completion` returns carries `raw`"
     );
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
     let normalized_keys: Vec<String> = normalized_without_raw(response.clone())
         .as_object()
         .expect("the normalized response serializes as an object")
@@ -405,7 +405,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "premise: the recorded turn ended naturally"
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(FinishReason::Stop),
         "the decoder maps the document's `end_turn` onto `Stop`"
     );
@@ -493,7 +493,7 @@ async fn raw_exposes_thinking_block_and_signature() {
         "premise: the recorded turn actually spent thinking tokens"
     );
     assert_eq!(body["stop_reason"], "end_turn", "premise");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
 
     // `raw` carries the wire's own spelling of the reasoning, verbatim.
     let raw_blocks = raw["content"].as_array().expect("raw content array");
@@ -635,7 +635,10 @@ async fn raw_exposes_tool_use_block() {
 
     // Normalized: the provider's stop reason maps onto `ToolCalls`; the
     // spelling `tool_use` is only on `raw`.
-    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(
+        response.finish_reason.clone(),
+        Some(FinishReason::ToolCalls)
+    );
     assert_eq!(raw["stop_reason"], "tool_use");
     assert_eq!(typed.stop_reason.as_deref(), Some("tool_use"));
 

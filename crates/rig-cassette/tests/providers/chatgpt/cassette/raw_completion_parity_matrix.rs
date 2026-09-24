@@ -175,7 +175,7 @@ async fn raw_normalize_reproduces_completion() {
         !envelope.output.is_empty(),
         "premise: the terminal envelope carried items"
     );
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
     assert_eq!(
         envelope.status,
         responses_api::ResponseStatus::Completed,
@@ -227,7 +227,7 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
 
     let response = captured.take();
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(FinishReason::ToolCalls),
         "a tool-call turn normalizes to ToolCalls"
     );

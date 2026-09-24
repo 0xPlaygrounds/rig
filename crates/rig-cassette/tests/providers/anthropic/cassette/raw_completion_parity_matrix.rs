@@ -96,8 +96,8 @@ impl Reported {
     fn from_completion(response: &RigCompletionResponse) -> Self {
         Self {
             identity: response.identity(),
-            finish_reason: response.finish_reason(),
-            model: response.model.clone(),
+            finish_reason: response.finish_reason.clone(),
+            model: response.model.clone().map(String::from),
             usage: response.usage,
         }
     }
@@ -106,7 +106,7 @@ impl Reported {
         Self {
             identity: terminal.identity(),
             finish_reason: terminal.finish_reason.clone(),
-            model: terminal.model.clone(),
+            model: terminal.model.clone().map(String::from),
             usage: terminal.usage,
         }
     }

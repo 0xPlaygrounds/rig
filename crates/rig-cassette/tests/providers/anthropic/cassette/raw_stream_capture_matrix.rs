@@ -288,7 +288,7 @@ fn assert_terminal_matches_fixture(
         std::slice::from_ref(&recorded.request_id),
         scenario,
     );
-    assert_eq!(terminal.model, recorded.model);
+    assert_eq!(terminal.model.as_deref(), recorded.model.as_deref());
     assert_eq!(terminal.usage.input_tokens, Some(recorded.input_tokens));
     assert_eq!(terminal.usage.output_tokens, Some(recorded.output_tokens));
     assert_eq!(terminal.provider, ANTHROPIC_PROVIDER);
@@ -511,10 +511,11 @@ async fn normalized_terminal_matches_raw_renormalized() {
         "the provider record round-trips through its own serde"
     );
     assert_eq!(
-        typed.message_id, terminal.message_id,
+        typed.message_id.as_deref(),
+        terminal.message_id.as_deref(),
         "the message id survives raw → typed"
     );
-    assert_eq!(typed.model, terminal.model);
+    assert_eq!(typed.model.as_deref(), terminal.model.as_deref());
     assert_eq!(
         typed.usage.input_tokens.map(|n| n as u64),
         terminal.usage.input_tokens

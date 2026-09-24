@@ -651,7 +651,7 @@ async fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
     ));
     assert_eq!(converted.usage.total_tokens, Some(5));
     assert_eq!(
-        converted.finish_reason(),
+        converted.finish_reason.clone(),
         Some(crate::completion::FinishReason::Other(
             "FINISH_REASON_FUTURE".to_string()
         ))
@@ -694,7 +694,7 @@ async fn test_completion_response_carries_normalized_metadata() {
     assert_eq!(converted.response_id.as_deref(), Some("resp-meta"));
     assert_eq!(converted.message_id, None);
     assert_eq!(
-        converted.finish_reason(),
+        converted.finish_reason.clone(),
         Some(crate::completion::FinishReason::Length)
     );
 }
@@ -710,7 +710,7 @@ async fn test_completion_response_upgrades_stop_to_tool_calls() {
     .await;
 
     assert_eq!(
-        converted.finish_reason(),
+        converted.finish_reason.clone(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
     assert_eq!(converted.model, None);
@@ -1803,8 +1803,8 @@ fn folded(
     (
         response.choice.to_vec(),
         response.usage,
-        response.finish_reason(),
-        response.model.clone(),
+        response.finish_reason.clone(),
+        response.model.clone().map(String::from),
     )
 }
 
@@ -1855,7 +1855,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_answer() {
         Some(&message::AssistantContent::text("cedar"))
     );
     assert_eq!(
-        buffered.finish_reason(),
+        buffered.finish_reason.clone(),
         Some(crate::completion::FinishReason::Stop)
     );
     assert_eq!(buffered.usage.output_tokens, Some(2));
@@ -1886,7 +1886,10 @@ async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
         streamed.choice.to_vec(),
         vec![message::AssistantContent::text("289"), signed("")]
     );
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
 
     // Both replay the signature on the text part that carried it.
     for (response, parts) in [

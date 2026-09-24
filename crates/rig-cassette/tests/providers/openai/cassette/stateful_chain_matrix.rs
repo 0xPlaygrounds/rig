@@ -314,12 +314,12 @@ async fn stored_then_stateless_mid_conversation() {
                 let history = vec![
                     prompt,
                     Message::Assistant {
-                        id: first.message_id.clone(),
+                        id: first.message_id.clone().map(String::from),
                         content: first.choice.clone(),
                     },
                     tool_answer,
                     Message::Assistant {
-                        id: second.message_id.clone(),
+                        id: second.message_id.clone().map(String::from),
                         content: second.choice.clone(),
                     },
                     Message::user("Repeat the code you reported, exactly, and nothing else."),
@@ -417,7 +417,7 @@ async fn file_id_chain() {
             let history = vec![
                 document,
                 Message::Assistant {
-                    id: first.message_id.clone(),
+                    id: first.message_id.clone().map(String::from),
                     content: first.choice.clone(),
                 },
                 Message::user("How many pages does the attached PDF have? Answer with a number."),

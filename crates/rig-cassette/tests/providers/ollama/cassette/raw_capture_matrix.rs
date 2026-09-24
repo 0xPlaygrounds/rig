@@ -235,7 +235,7 @@ async fn normalized_fields_equal_raw_renormalized() {
         }
     };
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(expected),
         "the decoder maps Ollama's `done_reason` onto the normalized vocabulary"
     );

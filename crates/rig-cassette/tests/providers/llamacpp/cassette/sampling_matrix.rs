@@ -142,7 +142,7 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
             .expect("a one-token cap is a normal request");
 
         assert_eq!(
-            response.finish_reason(),
+            response.finish_reason.clone(),
             Some(FinishReason::Length),
             "a cap that truncates must be reported as Length, not Stop"
         );
@@ -179,7 +179,7 @@ async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
             .await
             .expect("a generous cap is a normal request");
 
-        assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+        assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
         assert!(
             response.usage.output_tokens.is_some_and(|n| n < 512),
             "the turn stopped on its own, so it used fewer tokens than the cap"
@@ -235,7 +235,7 @@ async fn a_single_stop_sequence_truncates_the_answer() {
             "the stop text must not appear in the answer: {text:?}"
         );
         assert_eq!(
-            response.finish_reason(),
+            response.finish_reason.clone(),
             Some(FinishReason::Stop),
             "a stop sequence terminates the turn as a stop, not a length cut"
         );
@@ -283,7 +283,7 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
                  can appear: {text:?}"
             );
         }
-        assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+        assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
     })
     .await;
 

@@ -121,7 +121,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     assert_eq!(response.provider, COPILOT_PROVIDER);
     // The native comparison pins the reason to the body's word; this cell
     // also pins which word a plain answer carries.
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
     // Both ids come from the same live reply, so this compares exactly in
     // either cassette mode.
     assert_eq!(

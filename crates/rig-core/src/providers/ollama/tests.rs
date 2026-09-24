@@ -161,7 +161,7 @@ async fn response_metadata_is_normalized() {
     assert_eq!(normalized.provider, PROVIDER_NAME);
     assert_eq!(normalized.model.as_deref(), Some("llama3.2"));
     assert_eq!(
-        normalized.finish_reason(),
+        normalized.finish_reason.clone(),
         Some(completion::FinishReason::Length)
     );
     // Ollama assigns no message identifier.
@@ -192,7 +192,7 @@ async fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
     .expect("normalization should succeed");
 
     assert_eq!(
-        normalized.finish_reason(),
+        normalized.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
 }
@@ -1411,12 +1411,15 @@ mod raw_capture {
 
         let renormalized = unary(raw.clone()).await.expect("re-fold the capture");
         assert_eq!(response.identity(), renormalized.identity());
-        assert_eq!(response.finish_reason(), renormalized.finish_reason());
+        assert_eq!(
+            response.finish_reason.clone(),
+            renormalized.finish_reason.clone()
+        );
         assert_eq!(response.model, renormalized.model);
         assert_eq!(response.usage, renormalized.usage);
         assert_eq!(response.choice, renormalized.choice);
         assert_eq!(
-            response.finish_reason(),
+            response.finish_reason.clone(),
             Some(completion::FinishReason::Stop)
         );
         assert_eq!(response.model.as_deref(), Some("llama3.2"));

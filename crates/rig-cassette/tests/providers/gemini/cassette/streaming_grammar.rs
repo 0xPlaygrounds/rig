@@ -741,7 +741,7 @@ async fn interactions_requires_action_roundtrip() {
 
             let normalized = raw;
             assert_eq!(
-                normalized.finish_reason(),
+                normalized.finish_reason.clone(),
                 Some(FinishReason::ToolCalls),
                 "requires_action should normalize to a ToolCalls finish"
             );
@@ -790,7 +790,7 @@ async fn interactions_requires_action_roundtrip() {
                 .expect("tool-result follow-up should succeed");
 
             assert_eq!(
-                followup.finish_reason(),
+                followup.finish_reason.clone(),
                 Some(FinishReason::Stop),
                 "completed follow-up should normalize to Stop"
             );

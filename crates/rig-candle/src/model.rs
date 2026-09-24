@@ -349,12 +349,14 @@ impl rig_core::wire::Decoder<rig_core::operation::Completion, GenerationEvent> f
 /// serializing the local record onto [`StreamFinal::raw`].
 fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, serde_json::Error> {
     let usage = response.into();
-    Ok(StreamFinal::new(
-        crate::types::PROVIDER_NAME,
-        usage,
-        serde_json::to_value(response)?,
-    )
-    .with_finish_reason(response.finish_reason.into()))
+    Ok(StreamFinal {
+        finish_reason: Some(response.finish_reason.into()),
+        ..StreamFinal::new(
+            crate::types::PROVIDER_NAME,
+            usage,
+            serde_json::to_value(response)?,
+        )
+    })
 }
 
 /// Normalizes typed generation events through the shared completion driver.

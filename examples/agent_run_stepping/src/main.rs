@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
                     .collect();
 
                 let mut outcome = run.model_response(ModelTurn::new(
-                    response.message_id.clone(),
+                    response.message_id.clone().map(String::from),
                     response.choice.clone(),
                     response.usage,
                     tool_names.clone(),

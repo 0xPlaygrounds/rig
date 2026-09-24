@@ -268,7 +268,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
-                    finish_reason: response.finish_reason(),
+                    finish_reason: response.finish_reason.clone(),
                     names,
                     ids,
                     arguments,

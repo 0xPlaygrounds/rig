@@ -543,16 +543,19 @@ pub(super) fn sse_json_frames(body: &str) -> Vec<serde_json::Value> {
 /// structure in both modes (and exact equality on replay) means the same cell
 /// proves "each attempt reports its own id, in recorded order" whether it is
 /// being recorded or replayed.
-pub(super) fn assert_ids_match_recording(
-    observed: &[Option<String>],
-    recorded: &[Option<String>],
+pub(super) fn assert_ids_match_recording<O, R>(
+    observed: &[Option<O>],
+    recorded: &[Option<R>],
     context: &str,
-) {
-    fn ranks(ids: &[Option<String>]) -> Vec<Option<usize>> {
+) where
+    O: AsRef<str>,
+    R: AsRef<str>,
+{
+    fn ranks(ids: &[Option<&str>]) -> Vec<Option<usize>> {
         let mut seen: Vec<&str> = Vec::new();
         ids.iter()
             .map(|id| {
-                id.as_deref().map(|id| {
+                id.map(|id| {
                     seen.iter()
                         .position(|known| *known == id)
                         .unwrap_or_else(|| {
@@ -563,6 +566,14 @@ pub(super) fn assert_ids_match_recording(
             })
             .collect()
     }
+    let observed: Vec<Option<&str>> = observed
+        .iter()
+        .map(|id| id.as_ref().map(AsRef::as_ref))
+        .collect();
+    let recorded: Vec<Option<&str>> = recorded
+        .iter()
+        .map(|id| id.as_ref().map(AsRef::as_ref))
+        .collect();
 
     assert_eq!(
         observed.len(),
@@ -570,8 +581,8 @@ pub(super) fn assert_ids_match_recording(
         "{context}: observed {observed:?} and recorded {recorded:?} must have one id per interaction"
     );
     assert_eq!(
-        ranks(observed),
-        ranks(recorded),
+        ranks(&observed),
+        ranks(&recorded),
         "{context}: observed {observed:?} must repeat/differ exactly as the recording {recorded:?}"
     );
     if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {

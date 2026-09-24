@@ -201,7 +201,7 @@ impl AgentHook for CanonicalResponseHook {
                 prompt,
                 content: response.choice.clone(),
                 usage: response.usage,
-                message_id: response.message_id.clone(),
+                message_id: response.message_id.clone().map(String::from),
             });
         OutcomeAction::proceed()
     }
@@ -263,7 +263,7 @@ impl AgentHook for FinishLifecycleHook {
                 prompt,
                 content: response.choice.clone(),
                 usage: response.usage,
-                message_id: response.message_id.clone(),
+                message_id: response.message_id.clone().map(String::from),
             });
         if self.stop.load(SeqCst) {
             OutcomeAction::stop("stop at stream EOF")
@@ -315,9 +315,9 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
         async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
             if let Some(response) = event.completion() {
                 self.seen.lock().expect("identity snapshots").push((
-                    response.message_id.clone(),
-                    response.response_id.clone(),
-                    response.provider_request_id.clone(),
+                    response.message_id.clone().map(String::from),
+                    response.response_id.clone().map(String::from),
+                    response.provider_request_id.clone().map(String::from),
                 ));
             }
             OutcomeAction::proceed()
@@ -455,11 +455,11 @@ impl AgentHook for TurnIdentityHook {
 }
 
 fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent {
-    MockStreamEvent::FinalResponse(
-        rig_core::streaming::StreamFinal::new("mock", Usage::default(), serde_json::json!({}))
-            .with_response_id(response_id)
-            .with_provider_request_id(request_id),
-    )
+    MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+        response_id: Some(response_id.try_into().expect("a non-empty id")),
+        provider_request_id: Some(request_id.try_into().expect("a non-empty id")),
+        ..rig_core::streaming::StreamFinal::new("mock", Usage::default(), serde_json::json!({}))
+    })
 }
 
 /// Blocking surface: a tool-only turn and the following text turn each
@@ -487,7 +487,7 @@ async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     let turns = hook.turns.lock().expect("turn identities").clone();
     let request_ids: Vec<_> = turns
         .iter()
-        .map(|identity| identity.provider_request_id.clone())
+        .map(|identity| identity.provider_request_id.as_deref().map(str::to_owned))
         .collect();
     assert_eq!(
         request_ids,
@@ -501,7 +501,7 @@ async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     let call_ids: Vec<_> = response
         .completion_calls
         .iter()
-        .map(|call| call.provider_request_id.clone())
+        .map(|call| call.provider_request_id.as_deref().map(str::to_owned))
         .collect();
     assert_eq!(request_ids, call_ids);
 }
@@ -539,7 +539,7 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
     let turns = hook.turns.lock().expect("turn identities").clone();
     let request_ids: Vec<_> = turns
         .iter()
-        .map(|identity| identity.provider_request_id.clone())
+        .map(|identity| identity.provider_request_id.as_deref().map(str::to_owned))
         .collect();
     assert_eq!(
         request_ids,
@@ -552,7 +552,7 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
     let responses = hook.responses.lock().expect("responses").clone();
     let response_ids: Vec<_> = responses
         .iter()
-        .map(|identity| identity.provider_request_id.clone())
+        .map(|identity| identity.provider_request_id.as_deref().map(str::to_owned))
         .collect();
     assert_eq!(
         response_ids, request_ids,
@@ -613,7 +613,7 @@ async fn retried_turn_reports_the_retried_attempts_own_identity() {
             event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
             let mut seen = self.seen.lock().expect("retry identities");
-            seen.push(event.identity.provider_request_id.clone());
+            seen.push(event.identity.provider_request_id.clone().map(String::from));
             if seen.len() == 1 {
                 ModelTurnAction::repeat()
             } else {
@@ -721,9 +721,15 @@ fn stream_final_for_attempt(attempt: &str, total_tokens: u64) -> rig_core::strea
         total_tokens: Some(total_tokens),
         ..Default::default()
     };
-    rig_core::streaming::StreamFinal::new("mock", usage, serde_json::json!({}))
-        .with_response_id(format!("resp-{attempt}"))
-        .with_provider_request_id(format!("req-{attempt}"))
+    rig_core::streaming::StreamFinal {
+        response_id: Some(
+            format!("resp-{attempt}")
+                .try_into()
+                .expect("a non-empty id"),
+        ),
+        provider_request_id: Some(format!("req-{attempt}").try_into().expect("a non-empty id")),
+        ..rig_core::streaming::StreamFinal::new("mock", usage, serde_json::json!({}))
+    }
 }
 
 /// What `raw` must be for a streamed attempt scripted with `terminal`.
@@ -8733,9 +8739,10 @@ async fn model_turn_finished_reports_termination_and_effective_max_tokens_stream
     let probe = TerminationProbe::default();
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::Text("a partial ans".to_string()),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
-        ),
+        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }),
     ]]);
 
     let mut stream = AgentBuilder::new(model.clone())
@@ -8816,9 +8823,10 @@ async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_streamed_tool_
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call("call-1", "add", json!({ "x": 1, "y": 2 })),
-            MockStreamEvent::FinalResponse(
-                mock_final(Usage::default()).with_finish_reason(FinishReason::Stop),
-            ),
+            MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+                finish_reason: Some(FinishReason::Stop),
+                ..mock_final(Usage::default())
+            }),
         ],
         vec![
             MockStreamEvent::Text("3".to_string()),
@@ -8885,15 +8893,17 @@ async fn streaming_retry_reports_the_second_attempts_own_effective_max_tokens() 
     let model = MockCompletionModel::from_stream_turns([
         [
             MockStreamEvent::Text("rejected".to_string()),
-            MockStreamEvent::FinalResponse(
-                mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
-            ),
+            MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+                finish_reason: Some(FinishReason::Length),
+                ..mock_final(Usage::default())
+            }),
         ],
         [
             MockStreamEvent::Text("accepted".to_string()),
-            MockStreamEvent::FinalResponse(
-                mock_final(Usage::default()).with_finish_reason(FinishReason::Stop),
-            ),
+            MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+                finish_reason: Some(FinishReason::Stop),
+                ..mock_final(Usage::default())
+            }),
         ],
     ]);
 

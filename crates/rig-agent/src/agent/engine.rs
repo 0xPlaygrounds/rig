@@ -1098,7 +1098,7 @@ impl TurnSource for StreamingTurnSource {
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
                             let partial = assembler.partial_turn(
-                                stream.message_id.clone(),
+                                stream.message_id.clone().map(String::from),
                                 stream.reasoning_issuer(),
                             );
                             // Gated on `has_hooks`: building the diagnostic context
@@ -1236,7 +1236,7 @@ impl TurnSource for StreamingTurnSource {
 
             let mut final_turn_content = stream.snapshot();
             let streamed_turn = assembler.finish(
-                stream.message_id.clone(),
+                stream.message_id.clone().map(String::from),
                 &final_turn_content,
                 stream.reasoning_issuer(),
             );
@@ -1245,7 +1245,10 @@ impl TurnSource for StreamingTurnSource {
             // in. The message id prefers the assembled turn's, which folds in an
             // explicit `MessageId` event.
             let identity = rig_core::completion::ResponseIdentity {
-                message_id: streamed_turn.message_id.clone(),
+                message_id: streamed_turn
+                    .message_id
+                    .clone()
+                    .and_then(|id| rig_core::id::MessageId::new(id).ok()),
                 ..stream.identity()
             };
             // The raw payload comes from the same terminal record as the identity
@@ -1461,13 +1464,20 @@ pub(crate) async fn settle_model_turn(
     run: &mut AgentRun,
     turn: AssembledTurn<'_>,
 ) -> Result<ModelTurnDecision, PromptError> {
+    let has_tool_call = turn
+        .content
+        .iter()
+        .any(|content| matches!(content, rig_core::message::AssistantContent::ToolCall(_)));
     let mut folded = rig_core::completion::CompletionResponse::new(
         turn.content.clone(),
         turn.usage,
         turn.provider,
         turn.raw.clone(),
-    )
-    .with_optional_finish_reason(turn.finish_reason.cloned());
+    );
+    folded.finish_reason = turn
+        .finish_reason
+        .cloned()
+        .map(|reason| reason.reconcile_with_output(has_tool_call));
     folded.message_id = turn.identity.message_id.clone();
     folded.response_id = turn.identity.response_id.clone();
     folded.provider_request_id = turn.identity.provider_request_id.clone();
@@ -1907,7 +1917,7 @@ impl TurnSource for UnaryTurnSource {
 
             // Normalized once, then shared by run state and the per-turn hook, so
             // the two cannot report different reasons for one attempt.
-            let attempt_finish_reason = resp.finish_reason();
+            let attempt_finish_reason = resp.finish_reason.clone();
 
             let mut outcome = match run.model_response(ModelTurn::from_response_parts(
                 &resp,

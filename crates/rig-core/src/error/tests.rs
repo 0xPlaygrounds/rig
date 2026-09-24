@@ -458,7 +458,9 @@ fn a_provider_response_travels_with_the_report() {
     headers.insert("retry-after", http::HeaderValue::from_static("7"));
     let error = ProviderError::ProviderResponse(
         ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#)
-            .with_provider_request_id(Some("req-9".to_owned()))
+            .with_provider_request_id(Some(
+                crate::id::RequestId::new("req-9".to_owned()).expect("a non-empty id"),
+            ))
             .with_headers(Some(headers)),
     );
     let report = ErrorReport::from(&error);
@@ -515,7 +517,7 @@ fn a_provider_response_travels_with_the_report() {
 #[test]
 fn provider_reports_retain_structured_provider_metadata() {
     let response = ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, "retry later")
-        .with_provider_request_id(Some("req-retained".into()));
+        .with_provider_request_id(Some("req-retained".try_into().expect("a non-empty id")));
     let direct = ProviderError::ProviderResponse(response.clone());
     let wrapped =
         VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()));
@@ -650,7 +652,7 @@ fn reports_match_the_replaced_error_enums() {
                 StatusCode::TOO_MANY_REQUESTS,
                 r#"{"error":{"type":"rate_limit"}}"#,
             )
-            .with_provider_request_id(Some("req_1".into()))
+            .with_provider_request_id(Some("req_1".try_into().expect("a non-empty id")))
             .with_response_headers(Some(headers())),
             r#"{"code":"rate_limit","http_status":429,"kind":"provider_response","message":"ProviderResponseError: status 429 Too Many Requests: {\"error\":{\"type\":\"rate_limit\"}} (request id: req_1)","provider_response":{"body":"{\"error\":{\"type\":\"rate_limit\"}}","provider_request_id":"req_1","status":429},"refusal":false,"request_id":"req_1","retryable":true,"source_chain":[]}"#,
             AdapterErrorBoundary::ProviderResponse,
@@ -779,7 +781,7 @@ fn verdicts_on_a_handle_or_credential_keep_the_reply() {
     let expired = ProviderError::CacheExpired {
         name: "cachedContents/abc".into(),
         response: ProviderResponseError::new(StatusCode::NOT_FOUND, "not found body")
-            .with_provider_request_id(Some("req_c".into())),
+            .with_provider_request_id(Some("req_c".try_into().expect("a non-empty id"))),
     };
     assert_eq!(
         expired.to_string(),

@@ -93,7 +93,7 @@ async fn file_id_chain() {
             let history = vec![
                 document,
                 Message::Assistant {
-                    id: first.message_id.clone(),
+                    id: first.message_id.clone().map(String::from),
                     content: first.choice.clone(),
                 },
                 Message::user("Is the attached PDF longer than two pages? Answer yes or no."),

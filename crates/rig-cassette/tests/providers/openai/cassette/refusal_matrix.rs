@@ -249,7 +249,7 @@ async fn chat_blocking_refusal_finishes_with_stop() {
             let response = model.completion(request).await.expect("refusal turn");
 
             assert_eq!(
-                response.finish_reason(),
+                response.finish_reason.clone(),
                 Some(rig::completion::FinishReason::Stop)
             );
             assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
@@ -391,7 +391,7 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
             assert_nonempty_response(&blocking_text);
             assert_nonempty_response(&streamed_text);
             assert_eq!(
-                blocking.finish_reason(),
+                blocking.finish_reason.clone(),
                 terminal.and_then(|terminal| terminal.finish_reason),
                 "both transports must report the same terminal reason"
             );

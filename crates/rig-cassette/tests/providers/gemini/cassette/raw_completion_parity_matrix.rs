@@ -63,7 +63,7 @@ fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::Completio
 /// everything the contract names, except that each request gets its own
 /// response id.
 fn assert_cross_request_parity(first: &RigCompletionResponse, second: &RigCompletionResponse) {
-    assert_eq!(first.finish_reason(), second.finish_reason());
+    assert_eq!(first.finish_reason.clone(), second.finish_reason.clone());
     assert_eq!(first.model, second.model);
     assert_eq!(first.provider, second.provider);
     // Identical request bytes tokenize identically; the output side is the
@@ -189,7 +189,7 @@ async fn rest_raw_try_into_matches_completion() {
         "the normalized text is exactly the document's visible text parts"
     );
     assert_eq!(
-        second.finish_reason(),
+        second.finish_reason.clone(),
         Some(FinishReason::Stop),
         "the document's STOP reaches the caller as rig's Stop"
     );
@@ -224,7 +224,7 @@ async fn interactions_raw_try_into_matches_completion() {
     // own document, reproduces the response it rode on.
     let typed = Interaction::deserialize(&second.raw)
         .expect("captured raw is the Interactions API's own document");
-    assert_eq!(typed.model, second.model);
+    assert_eq!(typed.model.as_deref(), second.model.as_deref());
     assert_eq!(Some(typed.id.as_str()), second.response_id.as_deref());
     assert_eq!(
         typed
@@ -243,7 +243,7 @@ async fn interactions_raw_try_into_matches_completion() {
         typed.status
     );
     assert_eq!(
-        second.finish_reason(),
+        second.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and `completed` reaches the caller as rig's Stop"
     );

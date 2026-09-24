@@ -1464,7 +1464,7 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
 
     assert!(completion.choice.is_empty());
     assert_eq!(
-        completion.finish_reason(),
+        completion.finish_reason.clone(),
         Some(completion::FinishReason::Length)
     );
 }
@@ -1584,7 +1584,7 @@ fn completion_response_carries_the_message_id_not_the_response_id() {
     assert_eq!(completion.provider, "openai");
     assert_eq!(completion.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(
-        completion.finish_reason(),
+        completion.finish_reason.clone(),
         Some(completion::FinishReason::Stop)
     );
 }
@@ -1640,7 +1640,7 @@ fn completion_response_completed_with_tool_call_reports_tool_calls() {
     // `completed` is reconciled up to `ToolCalls` because the turn carried
     // a function call.
     assert_eq!(
-        completion.finish_reason(),
+        completion.finish_reason.clone(),
         Some(completion::FinishReason::ToolCalls)
     );
 }
@@ -1669,7 +1669,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
         wire::fold_body("openai", response).expect("response should convert");
 
     assert_eq!(
-        completion.finish_reason(),
+        completion.finish_reason.clone(),
         Some(completion::FinishReason::Length)
     );
 }
@@ -2785,11 +2785,13 @@ mod raw_capture {
         assert!(raw.get("provider_request_id").is_none());
         assert_eq!(typed.provider_request_id, None);
 
-        let refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
-            .expect("re-fold the capture")
-            .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
+        let refolded = crate::completion::CompletionResponse {
+            provider_request_id: crate::id::RequestId::new(REQUEST_ID).ok(),
+            ..wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
+                .expect("re-fold the capture")
+        };
         assert_eq!(response.identity(), refolded.identity());
-        assert_eq!(response.finish_reason(), refolded.finish_reason());
+        assert_eq!(response.finish_reason, refolded.finish_reason);
         assert_eq!(response.model, refolded.model);
         assert_eq!(response.usage, refolded.usage);
         assert_eq!(response.choice, refolded.choice);

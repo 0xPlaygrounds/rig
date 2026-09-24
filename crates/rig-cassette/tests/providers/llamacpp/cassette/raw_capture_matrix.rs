@@ -258,7 +258,7 @@ async fn normalized_fields_match_the_typed_raw() {
             .expect("the recorded turn must carry assistant text")
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(chat::recorded_chat_finish_reason(&body))
     );
     // The response id is a generated per-call id the scrubber placeholders on

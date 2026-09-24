@@ -52,9 +52,13 @@ fn terminal_record(response: BedrockStreamingResponse) -> Result<StreamFinal, se
     let usage = (&response).into();
     let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
     let raw = serde_json::to_value(&response)?;
-    Ok(StreamFinal::new(PROVIDER_NAME, usage, raw)
-        .with_optional_provider_request_id(response.provider_request_id)
-        .with_optional_finish_reason(finish_reason))
+    Ok(StreamFinal {
+        provider_request_id: response
+            .provider_request_id
+            .and_then(|id| rig_core::id::RequestId::new(id).ok()),
+        finish_reason,
+        ..StreamFinal::new(PROVIDER_NAME, usage, raw)
+    })
 }
 
 #[derive(Default)]

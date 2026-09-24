@@ -4979,7 +4979,10 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
 #[tokio::test]
 async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
+        rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        },
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5028,9 +5031,10 @@ async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
 async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::Text("a partial ans".to_string()),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
-        ),
+        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }),
     ]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5074,7 +5078,10 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
 #[tokio::test]
 async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::default()).with_finish_reason(FinishReason::ContentFilter),
+        rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::ContentFilter),
+            ..mock_final(Usage::default())
+        },
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5116,8 +5123,10 @@ async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
 #[tokio::test]
 async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::default())
-            .with_finish_reason(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
+        rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
+            ..mock_final(Usage::default())
+        },
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5156,9 +5165,10 @@ async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
 async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thinking hard and never reaching an answer"),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
-        ),
+        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }),
     ]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5195,9 +5205,10 @@ async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
 async fn reasoning_only_turn_content_filtered_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("considering something the filter rejects"),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::ContentFilter),
-        ),
+        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::ContentFilter),
+            ..mock_final(Usage::default())
+        }),
     ]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5240,9 +5251,10 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("weighing the options"),
         MockStreamEvent::Text("the answer so f".to_string()),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
-        ),
+        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }),
     ]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5280,9 +5292,10 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
 async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thought about it, nothing to add"),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Stop),
-        ),
+        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Stop),
+            ..mock_final(Usage::default())
+        }),
     ]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5317,9 +5330,10 @@ async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
 async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("partial thinking worth keeping"),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
-        ),
+        MockStreamEvent::FinalResponse(rig_core::streaming::StreamFinal {
+            finish_reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }),
     ]]);
     let agent = AgentBuilder::new(model).build();
 

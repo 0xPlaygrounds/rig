@@ -33,13 +33,19 @@ fn response(
     choice: AssistantContent,
     total_tokens: u64,
 ) -> CompletionResponse {
-    CompletionResponse::new(
-        vec![choice],
-        usage(total_tokens),
-        provider,
-        serde_json::json!({}),
-    )
-    .with_message_id(format!("{provider}-message"))
+    CompletionResponse {
+        message_id: Some(
+            format!("{provider}-message")
+                .try_into()
+                .expect("a non-empty id"),
+        ),
+        ..CompletionResponse::new(
+            vec![choice],
+            usage(total_tokens),
+            provider,
+            serde_json::json!({}),
+        )
+    }
 }
 
 #[derive(Clone)]

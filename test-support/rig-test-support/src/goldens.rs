@@ -1506,7 +1506,8 @@ impl rig_core::rerank::RerankModel for MockRerank {
             .collect();
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
         let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
-        response.model = Some("mock-rerank".to_owned());
+        response.model =
+            Some(rig_core::id::ModelName::new("mock-rerank".to_owned()).expect("a non-empty id"));
         Ok(response)
     }
 }

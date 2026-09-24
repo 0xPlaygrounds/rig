@@ -60,7 +60,7 @@ async fn blocking_stop(client: BoundDoubleword) {
         )
         .await
         .expect("blocking stop probe");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
 }
 
 async fn blocking_length(client: BoundDoubleword) {
@@ -74,7 +74,7 @@ async fn blocking_length(client: BoundDoubleword) {
         )
         .await
         .expect("a contentless truncated turn is still a completion");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Length));
+    assert_eq!(response.finish_reason.clone(), Some(FinishReason::Length));
 }
 
 async fn blocking_tool_calls_body(client: BoundDoubleword) {
@@ -90,7 +90,10 @@ async fn blocking_tool_calls_body(client: BoundDoubleword) {
         )
         .await
         .expect("blocking tool-call probe");
-    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(
+        response.finish_reason.clone(),
+        Some(FinishReason::ToolCalls)
+    );
     assert!(
         response
             .choice

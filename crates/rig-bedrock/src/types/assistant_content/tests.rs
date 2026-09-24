@@ -681,11 +681,14 @@ fn aws_converse_output_round_trips_through_serde_json_value() {
     let original: completion::CompletionResponse = raw.try_into().expect("original converts");
     let restored: completion::CompletionResponse = back.try_into().expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
-    assert_eq!(restored.finish_reason(), original.finish_reason());
+    assert_eq!(
+        restored.finish_reason.clone(),
+        original.finish_reason.clone()
+    );
     assert_eq!(restored.usage, original.usage);
     assert_eq!(restored.choice, original.choice);
     assert_eq!(
-        restored.finish_reason(),
+        restored.finish_reason.clone(),
         Some(completion::FinishReason::Stop)
     );
 }

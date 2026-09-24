@@ -105,7 +105,10 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
     assert_eq!(buffered.model, streamed.model);
     assert_eq!(
         text_of(&buffered.choice),
@@ -116,7 +119,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
     assert_eq!(buffered.usage.output_tokens, Some(24));
     assert_eq!(buffered.usage.total_tokens, Some(66));
     assert_eq!(
-        buffered.finish_reason(),
+        buffered.finish_reason.clone(),
         Some(crate::completion::FinishReason::Length)
     );
     assert_eq!(buffered.model.as_deref(), Some("qwen3:4b"));

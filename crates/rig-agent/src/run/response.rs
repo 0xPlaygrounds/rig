@@ -8,6 +8,7 @@
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
 use rig_core::error::ProviderError;
+use rig_core::id::{MessageId, RequestId, ResponseId};
 use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
 
@@ -23,13 +24,13 @@ pub struct CompletionCall {
     pub usage: Usage,
     /// Provider-assigned assistant message ID for this call, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
+    pub message_id: Option<MessageId>,
     /// Provider-assigned response-scoped ID for this call, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Transport request ID for this call, or `None` if the provider reported none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
     /// Why this call stopped generating, or `None` if unreported.
     /// Retained per call so callers can identify which attempt was truncated.
     #[serde(default, skip_serializing_if = "Option::is_none")]

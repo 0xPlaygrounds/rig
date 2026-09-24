@@ -1,5 +1,6 @@
-//! Non-cryptographic random identifiers, process-local run counters, and
-//! caller-supplied conversation keys. Do not use generated IDs as secrets.
+//! Non-cryptographic random identifiers, process-local run counters,
+//! caller-supplied conversation keys, and the non-empty names and identifiers
+//! a response carries ([`Id`]). Do not use generated IDs as secrets.
 //!
 //! ```
 //! let id = rig_core::id::generate();
@@ -8,6 +9,10 @@
 
 /// URL-safe ASCII alphabet for random identifiers.
 const ALPHABET: &[u8; 64] = b"_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+mod non_empty;
+
+pub use non_empty::{EmptyId, Id, MessageId, ModelName, ProviderName, RequestId, ResponseId, kind};
 
 /// Number of characters returned by [`generate`].
 const DEFAULT_LEN: usize = 21;

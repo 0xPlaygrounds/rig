@@ -51,10 +51,10 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             "test",
             serde_json::json!({}),
         );
-        response.message_id = Some("message".into());
-        response.response_id = Some("response".into());
-        response.provider_request_id = Some("request".into());
-        response.model = Some("image-model".into());
+        response.message_id = Some("message".try_into().expect("a non-empty id"));
+        response.response_id = Some("response".try_into().expect("a non-empty id"));
+        response.provider_request_id = Some("request".try_into().expect("a non-empty id"));
+        response.model = Some("image-model".try_into().expect("a non-empty id"));
         let expected = serde_json::to_value(&response).expect("response JSON");
         let reply = Reply::Outcome(Ok(Outcome::Completion(response))).observed(
             true,
@@ -678,7 +678,7 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
     }
     let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
         .with_reasoning_issuer("anthropic");
-    let Ok(Outcome::Completion(response)) = finish_unary(&mut accumulator, None, terminal) else {
+    let Ok(Outcome::Completion(response)) = finish_unary(&mut accumulator, None, &terminal) else {
         panic!("a completion outcome");
     };
     let issuers: Vec<_> = response

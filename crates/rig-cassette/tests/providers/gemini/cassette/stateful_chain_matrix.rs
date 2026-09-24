@@ -373,7 +373,7 @@ async fn interactions_chain_with_tool_call() {
                                     "record alpha: code {CODE}"
                                 ))],
                             )))
-                            .additional_params(params(Some(first_id)))
+                            .additional_params(params(Some(first_id.into())))
                             .build(),
                     )
                     .await
@@ -387,7 +387,7 @@ async fn interactions_chain_with_tool_call() {
                             .completion_request(
                                 "Repeat the code you reported, exactly, and nothing else.",
                             )
-                            .additional_params(params(Some(second_id)))
+                            .additional_params(params(Some(second_id.into())))
                             .build(),
                     )
                     .await
@@ -489,7 +489,7 @@ async fn file_uri_chain() {
                 let history = vec![
                     document,
                     Message::Assistant {
-                        id: first.message_id.clone(),
+                        id: first.message_id.clone().map(String::from),
                         content: first.choice.clone(),
                     },
                     Message::user(

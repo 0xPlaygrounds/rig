@@ -12,6 +12,7 @@
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
+use crate::id::{ModelName, RequestId, ResponseId};
 use crate::json_utils;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
@@ -35,13 +36,13 @@ pub struct TranscriptionResponse {
     /// Provider-reported model identifier, when the wire response named one.
     /// This is the model the provider says answered, not the model requested.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Transport request ID from HTTP headers, or `None` when unreported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
     /// Provider response document. Defaults to null until populated.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
@@ -49,7 +50,7 @@ pub struct TranscriptionResponse {
 
 impl TranscriptionResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
+    /// unset.
     pub fn new(text: impl Into<String>, provider: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -73,8 +74,6 @@ impl TranscriptionResponse {
         }
     }
 }
-
-crate::provider_response::modality_response_metadata_setters!(TranscriptionResponse);
 
 /// Converts provider payloads into normalized transcription responses.
 /// Implementations must attribute the response to the supplied provider name.

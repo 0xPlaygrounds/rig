@@ -203,14 +203,16 @@ fn terminal_record(
         .first()
         .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
 
-    Ok(streaming::StreamFinal::new(
-        super::completion::PROVIDER_NAME,
-        usage,
-        serde_json::to_value(response)?,
-    )
-    .with_optional_finish_reason(finish_reason)
-    .with_optional_response_id(Some(response.response_id.clone()).filter(|id| !id.is_empty()))
-    .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty()))
+    Ok(streaming::StreamFinal {
+        finish_reason,
+        response_id: rig_core::id::ResponseId::new(response.response_id.clone()).ok(),
+        model: rig_core::id::ModelName::new(response.model_version.clone()).ok(),
+        ..streaming::StreamFinal::new(
+            super::completion::PROVIDER_NAME,
+            usage,
+            serde_json::to_value(response)?,
+        )
+    }
     .with_reasoning_issuer(super::completion::REASONING_ISSUER))
 }
 

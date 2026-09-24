@@ -287,15 +287,18 @@ impl Decoder<Completion> for InteractionsDecoder {
                 let finish_reason = interaction
                     .and_then(|interaction| interaction.status.as_ref())
                     .map(map_interaction_status);
-                let message_id = interaction
-                    .map(|interaction| interaction.id.as_str())
-                    .filter(|id| !id.is_empty());
-                out.final_record(
-                    streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
-                        .with_optional_finish_reason(finish_reason)
-                        .with_optional_response_id(message_id)
-                        .with_optional_model(native.model_version.as_deref()),
-                );
+                let response_id = interaction.and_then(|interaction| {
+                    crate::id::ResponseId::new(interaction.id.as_str()).ok()
+                });
+                out.final_record(streaming::StreamFinal {
+                    finish_reason,
+                    response_id,
+                    model: native
+                        .model_version
+                        .as_deref()
+                        .and_then(|model| crate::id::ModelName::new(model).ok()),
+                    ..streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
+                });
             }
             event @ InteractionSseEvent::Error { .. } => {
                 // Preserve modeled error fields without inventing an HTTP status

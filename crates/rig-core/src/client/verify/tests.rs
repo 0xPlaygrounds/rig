@@ -43,7 +43,9 @@ fn a_rejected_verification_keeps_its_reply() {
                 body.to_string(),
             )),
         ] {
-            let error = authentication(error.with_provider_request_id(Some("req_1".into())));
+            let error = authentication(
+                error.with_provider_request_id(Some("req_1".try_into().expect("a non-empty id"))),
+            );
             let ProviderError::InvalidAuthentication(response) = &error else {
                 panic!("{status} is a verdict on the credential: {error:?}");
             };

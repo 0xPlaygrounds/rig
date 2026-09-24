@@ -19,21 +19,23 @@ fn completion_response_without_request_id_deserializes() {
 /// The identity accessor mirrors the flat fields exactly.
 #[test]
 fn identity_accessor_mirrors_flat_fields() {
-    let response = CompletionResponse::new(
-        vec![crate::completion::AssistantContent::text("hi")],
-        Usage::default(),
-        "test",
-        serde_json::json!({}),
-    )
-    .with_message_id("msg_1")
-    .with_response_id("resp_1")
-    .with_provider_request_id("req_1");
+    let response = CompletionResponse {
+        message_id: Some("msg_1".try_into().expect("a non-empty id")),
+        response_id: Some("resp_1".try_into().expect("a non-empty id")),
+        provider_request_id: Some("req_1".try_into().expect("a non-empty id")),
+        ..CompletionResponse::new(
+            vec![crate::completion::AssistantContent::text("hi")],
+            Usage::default(),
+            "test",
+            serde_json::json!({}),
+        )
+    };
     assert_eq!(
         response.identity(),
         ResponseIdentity {
-            message_id: Some("msg_1".into()),
-            response_id: Some("resp_1".into()),
-            provider_request_id: Some("req_1".into()),
+            message_id: Some("msg_1".try_into().expect("a non-empty id")),
+            response_id: Some("resp_1".try_into().expect("a non-empty id")),
+            provider_request_id: Some("req_1".try_into().expect("a non-empty id")),
         }
     );
 }

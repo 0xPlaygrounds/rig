@@ -165,21 +165,27 @@ async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
 async fn stream_identity_falls_back_to_the_terminal_records_ids() {
     let mut stream = scripted(|out| {
         out.text("done");
-        out.final_record(
-            mock_final_with_total_tokens(1)
-                .with_message_id("msg_terminal")
-                .with_response_id("resp_1")
-                .with_provider_request_id("req_1"),
-        );
+        out.final_record(StreamFinal {
+            message_id: Some("msg_terminal".try_into().expect("a non-empty id")),
+            response_id: Some("resp_1".try_into().expect("a non-empty id")),
+            provider_request_id: Some("req_1".try_into().expect("a non-empty id")),
+            ..mock_final_with_total_tokens(1)
+        });
     });
     while stream.next().await.is_some() {}
 
     assert_eq!(
         stream.identity(),
         crate::completion::ResponseIdentity {
-            message_id: Some("msg_terminal".to_string()),
-            response_id: Some("resp_1".to_string()),
-            provider_request_id: Some("req_1".to_string()),
+            message_id: Some(
+                crate::id::MessageId::new("msg_terminal".to_string()).expect("a non-empty id")
+            ),
+            response_id: Some(
+                crate::id::ResponseId::new("resp_1".to_string()).expect("a non-empty id")
+            ),
+            provider_request_id: Some(
+                crate::id::RequestId::new("req_1".to_string()).expect("a non-empty id")
+            ),
         }
     );
 }
@@ -191,19 +197,23 @@ async fn stream_identity_prefers_an_explicit_message_id_event() {
     let mut stream = scripted(|out| {
         out.message_id("msg_event");
         out.text("done");
-        out.final_record(
-            mock_final_with_total_tokens(1)
-                .with_message_id("msg_terminal")
-                .with_response_id("resp_1"),
-        );
+        out.final_record(StreamFinal {
+            message_id: Some("msg_terminal".try_into().expect("a non-empty id")),
+            response_id: Some("resp_1".try_into().expect("a non-empty id")),
+            ..mock_final_with_total_tokens(1)
+        });
     });
     while stream.next().await.is_some() {}
 
     assert_eq!(
         stream.identity(),
         crate::completion::ResponseIdentity {
-            message_id: Some("msg_event".to_string()),
-            response_id: Some("resp_1".to_string()),
+            message_id: Some(
+                crate::id::MessageId::new("msg_event".to_string()).expect("a non-empty id")
+            ),
+            response_id: Some(
+                crate::id::ResponseId::new("resp_1".to_string()).expect("a non-empty id")
+            ),
             provider_request_id: None,
         }
     );
@@ -321,11 +331,11 @@ async fn finish_derives_usage_from_final_response() {
 async fn finish_carries_the_terminal_request_id() {
     let mut stream = scripted(|out| {
         out.text("hi");
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
-                .with_response_id("resp_1")
-                .with_provider_request_id("req_transport_1"),
-        );
+        out.final_record(StreamFinal {
+            response_id: Some("resp_1".try_into().expect("a non-empty id")),
+            provider_request_id: Some("req_transport_1".try_into().expect("a non-empty id")),
+            ..StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
+        });
     });
     while stream.next().await.is_some() {}
 
@@ -396,10 +406,10 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
     let mut stream = scripted(|out| {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
         out.tool_call(id, end);
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
-                .with_finish_reason(FinishReason::Stop),
-        );
+        out.final_record(StreamFinal {
+            finish_reason: Some(FinishReason::Stop),
+            ..StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
+        });
     });
     while stream.next().await.is_some() {}
 
@@ -416,10 +426,10 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
 async fn a_stop_without_tool_calls_is_left_alone() {
     let mut stream = scripted(|out| {
         out.text("done");
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
-                .with_finish_reason(FinishReason::Stop),
-        );
+        out.final_record(StreamFinal {
+            finish_reason: Some(FinishReason::Stop),
+            ..StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
+        });
     });
     while stream.next().await.is_some() {}
 
@@ -434,22 +444,24 @@ async fn a_stop_without_tool_calls_is_left_alone() {
 
 #[test]
 fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
-    let final_record = StreamFinal::new(
-        "example",
-        Usage {
-            input_tokens: Some(4),
-            output_tokens: Some(6),
-            total_tokens: Some(10),
-            cached_input_tokens: Some(1),
-            cache_creation_input_tokens: Some(2),
-            tool_use_prompt_tokens: Some(3),
-            reasoning_tokens: Some(4),
-        },
-        serde_json::json!({}),
-    )
-    .with_finish_reason(FinishReason::Other("future_reason".to_owned()))
-    .with_message_id("msg_123")
-    .with_model("provider-model-v2");
+    let final_record = StreamFinal {
+        finish_reason: Some(FinishReason::Other("future_reason".to_owned())),
+        message_id: Some("msg_123".try_into().expect("a non-empty id")),
+        model: Some("provider-model-v2".try_into().expect("a non-empty id")),
+        ..StreamFinal::new(
+            "example",
+            Usage {
+                input_tokens: Some(4),
+                output_tokens: Some(6),
+                total_tokens: Some(10),
+                cached_input_tokens: Some(1),
+                cache_creation_input_tokens: Some(2),
+                tool_use_prompt_tokens: Some(3),
+                reasoning_tokens: Some(4),
+            },
+            serde_json::json!({}),
+        )
+    };
 
     let encoded = serde_json::to_value(StreamEvent::Final(final_record.clone()))
         .expect("serialize final item");
@@ -476,23 +488,24 @@ fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
     );
 }
 
-/// Deserialization funnels through `new` + the setters, so the invariants
-/// hold on persisted values too: a `""` identifier comes back as `None`.
+/// An empty identifier is not a valid value: loading a terminal record
+/// refuses it.
 #[test]
-fn deserializing_stream_final_filters_empty_identifiers() {
-    let decoded = serde_json::from_value::<StreamFinal>(serde_json::json!({
-        "usage": Usage::default(),
-        "message_id": "",
-        "response_id": "",
-        "model": "",
-        "provider": "example",
-        "raw": {},
-    }))
-    .expect("deserialize terminal record");
-
-    assert_eq!(decoded.message_id, None);
-    assert_eq!(decoded.response_id, None);
-    assert_eq!(decoded.model, None);
+fn deserializing_stream_final_refuses_empty_identifiers() {
+    for field in ["message_id", "response_id", "model"] {
+        let mut record = serde_json::json!({
+            "usage": Usage::default(),
+            "provider": "example",
+            "raw": {},
+        });
+        record[field] = serde_json::json!("");
+        let error = serde_json::from_value::<StreamFinal>(record)
+            .expect_err("an empty identifier is refused");
+        assert!(
+            error.to_string().contains("must not be empty"),
+            "{field}: {error}"
+        );
+    }
 }
 
 /// A provider-native terminal type standing in for the real ones: it
@@ -559,10 +572,10 @@ async fn finish_reason_is_reconciled_with_raw_attached() {
         out.tool_call(id, end);
         let usage = Usage::default();
         let raw = serde_json::to_value(usage).expect("serialize usage");
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, usage, raw.clone())
-                .with_finish_reason(FinishReason::Stop),
-        );
+        out.final_record(StreamFinal {
+            finish_reason: Some(FinishReason::Stop),
+            ..StreamFinal::new(TEST_PROVIDER, usage, raw.clone())
+        });
     })));
     let final_record = drain(events).await;
     assert_eq!(final_record.finish_reason, Some(FinishReason::ToolCalls));
@@ -583,8 +596,10 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
         "usage": {"total_tokens": 8},
         "provider_only": "kept"
     });
-    let final_record =
-        StreamFinal::new("example", Usage::default(), payload.clone()).with_message_id("msg_123");
+    let final_record = StreamFinal {
+        message_id: Some("msg_123".try_into().expect("a non-empty id")),
+        ..StreamFinal::new("example", Usage::default(), payload.clone())
+    };
 
     let encoded = serde_json::to_value(&final_record).expect("serialize");
     assert_eq!(encoded["raw"], payload);
@@ -613,23 +628,25 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
 /// populated terminal record round-trips to byte-identical JSON.
 #[test]
 fn stream_final_serde_round_trip_is_identity() {
-    let final_record = StreamFinal::new(
-        "example",
-        Usage {
-            input_tokens: Some(4),
-            output_tokens: Some(6),
-            total_tokens: Some(10),
-            cached_input_tokens: Some(1),
-            cache_creation_input_tokens: Some(2),
-            tool_use_prompt_tokens: Some(3),
-            reasoning_tokens: Some(4),
-        },
-        serde_json::json!({}),
-    )
-    .with_finish_reason(FinishReason::Stop)
-    .with_message_id("msg_123")
-    .with_response_id("resp_456")
-    .with_model("provider-model-v2");
+    let final_record = StreamFinal {
+        finish_reason: Some(FinishReason::Stop),
+        message_id: Some("msg_123".try_into().expect("a non-empty id")),
+        response_id: Some("resp_456".try_into().expect("a non-empty id")),
+        model: Some("provider-model-v2".try_into().expect("a non-empty id")),
+        ..StreamFinal::new(
+            "example",
+            Usage {
+                input_tokens: Some(4),
+                output_tokens: Some(6),
+                total_tokens: Some(10),
+                cached_input_tokens: Some(1),
+                cache_creation_input_tokens: Some(2),
+                tool_use_prompt_tokens: Some(3),
+                reasoning_tokens: Some(4),
+            },
+            serde_json::json!({}),
+        )
+    };
 
     let encoded = serde_json::to_value(&final_record).expect("serialize terminal record");
 

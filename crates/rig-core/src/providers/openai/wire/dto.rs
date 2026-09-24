@@ -368,15 +368,23 @@ where
 {
     /// Normalize usage and terminal metadata under `provider`, retaining `raw`.
     pub fn into_stream_final(self, provider: &str, raw: serde_json::Value) -> StreamFinal {
-        StreamFinal::new(
-            provider,
-            self.usage.map(Into::into).unwrap_or_default(),
-            raw,
-        )
-        .with_optional_finish_reason(self.finish_reason)
-        .with_optional_response_id(self.response_id)
-        .with_optional_provider_request_id(self.provider_request_id)
-        .with_optional_model(self.model)
+        StreamFinal {
+            finish_reason: self.finish_reason,
+            response_id: self
+                .response_id
+                .and_then(|id| crate::id::ResponseId::new(id).ok()),
+            provider_request_id: self
+                .provider_request_id
+                .and_then(|id| crate::id::RequestId::new(id).ok()),
+            model: self
+                .model
+                .and_then(|model| crate::id::ModelName::new(model).ok()),
+            ..StreamFinal::new(
+                provider,
+                self.usage.map(Into::into).unwrap_or_default(),
+                raw,
+            )
+        }
     }
 }
 

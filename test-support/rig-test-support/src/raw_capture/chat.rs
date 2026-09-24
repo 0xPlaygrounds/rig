@@ -74,7 +74,7 @@ pub fn assert_reproduces_body(
         "{context}: model"
     );
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(recorded_chat_finish_reason(body)),
         "{context}: finish reason"
     );
@@ -128,7 +128,7 @@ pub fn assert_native_matches_normalized(
         .first()
         .expect("the reply carries at least one choice");
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(native_finish_reason(native_choice.finish_reason.as_str())),
         "{context}: the normalized reason is the native one"
     );
@@ -202,8 +202,12 @@ pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
         *raw,
         "the captured value is the typed terminal serialized, nothing more"
     );
-    assert_eq!(typed.response_id, terminal.response_id, "response id");
-    assert_eq!(typed.model, terminal.model, "model");
+    assert_eq!(
+        typed.response_id.as_deref(),
+        terminal.response_id.as_deref(),
+        "response id"
+    );
+    assert_eq!(typed.model.as_deref(), terminal.model.as_deref(), "model");
     assert_eq!(typed.finish_reason, terminal.finish_reason, "finish reason");
     let usage = typed
         .usage

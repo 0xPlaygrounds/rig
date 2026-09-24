@@ -19,6 +19,7 @@ use futures::{Stream, StreamExt};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framing, NdjsonFramer, SseFramer};
 use crate::http_client::{self, HttpClientExt};
+use crate::id::RequestId;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterSlot};
 use crate::providers::internal::wire::WireEvent;
 use crate::wasm_compat::WasmCompatSend;
@@ -693,7 +694,7 @@ where
 /// already attached is never replaced: it saw the reply that carried it.
 fn stamped<W: Wire>(
     item: Result<Event<W>, ProviderError>,
-    request_id: &Option<String>,
+    request_id: &Option<RequestId>,
     span: &tracing::Span,
 ) -> Result<Event<W>, ProviderError> {
     match item {
@@ -733,7 +734,7 @@ struct Sent {
     status: http::StatusCode,
     headers: http::HeaderMap,
     body: Bytes,
-    provider_request_id: Option<String>,
+    provider_request_id: Option<RequestId>,
 }
 
 /// Sends a buffered request, preserving non-success response details and IDs.
@@ -806,7 +807,7 @@ where
 
 /// The provider's transport request id, when it names such a header and the
 /// reply carries a non-empty value.
-fn request_id_from(headers: &http::HeaderMap, header: Option<&str>) -> Option<String> {
+fn request_id_from(headers: &http::HeaderMap, header: Option<&str>) -> Option<RequestId> {
     crate::providers::internal::request_id_from_headers(headers, header)
 }
 

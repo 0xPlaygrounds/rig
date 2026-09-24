@@ -858,7 +858,7 @@ mod terminal_emission {
                     .await
                     .expect("a terminal that cut the turn short legalizes an empty choice");
             assert!(response.choice.is_empty());
-            assert_eq!(response.finish_reason(), Some(normalized));
+            assert_eq!(response.finish_reason.clone(), Some(normalized));
             assert_eq!(response.usage.output_tokens, Some(32));
         }
 

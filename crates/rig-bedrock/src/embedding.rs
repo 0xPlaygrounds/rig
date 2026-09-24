@@ -128,9 +128,11 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 }
 
                 match first_error {
-                    None => Ok(embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
-                        .with_usage(usage)
-                        .with_raw(serde_json::Value::Array(raw))),
+                    None => Ok(embeddings::EmbeddingResponse {
+                        usage,
+                        raw: serde_json::Value::Array(raw),
+                        ..embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
+                    }),
                     Some(err) => Err(ProviderError::Response(err.to_string())),
                 }
             },

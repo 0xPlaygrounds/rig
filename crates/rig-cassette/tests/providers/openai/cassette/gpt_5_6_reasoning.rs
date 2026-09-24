@@ -271,7 +271,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredResponseTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: response.message_id,
+                        id: response.message_id.map(String::from),
                         content: response.choice,
                     },
                     raw_response,
@@ -399,7 +399,8 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 // Same precedence the normalized stream applies: an explicit
                 // message-id block wins, and the terminal record only fills a
                 // gap it left.
-                let message_id = message_id.or_else(|| final_record.message_id.clone());
+                let message_id =
+                    message_id.or_else(|| final_record.message_id.clone().map(String::from));
                 assert_eq!(
                     final_response.reasoning_context.as_deref(),
                     Some("all_turns")

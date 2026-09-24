@@ -118,7 +118,7 @@ impl AgentHook for ExtractorResponseCapture {
             prompt,
             response.choice.clone(),
             response.usage,
-            response.message_id.clone(),
+            response.message_id.clone().map(String::from),
         ));
         OutcomeAction::proceed()
     }

@@ -12,6 +12,7 @@
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
+use crate::id::{ModelName, RequestId, ResponseId};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,13 +32,13 @@ pub struct AudioGenerationResponse {
     pub provider: String,
     /// Provider-reported model identifier, when the wire response named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Transport request ID from HTTP headers, or `None` when unreported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
     /// Provider response metadata. May be null for byte-only responses or
     /// responses constructed without metadata; audio bytes remain in [`Self::audio`].
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
@@ -46,7 +47,7 @@ pub struct AudioGenerationResponse {
 
 impl AudioGenerationResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
+    /// unset.
     pub fn new(audio: Vec<u8>, provider: impl Into<String>) -> Self {
         Self {
             audio,
@@ -70,8 +71,6 @@ impl AudioGenerationResponse {
         }
     }
 }
-
-crate::provider_response::modality_response_metadata_setters!(AudioGenerationResponse);
 
 /// Normalizes provider audio payloads, attributing the response to the supplied
 /// provider name.

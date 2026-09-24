@@ -154,7 +154,7 @@ async fn raw_roundtrips_streaming_completion_response() {
             );
 
             // The typed value agrees with the normalized terminal next to it.
-            assert_eq!(typed.model_version, terminal.model);
+            assert_eq!(typed.model_version.as_deref(), terminal.model.as_deref());
             assert_eq!(
                 typed
                     .interaction

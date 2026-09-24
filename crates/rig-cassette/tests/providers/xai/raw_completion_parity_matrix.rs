@@ -118,7 +118,7 @@ async fn raw_normalize_reproduces_completion() {
     // Where the wire makes the two turns equal, the two agree.
     assert_eq!(second.provider, first.provider);
     assert_eq!(second.model, first.model);
-    assert_eq!(second.finish_reason(), first.finish_reason());
+    assert_eq!(second.finish_reason.clone(), first.finish_reason.clone());
     assert!(first.identity().provider_request_id.is_some());
     assert!(second.identity().provider_request_id.is_some());
 }

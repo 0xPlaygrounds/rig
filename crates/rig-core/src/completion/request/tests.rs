@@ -1,4 +1,5 @@
 use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
+use crate::id::{MessageId, ModelName, ResponseId};
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 
@@ -162,23 +163,25 @@ fn tool_call_choice() -> Vec<AssistantContent> {
 
 #[test]
 fn normalized_response_round_trips_through_serde() {
-    let response = CompletionResponse::new(
-        vec![AssistantContent::text("hello")],
-        Usage {
-            input_tokens: Some(3),
-            output_tokens: Some(2),
-            total_tokens: Some(5),
-            cached_input_tokens: Some(1),
-            cache_creation_input_tokens: Some(0),
-            tool_use_prompt_tokens: Some(0),
-            reasoning_tokens: Some(1),
-        },
-        "example",
-        serde_json::json!({}),
-    )
-    .with_message_id("msg_123")
-    .with_finish_reason(FinishReason::Stop)
-    .with_model("provider-model-v2");
+    let response = CompletionResponse {
+        message_id: Some(MessageId::new("msg_123").unwrap()),
+        finish_reason: Some(FinishReason::Stop),
+        model: Some(ModelName::new("provider-model-v2").unwrap()),
+        ..CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage {
+                input_tokens: Some(3),
+                output_tokens: Some(2),
+                total_tokens: Some(5),
+                cached_input_tokens: Some(1),
+                cache_creation_input_tokens: Some(0),
+                tool_use_prompt_tokens: Some(0),
+                reasoning_tokens: Some(1),
+            },
+            "example",
+            serde_json::json!({}),
+        )
+    };
 
     let encoded = serde_json::to_value(&response).expect("serialize response");
     let decoded =
@@ -190,11 +193,10 @@ fn normalized_response_round_trips_through_serde() {
     );
 }
 
-/// Serde must not be a back door around `reconcile_with_output`: a
-/// persisted `"stop"` next to a tool-call choice deserializes as
-/// `ToolCalls`, exactly as if it had gone through the setter.
+/// Loading reads the persisted finish reason as written: reconciliation
+/// belongs to the fold that built the response, not to deserialization.
 #[test]
-fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
+fn deserializing_keeps_the_persisted_finish_reason() {
     let mut encoded = serde_json::to_value(CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
@@ -207,30 +209,29 @@ fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
     let decoded =
         serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");
 
-    assert_eq!(decoded.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(decoded.finish_reason, Some(FinishReason::Stop));
 }
 
-/// Serde must not be a back door around the empty-string filtering either:
-/// a persisted `""` identifier deserializes as `None`.
+/// An empty identifier is not a valid value: loading refuses it.
 #[test]
-fn deserializing_empty_identifiers_yields_none() {
-    let mut encoded = serde_json::to_value(CompletionResponse::new(
-        vec![AssistantContent::text("hello")],
-        Usage::default(),
-        "example",
-        serde_json::json!({}),
-    ))
-    .expect("serialize response");
-    encoded["message_id"] = serde_json::json!("");
-    encoded["response_id"] = serde_json::json!("");
-    encoded["model"] = serde_json::json!("");
+fn deserializing_an_empty_identifier_is_refused() {
+    for field in ["message_id", "response_id", "model"] {
+        let mut encoded = serde_json::to_value(CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage::default(),
+            "example",
+            serde_json::json!({}),
+        ))
+        .expect("serialize response");
+        encoded[field] = serde_json::json!("");
 
-    let decoded =
-        serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");
-
-    assert_eq!(decoded.message_id, None);
-    assert_eq!(decoded.response_id, None);
-    assert_eq!(decoded.model, None);
+        let error = serde_json::from_value::<CompletionResponse>(encoded)
+            .expect_err("an empty identifier is refused");
+        assert!(
+            error.to_string().contains("must not be empty"),
+            "{field}: {error}"
+        );
+    }
 }
 
 #[test]
@@ -244,39 +245,10 @@ fn unknown_finish_reason_survives_a_serde_round_trip_verbatim() {
 
 #[test]
 fn stop_with_a_tool_call_reconciles_to_tool_calls() {
-    let response = CompletionResponse::new(
-        tool_call_choice(),
-        Usage::default(),
-        "example",
-        serde_json::json!({}),
-    )
-    .with_finish_reason(FinishReason::Stop);
-
-    assert_eq!(response.finish_reason, Some(FinishReason::ToolCalls));
-}
-
-/// The `Option` setter is what provider conversions actually reach for, so
-/// it must reconcile identically — a provider holding an `Option` must not
-/// have to choose between ergonomics and correctness.
-#[test]
-fn optional_setter_reconciles_exactly_like_the_plain_setter() {
-    let via_option = CompletionResponse::new(
-        tool_call_choice(),
-        Usage::default(),
-        "example",
-        serde_json::json!({}),
-    )
-    .with_optional_finish_reason(Some(FinishReason::Stop));
-    let via_plain = CompletionResponse::new(
-        tool_call_choice(),
-        Usage::default(),
-        "example",
-        serde_json::json!({}),
-    )
-    .with_finish_reason(FinishReason::Stop);
-
-    assert_eq!(via_option.finish_reason, Some(FinishReason::ToolCalls));
-    assert_eq!(via_option.finish_reason, via_plain.finish_reason);
+    assert_eq!(
+        FinishReason::Stop.reconcile_with_output(true),
+        FinishReason::ToolCalls
+    );
 }
 
 #[test]
@@ -288,29 +260,16 @@ fn reconciliation_only_upgrades_a_natural_stop() {
         FinishReason::ContentFilter,
         FinishReason::Other("provider_specific".to_owned()),
     ] {
-        let response = CompletionResponse::new(
-            tool_call_choice(),
-            Usage::default(),
-            "example",
-            serde_json::json!({}),
-        )
-        .with_finish_reason(reason.clone());
-
-        assert_eq!(response.finish_reason, Some(reason));
+        assert_eq!(reason.clone().reconcile_with_output(true), reason);
     }
 }
 
 #[test]
 fn reconciliation_leaves_a_stop_without_tool_calls_alone() {
-    let response = CompletionResponse::new(
-        vec![AssistantContent::text("done")],
-        Usage::default(),
-        "example",
-        serde_json::json!({}),
-    )
-    .with_finish_reason(FinishReason::Stop);
-
-    assert_eq!(response.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(
+        FinishReason::Stop.reconcile_with_output(false),
+        FinishReason::Stop
+    );
 }
 
 #[test]
@@ -398,13 +357,15 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         "system_fingerprint": "fp_abc",
         "choices": [{"finish_reason": "stop"}]
     });
-    let response = CompletionResponse::new(
-        vec![AssistantContent::text("hello")],
-        Usage::default(),
-        "example",
-        payload.clone(),
-    )
-    .with_response_id("chatcmpl-1");
+    let response = CompletionResponse {
+        response_id: Some(ResponseId::new("chatcmpl-1").unwrap()),
+        ..CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage::default(),
+            "example",
+            payload.clone(),
+        )
+    };
 
     let encoded = serde_json::to_value(&response).expect("serialize response");
     assert_eq!(encoded["raw"], payload);

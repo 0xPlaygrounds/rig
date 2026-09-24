@@ -915,7 +915,7 @@ async fn test_completion_response_carries_normalized_metadata() {
     assert_eq!(response.response_id.as_deref(), Some("interaction-meta"));
     assert_eq!(response.message_id, None);
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(crate::completion::FinishReason::Length)
     );
 }
@@ -938,7 +938,7 @@ async fn test_completion_response_upgrades_completed_to_tool_calls() {
     let response = fold_resource(&interaction).await;
 
     assert_eq!(
-        response.finish_reason(),
+        response.finish_reason.clone(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
     assert_eq!(response.model, None);
@@ -1287,7 +1287,10 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
     assert_eq!(buffered.model.as_deref(), Some("gemini-3-flash-preview"));
     assert_eq!(buffered.usage.output_tokens, Some(34));
     assert_eq!(streamed.usage.output_tokens, Some(32));
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.finish_reason.clone(),
+        streamed.finish_reason.clone()
+    );
     assert_eq!(
         buffered.choice.last(),
         Some(&message::AssistantContent::text(

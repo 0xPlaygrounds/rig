@@ -64,7 +64,7 @@ impl Operation for Completion {
         request.model.as_deref()
     }
 
-    fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {
+    fn stamp_request_id(event: &mut Self::Event, request_id: &Option<crate::id::RequestId>) {
         // The terminal's own id wins: it saw the reply that carried it.
         if let StreamEvent::Final(terminal) = event
             && terminal.provider_request_id.is_none()
@@ -149,7 +149,7 @@ impl Sink<Completion> for AdapterOutput {
 pub struct CompletionFold {
     accumulator: BlockAccumulator,
     terminal: Option<StreamFinal>,
-    message_id: Option<String>,
+    message_id: Option<crate::id::MessageId>,
     /// Only written by the fold step; the response's provider is the wire's.
     provider: String,
 }
@@ -180,7 +180,7 @@ impl Fold<Completion> for CompletionFold {
             .map_or(reply.provider.clone(), |terminal| {
                 terminal.issuer().to_owned()
             });
-        let response = crate::streaming::fold_finish(
+        let mut response = crate::streaming::fold_finish(
             self.accumulator,
             self.terminal.as_ref(),
             self.message_id,
@@ -190,10 +190,9 @@ impl Fold<Completion> for CompletionFold {
         );
         // The terminal's own id wins; the reply headers only fill a gap.
         if response.provider_request_id.is_none() {
-            Ok(response.with_optional_provider_request_id(reply.provider_request_id))
-        } else {
-            Ok(response)
+            response.provider_request_id = reply.provider_request_id;
         }
+        Ok(response)
     }
 }
 

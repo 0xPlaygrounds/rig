@@ -73,7 +73,7 @@ async fn raw_try_into_matches_completion() {
 
     // Across two live requests: everything the contract names, except that
     // each request gets its own generation id.
-    assert_eq!(first.finish_reason(), second.finish_reason());
+    assert_eq!(first.finish_reason.clone(), second.finish_reason.clone());
     assert_eq!(first.model, second.model);
     assert_eq!(
         first.model, None,
@@ -124,7 +124,7 @@ async fn raw_try_into_matches_completion() {
         "the recorded turn completed naturally in Cohere's vocabulary"
     );
     assert_eq!(
-        second.finish_reason(),
+        second.finish_reason.clone(),
         Some(FinishReason::Stop),
         "and the decoder maps COMPLETE onto a natural stop"
     );

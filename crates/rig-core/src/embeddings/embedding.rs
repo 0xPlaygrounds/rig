@@ -13,6 +13,7 @@
 use crate::error::ProviderError;
 use crate::{
     completion::{ResponseIdentity, Usage},
+    id::{ModelName, RequestId, ResponseId},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
@@ -95,13 +96,13 @@ pub struct EmbeddingResponse {
     pub provider: String,
     /// Provider-reported model identifier, when the wire response named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Transport request identifier from HTTP response headers, or `None` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
     /// Provider response payload, or null when no raw payload was attached.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
@@ -109,7 +110,7 @@ pub struct EmbeddingResponse {
 
 impl EmbeddingResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
+    /// unset.
     pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
         Self {
             embeddings,
@@ -133,8 +134,6 @@ impl EmbeddingResponse {
         }
     }
 }
-
-crate::provider_response::modality_response_metadata_setters!(EmbeddingResponse);
 
 /// Normalizes embedding payloads using the supplied provider name and input documents.
 pub trait NormalizeEmbeddingResponse {
@@ -161,13 +160,13 @@ pub struct ImageEmbeddingResponse {
     pub provider: String,
     /// Provider-reported model identifier, when the wire response named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Transport request identifier from HTTP response headers, or `None` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
     /// Provider response payload, or null when no raw payload was attached.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
@@ -175,7 +174,7 @@ pub struct ImageEmbeddingResponse {
 
 impl ImageEmbeddingResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
+    /// unset.
     pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
         Self {
             embeddings,
@@ -199,8 +198,6 @@ impl ImageEmbeddingResponse {
         }
     }
 }
-
-crate::provider_response::modality_response_metadata_setters!(ImageEmbeddingResponse);
 
 /// Trait for embedding models that can generate embeddings for images.
 pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {

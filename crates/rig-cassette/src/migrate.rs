@@ -112,6 +112,30 @@ fn effect_log(mut log: Value) -> Result<(Value, Migration), MigrateError> {
     }
     if let Some(header) = log.get_mut("header").and_then(Value::as_object_mut) {
         header.insert("format".to_owned(), Value::from(LOG_FORMAT));
+        if let Some(errors) = header
+            .get_mut("stream_errors")
+            .and_then(Value::as_object_mut)
+        {
+            for error in errors
+                .values_mut()
+                .filter_map(Value::as_array_mut)
+                .flatten()
+            {
+                if let Some(report) = error.get_mut("error") {
+                    report_to_current(report);
+                }
+            }
+        }
+    }
+    if let Some(records) = log.get_mut("records").and_then(Value::as_array_mut) {
+        for record in records {
+            if let Some(outcome) = record.get_mut("outcome") {
+                answer_to_current(outcome);
+            }
+            if let Some(events) = record.get_mut("events").and_then(Value::as_array_mut) {
+                events.iter_mut().for_each(event_to_current);
+            }
+        }
     }
     // Every domain value now reads through its current type and writes the
     // current form: absent optional fields are omitted.
@@ -172,9 +196,26 @@ fn components_to_current(
                 retype::<HandlerDescriptor>(value, "descriptor", &path)?;
             }
             "rig_ecs::bus::effect::EffectOutcome" => {
+                answer_to_current(value);
                 *value = typed_value::<Result<Outcome, ErrorReport>>(value.take(), &path)?;
             }
             "rig_ecs::bus::effect::Streamed" => {
+                if let Some(events) = value.get_mut("events").and_then(Value::as_array_mut) {
+                    events.iter_mut().for_each(event_to_current);
+                }
+                if let Some(outcome) = value
+                    .get_mut("outcome")
+                    .filter(|outcome| !outcome.is_null())
+                {
+                    answer_to_current(outcome);
+                }
+                if let Some(errors) = value.get_mut("errors").and_then(Value::as_array_mut) {
+                    for error in errors {
+                        if let Some(report) = error.get_mut(1) {
+                            report_to_current(report);
+                        }
+                    }
+                }
                 retype_each::<StreamEvent>(value, "events", &path)?;
                 retype::<Option<Result<Outcome, ErrorReport>>>(value, "outcome", &path)?;
                 retype::<Vec<(usize, ErrorReport)>>(value, "errors", &path)?;
@@ -195,6 +236,66 @@ fn components_to_current(
         }
     }
     Ok(())
+}
+
+/// A format-0 answer, `{"Ok": outcome}` or `{"Err": report}`, in the
+/// current shape.
+fn answer_to_current(answer: &mut Value) {
+    if let Some(outcome) = answer.get_mut("Ok") {
+        outcome_to_current(outcome);
+    }
+    if let Some(report) = answer.get_mut("Err") {
+        report_to_current(report);
+    }
+}
+
+/// A format-0 outcome in the current shape.
+fn outcome_to_current(outcome: &mut Value) {
+    match outcome.get("outcome").and_then(Value::as_str) {
+        Some("completion") => {
+            drop_empty(
+                outcome,
+                &["message_id", "response_id", "provider_request_id", "model"],
+            );
+        }
+        Some("embeddings") => {
+            if let Some(response) = outcome.get_mut("response") {
+                drop_empty(response, &["response_id", "provider_request_id", "model"]);
+            }
+        }
+        Some("reranked") => drop_empty(outcome, &["response_id", "provider_request_id", "model"]),
+        _ => {}
+    }
+}
+
+/// A format-0 stream event in the current shape.
+fn event_to_current(event: &mut Value) {
+    if event.get("event").and_then(Value::as_str) == Some("final") {
+        drop_empty(
+            event,
+            &["message_id", "response_id", "provider_request_id", "model"],
+        );
+    }
+}
+
+/// A format-0 error report in the current shape.
+fn report_to_current(report: &mut Value) {
+    drop_empty(report, &["request_id"]);
+    if let Some(response) = report.get_mut("provider_response") {
+        drop_empty(response, &["provider_request_id"]);
+    }
+}
+
+/// Remove each of `keys` whose value is the empty string: format 0 read an
+/// empty identifier as absent, and the current format refuses one.
+fn drop_empty(object: &mut Value, keys: &[&str]) {
+    if let Some(fields) = object.as_object_mut() {
+        for key in keys {
+            if fields.get(*key).and_then(Value::as_str) == Some("") {
+                fields.remove(*key);
+            }
+        }
+    }
 }
 
 /// A content part's rig-core payload, for the variants that hold one.

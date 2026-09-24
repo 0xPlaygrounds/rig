@@ -174,13 +174,12 @@ mod tool_call_id_tests;
 pub(crate) fn request_id_from_headers(
     headers: &http::HeaderMap,
     request_id_header: Option<&str>,
-) -> Option<String> {
+) -> Option<crate::id::RequestId> {
     request_id_header.and_then(|header| {
         headers
             .get(header)
             .and_then(|value| value.to_str().ok())
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
+            .and_then(|value| crate::id::RequestId::new(value).ok())
     })
 }
 

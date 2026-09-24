@@ -647,9 +647,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "the gateway's document should preserve every choice's finish reason"
             );
             anyhow::ensure!(
-                response.finish_reason().is_some(),
+                response.finish_reason.clone().is_some(),
                 "normalized response should preserve the finish reason: {:?}",
-                response.finish_reason()
+                response.finish_reason.clone()
             );
             assert_nonempty_response(&wire.model);
 

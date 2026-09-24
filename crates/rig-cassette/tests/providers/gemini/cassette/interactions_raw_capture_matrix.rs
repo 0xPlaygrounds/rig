@@ -112,7 +112,7 @@ async fn raw_roundtrips_interaction() {
             // One decoder folded the normalized response out of these very
             // bytes, so every field it kept must be the one the document
             // carries — `raw` is additive, never a divergent second view.
-            assert_eq!(typed.model, response.model);
+            assert_eq!(typed.model.as_deref(), response.model.as_deref());
             assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
             assert_eq!(
                 typed
@@ -131,7 +131,7 @@ async fn raw_roundtrips_interaction() {
                 typed.status
             );
             assert_eq!(
-                response.finish_reason(),
+                response.finish_reason.clone(),
                 Some(FinishReason::Stop),
                 "and `completed` reaches the caller as rig's Stop"
             );
@@ -170,7 +170,7 @@ async fn raw_exposes_lifecycle_fields() {
             assert!(!json_contains_key(&normalized, "object"));
             assert!(!json_contains_key(&normalized, "steps"));
             assert!(!json_contains_key(&normalized, "status"));
-            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+            assert_eq!(response.finish_reason.clone(), Some(FinishReason::Stop));
         },
     )
     .await;

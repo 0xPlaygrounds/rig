@@ -111,12 +111,26 @@ fn terminal_record(
         .as_ref()
         .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
 
-    let terminal = StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
-        .with_optional_finish_reason(finish_reason)
-        .with_optional_message_id(response.message_id)
-        .with_optional_response_id(response.response_id)
-        .with_optional_provider_request_id(response.provider_request_id)
-        .with_optional_model(response.model);
+    let terminal = StreamFinal {
+        finish_reason,
+        message_id: response
+            .message_id
+            .clone()
+            .and_then(|id| crate::id::MessageId::new(id).ok()),
+        response_id: response
+            .response_id
+            .clone()
+            .and_then(|id| crate::id::ResponseId::new(id).ok()),
+        provider_request_id: response
+            .provider_request_id
+            .clone()
+            .and_then(|id| crate::id::RequestId::new(id).ok()),
+        model: response
+            .model
+            .clone()
+            .and_then(|model| crate::id::ModelName::new(model).ok()),
+        ..StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
+    };
     Ok(match issuer {
         Some(issuer) => terminal.with_reasoning_issuer(issuer),
         None => terminal,

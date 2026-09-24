@@ -112,3 +112,23 @@ fn a_format_two_checkpoint_migrates_its_rig_core_values() {
     assert_eq!(migration, Migration::Current);
     assert_eq!(again, migrated);
 }
+
+#[test]
+fn an_empty_identifier_migrates_to_absent() {
+    let mut log = parse(V0_LOG);
+    let completion = &mut log["records"][1]["outcome"]["Ok"];
+    completion["message_id"] = json!("");
+    completion["response_id"] = json!("");
+    completion["model"] = json!("");
+    let reranked = &mut log["records"][0]["outcome"]["Ok"];
+    reranked["model"] = json!("");
+    assert!(serde_json::from_value::<EffectLog>(migrate(log.clone()).unwrap().0).is_ok());
+
+    let (migrated, _) = migrate(log).unwrap();
+    let mut expected = parse(CURRENT_LOG);
+    expected["records"][0]["outcome"]["Ok"]
+        .as_object_mut()
+        .unwrap()
+        .remove("model");
+    assert_eq!(migrated, expected);
+}

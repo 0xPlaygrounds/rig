@@ -279,7 +279,10 @@ pub(crate) fn fold_body(
     let reply = Reply {
         provider: provider.to_owned(),
         raw: serde_json::to_value(&response)?,
-        provider_request_id: response.provider_request_id.clone(),
+        provider_request_id: response
+            .provider_request_id
+            .clone()
+            .and_then(|id| crate::id::RequestId::new(id).ok()),
     };
     let mut decoder = ResponsesDecoder::new(provider, ResponsesStreamOptions::strict());
     let mut out = AdapterOutput::new();

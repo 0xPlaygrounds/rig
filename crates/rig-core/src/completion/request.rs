@@ -12,6 +12,7 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::error::ProviderError;
+use crate::id::{MessageId, ModelName, RequestId, ResponseId};
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -118,8 +119,8 @@ pub enum FinishReason {
 
 impl FinishReason {
     /// Changes [`Self::Stop`] to [`Self::ToolCalls`] when output contains a tool
-    /// call. All other reasons remain unchanged. Response builders and streaming
-    /// aggregation apply this reconciliation.
+    /// call. All other reasons remain unchanged. The fold that builds a
+    /// response applies this reconciliation.
     pub fn reconcile_with_output(self, has_tool_call: bool) -> Self {
         if has_tool_call && matches!(self, Self::Stop) {
             Self::ToolCalls
@@ -160,7 +161,6 @@ impl FinishReason {
 /// empty, including for truncated or filtered turns. Provider-specific data is
 /// available through [`Self::raw`] without retaining a concrete model type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "CompletionResponseRepr")]
 pub struct CompletionResponse {
     /// Assistant content returned by the provider, possibly empty.
     pub choice: Vec<AssistantContent>,
@@ -169,19 +169,20 @@ pub struct CompletionResponse {
     /// Provider-issued assistant message ID suitable for replay in
     /// [`Message::Assistant`]. Response-wide IDs belong in [`Self::response_id`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
+    pub message_id: Option<MessageId>,
     /// Provider-issued response ID for telemetry and diagnostics.
     /// Must not be replayed as an assistant message ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Request identifier from HTTP headers or SDK metadata, not the body's
     /// message or response ID. `None` when the provider reports none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
-    /// Reported finish reason, reconciled by the setters with tool-call output.
-    /// Read through [`Self::finish_reason`].
+    pub provider_request_id: Option<RequestId>,
+    /// Why the model stopped generating, when the provider reported it. The
+    /// fold that builds the response reconciles it with the tool calls in
+    /// [`Self::choice`] ([`FinishReason::reconcile_with_output`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    finish_reason: Option<FinishReason>,
+    pub finish_reason: Option<FinishReason>,
     /// Stable descriptor name of the provider that produced this response, for
     /// example `"openai"`. Always populated, including for responses derived
     /// from a stream that ended before its terminal record.
@@ -191,7 +192,7 @@ pub struct CompletionResponse {
     /// This is the model named by the wire response, not the model that was
     /// requested; it is `None` when the provider reports no identifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// Provider response document for typed inspection through deserialization.
     /// Parsed wire types may omit unmodeled fields. This data does not override
     /// normalized fields; callers constructing responses must supply it.
@@ -205,20 +206,19 @@ pub struct CompletionResponse {
 pub struct ResponseIdentity {
     /// Provider-issued assistant message ID suitable for replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
+    pub message_id: Option<MessageId>,
     /// Response-wide ID, never replayed as a message ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    pub response_id: Option<ResponseId>,
     /// Transport request ID from HTTP headers or SDK metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<RequestId>,
 }
 
 impl CompletionResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers. `raw` is the
-    /// provider's own document for this response, serialized; see
-    /// [`Self::raw`].
+    /// unset. `raw` is the provider's own document for this response,
+    /// serialized; see [`Self::raw`].
     pub fn new(
         choice: Vec<AssistantContent>,
         usage: Usage,
@@ -238,11 +238,6 @@ impl CompletionResponse {
         }
     }
 
-    /// Why the model stopped generating, when the provider reported it.
-    pub fn finish_reason(&self) -> Option<FinishReason> {
-        self.finish_reason.clone()
-    }
-
     /// This response's identity metadata as one [`ResponseIdentity`] carrier.
     pub fn identity(&self) -> ResponseIdentity {
         ResponseIdentity {
@@ -250,68 +245,6 @@ impl CompletionResponse {
             response_id: self.response_id.clone(),
             provider_request_id: self.provider_request_id.clone(),
         }
-    }
-
-    /// Attach the normalized finish reason, reconciled against the choice via
-    /// [`FinishReason::reconcile_with_output`].
-    pub fn with_finish_reason(self, finish_reason: FinishReason) -> Self {
-        self.with_optional_finish_reason(Some(finish_reason))
-    }
-
-    /// Sets or clears the finish reason, reconciling a present reason with the choice.
-    pub fn with_optional_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        let has_tool_call = self
-            .choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
-        self.finish_reason =
-            finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call));
-        self
-    }
-}
-
-crate::provider_response::response_metadata_setters!(CompletionResponse);
-
-/// Deserialization shape routed through builders for finish-reason reconciliation
-/// and empty-identifier normalization.
-#[derive(Deserialize)]
-struct CompletionResponseRepr {
-    choice: Vec<AssistantContent>,
-    usage: Usage,
-    #[serde(default)]
-    message_id: Option<String>,
-    #[serde(default)]
-    response_id: Option<String>,
-    #[serde(default)]
-    provider_request_id: Option<String>,
-    #[serde(default)]
-    finish_reason: Option<FinishReason>,
-    provider: String,
-    #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
-    raw: serde_json::Value,
-}
-
-impl From<CompletionResponseRepr> for CompletionResponse {
-    fn from(repr: CompletionResponseRepr) -> Self {
-        let CompletionResponseRepr {
-            choice,
-            usage,
-            message_id,
-            response_id,
-            provider_request_id,
-            finish_reason,
-            provider,
-            model,
-            raw,
-        } = repr;
-        Self::new(choice, usage, provider, raw)
-            .with_optional_message_id(message_id)
-            .with_optional_response_id(response_id)
-            .with_optional_provider_request_id(provider_request_id)
-            .with_optional_finish_reason(finish_reason)
-            .with_optional_model(model)
     }
 }
 

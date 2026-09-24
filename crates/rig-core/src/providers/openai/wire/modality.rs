@@ -261,12 +261,11 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         } else {
             event.model
         };
-        out.push(Ok(embeddings::EmbeddingResponse::new(
-            embeddings,
-            self.provider,
-        )
-        .with_model(model)
-        .with_usage(usage)));
+        out.push(Ok(embeddings::EmbeddingResponse {
+            model: crate::id::ModelName::new(model).ok(),
+            usage,
+            ..embeddings::EmbeddingResponse::new(embeddings, self.provider)
+        }));
     }
 }
 
@@ -494,7 +493,10 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
 
         match serde_json::to_value(&event) {
             Ok(raw) => match event.normalize(self.provider) {
-                Ok(response) => out.push(Ok(response.with_raw(raw))),
+                Ok(response) => out.push(Ok(crate::transcription::TranscriptionResponse {
+                    raw,
+                    ..response
+                })),
                 Err(error) => out.push(Err(error)),
             },
             Err(error) => out.push(Err(ProviderError::from(error))),
@@ -695,9 +697,10 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
             }
         };
         let raw = serde_json::to_value(&reply).unwrap_or(serde_json::Value::Null);
-        out.push(Ok(
-            ImageGenerationResponse::new(image, self.provider).with_raw(raw)
-        ));
+        out.push(Ok(ImageGenerationResponse {
+            raw,
+            ..ImageGenerationResponse::new(image, self.provider)
+        }));
     }
 }
 
@@ -1145,13 +1148,14 @@ impl Decoder<RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        out.push(Ok(crate::rerank::RerankResponse::new(
-            results,
-            self.provider,
-        )
-        .with_optional_model(event.model)
-        .with_usage(usage)
-        .with_raw(raw)));
+        out.push(Ok(crate::rerank::RerankResponse {
+            model: event
+                .model
+                .and_then(|model| crate::id::ModelName::new(model).ok()),
+            usage,
+            raw,
+            ..crate::rerank::RerankResponse::new(results, self.provider)
+        }));
     }
 }
 

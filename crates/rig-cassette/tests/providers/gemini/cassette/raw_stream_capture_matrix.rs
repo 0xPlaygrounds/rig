@@ -228,8 +228,11 @@ async fn raw_roundtrips_streaming_completion_response() {
     );
 
     // And the typed value agrees with the normalized terminal next to it.
-    assert_eq!(typed.model_version, terminal.model);
-    assert_eq!(typed.response_id, terminal.response_id);
+    assert_eq!(typed.model_version.as_deref(), terminal.model.as_deref());
+    assert_eq!(
+        typed.response_id.as_deref(),
+        terminal.response_id.as_deref()
+    );
     assert_eq!(
         Some(typed.usage_metadata.total_token_count as u64),
         terminal.usage.total_tokens
@@ -339,7 +342,10 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
         *raw,
         "StreamingCompletionResponse must round-trip a tool turn's terminal"
     );
-    assert_eq!(typed.response_id, terminal.response_id);
+    assert_eq!(
+        typed.response_id.as_deref(),
+        terminal.response_id.as_deref()
+    );
     assert_eq!(
         Some(typed.usage_metadata.total_token_count as u64),
         terminal.usage.total_tokens

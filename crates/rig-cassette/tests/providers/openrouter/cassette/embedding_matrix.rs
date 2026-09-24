@@ -59,7 +59,7 @@ async fn raw_round_trips() {
         let raw: openai::CompatibleEmbeddingResponse =
             serde_json::from_value(response.raw.clone()).expect("raw round-trips");
         assert_eq!(raw.data.len(), response.embeddings.len());
-        assert_eq!(raw.model, response.model.clone().unwrap_or_default());
+        assert_eq!(raw.model, response.model.as_deref().unwrap_or_default());
         // One decoder, one mapping: the document's vectors, in wire order, are
         // the vectors the normalized response joined back onto the inputs.
         for (datum, embedding) in raw.data.iter().zip(&response.embeddings) {
@@ -93,7 +93,7 @@ async fn raw_route_parity() {
         let raw: openai::CompatibleEmbeddingResponse = serde_json::from_value(second.raw.clone())
             .expect("raw is the compatible embeddings payload");
         assert_eq!(raw.data.len(), second.embeddings.len());
-        assert_eq!(raw.model, second.model.clone().unwrap_or_default());
+        assert_eq!(raw.model, second.model.as_deref().unwrap_or_default());
     })
     .await;
 

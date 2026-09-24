@@ -98,8 +98,10 @@ async fn run_streamed_turn(
                     }
                 }
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial = assembler
-                        .partial_turn(stream.message_id.clone(), stream.reasoning_issuer());
+                    let partial = assembler.partial_turn(
+                        stream.message_id.clone().map(String::from),
+                        stream.reasoning_issuer(),
+                    );
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -150,7 +152,7 @@ async fn run_streamed_turn(
         "a stream that reached its end delivered its terminal record, which recorded the call"
     );
     let streamed_turn = assembler.finish(
-        stream.message_id.clone(),
+        stream.message_id.clone().map(String::from),
         &stream.snapshot(),
         stream.reasoning_issuer(),
     );
