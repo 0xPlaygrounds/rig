@@ -341,3 +341,87 @@ fn the_attempt_root_is_in_the_target_directory_the_binary_was_built_in() {
     );
     assert_eq!(target_dir_of(Path::new("/usr/local/bin/tool")), None);
 }
+
+fn openai_direct_recorder(ledger: &Path) -> DirectRecorder {
+    DirectRecorder {
+        interactions: Arc::new(Mutex::new(Vec::new())),
+        policy: CassettePolicy::for_scenario("openai", "direct/stream", ReplayMatching::Ordered),
+        ledger: Arc::new(relay::LedgerTarget {
+            path: ledger.to_path_buf(),
+            provider: "openai".to_owned(),
+            scenario: "direct/stream".to_owned(),
+            origin: "https://api.openai.com".to_owned(),
+        }),
+    }
+}
+
+/// A streamed Responses reply: the creation event names the stored response.
+const CREATED_STREAM: &str = "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_direct\"}}\n\n\
+event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_direct\"}}\n\n";
+
+async fn stream_through_direct_client(
+    ledger: &Path,
+    request_body: &'static str,
+) -> (Vec<Vec<String>>, usize) {
+    use futures::StreamExt as _;
+
+    let stub = httpmock::MockServer::start_async().await;
+    stub.mock_async(|when, then| {
+        when.method("POST").path("/v1/responses");
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(CREATED_STREAM);
+    })
+    .await;
+    let client = DirectRecordingHttpClient::new(Some(openai_direct_recorder(ledger)));
+    let request = HttpRequest::builder()
+        .method("POST")
+        .uri(format!("{}/v1/responses", stub.base_url()))
+        .body(Bytes::from_static(request_body.as_bytes()))
+        .expect("request");
+    let response = client.send_streaming(request).await.expect("stream opens");
+    let mut stream = response.into_body();
+    // The ledger's ids as each chunk reaches the caller, before the next poll.
+    let mut seen_per_chunk = Vec::new();
+    let mut bytes = 0;
+    while let Some(chunk) = stream.next().await {
+        bytes += chunk.expect("chunk").len();
+        seen_per_chunk.push(
+            ledger::outstanding(ledger)
+                .into_iter()
+                .map(|resource| resource.id)
+                .collect(),
+        );
+    }
+    (seen_per_chunk, bytes)
+}
+
+#[tokio::test]
+async fn the_direct_path_logs_a_streamed_creation_before_the_caller_reads_it() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let (seen, bytes) = stream_through_direct_client(&ledger_path, "{}").await;
+    assert_eq!(
+        bytes,
+        CREATED_STREAM.len(),
+        "the reply passes through whole"
+    );
+    assert!(!seen.is_empty(), "at least one chunk");
+    // Every chunk the caller got, the first included, was preceded by the
+    // ledger line of the response it names.
+    for (index, ids) in seen.iter().enumerate() {
+        assert_eq!(ids, &["resp_direct"], "chunk {index}");
+    }
+    let outstanding = ledger::outstanding(&ledger_path);
+    assert_eq!(
+        outstanding[0].delete_url,
+        "https://api.openai.com/v1/responses/resp_direct"
+    );
+    assert_eq!(outstanding[0].scenario, "direct/stream");
+
+    // `store: false` creates nothing, streamed or not.
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let stateless = dir.path().join(ledger::LEDGER_FILE);
+    let (seen, _) = stream_through_direct_client(&stateless, r#"{"store":false}"#).await;
+    assert!(seen.iter().all(Vec::is_empty), "{seen:?}");
+}
