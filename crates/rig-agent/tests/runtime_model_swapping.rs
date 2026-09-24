@@ -336,6 +336,17 @@ fn stream_from_script(
                     text: "reasoning delta".to_owned(),
                 },
             });
+            // A boundary-less wire's decoder closes the minted part before
+            // other content, as the driver's sequence laws require.
+            events.push(StreamEvent::BlockEnd {
+                id: MintKind::Reasoning.for_wire_index(2),
+                end: BlockClose::Reasoning {
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: false,
+                },
+                block: None,
+            });
             events.push(StreamEvent::Unknown(
                 serde_json::json!({
                     "type": "provider_native_event",

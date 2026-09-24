@@ -227,10 +227,7 @@ pub(crate) fn events_from_response(
 /// Write completion content into `out` as stream events followed by `Final`,
 /// the way a test double's decoder answers with a whole response.
 #[cfg(any(test, feature = "test-utils"))]
-pub fn emit_response(
-    response: &CompletionResponse,
-    out: &mut crate::operation::AdapterOutput,
-) {
+pub fn emit_response(response: &CompletionResponse, out: &mut crate::operation::AdapterOutput) {
     if let Some(message_id) = &response.message_id {
         out.message_id(message_id.clone());
     }

@@ -1076,15 +1076,37 @@ async fn message_id_is_promoted_into_history() {
 /// The streamed `CompletionResponse` carries the same canonical fields the
 /// blocking driver reports: the prompt, the assembled content, the usage
 /// and the provider message id.
+/// An agent builder over a bus whose default model relays `turns`
+/// verbatim, items past the terminal included: a wire's driver stops at the
+/// terminal, so only a relayed stream can deliver them.
+fn relayed(
+    turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
+) -> AgentBuilder {
+    let (dispatcher, registrar, mut driver) = crate::bus::Bus::channel();
+    driver
+        .register(
+            "model:relay",
+            rig_core::test_utils::MockRelay::new("relay", turns),
+        )
+        .expect("register");
+    tokio::spawn(driver);
+    AgentBuilder::over_bus(
+        dispatcher,
+        registrar,
+        "relay",
+        rig_core::effect::HandlerKey::from("model:relay"),
+    )
+}
+
 #[tokio::test]
 async fn streaming_completion_response_receives_canonical_fields() {
     let prompt = Message::user("canonical prompt");
     let hook = CanonicalResponseHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-canonical"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt(prompt.clone())
@@ -1127,11 +1149,11 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
 #[tokio::test]
 async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-after-final"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -1268,11 +1290,11 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
 #[tokio::test]
 async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::error("post-final failure"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -1322,11 +1344,11 @@ async fn visible_assistant_items_after_final_are_rejected() {
 
     for (case, visible_item) in cases {
         let hook = FinishLifecycleHook::default();
-        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+        let mut stream = relayed([vec![
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
             visible_item,
-        ]]))
+        ]])
         .add_hook(hook.clone())
         .build()
         .prompt("canonical prompt")
@@ -1366,11 +1388,11 @@ async fn visible_assistant_items_after_final_are_rejected() {
 #[tokio::test]
 async fn visible_item_after_non_emittable_final_is_rejected() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::reasoning("think"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::text("late text"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")

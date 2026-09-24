@@ -926,12 +926,14 @@ async fn assert_stream_usage_recorded_on_chat_spans(
 
     for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
         assert_eq!(chat_span.parent_id, Some(outer_span_id));
+        // The provider's streaming span adopts the agent's chat span and
+        // records its own operation onto it.
         assert_eq!(
             chat_span
                 .string_fields
                 .get("gen_ai.operation.name")
                 .map(String::as_str),
-            Some("chat")
+            Some("chat_streaming")
         );
         // A counter the provider did not report leaves its span field unset.
         let field = |name: &str| chat_span.fields.get(name).copied();

@@ -5,6 +5,7 @@ mod embeddings;
 mod http;
 mod memory;
 pub mod observations;
+mod relay;
 mod streaming;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub mod streaming_conformance;
@@ -22,6 +23,7 @@ pub use http::{
     SequencedStreamingHttpClient,
 };
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
+pub use relay::MockRelay;
 pub use streaming::{MOCK_PROVIDER, MockStreamEvent, mock_final, mock_final_with_total_tokens};
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,
