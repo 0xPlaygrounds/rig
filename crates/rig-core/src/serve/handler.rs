@@ -212,7 +212,11 @@ pub(crate) fn events_from_response(
     response: &CompletionResponse,
 ) -> Vec<Result<StreamEvent, ErrorReport>> {
     let mut out = crate::operation::AdapterOutput::new();
-    emit_response(response, &mut out);
+    if let Some(message_id) = &response.message_id {
+        out.message_id(message_id.clone());
+    }
+    out.relay(&response.choice);
+    out.final_record(terminal_of(response));
     // An item that failed to re-emit (an image that did not serialize) is
     // delivered as the error it is, not dropped.
     out.drain()
@@ -221,6 +225,7 @@ pub(crate) fn events_from_response(
 }
 
 /// Write completion content into `out` as stream events followed by `Final`.
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn emit_response(
     response: &CompletionResponse,
     out: &mut crate::operation::AdapterOutput,
@@ -229,6 +234,11 @@ pub(crate) fn emit_response(
         out.message_id(message_id.clone());
     }
     out.content(&response.choice);
+    out.final_record(terminal_of(response));
+}
+
+/// The terminal record restating `response`'s metadata.
+fn terminal_of(response: &CompletionResponse) -> StreamFinal {
     let mut terminal = StreamFinal::new(
         response.provider.clone(),
         response.usage,
@@ -239,7 +249,7 @@ pub(crate) fn emit_response(
     terminal.response_id = response.response_id.clone();
     terminal.provider_request_id = response.provider_request_id.clone();
     terminal.model = response.model.clone();
-    out.final_record(terminal);
+    terminal
 }
 
 /// The one fold of a stream into the completion a unary consumer, or the

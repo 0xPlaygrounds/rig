@@ -132,6 +132,11 @@ impl BlockAccumulator {
                 BlockClose::ToolCall(end) => Ok(self
                     .tool_end(id, end.clone())?
                     .map(|(id, call)| (id, AssistantContent::ToolCall(call)))),
+                BlockClose::Image(image) => {
+                    let image = AssistantContent::Image(image.clone());
+                    self.parts.push(image.clone());
+                    Ok(Some((id.clone(), image)))
+                }
             },
             StreamEvent::Final(_) | StreamEvent::Unknown(_) => Ok(None),
         }

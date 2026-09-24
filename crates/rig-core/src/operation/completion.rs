@@ -827,10 +827,20 @@ impl AdapterOutput {
         }));
     }
 
-    /// Emit a whole turn's parts as the events a stream sends for them: one
-    /// complete block per part, in order. Images, which no stream carries,
-    /// become unmodeled payloads.
+    /// Emit a whole reply's parts as the events a stream sends for them: one
+    /// complete block per part, in order, an image as a whole image block.
     pub fn content(&mut self, choice: &[crate::message::AssistantContent]) {
+        self.parts(choice, true);
+    }
+
+    /// [`Self::content`] for a completed turn relayed to a stream consumer:
+    /// an image travels as an unmodeled payload, as relayed streams have
+    /// always carried it.
+    pub fn relay(&mut self, choice: &[crate::message::AssistantContent]) {
+        self.parts(choice, false);
+    }
+
+    fn parts(&mut self, choice: &[crate::message::AssistantContent], image_blocks: bool) {
         use crate::message::AssistantContent;
 
         for (index, content) in choice.iter().enumerate() {
@@ -850,9 +860,13 @@ impl AdapterOutput {
                         .unwrap_or_else(|| BlockId::minted(MintKind::Reasoning, index));
                     self.reasoning_end(id, Some(reasoning.clone()), None, true);
                 }
-                // Images never stream (no adapter emits one, the accumulator has
-                // no block for one); a unary answer carrying an image reaches a
-                // stream consumer as an unmodeled item, verbatim.
+                AssistantContent::Image(image) if image_blocks => {
+                    self.push(Ok(StreamEvent::BlockEnd {
+                        id: BlockId::minted(MintKind::Block, index),
+                        end: BlockClose::Image(image.clone()),
+                        block: None,
+                    }));
+                }
                 AssistantContent::Image(image) => match serde_json::to_value(image) {
                     Ok(value) => self.unknown(crate::streaming::UnknownPayload::new(value)),
                     Err(error) => self.error(crate::error::ProviderError::Json(error)),

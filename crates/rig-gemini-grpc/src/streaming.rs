@@ -1,39 +1,39 @@
-//! Normalizes Gemini protobuf streams into Rig completion events.
+//! Decodes Gemini protobuf replies into Rig completion events.
 //!
 //! ```
-//! use rig_gemini_grpc::streaming::stream_from_events;
+//! use rig_core::wire::{Mode, Wire};
+//! use rig_gemini_grpc::completion::{GEMINI_2_5_FLASH, GenerateContent};
 //!
-//! let response = stream_from_events(futures::stream::empty());
+//! let decoder = GenerateContent::new(GEMINI_2_5_FLASH).decoder(Mode::Streaming);
+//! # let _ = decoder;
 //! ```
 
-use async_stream::stream;
-use futures::StreamExt;
 use serde_json::{Map, Value};
 
-use rig_core::completion::CompletionRequest;
-use rig_core::driver::{run_wire_stream, warn_unmodeled};
-use rig_core::error::ProviderError;
+use rig_core::driver::warn_unmodeled;
 use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming;
-use rig_core::wasm_compat::WasmCompatSend;
 
-use super::Client;
-use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
+use super::completion::{
+    GrpcFrame, encode_optional_base64 as encode_signature, prost_struct_to_json,
+};
 use super::proto;
 
 /// The Gemini gRPC typed wire as a [`Decoder`](rig_core::wire::Decoder) over
 /// protobuf frames: the chunk carrying a finish reason is the terminal, and
 /// the per-stream state is the thought block's lifecycle plus the tool-key
-/// minter.
-struct GrpcAdapter {
+/// minter. A whole unary reply replays as the events a stream sends.
+pub struct GrpcAdapter {
     /// Derives signed reasoning boundaries for thought parts without wire IDs.
     reasoning: MintedReasoningLifecycle,
     /// Mints a distinct identity for each call lacking a wire ID.
     tool_ids: streaming::SyntheticIds,
     /// Suppresses further output after a tool-protocol terminal failure.
     failed: bool,
+    /// The unary reply's document, for the response's `raw`.
+    document: Option<Value>,
 }
 
 impl Default for GrpcAdapter {
@@ -42,23 +42,28 @@ impl Default for GrpcAdapter {
             reasoning: MintedReasoningLifecycle::new(streaming::MintKind::Reasoning),
             tool_ids: streaming::SyntheticIds::tool(),
             failed: false,
+            document: None,
         }
     }
 }
 
-impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for GrpcAdapter {
-    type Event = proto::GenerateContentResponse;
+impl rig_core::wire::Decoder<Completion, GrpcFrame> for GrpcAdapter {
+    type Event = GrpcFrame;
 
-    fn classify(&self, frame: proto::GenerateContentResponse) -> WireEvent<Self::Event> {
+    fn classify(&self, frame: GrpcFrame) -> WireEvent<Self::Event> {
         // Tonic handles frame decoding; unknown oneof values are handled per
         // part during interpretation.
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, resp: Self::Event, out: &mut AdapterOutput) {
+    fn interpret(&mut self, frame: Self::Event, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
+        let resp = match frame {
+            GrpcFrame::Chunk(chunk) => chunk,
+            GrpcFrame::Whole(response) => return self.whole(*response, out),
+        };
 
         let mut is_final = false;
 
@@ -104,8 +109,8 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
         // Only a provider finish reason establishes completion; synthesizing a
         // terminal at EOF would hide truncation.
         if is_final {
-            match terminal_record(&resp) {
-                Ok(record) => out.final_record(record),
+            match serde_json::to_value(&resp) {
+                Ok(raw) => out.final_record(terminal_record(&resp, raw)),
                 Err(err) => out.error(err.into()),
             }
         }
@@ -119,9 +124,28 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
         // Stop reading after an emitted protocol failure rather than drain the transport.
         self.failed
     }
+
+    fn document(&self) -> Option<Value> {
+        self.document.clone()
+    }
 }
 
 impl GrpcAdapter {
+    /// Replay a whole unary reply as the events a stream sends for it.
+    fn whole(&mut self, response: proto::GenerateContentResponse, out: &mut AdapterOutput) {
+        // The provider's own document, captured before the reply is consumed
+        // into normalized content.
+        match serde_json::to_value(&response) {
+            Ok(document) => self.document = Some(document),
+            Err(error) => return out.error(error.into()),
+        }
+        match super::completion::assistant_content(&response) {
+            Ok(choice) => out.content(&choice),
+            Err(error) => return out.error(error),
+        }
+        out.final_record(terminal_record(&response, Value::Null));
+    }
+
     /// Converts a protobuf part into content for shared lifecycle derivation.
     fn interpret_part(&mut self, part: &proto::Part) -> ChunkParts {
         match &part.data {
@@ -196,77 +220,19 @@ impl GrpcAdapter {
 /// [`streaming::StreamFinal::raw`].
 fn terminal_record(
     response: &proto::GenerateContentResponse,
-) -> Result<streaming::StreamFinal, serde_json::Error> {
+    raw: Value,
+) -> streaming::StreamFinal {
     let usage = super::completion::map_usage(response.usage_metadata.as_ref());
     let finish_reason = response
         .candidates
         .first()
         .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
 
-    Ok(streaming::StreamFinal::new(
-        super::completion::PROVIDER_NAME,
-        usage,
-        serde_json::to_value(response)?,
-    )
+    streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage, raw)
     .with_optional_finish_reason(finish_reason)
     .with_optional_response_id(Some(response.response_id.clone()).filter(|id| !id.is_empty()))
     .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty()))
-    .with_reasoning_issuer(super::completion::REASONING_ISSUER))
-}
-
-/// Normalizes typed protobuf events through the shared completion driver.
-/// No gRPC transport is required; input errors propagate through the stream.
-pub fn stream_from_events(
-    events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, ProviderError>>
-    + WasmCompatSend
-    + 'static,
-) -> streaming::StreamingCompletionResponse {
-    streaming::StreamingCompletionResponse::stream(
-        super::completion::PROVIDER_NAME,
-        run_wire_stream(events, GrpcAdapter::default()),
-    )
     .with_reasoning_issuer(super::completion::REASONING_ISSUER)
-}
-
-/// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
-/// record; the adapter maps Gemini's own protobuf terminal onto
-/// [`streaming::StreamFinal::raw`].
-pub(crate) async fn stream(
-    client: Client,
-    model: String,
-    completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse, ProviderError> {
-    let request = super::completion::create_grpc_request(&model, completion_request)?;
-
-    let mut grpc_client = client
-        .grpc_client()
-        .map_err(|e| ProviderError::Provider(e.to_string()))?;
-
-    let mut response_stream = grpc_client
-        .stream_generate_content(request)
-        .await
-        .map_err(|status| super::completion::rpc_error(&status))?
-        .into_inner();
-
-    // Stop receiving after a tonic failure; successfully received messages
-    // are classified by the shared driver.
-    let transport = stream! {
-        while let Some(item) = response_stream.next().await {
-            match item {
-                Ok(resp) => yield Ok(resp),
-                Err(status) => {
-                    yield Err(super::completion::rpc_error(&status));
-                    break;
-                }
-            }
-        }
-    };
-
-    Ok(streaming::StreamingCompletionResponse::stream(
-        super::completion::PROVIDER_NAME,
-        run_wire_stream(transport, GrpcAdapter::default()),
-    )
-    .with_reasoning_issuer(super::completion::REASONING_ISSUER))
 }
 
 #[cfg(test)]

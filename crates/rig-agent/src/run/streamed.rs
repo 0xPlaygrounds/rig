@@ -635,7 +635,7 @@ impl StreamedTurnAssembler {
                 ..
             }
             | StreamEvent::BlockEnd {
-                end: BlockClose::Text,
+                end: BlockClose::Text | BlockClose::Image(_),
                 ..
             } => Ok(vec![StreamedTurnEvent::EmitIngested]),
             StreamEvent::BlockStart {
