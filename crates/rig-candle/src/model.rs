@@ -437,6 +437,12 @@ impl Transport<Generation> for CandleModel {
         + use<>,
         ProviderError,
     > {
+        // A closed admission controller refuses before anything runs, as
+        // opening a completion or a stream always has.
+        #[cfg(not(target_family = "wasm"))]
+        if self.state.concurrency.is_closed() {
+            return Err(CandleError::ConcurrencyControllerClosed.into());
+        }
         let model = self.clone();
         Ok(async move {
             match mode {

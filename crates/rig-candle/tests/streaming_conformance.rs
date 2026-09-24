@@ -1,20 +1,55 @@
 //! Wire-conformance suite for candle's in-process typed-event wire.
 //!
 //! Events-first (`WireInput::Event`): fixture frames are already-typed
-//! generation events driven through [`rig_candle::stream_from_events`]
-//! — the shared driver, grammar, and terminal normalization — with no model
-//! load. This family never produces `Unknown` and has no frame-level decode,
+//! generation events replayed by a scripted transport through the
+//! [`Generation`] wire — the shared driver, grammar, and terminal
+//! normalization — with no model load. This family never produces `Unknown` and has no frame-level decode,
 //! so the malformed/unknown scenarios self-report as skipped.
 
-use rig_candle::{CandleCompletionResponse, FinishReason as CandleFinishReason, GenerationEvent};
-use rig_core::completion::FinishReason;
+use rig_candle::{
+    CandleCompletionResponse, CandleFrame, FinishReason as CandleFinishReason, Generation,
+    GenerationEvent,
+};
+use rig_core::completion::{CompletionRequest, CompletionRequestBuilder, FinishReason};
+use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
+use rig_core::wire::Mode;
 use rig_core::streaming::{BlockId, ToolCallEnd};
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
 };
 
 type CandleEvent = GenerationEvent;
+
+/// Replays scripted generation events as the local generator sends them.
+#[derive(Clone)]
+struct Scripted(std::sync::Arc<std::sync::Mutex<Vec<Result<CandleEvent, ProviderError>>>>);
+
+impl Transport<Generation> for Scripted {
+    fn send(
+        &self,
+        _request: CompletionRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<CompletionRequest, CandleFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let events = std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
+        );
+        Ok(async move {
+            Opened::new(futures::stream::iter(
+                events
+                    .into_iter()
+                    .map(|event| event.map(CandleFrame::Event)),
+            ))
+        })
+    }
+}
 
 fn driver() -> WireDriver {
     WireDriver::new("candle", |chunks| {
@@ -33,7 +68,11 @@ fn driver() -> WireDriver {
                     Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
-            let stream = rig_candle::stream_from_events(futures::stream::iter(events));
+            let stream = Model::new(
+                Generation,
+                Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
+            )
+            .stream(CompletionRequestBuilder::unbound("hello").build(), None)?;
             Ok(drain(stream).await)
         })
     })

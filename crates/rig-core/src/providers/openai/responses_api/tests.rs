@@ -262,7 +262,8 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     // The constant-id shape gemini/ollama/chat-compat streams leave in
     // history, via the mock model's streaming pipeline.
     let model = MockCompletionModel::from_stream_turns([vec![
-        MockStreamEvent::reasoning_delta("thinking hard"),
+        // A minted-key part, closed before the text as every adapter closes it.
+        MockStreamEvent::reasoning("thinking hard"),
         MockStreamEvent::text("answer"),
         MockStreamEvent::final_response_with_default_usage(),
     ]]);

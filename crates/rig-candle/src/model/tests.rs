@@ -1289,7 +1289,9 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
 async fn dropping_stream_cancels_worker_before_queued_request_runs()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let stream = generation(&model).stream(request(vec![Message::user("hello")]), None)?;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]), None)?;
+    // The worker starts when the stream is first polled.
+    assert!(futures::poll!(stream.next()).is_pending());
     control.wait_until_entered().await;
 
     let queued = raw_completion(&model, request(vec![Message::user("hello")]));
@@ -1312,9 +1314,7 @@ async fn dropping_a_stream_stops_the_worker_without_dropping_its_admission()
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
     let mut stream = generation(&model).stream(request(vec![Message::user("hello")]), None)?;
     // The worker starts when the stream is first polled.
-    let first = stream.next();
-    futures::pin_mut!(first);
-    assert!(futures::poll!(&mut first).is_pending());
+    assert!(futures::poll!(stream.next()).is_pending());
     control.wait_until_entered().await;
 
     drop(stream);
@@ -1335,7 +1335,9 @@ async fn streaming_channel_applies_bounded_backpressure()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) =
         controlled_model(false, false, (STREAM_CHANNEL_CAPACITY + 4) as u64)?;
-    let stream = generation(&model).stream(request(vec![Message::user("hello")]), None)?;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]), None)?;
+    // The worker starts when the stream is first polled.
+    let _ = futures::poll!(stream.next());
     control
         .wait_for_delivery_attempts(STREAM_CHANNEL_CAPACITY + 1)
         .await;
