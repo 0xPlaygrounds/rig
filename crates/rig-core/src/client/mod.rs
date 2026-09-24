@@ -10,6 +10,7 @@
 //! # Ok::<(), rig_core::client::ProviderClientError>(())
 //! ```
 
+mod cached_content;
 pub mod env;
 pub(crate) mod verify;
 
