@@ -2801,49 +2801,51 @@ impl CassetteScrubber {
         scrub_local_filesystem_paths(&scrubbed)
     }
 
-    /// Replace a UUID a provider names as the account's team (xAI error
-    /// messages quote "your team <uuid>") with a placeholder.
+    /// Replace a UUID a provider names as the account's team with a
+    /// placeholder: the word `team` (not inside a longer word), then any run
+    /// of separators (whitespace, `_ / : = " ' \\`) and the word `id` in any
+    /// case, then a hyphenated UUID. This covers xAI's "your team <uuid>",
+    /// "team ID <uuid>", `team_id: <uuid>` and `/team/<uuid>`.
     fn scrub_team_ids(&mut self, text: &str) -> String {
         const UUID_LEN: usize = 36;
-        let lower = text.to_ascii_lowercase();
+        let bytes = text.as_bytes();
         let mut output = String::with_capacity(text.len());
         let mut copied = 0;
-        let mut search = 0;
-        while let Some(found) = lower[search..].find("team") {
-            let after = search + found + "team".len();
-            search = after;
-            // `team 1b2c…`, `team: 1b2c…`, `team_id":"1b2c…`: at most a few
-            // separator characters between the word and the id.
-            let Some(offset) = text[after..]
-                .char_indices()
-                .take(8)
-                .find(|(_, ch)| ch.is_ascii_hexdigit())
-                .map(|(offset, _)| offset)
-            else {
-                continue;
-            };
-            let separator = &text[after..after + offset];
-            if !separator.chars().all(|ch| {
-                matches!(
-                    ch,
-                    ' ' | ':' | '=' | '"' | '\'' | '_' | 'i' | 'd' | 'I' | 'D'
-                )
-            }) {
+        let mut index = 0;
+        while index + 4 <= bytes.len() {
+            let is_word = bytes[index..index + 4].eq_ignore_ascii_case(b"team")
+                && (index == 0 || !bytes[index - 1].is_ascii_alphanumeric());
+            if !is_word {
+                index += 1;
                 continue;
             }
-            let start = after + offset;
-            let Some(candidate) = text.get(start..start + UUID_LEN) else {
-                continue;
-            };
-            let ends = text[start + UUID_LEN..]
-                .chars()
-                .next()
-                .is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '-');
-            if ends && is_uuid(candidate) {
-                output.push_str(&text[copied..start]);
-                output.push_str(&self.placeholder(candidate, "team_"));
-                copied = start + UUID_LEN;
-                search = copied;
+            let mut cursor = index + 4;
+            loop {
+                match bytes.get(cursor) {
+                    Some(byte) if byte.is_ascii_whitespace() || b"_/:=\"'\\".contains(byte) => {
+                        cursor += 1;
+                    }
+                    Some(_)
+                        if bytes
+                            .get(cursor..cursor + 2)
+                            .is_some_and(|word| word.eq_ignore_ascii_case(b"id")) =>
+                    {
+                        cursor += 2;
+                    }
+                    _ => break,
+                }
+            }
+            let bounded = bytes
+                .get(cursor + UUID_LEN)
+                .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-');
+            match text.get(cursor..cursor + UUID_LEN) {
+                Some(candidate) if bounded && is_uuid(candidate) => {
+                    output.push_str(&text[copied..cursor]);
+                    output.push_str(&self.placeholder(candidate, "team_"));
+                    copied = cursor + UUID_LEN;
+                    index = copied;
+                }
+                _ => index += 4,
             }
         }
         output.push_str(&text[copied..]);
