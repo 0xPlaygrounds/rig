@@ -29,6 +29,7 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     })
     .expect("request should build")
 }
@@ -205,6 +206,7 @@ fn build_with(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     })
 }
 
@@ -305,6 +307,7 @@ fn unrelated_additional_params_coexist_with_the_typed_field() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     })
     .expect("request should build");
     request
@@ -393,6 +396,7 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     })
     .expect_err("a tool_choice and a smuggled toolConfig are two answers")
     .to_string();

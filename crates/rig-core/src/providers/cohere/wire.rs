@@ -8,15 +8,13 @@
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
-use crate::driver::{HasEmbedding, HasImageEmbedding};
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +58,11 @@ impl Cohere {
     pub fn with_base_url(mut self, base_url: impl AsRef<str>) -> Self {
         self.base_url = base_url.as_ref().trim_end_matches('/').to_owned();
         self
+    }
+
+    /// The provider's completion wire for `model`: chat.
+    pub fn completion(&self, model: impl Into<String>) -> Chat {
+        self.chat(model)
     }
 
     /// The chat wire for `model`.
@@ -117,6 +120,8 @@ pub struct Chat {
 
 impl Wire for Chat {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ChatDecoder;
 
     fn name(&self) -> &str {
@@ -237,6 +242,8 @@ impl Embeddings {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -335,6 +342,8 @@ pub struct ImageEmbeddings {
 
 impl Wire for ImageEmbeddings {
     type Op = ImageEmbedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ImageEmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -423,32 +432,6 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
             response = response.with_response_id(id);
         }
         out.push(Ok(response));
-    }
-}
-
-impl HasCompletion for Cohere {
-    type Wire = Chat;
-
-    fn completion(&self, model: impl Into<String>) -> Chat {
-        self.chat(model)
-    }
-}
-
-impl HasEmbedding for Cohere {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasImageEmbedding for Cohere {
-    type Wire = ImageEmbeddings;
-
-    fn image_embedding(&self, _model: impl Into<String>, _ndims: Option<usize>) -> ImageEmbeddings {
-        // Cohere Embed v3 embeds images with one fixed model at one fixed
-        // width, so neither argument has anywhere to go.
-        self.image_embeddings()
     }
 }
 

@@ -12,8 +12,8 @@
 //! # }
 //! ```
 //!
-//! Bind a configured wire to a transport to obtain a [`crate::driver::Bound`]
-//! implementing the corresponding model trait.
+//! Pair a wire with a transport in a [`Model`](crate::driver::Model) to get
+//! the corresponding model trait.
 
 use serde::{Deserialize, Serialize};
 

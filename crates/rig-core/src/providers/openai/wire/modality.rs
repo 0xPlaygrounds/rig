@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::embeddings;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
-use crate::model::{Model, ModelList};
+use crate::model::{Model, ModelPage};
 use crate::operation::{
     Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
     Verify as VerifyOp,
@@ -280,6 +280,8 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -509,6 +511,8 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
 
 impl Wire for Transcriptions {
     type Op = Transcription;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = TranscriptionsDecoder;
 
     fn name(&self) -> &str {
@@ -709,6 +713,8 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
 #[cfg(feature = "image")]
 impl Wire for Images {
     type Op = crate::operation::ImageGeneration;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ImagesDecoder;
 
     fn name(&self) -> &str {
@@ -877,6 +883,8 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
 #[cfg(feature = "audio")]
 impl Wire for Speech {
     type Op = crate::operation::AudioGeneration;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = SpeechDecoder;
 
     fn name(&self) -> &str {
@@ -1029,19 +1037,21 @@ impl Decoder<ModelListing> for ModelsDecoder {
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
         let models = event.data.into_iter().map(Model::from).collect();
-        out.push(Ok(ModelList::new(models)));
+        out.push(Ok(ModelPage::last(models)));
     }
 }
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
         self.provider.dialect.name
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
@@ -1162,6 +1172,8 @@ impl Decoder<RerankOp> for RerankDecoder {
 
 impl Wire for Rerank {
     type Op = RerankOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = RerankDecoder;
 
     fn name(&self) -> &str {
@@ -1238,6 +1250,8 @@ pub use crate::operation::VerifyDecoder;
 
 impl Wire for Verify {
     type Op = VerifyOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = VerifyDecoder;
 
     fn name(&self) -> &str {

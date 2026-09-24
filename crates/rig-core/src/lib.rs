@@ -10,9 +10,10 @@
     )
 )]
 //! Provider-agnostic model, message, tool, memory, and vector-store contracts.
-//! Provider configurations and endpoint wires bind to transports through
-//! [`driver::Bound`]. Companion crates supply transports, agent runtimes,
-//! and external storage integrations.
+//! A [`driver::Model`] pairs a provider's endpoint wire with a transport and
+//! implements the model traits; any other type can implement them too.
+//! Companion crates supply transports, agent runtimes, and external storage
+//! integrations.
 //!
 //! ```no_run
 //! use rig_core::completion::{CompletionModel, CompletionResponse};
@@ -20,7 +21,7 @@
 //!
 //! async fn ask<M: CompletionModel + Clone>(model: &M) -> Result<CompletionResponse, ProviderError> {
 //!     let request = model.completion_request("Who are you?").build();
-//!     model.completion(request).await
+//!     model.complete(request).await
 //! }
 //! ```
 

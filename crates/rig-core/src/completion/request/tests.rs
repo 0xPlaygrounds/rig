@@ -18,6 +18,7 @@ mod message_content_validation {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         }
     }
 
@@ -533,6 +534,7 @@ fn test_normalize_documents_with_documents() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let expected = Message::User {
@@ -564,6 +566,7 @@ fn test_normalize_documents_without_documents() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     assert_eq!(request.normalized_documents(), None);
@@ -672,6 +675,7 @@ fn chat_history_with_documents_places_documents_after_leading_system_messages() 
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     assert_eq!(request.documents.len(), 1);
@@ -704,6 +708,7 @@ fn chat_history_with_documents_places_documents_before_mid_conversation_system_m
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let history = request.chat_history_with_documents();
@@ -740,6 +745,7 @@ fn chat_history_with_documents_does_not_duplicate_documents() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let history = request.chat_history_with_documents();

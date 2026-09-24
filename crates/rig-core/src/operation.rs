@@ -21,7 +21,7 @@ mod verify;
 
 pub use cached_content::{CachedContentFold, ContextCache};
 pub use completion::{AdapterOutput, Completion, CompletionFold};
-pub use listing::{ModelListing, ModelListingFold};
+pub use listing::ModelListing;
 #[cfg(feature = "audio")]
 pub use modality::AudioGeneration;
 #[cfg(feature = "image")]

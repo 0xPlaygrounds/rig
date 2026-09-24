@@ -752,6 +752,8 @@ fn refuse_file_ids(request: &CompletionRequest) -> Result<(), EncodeError> {
 
 impl Wire for Chat {
     type Op = crate::operation::Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ChatDecoder;
 
     fn name(&self) -> &str {

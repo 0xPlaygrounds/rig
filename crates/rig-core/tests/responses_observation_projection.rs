@@ -12,7 +12,6 @@
 use std::sync::Arc;
 
 use rig_core::completion::{CompletionModel, CompletionRequest};
-use rig_core::driver::Bind;
 use rig_core::observe::{
     Action, AdapterContext, AdapterEvent, AdapterObservation, AdapterUsage, ObservationLog, Subject,
 };
@@ -48,13 +47,17 @@ const BODY: &str = r#"{
 #[tokio::test]
 async fn a_unary_responses_reply_projects_usage_verdict_and_id() {
     let http = SequencedHttpClient::new(vec![MockHttpResponse::success(BODY)]);
-    let model = OpenAI::new("test-key").responses("gpt-4o").bind(http);
+    let model = rig_core::driver::Model::new(OpenAI::new("test-key").responses("gpt-4o"), http);
 
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "projection");
     let request: CompletionRequest = model.completion_request("hi").build();
     let response = model
-        .completion_with_context(request, Some(context))
+        .complete({
+            let mut request = request;
+            request.extensions.insert(context);
+            request
+        })
         .await
         .expect("the scripted reply must fold");
     assert!(!response.choice.is_empty(), "the turn must carry content");

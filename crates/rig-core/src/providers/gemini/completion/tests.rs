@@ -215,6 +215,7 @@ fn test_resolve_request_model_uses_override() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let request_model = resolve_request_model("gemini-2.0-flash", &request);
@@ -242,6 +243,7 @@ fn test_resolve_request_model_uses_default_when_unset() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     assert_eq!(
@@ -1372,6 +1374,7 @@ fn ingested_nameless_results_resolve_their_name_at_request_assembly() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
         max_tokens: None,
         tool_choice: None,
         additional_params: None,
@@ -1564,6 +1567,7 @@ fn test_create_request_body_with_documents() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
         max_tokens: None,
         tool_choice: None,
         additional_params: None,
@@ -1583,6 +1587,7 @@ fn test_create_request_body_with_documents() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
         max_tokens: None,
         tool_choice: None,
         additional_params: None,
@@ -1653,6 +1658,7 @@ fn test_create_request_body_without_documents() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
         additional_params: None,
     };
 
@@ -1681,11 +1687,11 @@ async fn completion_non_success_preserves_status_and_body() {
     use crate::completion::CompletionModel as _;
 
     let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let error = Bound::new(
+    let error = Model::new(
         wire(super::GEMINI_3_FLASH_PREVIEW),
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
     )
-    .completion(wire_request("hello"))
+    .complete(wire_request("hello"))
     .await
     .expect_err("should fail with non-success status");
 
@@ -1744,7 +1750,7 @@ async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
 // for: the unary reply and the streamed reply of the SAME turn, decoded by
 // the SAME decoder, fold to the same answer.
 
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Mode, Wire};
 use futures::StreamExt;
@@ -1784,6 +1790,7 @@ fn wire_request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -1815,8 +1822,8 @@ async fn fold_unary(
     body: impl Into<bytes::Bytes>,
 ) -> Result<crate::completion::CompletionResponse, ProviderError> {
     use crate::completion::CompletionModel as _;
-    Bound::new(wire(model), RecordingHttpClient::new(body))
-        .completion(wire_request("probe"))
+    Model::new(wire(model), RecordingHttpClient::new(body))
+        .complete(wire_request("probe"))
         .await
 }
 
@@ -1828,7 +1835,7 @@ async fn unary(model: &str, body: &'static str) -> crate::completion::Completion
 
 async fn streamed(model: &str, body: &'static str) -> crate::completion::CompletionResponse {
     use crate::completion::CompletionModel as _;
-    let mut stream = Bound::new(
+    let mut stream = Model::new(
         wire(model),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(body.as_bytes()),
@@ -2066,7 +2073,7 @@ fn a_text_signature_reaches_no_other_wire() {
 
     fn body<W>(wire: &W, request: CompletionRequest) -> String
     where
-        W: Wire,
+        W: Wire<Payload = crate::wire::Encoded>,
         W::Op: crate::wire::Operation<Request = CompletionRequest>,
     {
         let encoded = wire
@@ -2106,6 +2113,7 @@ fn a_text_signature_reaches_no_other_wire() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let openai = crate::providers::openai::wire::OpenAI::new("sk-test");

@@ -233,9 +233,9 @@ pub enum CachedContentRequest {
     Create(NewCachedContent),
     /// `GET /v1beta/cachedContents/<id>`; answers with the resource.
     Get(String),
-    /// `GET /v1beta/cachedContents?pageSize=…`, followed on `nextPageToken`;
-    /// answers with the pages' entries.
-    List,
+    /// `GET /v1beta/cachedContents?pageSize=…`, after the page token when
+    /// one is given; answers with one page.
+    List(Option<String>),
     /// `PATCH /v1beta/cachedContents/<id>?updateMask=…`; answers with the
     /// resource.
     UpdateExpiry { name: String, expiry: CacheExpiry },
@@ -247,12 +247,10 @@ pub enum CachedContentRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedContentPage {
-    /// Entries in arrival order, concatenated across pages when folded.
-    /// Required during deserialization to distinguish pages from resources.
+    /// Entries in arrival order. Required during deserialization to
+    /// distinguish pages from resources.
     pub cached_contents: Vec<CachedContent>,
-    /// The cursor naming the next page, when the listing has one. The
-    /// decoder takes it before the page reaches the fold, so a folded
-    /// reply's is always `None`.
+    /// The cursor naming the next page, when the listing has a usable one.
     #[serde(default)]
     pub next_page_token: Option<String>,
 }
@@ -306,9 +304,9 @@ impl CachedContentReply {
 /// Gemini's `cachedContents` resource: the wire for
 /// [`operation::ContextCache`].
 ///
-/// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents), or
-/// on a socket by `Bound<Gemini, H>::cached_contents()`; the calls are the
-/// inherent methods of `Bound<CachedContents, H>`.
+/// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents); the
+/// calls are the inherent methods of
+/// [`Model<CachedContents, T>`](crate::driver::Model).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CachedContents {
     /// The provider this wire speaks to.
@@ -352,15 +350,10 @@ impl super::Gemini {
     }
 }
 
-impl<H: Clone> crate::driver::Bound<super::Gemini, H> {
-    /// The provider's `cached_contents` wire, on this socket.
-    pub fn cached_contents(&self) -> crate::driver::Bound<CachedContents, H> {
-        crate::driver::Bound::new(self.wire.cached_contents(), self.http.clone())
-    }
-}
-
 impl Wire for CachedContents {
     type Op = operation::ContextCache;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = CachedContentsDecoder;
 
     fn name(&self) -> &str {
@@ -380,7 +373,7 @@ impl Wire for CachedContents {
             CachedContentRequest::Get(name) => {
                 http::Request::get(self.provider.uri(&resource_path(&name)?)).body(Body::empty())?
             }
-            CachedContentRequest::List => self.list_request(None)?,
+            CachedContentRequest::List(page_token) => self.list_request(page_token.as_deref())?,
             CachedContentRequest::UpdateExpiry { name, expiry } => {
                 let (patch, mask) = expiry_patch(expiry)?;
                 // Handle validation prevents query injection and retargeting the patch.
@@ -396,19 +389,12 @@ impl Wire for CachedContents {
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        CachedContentsDecoder {
-            wire: self.clone(),
-            next: None,
-        }
+        CachedContentsDecoder
     }
 }
 
-/// Decodes one `cachedContents` reply and follows a listing's cursor.
-pub struct CachedContentsDecoder {
-    wire: CachedContents,
-    /// The cursor the page just interpreted named, when it named a usable one.
-    next: Option<String>,
-}
+/// Decodes one `cachedContents` reply.
+pub struct CachedContentsDecoder;
 
 impl Decoder<operation::ContextCache> for CachedContentsDecoder {
     type Event = CachedContentReply;
@@ -426,16 +412,12 @@ impl Decoder<operation::ContextCache> for CachedContentsDecoder {
         if let CachedContentReply::Page(page) = &mut reply {
             // An empty cursor counts as absent: re-sending an empty
             // `pageToken` returns the same page forever.
-            self.next = page
+            page.next_page_token = page
                 .next_page_token
                 .take()
                 .filter(|token| !token.is_empty());
         }
         out.push(Ok(reply));
-    }
-
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        self.wire.list_request(Some(self.next.as_deref()?)).ok()
     }
 }
 

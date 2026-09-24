@@ -2,7 +2,7 @@
 
 use super::super::tests::{recorded, recorded_json};
 use super::*;
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::embeddings::EmbeddingModel as _;
 use crate::error::{ErrorKind, ProviderError};
 use crate::model::ModelLister as _;
@@ -33,7 +33,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
         "embedding_matrix/normalized_response_is_complete.yaml",
     );
     let wire = OpenAI::new("sk-test").embeddings("text-embedding-3-small", None);
-    let bound = Bound::new(wire, RecordingHttpClient::new(reply));
+    let bound = Model::new(wire, RecordingHttpClient::new(reply));
 
     let response = bound
         .embed_texts_response(documents())
@@ -73,7 +73,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
 #[tokio::test]
 async fn a_short_embedding_reply_fails_the_call() {
     let reply = r#"{"object":"list","model":"m","data":[{"object":"embedding","index":0,"embedding":[0.5]}],"usage":{"prompt_tokens":1,"total_tokens":1}}"#;
-    let bound = Bound::new(
+    let bound = Model::new(
         OpenAI::new("sk-test").embeddings("text-embedding-3-small", None),
         RecordingHttpClient::new(reply),
     );
@@ -224,7 +224,7 @@ fn azure_sends_no_model_field() {
 #[tokio::test]
 async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     let reply = r#"{"object":"list","model":"m","data":[{"object":"embedding","index":0,"embedding":[0.5]}]}"#;
-    let error = Bound::new(
+    let error = Model::new(
         OpenAI::new("sk-test").embeddings("text-embedding-3-small", None),
         RecordingHttpClient::new(reply),
     )
@@ -240,7 +240,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     );
 
     // Together does not guarantee it, so the same reply succeeds there.
-    let response = Bound::new(
+    let response = Model::new(
         OpenAI::with_key(&TOGETHER, "k")
             .embeddings("togethercomputer/m2-bert-80M-8k-retrieval", None),
         RecordingHttpClient::new(reply),
@@ -256,7 +256,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
 #[tokio::test]
 async fn a_recorded_model_listing_decodes() {
     let reply = recorded("then", "models/list_models_smoke.yaml");
-    let models = Bound::new(
+    let models = Model::new(
         OpenAI::new("sk-test").models(),
         RecordingHttpClient::new(reply),
     )
@@ -273,7 +273,7 @@ async fn a_recorded_model_listing_decodes() {
 #[tokio::test]
 async fn a_listing_entry_keeps_the_limits_a_dialect_reports() {
     let reply = r#"{"object":"list","data":[{"id":"llama-3.3-70b","object":"model","created":1,"owned_by":"Meta","context_window":131072,"max_completion_tokens":32768}]}"#;
-    let models = Bound::new(
+    let models = Model::new(
         OpenAI::with_key(&GROQ, "k").models(),
         RecordingHttpClient::new(reply),
     )
@@ -378,7 +378,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
     // xAI's reply carries no `created`, which the shared reply shape used to
     // require — every xAI image call would have failed to decode.
     let reply = r#"{"data":[{"b64_json":"aGk="}]}"#;
-    let response = Bound::new(
+    let response = Model::new(
         OpenAI::with_key(&XAI, "k").images("grok-imagine-image-pro"),
         RecordingHttpClient::new(reply),
     )
@@ -491,7 +491,7 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
     use crate::rerank::RerankModel as _;
 
     let reply = r#"{"model":"bge-reranker-v2-m3","object":"list","usage":{"prompt_tokens":37,"total_tokens":37},"results":[{"index":2,"relevance_score":0.98},{"index":0,"relevance_score":0.41},{"index":1,"relevance_score":0.02}]}"#;
-    let response = Bound::new(
+    let response = Model::new(
         OpenAI::with_key(&LLAMACPP, "").reranker("bge-reranker-v2-m3"),
         RecordingHttpClient::new(reply),
     )
@@ -534,7 +534,7 @@ async fn a_rerank_reply_accepts_either_score_key() {
     use crate::rerank::RerankModel as _;
 
     let reply = r#"{"results":[{"index":0,"score":0.75}]}"#;
-    let response = Bound::new(
+    let response = Model::new(
         OpenAI::with_key(&LLAMACPP, "").reranker("r"),
         RecordingHttpClient::new(reply),
     )
@@ -617,7 +617,7 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
     assert!(body.get("size").is_none(), "the size is two fields: {body}");
 
     // And the reply is keyed `images[].image`, not `data[].b64_json`.
-    let response = Bound::new(
+    let response = Model::new(
         OpenAI::with_key(&HYPERBOLIC, "hb").images("SDXL1.0-base"),
         RecordingHttpClient::new(r#"{"images":[{"image":"aGk="}]}"#),
     )
@@ -682,7 +682,7 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
 
     // A real PNG header: not valid UTF-8, and not valid JSON.
     let png = b"\x89PNG\r\n\x1a\n\xff\xd8not-json";
-    let response = Bound::new(
+    let response = Model::new(
         OpenAI::with_key(&HUGGINGFACE, "hf").images("black-forest-labs/FLUX.1-dev"),
         RecordingHttpClient::new(&png[..]),
     )
@@ -735,7 +735,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
     assert!(body.get("model").is_none(), "{body}");
     assert!(body.get("voice").is_none(), "{body}");
 
-    let response = Bound::new(
+    let response = Model::new(
         OpenAI::with_key(&HYPERBOLIC, "hb").speech("EN"),
         RecordingHttpClient::new(r#"{"audio":"aGk="}"#),
     )
@@ -747,7 +747,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
 
     // OpenAI's own endpoint answers with the bytes themselves, so the same
     // decoder must not go looking for an envelope there.
-    let openai = Bound::new(
+    let openai = Model::new(
         OpenAI::new("sk").speech("tts-1"),
         RecordingHttpClient::new(&b"ID3\x04raw-mp3"[..]),
     )

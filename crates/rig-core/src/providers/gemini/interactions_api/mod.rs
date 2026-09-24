@@ -47,6 +47,8 @@ impl Interactions {
 
 impl crate::wire::Wire for Interactions {
     type Op = crate::operation::Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = streaming::InteractionsDecoder;
 
     fn name(&self) -> &str {
@@ -146,6 +148,8 @@ impl InteractionResume {
 
 impl crate::wire::Wire for InteractionResume {
     type Op = crate::operation::Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = streaming::InteractionsDecoder;
 
     fn name(&self) -> &str {

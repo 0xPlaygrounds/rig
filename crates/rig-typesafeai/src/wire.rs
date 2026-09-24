@@ -83,6 +83,8 @@ impl Jev {
 
 impl Wire for Jev {
     type Op = Evaluation;
+    type Payload = rig_core::wire::Encoded;
+    type Frame = rig_core::wire::WireFrame;
     type Decoder = JevDecoder;
 
     fn name(&self) -> &str {

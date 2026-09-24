@@ -5,7 +5,6 @@ use serde_json::json;
 
 use super::*;
 use crate::completion::{CompletionRequest, CompletionRequestBuilder, ToolDefinition};
-use crate::driver::{HasCompletion, HasEmbedding, HasModelListing, HasRerank, HasVerify};
 use crate::message::ToolChoice;
 use crate::providers::anthropic::Anthropic;
 use crate::providers::cohere::Cohere;
@@ -132,7 +131,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai embeddings",
             failure(
                 openai
-                    .embedding("text-embedding-3-small", None)
+                    .embeddings("text-embedding-3-small", None)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
             "RequestError: invalid uri character",
@@ -141,7 +140,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai embeddings, base64",
             failure(
                 OpenAI::with_key(&OPENAI, "k")
-                    .embedding("text-embedding-3-small", None)
+                    .embeddings("text-embedding-3-small", None)
                     .with_encoding_format(EncodingFormat::Base64)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
@@ -151,7 +150,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai-compatible embeddings, unsupported encoding format",
             failure(
                 OpenAI::with_key(&TOGETHER, "k")
-                    .embedding("m", None)
+                    .embeddings("m", None)
                     .with_encoding_format(EncodingFormat::Float)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
@@ -161,7 +160,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai-compatible embeddings, unsupported user",
             failure(
                 OpenAI::with_key(&MISTRAL, "k")
-                    .embedding("mistral-embed", None)
+                    .embeddings("mistral-embed", None)
                     .with_user("u")
                     .encode(vec!["a".into()], Mode::Unary),
             ),
@@ -169,7 +168,7 @@ fn provider_encode_failures_classify_as_request_building() {
         ),
         (
             "openai rerank without the endpoint",
-            failure(perplexity.rerank("m").encode(
+            failure(perplexity.reranker("m").encode(
                 crate::operation::RerankRequest {
                     query: "q".into(),
                     documents: vec!["d".into()],
@@ -207,12 +206,12 @@ fn provider_encode_failures_classify_as_request_building() {
         ),
         (
             "anthropic verify",
-            failure(HasVerify::verify(&anthropic).encode((), Mode::Unary)),
+            failure(anthropic.verify().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (
             "anthropic models",
-            failure(anthropic.model_listing().encode((), Mode::Unary)),
+            failure(anthropic.models().encode(None, Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (
@@ -243,7 +242,7 @@ fn provider_encode_failures_classify_as_request_building() {
             failure(
                 Cohere::new("k")
                     .with_base_url(BAD)
-                    .embedding("embed-english-v3.0", None)
+                    .embeddings("embed-english-v3.0", None)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
             "RequestError: invalid uri character",
@@ -253,7 +252,7 @@ fn provider_encode_failures_classify_as_request_building() {
             failure(
                 VoyageAi::new("k")
                     .with_base_url(BAD)
-                    .embedding("voyage-3", None)
+                    .embeddings("voyage-3", None)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
             "RequestError: invalid uri character",

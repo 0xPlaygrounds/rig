@@ -1,5 +1,5 @@
 use super::*;
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::embeddings::EmbeddingModel as _;
 use crate::rerank::RerankModel as _;
 use crate::test_utils::RecordingHttpClient;
@@ -28,7 +28,7 @@ const EMBED_BODY: &str = r#"{"object":"list","data":[{"object":"embedding","embe
 
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
-    let response = Bound::new(
+    let response = Model::new(
         voyage().embeddings("voyage-3.5", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
@@ -111,7 +111,7 @@ const RERANK_BODY: &str = r#"{"object":"list","data":[{"relevance_score":0.9,"in
 
 #[tokio::test]
 async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
-    let response = Bound::new(
+    let response = Model::new(
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     )
@@ -166,7 +166,7 @@ fn a_rerank_request_carries_the_query_the_documents_and_the_options() {
 /// `RerankModel::max_documents` reports.
 #[test]
 fn a_rerank_wire_declares_the_batch_limit() {
-    let bound = Bound::new(
+    let bound = Model::new(
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     );

@@ -18,6 +18,7 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -30,7 +31,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     ]);
 
     let first = model
-        .completion(request("hello"))
+        .complete(request("hello"))
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(first.message_id.as_deref(), Some("msg_1"));
@@ -40,7 +41,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     ));
 
     let second = model
-        .completion(request("use a tool"))
+        .complete(request("use a tool"))
         .await
         .expect("second scripted turn should succeed");
     assert!(matches!(
@@ -74,13 +75,13 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
     ]);
 
     let scripted = model
-        .completion(request("hello"))
+        .complete(request("hello"))
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(scripted.raw, payload);
 
     let unscripted = model
-        .completion(request("hello"))
+        .complete(request("hello"))
         .await
         .expect("second scripted turn should succeed");
     assert_eq!(unscripted.raw, expected_unscripted);
@@ -114,7 +115,7 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
         .await
         .expect("stream should open");
     while stream.next().await.is_some() {}
-    let terminal = stream.response.expect("terminal record");
+    let terminal = stream.terminal().expect("terminal record");
     let raw = &terminal.raw;
     let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
     assert_eq!(typed.usage.total_tokens, Some(3));
@@ -136,7 +137,7 @@ async fn missing_completion_turn_returns_provider_error() {
     let model = MockCompletionModel::default();
 
     let err = model
-        .completion(request("hello"))
+        .complete(request("hello"))
         .await
         .expect_err("missing turn should error");
 
@@ -216,7 +217,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
     assert!(saw_arguments_delta);
     assert!(saw_tool_call);
     assert!(saw_final);
-    assert_eq!(stream.message_id.as_deref(), Some("msg_stream"));
+    assert_eq!(stream.message_id(), Some("msg_stream"));
     assert_eq!(model.request_count(), 1);
 }
 

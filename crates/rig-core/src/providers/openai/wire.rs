@@ -1,6 +1,7 @@
 //! OpenAI-compatible configurations, dialect policies, and endpoint wires.
 //! A [`Dialect`](crate::providers::openai::wire::Dialect) selects request and response policies; [`OpenAI`] holds
-//! credentials and overrides. Bind an endpoint wire to a transport to execute it.
+//! credentials and overrides. Pair an endpoint wire with a transport in a
+//! [`Model`](crate::driver::Model) to execute it.
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, Route, wire::OpenAiWire};
@@ -11,8 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{Bound, HasEmbedding, HasModelListing, HasRerank, HasTranscription, HasVerify};
-use crate::wire::{HasCompletion, Secret};
+use crate::wire::Secret;
 
 use super::responses_api::SystemInstructionsPlacement;
 use super::responses_api::wire::Responses;
@@ -708,7 +708,8 @@ impl<'de> Deserialize<'de> for Dialect {
 
 /// Serializable provider configuration without a transport.
 /// Credentials are redacted and omitted from serialization. Construct endpoint
-/// wires and bind them through [`Bound`] to execute requests.
+/// wires and pair them with a transport in a [`Model`](crate::driver::Model)
+/// to execute requests.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenAI {
@@ -1016,7 +1017,7 @@ impl OpenAI {
     }
 
     /// The credential-check wire.
-    pub fn verify_wire(&self) -> Verify {
+    pub fn verify(&self) -> Verify {
         Verify::new(self.clone())
     }
 
@@ -1169,86 +1170,6 @@ impl OpenAI {
             builder = builder.header("ChatGPT-Account-Id", account_id);
         }
         builder
-    }
-}
-
-/// Build completion wires using configured, model-specific, or dialect routing.
-impl HasCompletion for OpenAI {
-    type Wire = OpenAiWire;
-
-    fn completion(&self, model: impl Into<String>) -> OpenAiWire {
-        self.completion(model)
-    }
-}
-
-/// Explicit endpoint constructors that retain the bound transport.
-impl<H: Clone> Bound<OpenAI, H> {
-    /// The chat-completions wire for `model`, on this socket.
-    pub fn chat(&self, model: impl Into<String>) -> Bound<Chat, H> {
-        Bound::new(self.wire.chat(model), self.http.clone())
-    }
-
-    /// The Responses wire for `model`, on this socket.
-    pub fn responses(&self, model: impl Into<String>) -> Bound<Responses, H> {
-        Bound::new(self.wire.responses(model), self.http.clone())
-    }
-}
-
-impl HasEmbedding for OpenAI {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasRerank for OpenAI {
-    type Wire = Rerank;
-
-    fn rerank(&self, model: impl Into<String>) -> Rerank {
-        self.reranker(model)
-    }
-}
-
-impl HasTranscription for OpenAI {
-    type Wire = Transcriptions;
-
-    fn transcription(&self, model: impl Into<String>) -> Transcriptions {
-        self.transcriptions(model)
-    }
-}
-
-impl HasModelListing for OpenAI {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
-    }
-}
-
-impl HasVerify for OpenAI {
-    type Wire = Verify;
-
-    fn verify(&self) -> Verify {
-        self.verify_wire()
-    }
-}
-
-#[cfg(feature = "image")]
-impl crate::driver::HasImageGeneration for OpenAI {
-    type Wire = Images;
-
-    fn image_generation(&self, model: impl Into<String>) -> Images {
-        self.images(model)
-    }
-}
-
-#[cfg(feature = "audio")]
-impl crate::driver::HasAudioGeneration for OpenAI {
-    type Wire = Speech;
-
-    fn audio_generation(&self, model: impl Into<String>) -> Speech {
-        self.speech(model)
     }
 }
 

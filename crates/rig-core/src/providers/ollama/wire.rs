@@ -8,14 +8,12 @@
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
-use crate::driver::{HasEmbedding, HasModelListing};
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{Model, ModelPage};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -85,6 +83,11 @@ impl Ollama {
         self
     }
 
+    /// The provider's completion wire for `model`: chat.
+    pub fn completion(&self, model: impl Into<String>) -> Chat {
+        self.chat(model)
+    }
+
     /// The chat wire for `model`.
     pub fn chat(&self, model: impl Into<String>) -> Chat {
         Chat {
@@ -142,6 +145,8 @@ pub struct Chat {
 
 impl Wire for Chat {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OllamaDecoder;
 
     fn name(&self) -> &str {
@@ -193,6 +198,8 @@ pub struct Embeddings {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -278,13 +285,15 @@ pub struct Models {
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = self
             .provider
             .request(http::Method::GET, "/api/tags")
@@ -309,33 +318,9 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<ModelListing>) {
-        out.push(Ok(ModelList::new(
+        out.push(Ok(ModelPage::last(
             reply.models.into_iter().map(Model::from).collect(),
         )));
-    }
-}
-
-impl HasCompletion for Ollama {
-    type Wire = Chat;
-
-    fn completion(&self, model: impl Into<String>) -> Chat {
-        self.chat(model)
-    }
-}
-
-impl HasEmbedding for Ollama {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasModelListing for Ollama {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
     }
 }
 

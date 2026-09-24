@@ -176,6 +176,8 @@ impl From<Responses> for OpenAiWire {
 
 impl Wire for OpenAiWire {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
@@ -258,10 +260,6 @@ impl Decoder<Completion> for OpenAiDecoder {
 
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
         on_route!(self, decoder => decoder.project(payload, sink))
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        on_route!(self, decoder => decoder.document())
     }
 
     fn continuation(&self) -> Option<http::Request<Body>> {

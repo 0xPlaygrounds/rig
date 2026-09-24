@@ -7,7 +7,6 @@
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{HasEmbedding, HasRerank};
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
@@ -156,6 +155,8 @@ impl Embeddings {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -281,6 +282,8 @@ impl Rerank {
 
 impl Wire for Rerank {
     type Op = RerankOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = RerankDecoder;
 
     fn name(&self) -> &str {
@@ -402,22 +405,6 @@ impl Decoder<RerankOp> for RerankDecoder {
             .with_model(reply.model)
             .with_usage(usage)
             .with_raw(raw)));
-    }
-}
-
-impl HasEmbedding for VoyageAi {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasRerank for VoyageAi {
-    type Wire = Rerank;
-
-    fn rerank(&self, model: impl Into<String>) -> Rerank {
-        VoyageAi::rerank(self, model)
     }
 }
 

@@ -19,13 +19,13 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::completion::CompletionModel;
-use crate::driver::{Bind, Bound};
+use crate::driver::Model;
 use crate::http_client::BoxedHttpClient;
 use crate::operation::Completion;
 use crate::providers::{anthropic, gemini, openai};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::CompletionAdapter;
-use crate::wire::{HasCompletion, Secret, Wire};
+use crate::wire::{Secret, Wire};
 
 /// Every dialect this build knows, for
 /// [`openai::wire::Dialect`]'s [`Deserialize`](serde::Deserialize) lookup.
@@ -446,13 +446,13 @@ impl ProviderConfig {
     }
 }
 
-/// Bind the provider's completion wire to `http` and erase it under `label`.
+/// Pair the provider's completion wire with `http` and erase it under `label`.
 fn erase<W>(wire: W, label: &str, http: BoxedHttpClient) -> ErasedHandler
 where
     W: Wire<Op = Completion>,
-    Bound<W, BoxedHttpClient>: CompletionModel + 'static,
+    Model<W>: CompletionModel + 'static,
 {
-    ErasedHandler::new(CompletionAdapter::new(label, wire.bind(http)))
+    ErasedHandler::new(CompletionAdapter::new(label, Model::new(wire, http)))
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a

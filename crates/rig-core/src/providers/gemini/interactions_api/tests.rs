@@ -11,6 +11,7 @@ fn test_create_request_body_simple() {
 
     let request = CompletionRequest {
         record_telemetry_content: false,
+        extensions: Default::default(),
         model: None,
         chat_history: vec![Message::system("Be precise."), prompt],
         documents: vec![],
@@ -90,6 +91,7 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
 
     let request = CompletionRequest {
         record_telemetry_content: false,
+        extensions: Default::default(),
         model: None,
         chat_history: vec![
             // A driver-built result carries the executed name (a repair
@@ -326,6 +328,7 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     });
     let request = CompletionRequest {
         record_telemetry_content: false,
+        extensions: Default::default(),
         model: None,
         chat_history: vec![Message::User {
             content: vec![tool_result],
@@ -1096,6 +1099,7 @@ fn a_tool_round_trip_is_top_level_steps() {
         "gemini-2.5-flash".to_owned(),
         CompletionRequest {
             record_telemetry_content: false,
+            extensions: Default::default(),
             model: None,
             chat_history: vec![Message::user("Add 17 and 25."), assistant, result],
             documents: vec![],
@@ -1169,7 +1173,7 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
 // what the recorded traffic allows: no two committed cassettes record the
 // same interaction both ways.
 
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Mode, Wire};
 use futures::StreamExt;
@@ -1200,6 +1204,7 @@ fn interactions_wire() -> Interactions {
 fn probe() -> CompletionRequest {
     CompletionRequest {
         record_telemetry_content: false,
+        extensions: Default::default(),
         model: None,
         chat_history: vec![Message::user("probe")],
         documents: vec![],
@@ -1217,8 +1222,8 @@ fn probe() -> CompletionRequest {
 async fn fold_resource(interaction: &Interaction) -> crate::completion::CompletionResponse {
     use crate::completion::CompletionModel as _;
     let body = serde_json::to_string(interaction).expect("the resource serializes");
-    Bound::new(interactions_wire(), RecordingHttpClient::new(body))
-        .completion(probe())
+    Model::new(interactions_wire(), RecordingHttpClient::new(body))
+        .complete(probe())
         .await
         .expect("the interaction resource decodes")
 }
@@ -1250,15 +1255,15 @@ fn shape(response: &crate::completion::CompletionResponse) -> (Vec<&'static str>
 async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
     use crate::completion::CompletionModel as _;
 
-    let buffered = Bound::new(
+    let buffered = Model::new(
         interactions_wire(),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
-    .completion(probe())
+    .complete(probe())
     .await
     .expect("the recorded interaction resource decodes");
 
-    let mut stream = Bound::new(
+    let mut stream = Model::new(
         interactions_wire(),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(STREAMED_INTERACTION.as_bytes()),
@@ -1426,11 +1431,11 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
 async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
     use crate::completion::CompletionModel as _;
 
-    let response = Bound::new(
+    let response = Model::new(
         crate::providers::gemini::Gemini::new("test-key").interaction("v1_REDACTED_1"),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
-    .completion(probe())
+    .complete(probe())
     .await
     .expect("the recorded interaction resource decodes");
 

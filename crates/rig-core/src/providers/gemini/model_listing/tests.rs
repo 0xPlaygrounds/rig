@@ -158,7 +158,7 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
 #[test]
 fn models_sends_the_credential_as_the_last_query_pair() {
     let encoded = Models::new(Gemini::new("test-key"))
-        .encode((), Mode::Unary)
+        .encode(None, Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.first().expect("one request");
 
@@ -175,7 +175,7 @@ fn models_sends_the_credential_as_the_last_query_pair() {
 #[test]
 fn interactions_models_sends_the_credential_as_a_header_only() {
     let encoded = InteractionsModels::new(Gemini::new("test-key"))
-        .encode((), Mode::Unary)
+        .encode(None, Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.first().expect("one request");
 
@@ -196,35 +196,42 @@ fn interactions_models_sends_the_credential_as_a_header_only() {
 /// `crates/rig-cassette/fixtures/cassettes/gemini/models/list_models_smoke.yaml`; the recorded
 /// catalog fits in one page, so the `nextPageToken` is what this adds.
 #[test]
-fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
+fn a_paged_listing_names_its_cursor_and_the_next_page_follows_it() {
     const PAGE_ONE: &str = r#"{"models":[{"description":"Stable version of Gemini 2.5 Flash, our mid-size multimodal model that supports up to 1 million tokens, released in June of 2025.","displayName":"Gemini 2.5 Flash","inputTokenLimit":1048576,"maxTemperature":2,"name":"models/gemini-2.5-flash","outputTokenLimit":65536,"supportedGenerationMethods":["generateContent","countTokens","createCachedContent","batchGenerateContent"],"temperature":1,"thinking":true,"topK":64,"topP":0.95,"version":"001"},{"description":"Stable release (June 17th, 2025) of Gemini 2.5 Pro","displayName":"Gemini 2.5 Pro","inputTokenLimit":1048576,"maxTemperature":2,"name":"models/gemini-2.5-pro","outputTokenLimit":65536,"supportedGenerationMethods":["generateContent","countTokens","createCachedContent","batchGenerateContent"],"temperature":1,"thinking":true,"topK":64,"topP":0.95,"version":"2.5"}],"nextPageToken":"page-two"}"#;
     const PAGE_TWO: &str = r#"{"models":[{"displayName":"Gemini 2.5 Flash-Lite","inputTokenLimit":1048576,"name":"models/gemini-2.5-flash-lite","outputTokenLimit":65536}]}"#;
 
     let wire = Models::new(Gemini::new("test-key"));
-    let ids = |driver: &mut WireDriver<ModelListing, ModelsDecoder>, page: &str| {
-        driver.push(WireFrame::Text(page.to_owned()));
+    let page = |body: &str| {
+        let mut driver = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
+        driver.push(WireFrame::Text(body.to_owned()));
         driver
             .drain()
-            .flat_map(|item| {
-                item.expect("the recorded page decodes")
-                    .iter()
-                    .map(|model| model.id.clone())
-                    .collect::<Vec<_>>()
-            })
+            .next()
+            .expect("the page decodes to one event")
+            .expect("the recorded page decodes")
+    };
+    let ids = |page: &crate::model::ModelPage| {
+        page.models
+            .iter()
+            .map(|model| model.id.clone())
             .collect::<Vec<_>>()
     };
 
-    let mut first = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
-    let mut listed = ids(&mut first, PAGE_ONE);
-    let continuation = first.continuation().expect("page one named a cursor");
+    let first = page(PAGE_ONE);
+    let mut listed = ids(&first);
+    assert_eq!(first.next.as_deref(), Some("page-two"));
+    let continuation = wire
+        .encode(first.next, crate::wire::Mode::Unary)
+        .expect("the next page encodes");
+    let continuation = continuation.requests.first().expect("one request");
     assert_eq!(continuation.uri().path(), "/v1beta/models");
     assert_eq!(
         continuation.uri().query(),
         Some("pageSize=1000&pageToken=page-two&key=test-key"),
     );
 
-    let mut second = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
-    listed.extend(ids(&mut second, PAGE_TWO));
+    let second = page(PAGE_TWO);
+    listed.extend(ids(&second));
 
     assert_eq!(
         listed,
@@ -235,7 +242,7 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
         ],
     );
     assert!(
-        second.continuation().is_none(),
+        second.next.is_none(),
         "a page naming no cursor ends the listing",
     );
 }

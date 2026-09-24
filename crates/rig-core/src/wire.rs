@@ -35,6 +35,15 @@ pub enum WireFrame {
     Bytes(Vec<u8>),
 }
 
+impl AsRef<[u8]> for WireFrame {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::Text(text) => text.as_bytes(),
+            Self::Bytes(bytes) => bytes,
+        }
+    }
+}
+
 impl WireFrame {
     /// The frame payload as text (lossy for byte frames).
     pub fn as_str(&self) -> Cow<'_, str> {
@@ -165,9 +174,10 @@ impl std::fmt::Debug for Encoded {
 /// Reply mode used by the wire to select request encoding, framing, and decoder state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// One whole reply ([`crate::driver::call`]).
+    /// One whole reply ([`Model::call`](crate::driver::Model::call)).
     Unary,
-    /// A streamed reply ([`crate::driver::stream`]).
+    /// A streamed reply
+    /// ([`CompletionModel::stream`](crate::completion::CompletionModel::stream)).
     Streaming,
 }
 
@@ -183,14 +193,14 @@ pub trait Operation: Sized + 'static {
     /// One decoded step of a reply.
     type Event: WasmCompatSend + 'static;
     /// The normalized response the events fold into.
-    type Response;
+    type Response: WasmCompatSend + 'static;
     /// What a runtime accounts for. `()` for operations with nothing to
     /// declare.
     type Capabilities: Default;
     /// Where a decoder writes the events of one `interpret` step.
     type Output: Sink<Self> + WasmCompatSend;
     /// The fold from events to the response.
-    type Fold: Fold<Self>;
+    type Fold: Fold<Self> + WasmCompatSend;
     /// The canonical telemetry operation a wire performs. `()` for
     /// operations that open no span.
     type Telemetry: Copy;
@@ -325,9 +335,8 @@ pub trait ObservationSink {
 pub type Output<Op> = <Op as Operation>::Output;
 
 /// Synchronous state machine for one reply. Classifies frames and interprets
-/// known events without transport access. HTTP uses [`WireFrame`]; typed
-/// transports can provide their own frame type to
-/// [`run_wire_stream`](crate::driver::run_wire_stream).
+/// known events without transport access. HTTP uses [`WireFrame`]; a wire
+/// over another transport names its own frame type.
 pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// The wire's typed event, produced by this decoder's classifier.
     type Event;
@@ -379,17 +388,25 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
     }
 }
 
-/// A provider: data, an encoder, and a decoder.
+/// A provider endpoint: data, an encoder, and a decoder.
 ///
 /// No transport, no future, no type parameter. Implementations are plain
 /// data (`Clone + PartialEq + Debug + Serialize + Deserialize`, with
 /// credentials held in [`Secret`]), so a host can store one in a scene, a
-/// component, or a config file.
+/// component, or a config file. A [`Model`](crate::driver::Model) pairs a
+/// wire with a [`Transport`](crate::driver::Transport) that carries its
+/// payloads and frames.
 pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// The operation this wire performs.
     type Op: Operation;
+    /// What [`Self::encode`] produces for the transport to send. HTTP wires
+    /// send [`Encoded`] requests.
+    type Payload: WasmCompatSend + 'static;
+    /// One unit of a reply as the transport delivers it. HTTP wires read
+    /// [`WireFrame`]s. Its bytes are what observation projects.
+    type Frame: AsRef<[u8]> + WasmCompatSend + 'static;
     /// The decoder for one of its replies.
-    type Decoder: Decoder<Self::Op> + WasmCompatSend + 'static;
+    type Decoder: Decoder<Self::Op, Self::Frame> + WasmCompatSend + 'static;
 
     /// The provider descriptor name (`"anthropic"`), as records and
     /// telemetry name it.
@@ -398,7 +415,7 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// The request to send. Pure: it may read `self`, `request` and `mode`,
     /// and nothing else. A request that cannot be built is an
     /// [`EncodeError`], which always reports as a request failure.
-    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, EncodeError>;
+    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Self::Payload, EncodeError>;
 
     /// A fresh decoder for one reply, in the mode [`Self::encode`] was
     /// given.
@@ -446,16 +463,3 @@ pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
 pub type Capabilities<W> = <<W as Wire>::Op as Operation>::Capabilities;
 /// A wire's telemetry operation type.
 pub type Telemetry<W> = <<W as Wire>::Op as Operation>::Telemetry;
-
-/// A provider config that has a completion wire.
-///
-/// One small trait, implemented by provider config structs, so
-/// `Bound<P, H>` can build the provider's completion wire and rig-agent can
-/// offer `agent(model)` / `extractor(model)` on it without naming a provider.
-pub trait HasCompletion: WasmCompatSend + WasmCompatSync {
-    /// The provider's completion wire.
-    type Wire: Wire<Op = crate::operation::Completion>;
-
-    /// Build the completion wire for `model`.
-    fn completion(&self, model: impl Into<String>) -> Self::Wire;
-}

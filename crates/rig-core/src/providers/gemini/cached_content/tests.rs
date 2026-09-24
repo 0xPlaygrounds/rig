@@ -196,7 +196,7 @@ fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpRespons
 fn caches(
     pages: Vec<MockHttpResponse>,
 ) -> (
-    crate::driver::Bound<CachedContents, SequencedHttpClient>,
+    crate::driver::Model<CachedContents, SequencedHttpClient>,
     SequencedHttpClient,
 ) {
     let http_client = SequencedHttpClient::new(pages);
@@ -268,7 +268,7 @@ async fn pagination_percent_encodes_the_cursor() {
 // ── the resource API on a bound provider ────────────────────────────────
 //
 // The cache lifecycle moved off the client layer onto
-// `Bound<Gemini, H>::cached_contents()`. These two cells are the in-tree
+// `Model<Gemini, H>::cached_contents()`. These two cells are the in-tree
 // proof that it moved *without moving the bytes*: they pin the paths the
 // recorded traffic and the axum-stub harness cells
 // (`crates/rig-cassette/tests/providers/gemini/support.rs`, which asserts the literal
@@ -276,9 +276,11 @@ async fn pagination_percent_encodes_the_cursor() {
 
 fn bound_caches(
     http: SequencedHttpClient,
-) -> crate::driver::Bound<CachedContents, SequencedHttpClient> {
-    crate::driver::Bound::new(crate::providers::gemini::Gemini::new("test-key"), http)
-        .cached_contents()
+) -> crate::driver::Model<CachedContents, SequencedHttpClient> {
+    crate::driver::Model::new(
+        crate::providers::gemini::Gemini::new("test-key").cached_contents(),
+        http,
+    )
 }
 
 #[tokio::test]

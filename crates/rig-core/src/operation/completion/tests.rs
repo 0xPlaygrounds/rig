@@ -7,7 +7,7 @@ use crate::providers::gemini::Gemini;
 use crate::providers::gemini::completion::GenerateContent;
 use crate::providers::openai::wire::{DEEPSEEK, OPENROUTER, OpenAI};
 use crate::test_utils::RecordingHttpClient;
-use crate::wire::{HasCompletion, Wire};
+use crate::wire::{Encoded, Wire, WireFrame};
 
 const OWN: &str = "own-opaque-reasoning-state";
 const FOREIGN: &str = "foreign-opaque-reasoning-state";
@@ -62,6 +62,7 @@ fn history(own: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -69,7 +70,7 @@ fn history(own: &str) -> CompletionRequest {
 /// provider's, and unattributed reasoning.
 async fn sent<W>(wire: W) -> String
 where
-    W: Wire<Op = super::Completion>,
+    W: Wire<Op = super::Completion, Payload = Encoded, Frame = WireFrame> + Clone,
 {
     let own = wire.name().to_owned();
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
@@ -218,18 +219,18 @@ fn a_stream_stamps_its_reasoning_with_the_terminal_issuer() {
 
 #[tokio::test]
 async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
-    use crate::streaming::{StreamEvent, StreamFinal, StreamingCompletionResponse};
+    use crate::streaming::{CompletionStream, StreamEvent, StreamFinal};
     use futures::StreamExt;
 
     type Items = Vec<Result<StreamEvent, crate::error::ProviderError>>;
     let terminal = || StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null);
 
     // A provider that opens its own stream knows the issuer up front.
-    let mut stream = StreamingCompletionResponse::stream(
+    let mut stream = CompletionStream::new(
         "aws_bedrock",
-        Box::pin(futures::stream::iter(vec![Ok(StreamEvent::Final(
+        futures::stream::iter(vec![Ok(StreamEvent::Final(
             terminal().with_reasoning_issuer("anthropic"),
-        ))] as Items)),
+        ))] as Items),
     )
     .with_reasoning_issuer("anthropic");
     assert_eq!(
@@ -240,10 +241,7 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
     while stream.next().await.is_some() {}
     assert_eq!(stream.reasoning_issuer(), Some("anthropic"), "after it");
 
-    let plain = StreamingCompletionResponse::stream(
-        "openai",
-        Box::pin(futures::stream::iter(Items::new())),
-    );
+    let plain = CompletionStream::new("openai", futures::stream::iter(Items::new()));
     assert_eq!(plain.reasoning_issuer(), Some("openai"));
 
     // A stream rebuilt from bus events is opened under a handler label: the
@@ -251,7 +249,7 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
     let events: crate::streaming::StreamEvents = Box::pin(futures::stream::iter(vec![Ok(
         StreamEvent::Final(terminal().with_reasoning_issuer("anthropic")),
     )]));
-    let mut rebuilt = StreamingCompletionResponse::from_events("default", events);
+    let mut rebuilt = CompletionStream::relay("default", events);
     assert_eq!(rebuilt.reasoning_issuer(), None);
     while rebuilt.next().await.is_some() {}
     assert_eq!(rebuilt.reasoning_issuer(), Some("anthropic"));
@@ -310,7 +308,7 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         .collect();
     // Through the chat wire itself and through the route wrapper
     // `completion` returns, which must delegate its issuers.
-    async fn send<W: Wire<Op = super::Completion>>(
+    async fn send<W: Wire<Op = super::Completion, Payload = Encoded, Frame = WireFrame> + Clone>(
         wire: W,
         content: Vec<AssistantContent>,
     ) -> String {
@@ -434,11 +432,11 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
         ],
         "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
     });
-    let response = crate::driver::Bound::new(
+    let response = crate::driver::Model::new(
         OpenAI::with_key(&OPENROUTER, "test-key").responses("openai/gpt-5-mini"),
         RecordingHttpClient::new(Bytes::from(reply.to_string())),
     )
-    .completion(history("unused"))
+    .complete(history("unused"))
     .await
     .expect("the reply decodes");
     let recorded: Vec<_> = response
@@ -473,11 +471,11 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
         "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
     });
     let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
-    let response = crate::driver::Bound::new(
+    let response = crate::driver::Model::new(
         wire.clone(),
         RecordingHttpClient::new(Bytes::from(reply.to_string())),
     )
-    .completion(history("unused"))
+    .complete(history("unused"))
     .await
     .expect("the reply decodes");
     let Some(AssistantContent::Reasoning(reasoning)) = response.choice.first() else {
@@ -538,11 +536,11 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         ("openai/gpt-5-mini", "openrouter/openai"),
     ] {
         let wire = OpenAI::with_key(&OPENROUTER, "test-key").chat(model);
-        let unary = crate::driver::Bound::new(
+        let unary = crate::driver::Model::new(
             wire.clone(),
             RecordingHttpClient::new(Bytes::from(reply(model).to_string())),
         )
-        .completion(history("unused"))
+        .complete(history("unused"))
         .await
         .expect("the reply decodes");
         assert_eq!(issuers(&unary.choice), [expected], "unary {model}");
@@ -552,7 +550,7 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         let message = chunk["choices"][0]["message"].take();
         chunk["choices"][0]["delta"] = message;
         let sse = format!("data: {chunk}\n\ndata: [DONE]\n\n");
-        let mut stream = crate::driver::Bound::new(
+        let mut stream = crate::driver::Model::new(
             wire,
             MockStreamingClient {
                 sse_bytes: Bytes::from(sse),

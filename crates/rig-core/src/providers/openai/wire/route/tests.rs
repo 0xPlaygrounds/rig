@@ -1,13 +1,12 @@
 //! The route's options, reached the way a caller reaches them.
 //!
-//! `Bound<OpenAI>::completion` yields a `Bound<OpenAiWire>`, so every
-//! per-route option has to be reachable through `Bound::map_wire` or it is
+//! `Model<OpenAI>::completion` yields a `Model<OpenAiWire>`, so every
+//! per-route option has to be reachable through `Model::map_wire` or it is
 //! not reachable at all. Each test below asserts on the *encoded request*:
 //! an option that only sets a field the encoder ignores is not forwarded.
 
 use super::*;
 use crate::completion::ToolDefinition;
-use crate::driver::Bound;
 use crate::message::{AssistantContent, Message, ToolResultContent, UserContent};
 
 use super::super::OPENROUTER;
@@ -51,11 +50,12 @@ fn request() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
 /// What `provider`'s route sends after `option` went through
-/// [`Bound::map_wire`].
+/// [`Model::map_wire`].
 fn body(provider: OpenAI, option: impl FnOnce(OpenAiWire) -> OpenAiWire) -> serde_json::Value {
     body_with_request(provider, option, request())
 }
@@ -65,11 +65,7 @@ fn body_with_request(
     option: impl FnOnce(OpenAiWire) -> OpenAiWire,
     request: CompletionRequest,
 ) -> serde_json::Value {
-    let bound = Bound::new(provider, ())
-        .completion("gpt-5.2")
-        .map_wire(option);
-    let encoded = bound
-        .wire
+    let encoded = option(provider.completion("gpt-5.2"))
         .encode(request, Mode::Unary)
         .expect("the request encodes");
     let [request] = encoded.requests.as_slice() else {

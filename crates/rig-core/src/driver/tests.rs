@@ -11,11 +11,11 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Bound, call, stream};
+use super::{Model, call, stream};
 use crate::completion::{CompletionModel, CompletionRequest};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
-use crate::model::{Model, ModelList, ModelLister};
+use crate::model::{Model as ModelInfo, ModelLister, ModelPage};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
@@ -154,6 +154,8 @@ fn terminal(out: &mut Output<Completion>, usage: Usage) {
 
 impl Wire for Echo {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EchoDecoder;
 
     fn name(&self) -> &str {
@@ -196,6 +198,7 @@ fn prompt() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -210,10 +213,10 @@ const STREAM_BODY: &str = concat!(
 
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
-    let unary = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let buffered = unary.completion(prompt()).await.expect("the reply decodes");
+    let unary = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let buffered = unary.complete(prompt()).await.expect("the reply decodes");
 
-    let streaming = Bound::new(
+    let streaming = Model::new(
         Echo::streaming(),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(STREAM_BODY.as_bytes()),
@@ -240,8 +243,8 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
 
 #[tokio::test]
 async fn a_unary_reply_carries_its_body_as_raw() {
-    let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let response = bound.completion(prompt()).await.expect("the reply decodes");
+    let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let response = bound.complete(prompt()).await.expect("the reply decodes");
     assert_eq!(
         response.raw.pointer("/text").and_then(|text| text.as_str()),
         Some("hi there")
@@ -622,14 +625,11 @@ async fn a_failed_unary_call_projects_the_reply_it_failed_on() {
 
 // ── paging ─────────────────────────────────────────────────────────────
 
-/// A model-listing wire whose first reply names a second page.
+/// A model-listing wire whose pages name the next page's cursor.
 #[derive(Clone, Debug, PartialEq)]
 struct Catalogue;
 
-#[derive(Default)]
-struct CatalogueDecoder {
-    next: Option<String>,
-}
+struct CatalogueDecoder;
 
 #[derive(serde::Deserialize)]
 struct Page {
@@ -649,46 +649,45 @@ impl Decoder<ModelListing> for CatalogueDecoder {
     }
 
     fn interpret(&mut self, page: Self::Event, out: &mut Output<ModelListing>) {
-        self.next = page.next;
-        out.push(Ok(ModelList::new(
-            page.data.into_iter().map(Model::from_id).collect(),
-        )));
-    }
-
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        let cursor = self.next.as_ref()?;
-        http::Request::get(format!("https://echo.invalid/v1/models?after={cursor}"))
-            .body(Body::empty())
-            .ok()
+        out.push(Ok(ModelPage {
+            models: page.data.into_iter().map(ModelInfo::from_id).collect(),
+            next: page.next,
+        }));
     }
 }
 
 impl Wire for Catalogue {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = CatalogueDecoder;
 
     fn name(&self) -> &str {
         "echo"
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = http::Request::get("https://echo.invalid/v1/models").body(Body::empty())?;
+    fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
+        let uri = match cursor {
+            Some(cursor) => format!("https://echo.invalid/v1/models?after={cursor}"),
+            None => "https://echo.invalid/v1/models".to_owned(),
+        };
+        let request = http::Request::get(uri).body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        CatalogueDecoder::default()
+        CatalogueDecoder
     }
 }
 
 #[tokio::test]
-async fn a_paged_listing_follows_every_continuation() {
+async fn a_paged_listing_follows_every_cursor() {
     let http = SequencedHttpClient::new([
         MockHttpResponse::success(r#"{"data":["a","b"],"next":"b"}"#),
         MockHttpResponse::success(r#"{"data":["c"]}"#),
     ]);
-    let bound = Bound::new(Catalogue, http.clone());
-    let models = bound.list_all().await.expect("both pages decode");
+    let model = Model::new(Catalogue, http.clone());
+    let models = model.list_all().await.expect("both pages decode");
     assert_eq!(
         models
             .iter()
@@ -719,8 +718,8 @@ async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
         MockHttpResponse::success(r#"{"data":["b"],"next":"b"}"#),
         MockHttpResponse::success(r#"{"data":["never"]}"#),
     ]);
-    let bound = Bound::new(Catalogue, http.clone());
-    let models = bound.list_all().await.expect("the fetched pages decode");
+    let model = Model::new(Catalogue, http.clone());
+    let models = model.list_all().await.expect("the fetched pages decode");
     assert_eq!(
         models
             .iter()
@@ -737,14 +736,29 @@ async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
 
 #[tokio::test]
 async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
-    let pages = (0..super::MAX_CONTINUATION_PAGES + 5).map(|page| {
+    let pages = (0..super::consumers::MAX_PAGES + 5).map(|page| {
         MockHttpResponse::success(format!(r#"{{"data":["m{page}"],"next":"c{}"}}"#, page + 1))
     });
     let http = SequencedHttpClient::new(pages);
-    let bound = Bound::new(Catalogue, http.clone());
-    let models = bound.list_all().await.expect("the fetched pages decode");
-    assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
-    assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
+    let model = Model::new(Catalogue, http.clone());
+    let models = model.list_all().await.expect("the fetched pages decode");
+    assert_eq!(models.len(), super::consumers::MAX_PAGES);
+    assert_eq!(http.requests().len(), super::consumers::MAX_PAGES);
+}
+
+#[tokio::test]
+async fn a_failed_listing_page_names_its_provider_and_path() {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"data":["a"],"next":"b"}"#),
+        MockHttpResponse::success("not json"),
+    ]);
+    let error = Model::new(Catalogue, http)
+        .list_all()
+        .await
+        .expect_err("the second page does not decode");
+    let message = error.to_string();
+    assert!(message.contains("provider=echo"), "{message}");
+    assert!(message.contains("path=/v1/models"), "{message}");
 }
 
 // ── telemetry ──────────────────────────────────────────────────────────
@@ -771,9 +785,9 @@ async fn the_driver_records_the_folded_responses_metadata() {
         recorded: recorded.clone(),
     };
     let subscriber = tracing_subscriber::registry().with(layer);
-    let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
     let response = with_default(subscriber, || {
-        futures::executor::block_on(bound.completion(prompt()))
+        futures::executor::block_on(bound.complete(prompt()))
     })
     .expect("the reply decodes");
     assert_eq!(response.model.as_deref(), Some("echo-1"));
@@ -802,13 +816,13 @@ async fn the_span_names_the_requests_model_override_not_the_wires() {
         recorded: recorded.clone(),
     };
     let subscriber = tracing_subscriber::registry().with(layer);
-    let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
     let request = CompletionRequest {
         model: Some("echo-override".to_owned()),
         ..prompt()
     };
     with_default(subscriber, || {
-        futures::executor::block_on(bound.completion(request))
+        futures::executor::block_on(bound.complete(request))
     })
     .expect("the reply decodes");
     let recorded = recorded.lock().expect("no panic held the lock").clone();
@@ -916,6 +930,8 @@ impl Decoder<Completion> for GuardedDecoder {
 
 impl Wire for Guarded {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = GuardedDecoder;
 
     fn name(&self) -> &str {
@@ -937,9 +953,9 @@ impl Wire for Guarded {
 
 #[tokio::test]
 async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
-    let unary = Bound::new(Guarded(Framing::Whole), RecordingHttpClient::new("{}"));
+    let unary = Model::new(Guarded(Framing::Whole), RecordingHttpClient::new("{}"));
     let error = unary
-        .completion(prompt())
+        .complete(prompt())
         .await
         .expect_err("a whole reply that delivered nothing is not an answer");
     assert!(
@@ -948,7 +964,7 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
         "expected the empty-reply error, got {error:?}"
     );
 
-    let streaming = Bound::new(
+    let streaming = Model::new(
         Guarded(Framing::Sse),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(b"data: {}\n\n"),
@@ -973,9 +989,12 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
 /// that could not be built.
 #[test]
 fn a_stream_the_driver_cannot_send_is_a_request_failure() {
+    #[derive(Clone)]
     struct Batch;
     impl Wire for Batch {
         type Op = Completion;
+        type Payload = crate::wire::Encoded;
+        type Frame = crate::wire::WireFrame;
         type Decoder = EchoDecoder;
         fn name(&self) -> &str {
             "echo"
@@ -991,9 +1010,12 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
             EchoDecoder
         }
     }
+    #[derive(Clone)]
     struct Multipart;
     impl Wire for Multipart {
         type Op = Completion;
+        type Payload = crate::wire::Encoded;
+        type Frame = crate::wire::WireFrame;
         type Decoder = EchoDecoder;
         fn name(&self) -> &str {
             "echo"

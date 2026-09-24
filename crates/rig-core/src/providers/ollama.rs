@@ -12,7 +12,8 @@
 //! # }
 //! ```
 //!
-//! Bind a wire to a transport to execute it. `Ollama::from_env` reads
+//! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call
+//! it. `Ollama::from_env` reads
 //! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
 use crate::completion::Usage;
 use crate::error::EncodeError;

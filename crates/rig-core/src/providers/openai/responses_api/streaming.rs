@@ -294,6 +294,10 @@ pub struct RawChoiceAccumulator {
     /// Whether reasoning belongs to the upstream model's family rather than
     /// to `provider`, a gateway ([`crate::providers::openai::wire::upstream_reasoning_issuer`]).
     upstream_reasoning_issuer: bool,
+    /// The reply's own document, which the terminal record carries as its
+    /// `raw` in place of the stream's terminal state: a whole reply that
+    /// arrived as an event stream has no other document.
+    pub(crate) document: Option<serde_json::Value>,
 }
 
 /// The assistant message ID (`msg_...`) a terminal response object carries,
@@ -326,6 +330,7 @@ impl RawChoiceAccumulator {
             delta_text_slots: std::collections::HashSet::new(),
             unattributed_text_delta: false,
             upstream_reasoning_issuer: false,
+            document: None,
         }
     }
 
@@ -800,7 +805,12 @@ impl RawChoiceAccumulator {
             self.upstream_reasoning_issuer,
             self.terminal,
         ) {
-            Ok(record) => out.final_record(record),
+            Ok(mut record) => {
+                if let Some(document) = self.document {
+                    record.raw = document;
+                }
+                out.final_record(record)
+            }
             Err(error) => out.error(error),
         }
     }
@@ -871,13 +881,17 @@ struct ErrorEnvelope {
 /// Holds the per-reply assembly state ([`RawChoiceAccumulator`]); frame
 /// triage policy lives in the driver, not here.
 pub struct ResponsesDecoder {
-    /// The reply's own envelope, captured from the terminal event.
+    /// The reply's own envelope, captured from its latest response event
+    /// when the decoder reads a whole reply.
     ///
     /// A unary call on a dialect that always streams answers with an event
-    /// stream, so there is no reply document for the driver to parse; the
-    /// terminal `response.completed` carries it, and this is what makes
-    /// `CompletionResponse::raw` the reply rather than a summary of it.
+    /// stream, so there is no reply document to parse; the terminal
+    /// `response.completed` carries it, and the terminal record hands it on
+    /// as `raw`, which is what makes `CompletionResponse::raw` the reply
+    /// rather than a summary of it.
     document: Option<serde_json::Value>,
+    /// Whether this decoder reads a whole reply rather than a stream.
+    whole: bool,
     accumulator: RawChoiceAccumulator,
     options: ResponsesStreamOptions,
     /// Whether to repair absent envelope indices before retrying classification.
@@ -894,11 +908,19 @@ impl ResponsesDecoder {
     pub fn new(provider: &str, options: ResponsesStreamOptions) -> Self {
         Self {
             document: None,
+            whole: false,
             accumulator: RawChoiceAccumulator::new(provider, None),
             options,
             repair_envelopes: false,
             finished: false,
         }
+    }
+
+    /// Read a whole reply: its terminal record carries the reply's own
+    /// document as `raw`.
+    pub fn whole_reply(mut self) -> Self {
+        self.whole = true;
+        self
     }
 
     /// Salvage replayed frames that omit their envelope bookkeeping.
@@ -964,7 +986,9 @@ impl ResponsesDecoder {
             StreamingCompletionChunk::Response(chunk) => {
                 let ResponseChunk { kind, response, .. } = chunk;
                 // Keep the latest snapshot so raw output includes final status and usage.
-                self.document = serde_json::to_value(&response).ok();
+                if self.whole {
+                    self.document = serde_json::to_value(&response).ok();
+                }
                 if matches!(kind, ResponseChunkKind::ResponseCompleted) {
                     // Inert under the driver, which records the same fields
                     // off the terminal record; the client layer's stream
@@ -994,7 +1018,8 @@ impl ResponsesDecoder {
         let provider = self.accumulator.provider.clone();
         let mut fresh = RawChoiceAccumulator::new(provider, None);
         fresh.upstream_reasoning_issuer = self.accumulator.upstream_reasoning_issuer;
-        let accumulator = std::mem::replace(&mut self.accumulator, fresh);
+        let mut accumulator = std::mem::replace(&mut self.accumulator, fresh);
+        accumulator.document = self.document.take();
         accumulator.finish(out);
     }
 }
@@ -1047,7 +1072,9 @@ impl Decoder<Completion> for ResponsesDecoder {
             // the events the stream sends, then close it with the terminal
             // the body itself is.
             ResponsesEvent::Whole(response) => {
-                self.document = serde_json::to_value(&*response).ok();
+                if self.whole {
+                    self.document = serde_json::to_value(&*response).ok();
+                }
                 self.accumulator.replay_whole_response(*response, out);
                 self.flush(out);
             }
@@ -1070,10 +1097,6 @@ impl Decoder<Completion> for ResponsesDecoder {
         // Tool calls the provider fully delivered are content: they flush
         // before the terminal error reaches the consumer.
         self.accumulator.flush_tool_calls(out);
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        self.document.clone()
     }
 
     fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {

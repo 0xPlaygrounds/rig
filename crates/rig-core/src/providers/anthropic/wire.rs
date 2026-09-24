@@ -13,13 +13,12 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{Model, ModelPage};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
 use crate::providers::internal::named_dialect;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -260,6 +259,11 @@ impl Anthropic {
         self
     }
 
+    /// The provider's completion wire for `model`: Messages.
+    pub fn completion(&self, model: impl Into<String>) -> Messages {
+        self.messages(model)
+    }
+
     /// The Messages wire for `model`.
     pub fn messages(&self, model: impl Into<String>) -> Messages {
         let model = model.into();
@@ -372,8 +376,8 @@ impl Messages {
     /// # }
     /// ```
     ///
-    /// On a [`Bound`](crate::driver::Bound) the same option is forwarded
-    /// with `bound.map_wire(|wire| wire.with_automatic_caching())`.
+    /// On a [`Model`](crate::driver::Model), set it on the wire:
+    /// `model.wire = model.wire.with_automatic_caching()`.
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
@@ -493,6 +497,8 @@ impl Messages {
 
 impl Wire for Messages {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = MessagesDecoder;
 
     fn name(&self) -> &str {
@@ -547,21 +553,23 @@ pub struct Models {
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
         self.provider.dialect.name
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(self.models_request(None)?, Framing::Whole))
+    fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(
+            self.models_request(cursor.as_deref())?,
+            Framing::Whole,
+        ))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder {
-            provider: self.provider.clone(),
-            next: None,
-        }
+        ModelsDecoder
     }
 }
 
@@ -606,12 +614,8 @@ impl From<ModelEntry> for Model {
     }
 }
 
-/// Decodes `GET /v1/models`, following the cursor Anthropic names.
-pub struct ModelsDecoder {
-    provider: Anthropic,
-    /// The cursor the last page named, when it claimed more pages.
-    next: Option<String>,
-}
+/// Decodes one page of `GET /v1/models`, with the cursor Anthropic names.
+pub struct ModelsDecoder;
 
 impl Decoder<ModelListing> for ModelsDecoder {
     type Event = ModelsPage;
@@ -622,21 +626,13 @@ impl Decoder<ModelListing> for ModelsDecoder {
 
     fn interpret(&mut self, page: Self::Event, out: &mut Output<ModelListing>) {
         // Missing or empty cursors would repeatedly fetch page one, even with has_more.
-        self.next = page
+        let next = page
             .last_id
             .filter(|cursor| page.has_more && !cursor.is_empty());
-        out.push(Ok(ModelList::new(
-            page.data.into_iter().map(Model::from).collect(),
-        )));
-    }
-
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        let cursor = self.next.as_deref()?;
-        Models {
-            provider: self.provider.clone(),
-        }
-        .models_request(Some(cursor))
-        .ok()
+        out.push(Ok(ModelPage {
+            models: page.data.into_iter().map(Model::from).collect(),
+            next,
+        }));
     }
 }
 
@@ -650,6 +646,8 @@ pub struct Verify {
 
 impl Wire for Verify {
     type Op = VerifyOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = VerifyDecoder;
 
     fn name(&self) -> &str {
@@ -669,30 +667,6 @@ impl Wire for Verify {
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         VerifyDecoder
-    }
-}
-
-impl HasCompletion for Anthropic {
-    type Wire = Messages;
-
-    fn completion(&self, model: impl Into<String>) -> Messages {
-        self.messages(model)
-    }
-}
-
-impl crate::driver::HasModelListing for Anthropic {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
-    }
-}
-
-impl crate::driver::HasVerify for Anthropic {
-    type Wire = Verify;
-
-    fn verify(&self) -> Verify {
-        Anthropic::verify(self)
     }
 }
 

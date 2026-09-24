@@ -463,14 +463,14 @@ impl Observe for ProviderObserver {
 async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins() {
     use crate::{
         completion::CompletionModel as _,
-        driver::Bind as _,
         observe::{Action, AdapterContext, AdapterEnding, AdapterEvent, ObservationLog, Subject},
         test_utils::RecordingHttpClient,
     };
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
-    let model = crate::providers::gemini::Gemini::new("key")
-        .bind(RecordingHttpClient::new(body))
-        .completion("gemini-test");
+    let model = crate::driver::Model::new(
+        crate::providers::gemini::Gemini::new("key").completion("gemini-test"),
+        RecordingHttpClient::new(body),
+    );
     let handler = crate::serve::adapters::CompletionAdapter::new("gemini-test", model.clone());
     let bus_log = Arc::new(ObservationLog::default());
     let direct_log = Arc::new(ObservationLog::default());

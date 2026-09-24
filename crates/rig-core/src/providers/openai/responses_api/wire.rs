@@ -207,6 +207,8 @@ fn merge_instructions(instructions: &str, existing: Option<&str>) -> String {
 
 impl Wire for Responses {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ResponsesDecoder;
 
     fn name(&self) -> &str {
@@ -232,7 +234,7 @@ impl Wire for Responses {
         self.encode_with_headers(request, mode, OpenAI::completion_headers)
     }
 
-    fn decoder(&self, _mode: Mode) -> ResponsesDecoder {
+    fn decoder(&self, mode: Mode) -> ResponsesDecoder {
         let quirks = &self.provider.dialect.quirks.responses;
         let options = if quirks.contract == ResponsesContract::Xai {
             // xAI answers a 200 with its error envelope, and the same
@@ -250,6 +252,9 @@ impl Wire for Responses {
         }
         if self.provider.dialect.quirks.upstream_reasoning_issuer {
             decoder = decoder.with_upstream_reasoning_issuer();
+        }
+        if mode == Mode::Unary {
+            decoder = decoder.whole_reply();
         }
         decoder
     }

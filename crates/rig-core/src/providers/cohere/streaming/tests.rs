@@ -5,12 +5,12 @@ use serde_json::json;
 /// drives.
 fn cohere_model<H: Clone>(
     http_client: H,
-) -> crate::driver::Bound<crate::providers::cohere::Chat, H> {
-    crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+) -> crate::driver::Model<crate::providers::cohere::Chat, H> {
+    crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .completion(crate::providers::cohere::COMMAND_R_08_2024),
         http_client,
     )
-    .completion(crate::providers::cohere::COMMAND_R_08_2024)
 }
 
 fn classify(data: &str) -> wire::WireEvent<StreamingEvent> {
@@ -142,7 +142,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "EOF without message-end must not synthesize a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.terminal().is_none());
 }
 
 #[tokio::test]
@@ -437,7 +437,7 @@ async fn errored_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "a failed stream must not be reported as a successful, zero-usage completion"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.terminal().is_none());
 }
 
 #[test]

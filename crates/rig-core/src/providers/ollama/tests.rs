@@ -71,7 +71,7 @@ async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse
         body.to_string(),
     ));
     model
-        .completion(model.completion_request("hello").build())
+        .complete(model.completion_request("hello").build())
         .await
 }
 
@@ -615,6 +615,7 @@ fn test_completion_request_with_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     // Convert to OllamaCompletionRequest
@@ -681,6 +682,7 @@ fn test_completion_request_with_level_low_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     // Convert to OllamaCompletionRequest
@@ -747,6 +749,7 @@ fn test_completion_request_with_level_medium_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     // Convert to OllamaCompletionRequest
@@ -813,6 +816,7 @@ fn test_completion_request_with_level_high_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     // Convert to OllamaCompletionRequest
@@ -879,6 +883,7 @@ fn test_completion_request_with_level_invalid_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     // Convert to OllamaCompletionRequest
@@ -911,6 +916,7 @@ fn test_completion_request_with_think_omitted_by_default() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     // Convert to OllamaCompletionRequest
@@ -964,6 +970,7 @@ fn test_completion_request_num_predict_from_additional_params_wins() {
         additional_params: Some(json!({ "num_predict": 42 })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -996,6 +1003,7 @@ fn test_completion_request_num_predict_without_additional_params() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -1032,6 +1040,7 @@ fn test_completion_request_options_omit_unset_parameters() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -1071,6 +1080,7 @@ fn test_completion_request_with_output_schema() {
         additional_params: None,
         output_schema: Some(schema),
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -1112,6 +1122,7 @@ fn test_completion_request_without_output_schema() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -1126,8 +1137,8 @@ fn test_completion_request_without_output_schema() {
 }
 
 /// The chat wire bound to `http_client`: the model every case below drives.
-fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Bound<Chat, H> {
-    crate::driver::Bound::new(Ollama::new(), http_client).completion(LLAMA3_2)
+fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Model<Chat, H> {
+    crate::driver::Model::new(Ollama::new().completion(LLAMA3_2), http_client)
 }
 
 // Proves a truncated NDJSON stream — content chunks then EOF without a
@@ -1169,7 +1180,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "EOF without a done record must not synthesize a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.terminal().is_none());
 }
 
 // Proves a malformed NDJSON line between valid lines surfaces as an
@@ -1293,7 +1304,7 @@ async fn completion_non_success_preserves_status_and_body() {
     let request = model.completion_request("hello").build();
 
     let error = model
-        .completion(request)
+        .complete(request)
         .await
         .expect_err("should fail with non-success status");
 
@@ -1316,7 +1327,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(Ollama::new(), http_client).embedding(ALL_MINILM, None);
+    let model = crate::driver::Model::new(Ollama::new().embeddings(ALL_MINILM, None), http_client);
 
     let error = model
         .embed_texts(vec!["hello".to_string()])
@@ -1357,7 +1368,7 @@ mod raw_capture {
             "eval_duration": 4709213000
         }"#;
 
-    fn model() -> crate::driver::Bound<Chat, RecordingHttpClient> {
+    fn model() -> crate::driver::Model<Chat, RecordingHttpClient> {
         ollama_model(RecordingHttpClient::new(BODY))
     }
 
@@ -1384,7 +1395,7 @@ mod raw_capture {
         let model = model();
 
         let response = model
-            .completion(model.completion_request("hello").build())
+            .complete(model.completion_request("hello").build())
             .await
             .expect("completion");
 

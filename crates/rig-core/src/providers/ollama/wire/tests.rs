@@ -1,6 +1,6 @@
 use super::*;
 use crate::completion::CompletionModel as _;
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::embeddings::EmbeddingModel as _;
 use crate::message::AssistantContent;
 use crate::model::ModelLister as _;
@@ -52,6 +52,7 @@ fn recorded_request() -> CompletionRequest {
         additional_params: Some(serde_json::json!({ "think": false })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -80,15 +81,15 @@ fn text_of(choice: &[AssistantContent]) -> String {
 
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
-    let buffered = Bound::new(
+    let buffered = Model::new(
         Ollama::new().chat("qwen3:4b"),
         RecordingHttpClient::new(UNARY_BODY),
     )
-    .completion(recorded_request())
+    .complete(recorded_request())
     .await
     .expect("the recorded reply decodes");
 
-    let streaming = Bound::new(
+    let streaming = Model::new(
         Ollama::new().chat("qwen3:4b"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(STREAM_BODY.as_bytes()),
@@ -155,11 +156,11 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
 #[tokio::test]
 async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
     let body = r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing it up</think>the answer"},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#;
-    let response = Bound::new(
+    let response = Model::new(
         Ollama::new().chat("deepseek-r1"),
         RecordingHttpClient::new(body),
     )
-    .completion(recorded_request())
+    .complete(recorded_request())
     .await
     .expect("the reply decodes");
 
@@ -187,7 +188,7 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
         r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#,
         "\n",
     );
-    let bound = Bound::new(
+    let bound = Model::new(
         Ollama::new().chat("deepseek-r1"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from(stream),
@@ -266,7 +267,7 @@ const MODELS_BODY: &str = r#"{"models":[{"name":"all-minilm:latest","model":"all
 
 #[tokio::test]
 async fn the_model_listing_reads_every_installed_model() {
-    let models = Bound::new(
+    let models = Model::new(
         Ollama::new().models(),
         RecordingHttpClient::new(MODELS_BODY),
     )
@@ -290,7 +291,7 @@ const EMBED_BODY: &str = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.1
 
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
-    let response = Bound::new(
+    let response = Model::new(
         Ollama::new().embeddings("all-minilm", None),
         RecordingHttpClient::new(EMBED_BODY),
     )

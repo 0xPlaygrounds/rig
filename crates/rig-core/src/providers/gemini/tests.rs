@@ -43,6 +43,7 @@ fn a_serialized_config_carries_no_key_material() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
     let encoded = wire
         .encode(request, crate::wire::Mode::Unary)

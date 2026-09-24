@@ -15,9 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
-use crate::driver::{HasEmbedding, HasModelListing};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{Model, ModelPage};
 use crate::operation::{Completion, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
@@ -31,8 +30,7 @@ use crate::providers::openai::wire::{
 };
 use crate::telemetry::GenAiOperation;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 
 use super::{CopilotIntent, PROVIDER_NAME};
@@ -317,6 +315,8 @@ fn credential_of(provider: &OpenAI) -> Copilot {
 
 impl Wire for CopilotWire {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
@@ -353,8 +353,7 @@ impl Wire for CopilotWire {
 
 /// Copilot's model-listing wire.
 ///
-/// `GET /models` answers with the whole catalogue, so
-/// [`Decoder::continuation`] keeps its default `None`.
+/// `GET /models` answers with the whole catalogue in one page.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which Copilot, and how to reach it.
@@ -417,19 +416,21 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
-        out.push(Ok(ModelList::new(event.into_models())));
+        out.push(Ok(ModelPage::last(event.into_models())));
     }
 }
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let mut request = http::Request::get(self.provider.uri(super::MODEL_LISTING_PATH))
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::empty())?;
@@ -445,30 +446,6 @@ impl Wire for Models {
 
     fn decoder(&self, _mode: Mode) -> ModelsDecoder {
         ModelsDecoder
-    }
-}
-
-impl HasCompletion for Copilot {
-    type Wire = CopilotWire;
-
-    fn completion(&self, model: impl Into<String>) -> CopilotWire {
-        self.completion(model)
-    }
-}
-
-impl HasEmbedding for Copilot {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasModelListing for Copilot {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
     }
 }
 

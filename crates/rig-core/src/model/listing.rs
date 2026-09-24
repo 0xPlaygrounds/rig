@@ -119,6 +119,23 @@ impl ModelList {
     }
 }
 
+/// One page of a provider's model listing: its entries, and the cursor of
+/// the next page when the provider named a usable one.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ModelPage {
+    /// Model entries in returned order.
+    pub models: Vec<Model>,
+    /// The cursor naming the next page. `None` ends the listing.
+    pub next: Option<String>,
+}
+
+impl ModelPage {
+    /// A page of `models` that names no next page.
+    pub fn last(models: Vec<Model>) -> Self {
+        Self { models, next: None }
+    }
+}
+
 impl IntoIterator for ModelList {
     type Item = Model;
     type IntoIter = std::vec::IntoIter<Model>;
@@ -138,7 +155,7 @@ impl<'a> IntoIterator for &'a ModelList {
 }
 
 /// Retrieves provider model metadata. Wire-backed implementations follow
-/// pagination within the driver's repeated-cursor and page-count limits.
+/// every page, stopping on a repeated cursor or at a page ceiling.
 pub trait ModelLister: WasmCompatSend + WasmCompatSync {
     /// Every model the provider offers.
     fn list_all(&self) -> impl Future<Output = Result<ModelList, ProviderError>> + WasmCompatSend;

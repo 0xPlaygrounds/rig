@@ -1,19 +1,11 @@
-//! Consumer model implementations for [`Bound`] and traits for constructing
-//! operation wires from provider configurations.
-//!
-//! ```no_run
-//! use rig_core::driver::Bind;
-//! use rig_core::providers::openai::{self, OpenAI};
-//!
-//! # fn example(http: impl rig_core::driver::Socket) -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = OpenAI::from_env()?.bind(http);
-//! let model = provider.completion(openai::GPT_5_2);
-//! # let _ = model;
-//! # Ok(())
-//! # }
-//! ```
+//! The model traits a [`Model`] implements, one per wire operation, and the
+//! inherent calls of operations that have no trait.
 
-use super::{Bound, call, stream};
+use std::future::Future;
+
+use futures::StreamExt;
+
+use super::{Model, Step, Transport};
 use crate::completion::{
     CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
 };
@@ -21,47 +13,55 @@ use crate::embeddings::{
     EmbeddingModel, EmbeddingResponse, ImageEmbeddingModel, ImageEmbeddingResponse,
 };
 use crate::error::ProviderError;
-use crate::http_client::HttpClientExt;
-use crate::model::ModelList;
-use crate::observe::AdapterContext;
+use crate::model::{ModelList, ModelLister};
 use crate::operation::{
     Completion, Embedding, ImageEmbedding, ModelListing, Rerank, RerankRequest, Transcription,
     Verify,
 };
 use crate::providers::gemini::cached_content::{
-    CacheExpiry, CachedContent, CachedContentRequest, CachedContents, NewCachedContent, on_handle,
+    CacheExpiry, CachedContent, CachedContentReply, CachedContentRequest, CachedContents,
+    NewCachedContent, on_handle,
 };
 use crate::rerank::{RerankModel, RerankResponse};
 use crate::streaming::CompletionStream;
 use crate::transcription::{TranscriptionModel, TranscriptionRequest, TranscriptionResponse};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::wire::Wire;
+use crate::wasm_compat::WasmCompatSend;
+use crate::wire::{Mode, Operation, Wire};
 
-/// The transport bound set every `Bound` model needs: `Clone` because a
-/// streamed reply outlives the borrow that opened it, `'static` because the
-/// stream owns its socket.
-pub trait Socket: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static {}
-
-impl<H> Socket for H where H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static {}
-
-impl<W, H> CompletionModel for Bound<W, H>
+impl<W, T> CompletionModel for Model<W, T>
 where
-    W: Wire<Op = Completion>,
-    H: Socket,
+    W: Wire<Op = Completion> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     async fn complete(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        let context = request.extensions.get::<AdapterContext>().cloned();
-        call(&self.wire, &self.http, request, context).await
+        let extensions = std::mem::take(&mut request.extensions);
+        self.unary(request, extensions, |error, _, _| error).await
     }
 
-    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
-        let context = request.extensions.get::<AdapterContext>().cloned();
-        let provider = self.wire.name().to_owned();
-        let frames = stream(&self.wire, &self.http, request, context)?;
-        Ok(CompletionStream::new(provider, frames))
+    async fn stream(
+        &self,
+        mut request: CompletionRequest,
+    ) -> Result<CompletionStream, ProviderError> {
+        let extensions = std::mem::take(&mut request.extensions);
+        let span = self.span(&request, true);
+        let steps = self.run(
+            request,
+            Mode::Streaming,
+            extensions,
+            span.clone(),
+            |error, _, _| error,
+        )?;
+        let events = tracing_futures::Instrument::instrument(steps, span).filter_map(|step| {
+            futures::future::ready(match step {
+                Ok(Step::Event(event)) => Some(Ok(event)),
+                Ok(Step::Done(_)) => None,
+                Err(error) => Some(Err(error)),
+            })
+        });
+        Ok(CompletionStream::new(self.wire.name(), events))
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -69,10 +69,10 @@ where
     }
 }
 
-impl<W, H> EmbeddingModel for Bound<W, H>
+impl<W, T> EmbeddingModel for Model<W, T>
 where
-    W: Wire<Op = Embedding>,
-    H: Socket,
+    W: Wire<Op = Embedding> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     fn max_documents(&self) -> usize {
         self.wire.capabilities().max_documents
@@ -86,8 +86,7 @@ where
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
-        let texts: Vec<String> = texts.into_iter().collect();
-        let response = call(&self.wire, &self.http, texts, None).await?;
+        let response = self.call(texts.into_iter().collect()).await?;
         // Reject vectors whose width violates the model's declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
@@ -100,10 +99,10 @@ where
     }
 }
 
-impl<W, H> ImageEmbeddingModel for Bound<W, H>
+impl<W, T> ImageEmbeddingModel for Model<W, T>
 where
-    W: Wire<Op = ImageEmbedding>,
-    H: Socket,
+    W: Wire<Op = ImageEmbedding> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     fn max_documents(&self) -> usize {
         self.wire.capabilities().max_documents
@@ -117,9 +116,8 @@ where
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
     ) -> Result<ImageEmbeddingResponse, ProviderError> {
-        let images: Vec<Vec<u8>> = images.into_iter().collect();
-        let response = call(&self.wire, &self.http, images, None).await?;
-        // Image vectors must also honor the declared dimensions.
+        let response = self.call(images.into_iter().collect()).await?;
+        // Image vectors must also honour the declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
             response
@@ -131,23 +129,23 @@ where
     }
 }
 
-impl<W, H> TranscriptionModel for Bound<W, H>
+impl<W, T> TranscriptionModel for Model<W, T>
 where
-    W: Wire<Op = Transcription>,
-    H: Socket,
+    W: Wire<Op = Transcription> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     async fn transcription(
         &self,
         request: TranscriptionRequest,
     ) -> Result<TranscriptionResponse, ProviderError> {
-        call(&self.wire, &self.http, request, None).await
+        self.call(request).await
     }
 }
 
-impl<W, H> RerankModel for Bound<W, H>
+impl<W, T> RerankModel for Model<W, T>
 where
-    W: Wire<Op = Rerank>,
-    H: Socket,
+    W: Wire<Op = Rerank> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     fn max_documents(&self) -> usize {
         self.wire.capabilities()
@@ -162,243 +160,86 @@ where
             query: query.to_owned(),
             documents,
         };
-        call(&self.wire, &self.http, request, None).await
+        self.call(request).await
     }
 }
 
 #[cfg(feature = "image")]
-impl<W, H> crate::image_generation::ImageGenerationModel for Bound<W, H>
+impl<W, T> crate::image_generation::ImageGenerationModel for Model<W, T>
 where
-    W: Wire<Op = crate::operation::ImageGeneration>,
-    H: Socket,
+    W: Wire<Op = crate::operation::ImageGeneration> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     async fn image_generation(
         &self,
         request: crate::image_generation::ImageGenerationRequest,
-    ) -> Result<crate::image_generation::ImageGenerationResponse, crate::error::ProviderError> {
-        call(&self.wire, &self.http, request, None).await
+    ) -> Result<crate::image_generation::ImageGenerationResponse, ProviderError> {
+        self.call(request).await
     }
 }
 
 #[cfg(feature = "audio")]
-impl<W, H> crate::audio_generation::AudioGenerationModel for Bound<W, H>
+impl<W, T> crate::audio_generation::AudioGenerationModel for Model<W, T>
 where
-    W: Wire<Op = crate::operation::AudioGeneration>,
-    H: Socket,
+    W: Wire<Op = crate::operation::AudioGeneration> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     async fn audio_generation(
         &self,
         request: crate::audio_generation::AudioGenerationRequest,
-    ) -> Result<crate::audio_generation::AudioGenerationResponse, crate::error::ProviderError> {
-        call(&self.wire, &self.http, request, None).await
+    ) -> Result<crate::audio_generation::AudioGenerationResponse, ProviderError> {
+        self.call(request).await
     }
 }
 
-impl<W, H> crate::model::ModelLister for Bound<W, H>
+impl<W, T> ModelLister for Model<W, T>
 where
-    W: Wire<Op = ModelListing>,
-    H: Socket,
+    W: Wire<Op = ModelListing> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     async fn list_all(&self) -> Result<ModelList, ProviderError> {
-        call(&self.wire, &self.http, (), None).await
+        let pages = paginate(self.wire.name(), ModelListing::NAME, |cursor| async move {
+            let page = self
+                .unary(cursor, http::Extensions::new(), |error, provider, path| {
+                    crate::model::listing::with_route(error, provider, path)
+                })
+                .await?;
+            Ok((page.models, page.next))
+        })
+        .await?;
+        Ok(ModelList::new(pages.into_iter().flatten().collect()))
     }
 }
 
-impl<P, H> Bound<P, H>
+impl<W, T> Model<W, T>
 where
-    P: HasVerify,
-    H: Socket,
+    W: Wire<Op = Verify> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     /// Check that the provider accepts the configured credentials.
     pub async fn verify(&self) -> Result<(), ProviderError> {
-        call(&self.wire.verify(), &self.http, (), None)
+        self.call(())
             .await
             .map_err(crate::client::verify::authentication)
     }
 }
 
-/// A provider config that has a completion wire.
-pub use crate::wire::HasCompletion;
-
-/// Constructs a completion model from a model name.
-pub trait CompletionProvider {
-    /// The model this provider builds.
-    type Model: CompletionModel;
-
-    /// The completion model for `model`.
-    fn completion(&self, model: impl Into<String>) -> Self::Model;
-}
-
-impl<P, H> CompletionProvider for Bound<P, H>
-where
-    P: HasCompletion,
-    H: Clone + Socket,
-{
-    type Model = Bound<P::Wire, H>;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Model {
-        Bound::completion(self, model)
-    }
-}
-
-/// A provider config that has an embedding wire.
-pub trait HasEmbedding: WasmCompatSend + WasmCompatSync {
-    /// The provider's embedding wire.
-    type Wire: Wire<Op = Embedding>;
-
-    /// Build the embedding wire for `model`, at `ndims` dimensions when the
-    /// caller named one rather than taking the model's default.
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Self::Wire;
-}
-
-/// A provider config that has an image-embedding wire.
-pub trait HasImageEmbedding: WasmCompatSend + WasmCompatSync {
-    /// The provider's image-embedding wire.
-    type Wire: Wire<Op = ImageEmbedding>;
-
-    /// Build the image-embedding wire for `model`.
-    fn image_embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Self::Wire;
-}
-
-/// A provider config that has a transcription wire.
-pub trait HasTranscription: WasmCompatSend + WasmCompatSync {
-    /// The provider's transcription wire.
-    type Wire: Wire<Op = Transcription>;
-
-    /// Build the transcription wire for `model`.
-    fn transcription(&self, model: impl Into<String>) -> Self::Wire;
-}
-
-/// A provider config that has a rerank wire.
-pub trait HasRerank: WasmCompatSend + WasmCompatSync {
-    /// The provider's rerank wire.
-    type Wire: Wire<Op = Rerank>;
-
-    /// Build the rerank wire for `model`.
-    fn rerank(&self, model: impl Into<String>) -> Self::Wire;
-}
-
-/// A provider config that has an image-generation wire.
-#[cfg(feature = "image")]
-pub trait HasImageGeneration: WasmCompatSend + WasmCompatSync {
-    /// The provider's image-generation wire.
-    type Wire: Wire<Op = crate::operation::ImageGeneration>;
-
-    /// Build the image-generation wire for `model`.
-    fn image_generation(&self, model: impl Into<String>) -> Self::Wire;
-}
-
-/// A provider config that has an audio-generation wire.
-#[cfg(feature = "audio")]
-pub trait HasAudioGeneration: WasmCompatSend + WasmCompatSync {
-    /// The provider's audio-generation wire.
-    type Wire: Wire<Op = crate::operation::AudioGeneration>;
-
-    /// Build the audio-generation wire for `model`.
-    fn audio_generation(&self, model: impl Into<String>) -> Self::Wire;
-}
-
-/// A provider config that has a model-listing wire.
-pub trait HasModelListing: WasmCompatSend + WasmCompatSync {
-    /// The provider's model-listing wire.
-    type Wire: Wire<Op = ModelListing>;
-
-    /// Build the model-listing wire.
-    fn model_listing(&self) -> Self::Wire;
-}
-
-/// A provider config that has a verification wire.
-pub trait HasVerify: WasmCompatSend + WasmCompatSync {
-    /// The provider's verification wire.
-    type Wire: Wire<Op = Verify>;
-
-    /// Build the verification wire.
-    fn verify(&self) -> Self::Wire;
-}
-
-/// Generates a bound wire constructor that clones the existing transport.
-/// The bound method name can differ from the provider trait method.
-macro_rules! bound_constructor {
-    ($has:ident, $method:ident $(, $arg:ident : $ty:ty)*) => {
-        bound_constructor!($has, $method => $method $(, $arg: $ty)*);
-    };
-    ($has:ident, $trait_method:ident => $method:ident $(, $arg:ident : $ty:ty)*) => {
-        impl<P, H> Bound<P, H>
-        where
-            P: $has,
-            H: Clone,
-        {
-            #[doc = concat!("The provider's `", stringify!($method), "` wire, on this socket.")]
-            pub fn $method(&self $(, $arg: $ty)*) -> Bound<P::Wire, H> {
-                Bound {
-                    wire: P::$trait_method(&self.wire $(, $arg)*),
-                    http: self.http.clone(),
-                }
-            }
-        }
-    };
-}
-
-bound_constructor!(HasCompletion, completion, model: impl Into<String>);
-bound_constructor!(HasEmbedding, embedding, model: impl Into<String>, ndims: Option<usize>);
-bound_constructor!(
-    HasImageEmbedding,
-    image_embedding,
-    model: impl Into<String>,
-    ndims: Option<usize>
-);
-bound_constructor!(HasTranscription, transcription, model: impl Into<String>);
-bound_constructor!(HasRerank, rerank, model: impl Into<String>);
-bound_constructor!(HasModelListing, model_listing => models);
-#[cfg(feature = "image")]
-bound_constructor!(HasImageGeneration, image_generation, model: impl Into<String>);
-#[cfg(feature = "audio")]
-bound_constructor!(HasAudioGeneration, audio_generation, model: impl Into<String>);
-
-/// Document embedding builders using a bound provider's embedding wire.
-impl<P, H> Bound<P, H>
-where
-    P: HasEmbedding,
-    H: Clone + Socket,
-    P::Wire: Wire<Op = Embedding>,
-{
-    /// An embedding builder over this provider's `model`.
-    pub fn embeddings<D: crate::Embed>(
-        &self,
-        model: impl Into<String>,
-    ) -> crate::embeddings::EmbeddingsBuilder<Bound<P::Wire, H>, D> {
-        crate::embeddings::EmbeddingsBuilder::new(self.embedding(model, None))
-    }
-
-    /// An embedding builder over this provider's `model` at `ndims`
-    /// dimensions.
-    pub fn embeddings_with_ndims<D: crate::Embed>(
-        &self,
-        model: impl Into<String>,
-        ndims: usize,
-    ) -> crate::embeddings::EmbeddingsBuilder<Bound<P::Wire, H>, D> {
-        crate::embeddings::EmbeddingsBuilder::new(self.embedding(model, Some(ndims)))
-    }
-}
-
 /// Explicit context-cache operations. Requests targeting an existing handle
 /// map HTTP 403 and 404 to [`ProviderError::CacheExpired`].
-impl<H> Bound<CachedContents, H>
+impl<T> Model<CachedContents, T>
 where
-    H: Socket,
+    T: Transport<Payload = crate::wire::Encoded, Frame = crate::wire::WireFrame>,
 {
     /// Creates cached content and returns its handle and storage usage metadata.
     pub async fn create(&self, request: NewCachedContent) -> Result<CachedContent, ProviderError> {
-        let request = CachedContentRequest::Create(request);
-        call(&self.wire, &self.http, request, None)
+        self.call(CachedContentRequest::Create(request))
             .await?
             .resource()
     }
 
     /// Fetch one cached content by handle.
     pub async fn get(&self, name: &str) -> Result<CachedContent, ProviderError> {
-        let request = CachedContentRequest::Get(name.to_owned());
-        call(&self.wire, &self.http, request, None)
+        self.call(CachedContentRequest::Get(name.to_owned()))
             .await
             .map_err(|error| on_handle(error, name))?
             .resource()
@@ -407,9 +248,20 @@ where
     /// Every cached content this API key can see, following pagination at
     /// the wire's page size.
     pub async fn list(&self) -> Result<Vec<CachedContent>, ProviderError> {
-        call(&self.wire, &self.http, CachedContentRequest::List, None)
-            .await?
-            .entries()
+        let pages = paginate(
+            self.wire.name(),
+            "cached_content",
+            |page_token| async move {
+                match self.call(CachedContentRequest::List(page_token)).await? {
+                    CachedContentReply::Page(page) => {
+                        Ok((page.cached_contents, page.next_page_token))
+                    }
+                    other => Ok((other.entries()?, None)),
+                }
+            },
+        )
+        .await?;
+        Ok(pages.into_iter().flatten().collect())
     }
 
     /// Lists cached content using an explicit page size.
@@ -417,10 +269,12 @@ where
         &self,
         page_size: usize,
     ) -> Result<Vec<CachedContent>, ProviderError> {
-        let wire = self.wire.clone().with_page_size(page_size);
-        call(&wire, &self.http, CachedContentRequest::List, None)
-            .await?
-            .entries()
+        Model::new(
+            self.wire.clone().with_page_size(page_size),
+            self.transport.clone(),
+        )
+        .list()
+        .await
     }
 
     /// Changes cache expiry without modifying its immutable content.
@@ -434,7 +288,7 @@ where
             name: name.to_owned(),
             expiry,
         };
-        call(&self.wire, &self.http, request, None)
+        self.call(request)
             .await
             .map_err(|error| on_handle(error, name))?
             .resource()
@@ -445,10 +299,59 @@ where
     /// Handles other than `cachedContents/<id>` or bare `<id>` return
     /// [`ProviderError::Request`] before dispatch.
     pub async fn delete(&self, name: &str) -> Result<(), ProviderError> {
-        let request = CachedContentRequest::Delete(name.to_owned());
-        call(&self.wire, &self.http, request, None)
+        self.call(CachedContentRequest::Delete(name.to_owned()))
             .await
             .map_err(|error| on_handle(error, name))?;
         Ok(())
     }
+}
+
+/// Page count after which a listing stops following cursors, so a provider
+/// that cycles its cursors cannot hold the caller forever.
+pub(super) const MAX_PAGES: usize = 1000;
+
+/// Fetch every page of a cursor-paged listing. `page` fetches the page after
+/// a cursor (the first page for `None`) and names the next cursor. A cursor
+/// that repeats the one just sent, or a listing past [`MAX_PAGES`], ends the
+/// listing with the pages fetched so far.
+async fn paginate<I, F, Fut>(
+    provider: &str,
+    operation: &str,
+    mut page: F,
+) -> Result<Vec<I>, ProviderError>
+where
+    F: FnMut(Option<String>) -> Fut,
+    Fut: Future<Output = Result<(I, Option<String>), ProviderError>>,
+{
+    let mut pages = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let (items, next) = page(cursor.clone()).await?;
+        pages.push(items);
+        let Some(next) = next else {
+            break;
+        };
+        // Normal exhaustion is not truncation; a refused cursor is warned.
+        if cursor.as_deref() == Some(next.as_str()) {
+            tracing::warn!(
+                provider,
+                operation,
+                pages = pages.len(),
+                "listing repeated its pagination cursor; returning the pages fetched so far"
+            );
+            break;
+        }
+        if pages.len() >= MAX_PAGES {
+            tracing::warn!(
+                provider,
+                operation,
+                pages = pages.len(),
+                "listing hit its page ceiling with a cursor still advancing; returning the \
+                 pages fetched so far"
+            );
+            break;
+        }
+        cursor = Some(next);
+    }
+    Ok(pages)
 }

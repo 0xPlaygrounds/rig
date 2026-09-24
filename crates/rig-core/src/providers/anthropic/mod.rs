@@ -11,8 +11,8 @@
 //! # }
 //! ```
 //!
-//! Bind a wire with `.bind(transport)` to obtain a [`Bound`](crate::driver::Bound)
-//! implementing the consumer-facing model traits.
+//! Pair a wire with a transport in a [`Model`](crate::driver::Model) to get
+//! the consumer-facing model traits.
 
 pub mod completion;
 pub mod streaming;

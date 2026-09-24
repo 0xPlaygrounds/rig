@@ -41,6 +41,7 @@ fn params(
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         },
         strict_tools: false,
         tool_result_array_content: false,

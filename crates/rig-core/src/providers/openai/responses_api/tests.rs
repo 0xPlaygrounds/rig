@@ -576,6 +576,7 @@ fn weather_tool_request() -> completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -748,6 +749,7 @@ fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -763,6 +765,7 @@ fn system_only_request(system_text: &str) -> completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -1223,6 +1226,7 @@ fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
@@ -2182,6 +2186,7 @@ fn mocked_second_turn_request_omits_unreplayable_reasoning() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
@@ -2267,16 +2272,16 @@ fn file_id_document_serializes_as_input_item_content() {
 #[tokio::test]
 async fn responses_completion_http_non_success_preserves_status_and_body() {
     use crate::completion::CompletionModel;
-    use crate::driver::Bound;
+    use crate::driver::Model;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
     let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-    let model = Bound::new(openai_wire("gpt-4o-mini"), http_client);
+    let model = Model::new(openai_wire("gpt-4o-mini"), http_client);
     let request = model.completion_request("hello").build();
 
     let error = model
-        .completion(request)
+        .complete(request)
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -2658,6 +2663,7 @@ fn url_pdf_in_full_completion_request_omits_filename() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
@@ -2710,7 +2716,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
 mod raw_capture {
     use super::*;
     use crate::completion::CompletionModel as _;
-    use crate::driver::Bound;
+    use crate::driver::Model;
     use crate::test_utils::RecordingHttpClient;
 
     const REQUEST_ID: &str = "req_unit_responses_0001";
@@ -2759,13 +2765,13 @@ mod raw_capture {
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let mut headers = http::HeaderMap::new();
         headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let model = Bound::new(
+        let model = Model::new(
             openai_wire("gpt-4o-mini"),
             RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers),
         );
 
         let response = model
-            .completion(model.completion_request("hello").build())
+            .complete(model.completion_request("hello").build())
             .await
             .expect("completion");
 

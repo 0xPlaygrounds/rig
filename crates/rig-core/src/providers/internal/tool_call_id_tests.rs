@@ -7,7 +7,10 @@ use serde_json::{Value, json};
 
 /// Fold one whole reply document through a wire's own decoder — the single
 /// path a unary reply takes in production, minus the transport.
-fn fold_document<W: Wire<Op = Completion>>(wire: &W, body: &Value) -> CompletionResponse {
+fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
+    wire: &W,
+    body: &Value,
+) -> CompletionResponse {
     let body = body.to_string();
     let mut driver =
         crate::driver::WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
@@ -24,6 +27,7 @@ fn fold_document<W: Wire<Op = Completion>>(wire: &W, body: &Value) -> Completion
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     });
     for item in driver.drain() {
         fold.absorb(item.expect("the reply decodes without an in-band error"))

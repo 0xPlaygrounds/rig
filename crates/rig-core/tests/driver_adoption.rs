@@ -572,9 +572,16 @@ fn is_serde_wall_target(path: &std::path::Path, shipped: &str) -> bool {
     {
         return true;
     }
-    WIRE_MACHINERY_MARKERS
-        .iter()
-        .any(|marker| shipped.contains(marker))
+    // A wire's `type Frame = …` names the frame it reads without decoding
+    // one, so it does not opt a file in.
+    shipped
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("type Frame ="))
+        .any(|line| {
+            WIRE_MACHINERY_MARKERS
+                .iter()
+                .any(|marker| line.contains(marker))
+        })
 }
 
 /// One allowlist entry: `path suffix | line snippet | justification`.

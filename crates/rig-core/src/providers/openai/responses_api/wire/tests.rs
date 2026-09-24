@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::completion::{CompletionModel, CompletionRequest};
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::message::{self, Message};
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::xai::DIALECT as XAI;
@@ -97,14 +97,15 @@ fn prompt() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
 /// Fold a recorded unary body through the wire, as [`crate::driver::call`]
 /// does.
 async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResponse {
-    Bound::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
-        .completion(prompt())
+    Model::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
+        .complete(prompt())
         .await
         .expect("the recorded body folds")
 }
@@ -112,7 +113,7 @@ async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResp
 /// Fold a recorded SSE body through the wire, as [`crate::driver::stream`]
 /// does, draining every event first.
 async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionResponse {
-    let bound = Bound::new(
+    let bound = Model::new(
         wire,
         MockStreamingClient {
             sse_bytes: Bytes::from(body.to_owned()),
@@ -568,13 +569,13 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
 /// that way.
 #[tokio::test]
 async fn an_error_envelope_on_a_success_fails_the_xai_call() {
-    let error = Bound::new(
+    let error = Model::new(
         xai(),
         RecordingHttpClient::new(Bytes::from_static(
             br#"{"error":{"message":"no capacity","code":"overloaded"}}"#,
         )),
     )
-    .completion(prompt())
+    .complete(prompt())
     .await
     .expect_err("an error envelope fails the call");
 

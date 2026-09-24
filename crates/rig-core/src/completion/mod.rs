@@ -7,7 +7,7 @@
 //!
 //! # async fn run(model: &(impl CompletionModel + Clone)) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = model.completion_request("What is Rig?").build();
-//! let response = model.completion(request).await?;
+//! let response = model.complete(request).await?;
 //! println!("{:?}", response.choice);
 //! # Ok(())
 //! # }

@@ -7,7 +7,7 @@
 //! ```
 
 pub use crate::completion::{CompletionModel, Message};
-pub use crate::driver::{Bind, Bound, CompletionProvider};
+pub use crate::driver::{Model, Transport};
 pub use crate::error::ProviderError;
 
 // The root re-export includes the derive macro when enabled.

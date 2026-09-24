@@ -1,6 +1,6 @@
 use super::*;
 use crate::completion::CompletionModel as _;
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use crate::message::AssistantContent;
 use crate::test_utils::{
@@ -65,6 +65,7 @@ fn recorded_request() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -93,15 +94,15 @@ fn text_of(choice: &[AssistantContent]) -> String {
 
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
-    let buffered = Bound::new(
+    let buffered = Model::new(
         cohere().chat("command-a-03-2025"),
         RecordingHttpClient::new(UNARY_BODY),
     )
-    .completion(recorded_request())
+    .complete(recorded_request())
     .await
     .expect("the recorded reply decodes");
 
-    let streaming = Bound::new(
+    let streaming = Model::new(
         cohere().chat("command-a-03-2025"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(STREAM_BODY.as_bytes()),
@@ -180,7 +181,7 @@ const EMBED_BODY: &str = r#"{"id":"b2e4b0f7-0000-0000-0000-000000000000","texts"
 
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
-    let response = Bound::new(
+    let response = Model::new(
         cohere().embeddings("embed-v4.0", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
@@ -283,7 +284,7 @@ fn image_reply(first: f64) -> MockHttpResponse {
 #[tokio::test]
 async fn an_image_batch_folds_its_replies_in_input_order() {
     let http = SequencedHttpClient::new([image_reply(0.5), image_reply(0.75)]);
-    let response = Bound::new(cohere().image_embeddings(), http.clone())
+    let response = Model::new(cohere().image_embeddings(), http.clone())
         .embed_images_response(vec![png(b"first"), png(b"second")])
         .await
         .expect("both replies decode");
@@ -332,7 +333,7 @@ async fn an_image_batch_folds_its_replies_in_input_order() {
 #[tokio::test]
 async fn a_single_image_embed_captures_the_bare_document() {
     let http = SequencedHttpClient::new([image_reply(0.5)]);
-    let response = Bound::new(cohere().image_embeddings(), http.clone())
+    let response = Model::new(cohere().image_embeddings(), http.clone())
         .embed_images_response(vec![png(b"only")])
         .await
         .expect("the reply decodes");

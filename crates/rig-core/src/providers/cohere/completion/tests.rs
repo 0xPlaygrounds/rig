@@ -117,13 +117,13 @@ fn unknown_finish_reason_survives_verbatim() {
 /// caller's `completion()` does.
 async fn unary(body: &'static str) -> completion::CompletionResponse {
     use crate::completion::CompletionModel as _;
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .completion(crate::providers::cohere::COMMAND_A_03_2025),
         crate::test_utils::RecordingHttpClient::new(body),
-    )
-    .completion(crate::providers::cohere::COMMAND_A_03_2025);
+    );
     model
-        .completion(model.completion_request("hello").build())
+        .complete(model.completion_request("hello").build())
         .await
         .expect("the reply decodes")
 }
@@ -347,18 +347,18 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::new("{}");
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .completion(crate::providers::cohere::COMMAND_A_03_2025),
         http_client.clone(),
-    )
-    .completion(crate::providers::cohere::COMMAND_A_03_2025);
+    );
     let request = model
         .completion_request("hello")
         .tool_choice(ToolChoice::Required)
         .build();
 
     let error = model
-        .completion(request)
+        .complete(request)
         .await
         .expect_err("REQUIRED without tools should fail locally");
 
@@ -450,15 +450,15 @@ async fn completion_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .completion(crate::providers::cohere::COMMAND_A_03_2025),
         http_client,
-    )
-    .completion(crate::providers::cohere::COMMAND_A_03_2025);
+    );
     let request = model.completion_request("hello").build();
 
     let error = model
-        .completion(request)
+        .complete(request)
         .await
         .expect_err("should fail with non-success status");
 

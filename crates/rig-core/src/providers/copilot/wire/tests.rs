@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::completion::{CompletionModel, CompletionRequest};
-use crate::driver::Bound;
+use crate::driver::Model;
 use crate::embeddings::EmbeddingModel as _;
 use crate::message::Message;
 use crate::model::ModelLister as _;
@@ -60,6 +60,7 @@ fn prompt() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -72,7 +73,9 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 }
 
 /// The request one `encode` produced, for the envelope assertions.
-fn encoded(wire: &impl Wire<Op = Completion>) -> http::Request<Body> {
+fn encoded(
+    wire: &impl Wire<Op = Completion, Payload = crate::wire::Encoded>,
+) -> http::Request<Body> {
     let mut encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -408,11 +411,11 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
 #[tokio::test]
 async fn the_chat_route_folds_its_recorded_turn() {
     let body = cassette_body("agent/completion_smoke.yaml", "then");
-    let response = Bound::new(
+    let response = Model::new(
         copilot().completion(super::super::GPT_4O),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .complete(prompt())
     .await
     .expect("the recorded chat body folds");
 
@@ -431,11 +434,11 @@ async fn the_chat_route_folds_its_recorded_turn() {
 #[tokio::test]
 async fn the_responses_route_folds_its_recorded_turn() {
     let body = cassette_body("routing/codex_models_route_through_responses.yaml", "then");
-    let response = Bound::new(
+    let response = Model::new(
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .complete(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -462,11 +465,11 @@ async fn a_contentless_reasoning_item_survives_the_fold() {
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml",
         "then",
     );
-    let response = Bound::new(
+    let response = Model::new(
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .complete(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -494,7 +497,7 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         "Streaming responses arrive incrementally instead of all at once.".to_owned(),
         "Embeddings turn text into numeric vectors for similarity search.".to_owned(),
     ];
-    let bound = Bound::new(
+    let bound = Model::new(
         copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None),
         RecordingHttpClient::new(Bytes::from(body)),
     );
@@ -587,7 +590,7 @@ fn the_embeddings_route_carries_copilots_editor_envelope() {
 #[tokio::test]
 async fn the_model_listing_folds_its_recorded_catalogue() {
     let body = cassette_body("models/list_models_smoke.yaml", "then");
-    let models = Bound::new(
+    let models = Model::new(
         copilot().models(),
         RecordingHttpClient::new(Bytes::from(body)),
     )

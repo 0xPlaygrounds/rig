@@ -17,6 +17,7 @@ fn interactions_request() -> crate::completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -25,7 +26,7 @@ fn interactions_request() -> crate::completion::CompletionRequest {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn interactions_stream(
     frames: &[&str],
-) -> crate::driver::Bound<
+) -> crate::driver::Model<
     crate::providers::gemini::interactions_api::Interactions,
     crate::test_utils::MockStreamingClient,
 > {
@@ -35,7 +36,7 @@ fn interactions_stream(
             .map(|event| format!("data: {event}\n\n"))
             .collect::<String>(),
     );
-    crate::driver::Bound::new(
+    crate::driver::Model::new(
         crate::providers::gemini::Gemini::new("test-key").interactions("gemini-2.5-pro"),
         crate::test_utils::MockStreamingClient { sse_bytes },
     )
@@ -119,7 +120,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "EOF without interaction.completed must not synthesize a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.terminal().is_none());
 }
 
 /// Drive Interactions SSE frames through the full normalized path and
@@ -129,7 +130,7 @@ async fn drive_frames(
     frames: &[&str],
 ) -> (
     Vec<Result<crate::streaming::StreamEvent, String>>,
-    crate::streaming::StreamingCompletionResponse,
+    crate::streaming::CompletionStream,
 ) {
     use futures::StreamExt;
 
@@ -349,7 +350,7 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
     assert_eq!(tool_call.id.explicit(), Some("fc_1"));
 
     // The turn completed normally: the terminal record survives too.
-    assert!(stream.response.is_some());
+    assert!(stream.terminal().is_some());
     let aggregated_calls = stream
         .snapshot()
         .iter()
@@ -395,7 +396,7 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
         )),
         "content before the error must survive"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.terminal().is_none());
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

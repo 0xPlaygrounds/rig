@@ -94,11 +94,14 @@ fn probe_request() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
 /// Every URI and header one encode produced, as one searchable string.
-pub(crate) fn request_envelope<W: Wire<Op = Completion>>(wire: &W) -> String {
+pub(crate) fn request_envelope<W: Wire<Op = Completion, Payload = crate::wire::Encoded>>(
+    wire: &W,
+) -> String {
     let encoded = wire
         .encode(probe_request(), Mode::Unary)
         .expect("the request encodes");
@@ -152,7 +155,9 @@ pub(crate) fn a_config_reloads_without_its_credential<C>(
 /// serialized form sends the sentinel nowhere.
 fn sends_no_sentinel<W>(wire: &W, key: &str)
 where
-    W: Wire<Op = Completion> + serde::Serialize + serde::de::DeserializeOwned,
+    W: Wire<Op = Completion, Payload = crate::wire::Encoded>
+        + serde::Serialize
+        + serde::de::DeserializeOwned,
 {
     let sent = request_envelope(wire);
     assert!(

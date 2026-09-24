@@ -11,8 +11,8 @@
 //! # }
 //! ```
 //!
-//! Bind a wire with `.bind(transport)` to obtain a [`Bound`](crate::driver::Bound)
-//! implementing the consumer-facing model traits.
+//! Pair a wire with a transport in a [`Model`](crate::driver::Model) to get
+//! the consumer-facing model traits.
 
 pub mod cached_content;
 pub mod completion;
@@ -32,7 +32,6 @@ pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
 pub use model_listing::*;
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{HasCompletion, HasEmbedding, HasModelListing, HasTranscription, HasVerify};
 use crate::wire::Secret;
 
 /// Stable descriptor name for both Gemini surfaces, as records and
@@ -166,7 +165,17 @@ impl Gemini {
         image_generation::Images::new(self.clone(), model)
     }
 
-    /// Build the GenerateContent model-listing wire used by `Bound::models()`.
+    /// The credential-check wire: `GET /v1beta/models`, status only.
+    pub fn verify(&self) -> model_listing::VerifyKey {
+        model_listing::VerifyKey::new(self.clone())
+    }
+
+    /// The provider's completion wire for `model`: `generateContent`.
+    pub fn completion(&self, model: impl Into<String>) -> completion::GenerateContent {
+        self.generate_content(model)
+    }
+
+    /// The model-listing wire.
     pub fn models(&self) -> model_listing::Models {
         model_listing::Models::new(self.clone())
     }
@@ -198,55 +207,6 @@ impl Gemini {
             Some(last_event_id) => wire.after_event(last_event_id),
             None => wire,
         }
-    }
-}
-
-impl HasCompletion for Gemini {
-    type Wire = completion::GenerateContent;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Wire {
-        self.generate_content(model)
-    }
-}
-
-impl HasEmbedding for Gemini {
-    type Wire = embedding::Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Self::Wire {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasTranscription for Gemini {
-    type Wire = transcription::Transcriptions;
-
-    fn transcription(&self, model: impl Into<String>) -> Self::Wire {
-        self.transcriptions(model)
-    }
-}
-
-#[cfg(feature = "image")]
-impl crate::driver::HasImageGeneration for Gemini {
-    type Wire = image_generation::Images;
-
-    fn image_generation(&self, model: impl Into<String>) -> Self::Wire {
-        self.images(model)
-    }
-}
-
-impl HasModelListing for Gemini {
-    type Wire = model_listing::Models;
-
-    fn model_listing(&self) -> Self::Wire {
-        self.models()
-    }
-}
-
-impl HasVerify for Gemini {
-    type Wire = model_listing::VerifyKey;
-
-    fn verify(&self) -> Self::Wire {
-        model_listing::VerifyKey::new(self.clone())
     }
 }
 
