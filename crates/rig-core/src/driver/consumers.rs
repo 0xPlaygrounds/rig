@@ -78,9 +78,10 @@ where
         context: Option<AdapterContext>,
     ) -> Result<StreamingCompletionResponse, ProviderError> {
         let provider = self.wire.name().to_owned();
-        let issuer = self.wire.reasoning_issuer(
-            <Completion as Operation>::request_model(&request).or(self.wire.model()),
-        );
+        // Each wire falls back to its own model when the request names none.
+        let issuer = self
+            .wire
+            .reasoning_issuer(<Completion as Operation>::request_model(&request));
         let frames = stream(&self.wire, &self.http, request, context)?;
         let response = StreamingCompletionResponse::stream(provider, Box::pin(frames));
         Ok(match issuer {

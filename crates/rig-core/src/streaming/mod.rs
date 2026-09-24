@@ -516,29 +516,40 @@ impl StreamingCompletionResponse {
 
     /// Name the issuer of this stream's reasoning up front, for a transport
     /// or deployment of another provider's models, so a partial turn taken
-    /// before the terminal record records it too. The terminal record, once
-    /// it arrives, supersedes it ([`StreamFinal::with_reasoning_issuer`]):
-    /// a gateway request for a router model names the router up front and
-    /// the served family in its terminal.
+    /// before the terminal record records it too. A terminal record that
+    /// names an issuer ([`StreamFinal::with_reasoning_issuer`]) supersedes
+    /// it: a gateway request for a router model names the router up front
+    /// and the served family in its terminal. One that names none keeps it.
     pub fn with_reasoning_issuer(mut self, issuer: impl Into<String>) -> Self {
         self.reasoning_issuer = Some(issuer.into());
         self
     }
 
-    /// The issuer this stream's reasoning records: the terminal record's
-    /// [`StreamFinal::issuer`] once it has arrived; before it, the issuer
-    /// named up front, else the provider that opened the stream. `None`
-    /// before the terminal of a stream rebuilt from events
-    /// ([`Self::from_events`]), whose opening label names a handler, not an
-    /// issuer: its reasoning is then of unknown provenance.
+    /// The issuer this stream's reasoning records. Once the terminal record
+    /// has arrived: the issuer it names, else the issuer named up front, else
+    /// its provider. Before it: the issuer named up front, else the provider
+    /// that opened the stream. A terminal that names no issuer (a gateway
+    /// stream that never reported its served model) therefore keeps the
+    /// up-front issuer instead of falling back to the gateway. `None` before
+    /// the terminal of a stream rebuilt from events ([`Self::from_events`]),
+    /// whose opening label names a handler, not an issuer: its reasoning is
+    /// then of unknown provenance.
     pub fn reasoning_issuer(&self) -> Option<&str> {
         match &self.response {
-            Some(terminal) => Some(terminal.issuer()),
+            Some(terminal) => Some(self.terminal_issuer(terminal)),
             None => self
                 .reasoning_issuer
                 .as_deref()
                 .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
         }
+    }
+
+    fn terminal_issuer<'a>(&'a self, terminal: &'a StreamFinal) -> &'a str {
+        terminal
+            .reasoning_issuer
+            .as_deref()
+            .or(self.reasoning_issuer.as_deref())
+            .unwrap_or_else(|| terminal.issuer())
     }
 
     /// Returns the accumulated choice without consuming it.
@@ -562,7 +573,7 @@ impl StreamingCompletionResponse {
                     .to_owned(),
             ));
         };
-        let issuer = terminal.issuer().to_owned();
+        let issuer = self.terminal_issuer(terminal).to_owned();
         Ok(fold_finish(
             self.accumulator,
             Some(terminal),
