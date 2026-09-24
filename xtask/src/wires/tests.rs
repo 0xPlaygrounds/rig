@@ -126,7 +126,10 @@ fn a_wires_own_data_may_not_be_shared_erased_or_deferred() {
 
 #[test]
 fn a_provider_may_not_implement_transport() {
-    let found = offenders("cohere/wire.rs", "impl Transport<CohereChat> for Cohere { }");
+    let found = offenders(
+        "cohere/wire.rs",
+        "impl Transport<CohereChat> for Cohere { }",
+    );
     assert_eq!(found.len(), 1);
     assert!(
         found
