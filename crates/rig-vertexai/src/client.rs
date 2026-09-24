@@ -1,9 +1,6 @@
-use crate::completion::CompletionModel;
 use google_cloud_aiplatform_v1 as vertexai;
 use google_cloud_auth::credentials;
 use google_cloud_auth::credentials::Credentials;
-use rig_core::driver::CompletionProvider;
-use rig_core::error::ProviderError;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
@@ -17,7 +14,7 @@ pub const DEFAULT_LOCATION: &str = "global";
 #[derive(Clone, Debug, Error)]
 pub enum VertexAiClientError {
     #[error(
-        "Google Cloud project is required. Set it via `ClientBuilder::with_project()` or `GOOGLE_CLOUD_PROJECT`"
+        "Google Cloud project is required. Set it via `VertexAiBuilder::with_project()` or `GOOGLE_CLOUD_PROJECT`"
     )]
     MissingProject,
     #[error(
@@ -31,7 +28,7 @@ pub enum VertexAiClientError {
     #[error("failed to build Vertex AI prediction service: {0}")]
     PredictionService(String),
     #[error(
-        "a supplied `PredictionService` already carries its own credentials; drop either `ClientBuilder::with_credentials()` or `ClientBuilder::with_prediction_service()`"
+        "a supplied `PredictionService` already carries its own credentials; drop either `VertexAiBuilder::with_credentials()` or `VertexAiBuilder::with_prediction_service()`"
     )]
     ConflictingCredentials,
 }
@@ -64,14 +61,14 @@ fn build_credentials(
 }
 
 #[derive(Clone, Debug)]
-pub struct ClientBuilder {
+pub struct VertexAiBuilder {
     project: Option<String>,
     location: Option<String>,
     credentials: Option<Credentials>,
     prediction_service: Option<vertexai::client::PredictionService>,
 }
 
-impl ClientBuilder {
+impl VertexAiBuilder {
     pub fn new() -> Self {
         Self {
             project: None,
@@ -126,7 +123,7 @@ impl ClientBuilder {
     ///     .with_endpoint("https://us-central1-aiplatform.googleapis.com")
     ///     .build()
     ///     .await?;
-    /// let client = rig_vertexai::Client::builder()
+    /// let client = rig_vertexai::VertexAi::builder()
     ///     .with_project("my-project")
     ///     .with_location("us-central1")
     ///     .with_prediction_service(service)
@@ -146,9 +143,9 @@ impl ClientBuilder {
     /// Build the client with the configured values, falling back to environment variables where not set.
     ///
     /// Without a supplied prediction service this resolves credentials now
-    /// (see [`Client::from_env`] for the runtime that entails) and builds the
-    /// Vertex AI client lazily on first use via [`Client::inner`].
-    pub fn build(self) -> Result<Client, VertexAiClientError> {
+    /// (see [`VertexAi::from_env`] for the runtime that entails) and builds the
+    /// Vertex AI client lazily on first use via [`VertexAi::inner`].
+    pub fn build(self) -> Result<VertexAi, VertexAiClientError> {
         let project = self
             .project
             .or_else(|| std::env::var("GOOGLE_CLOUD_PROJECT").ok())
@@ -172,7 +169,7 @@ impl ClientBuilder {
             },
         };
 
-        Ok(Client {
+        Ok(VertexAi {
             project,
             location,
             service,
@@ -180,7 +177,7 @@ impl ClientBuilder {
     }
 }
 
-impl Default for ClientBuilder {
+impl Default for VertexAiBuilder {
     fn default() -> Self {
         Self::new()
     }
@@ -202,17 +199,17 @@ enum PredictionServiceSource {
 }
 
 #[derive(Clone, Debug)]
-pub struct Client {
+pub struct VertexAi {
     project: String,
     location: String,
     service: PredictionServiceSource,
 }
 
-impl Client {
+impl VertexAi {
     /// Creates a builder using environment values for unset project and location.
-    /// See [`ClientBuilder::build`] for credential and runtime requirements.
-    pub fn builder() -> ClientBuilder {
-        ClientBuilder::new()
+    /// See [`VertexAiBuilder::build`] for credential and runtime requirements.
+    pub fn builder() -> VertexAiBuilder {
+        VertexAiBuilder::new()
     }
 
     /// Create a new client using environment variables for project, location, and credentials.
@@ -223,7 +220,7 @@ impl Client {
     /// - `GOOGLE_CLOUD_SERVICE_ACCOUNT` (optional, for service account impersonation)
     ///
     pub fn new() -> Result<Self, VertexAiClientError> {
-        ClientBuilder::new().build()
+        VertexAiBuilder::new().build()
     }
 
     /// Create a client using environment variables for project, location, and credentials.
@@ -236,14 +233,9 @@ impl Client {
     /// Requires a Tokio runtime context or returns [`VertexAiClientError::RuntimeRequired`].
     /// Keep that runtime alive and driven for the client's lifetime: credential
     /// construction spawns a refresh task on it. A supplied service through
-    /// [`ClientBuilder::with_prediction_service`] bypasses credential resolution.
+    /// [`VertexAiBuilder::with_prediction_service`] bypasses credential resolution.
     pub fn from_env() -> Result<Self, VertexAiClientError> {
-        Client::new()
-    }
-
-    /// Returns success without making a request or validating credentials.
-    pub async fn verify(&self) -> Result<(), ProviderError> {
-        Ok(())
+        VertexAi::new()
     }
 
     pub fn project(&self) -> &str {
@@ -279,10 +271,3 @@ impl Client {
     }
 }
 
-impl CompletionProvider for Client {
-    type Model = CompletionModel;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Model {
-        CompletionModel::new(self.clone(), model.into())
-    }
-}

@@ -1,22 +1,27 @@
-//! Unary Vertex AI completions and model identifiers. Streaming is unsupported.
+//! The Vertex AI `GenerateContent` completion wire and model identifiers.
+//! A streamed call re-emits the unary reply: this integration has no
+//! streaming RPC.
 //!
 //! ```no_run
-//! use rig_vertexai::{Client, completion::{CompletionModel, GEMINI_2_5_FLASH}};
+//! use rig_core::Model;
+//! use rig_vertexai::{VertexAi, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), rig_vertexai::client::VertexAiClientError> {
-//! let model = CompletionModel::new(Client::from_env()?, GEMINI_2_5_FLASH);
+//! let model = Model::new(GenerateContent::new(GEMINI_2_5_FLASH), VertexAi::from_env()?);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
 
-use super::Client;
+use super::VertexAi;
 use crate::types::completion_request::VertexCompletionRequest;
-pub use crate::types::completion_response::VertexGenerateContentOutput;
-use rig_core::completion::{
-    CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
-};
-use rig_core::error::ProviderError;
-use rig_core::streaming::StreamingCompletionResponse;
+use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder};
+use google_cloud_aiplatform_v1 as vertexai;
+use rig_core::completion::CompletionRequest;
+use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::error::{EncodeError, ProviderError};
+use rig_core::operation::Completion;
+use rig_core::wire::{Mode, Wire};
 
 /// `gemini-1.5-pro`
 pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
@@ -35,117 +40,114 @@ pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
 /// `gemini-2.5-pro`
 pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
 
-#[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: crate::client::Client,
+/// The `GenerateContent` endpoint for one model.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GenerateContent {
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
+impl GenerateContent {
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
-            client,
             model: model.into(),
         }
-    }
-
-    pub fn with_model(client: Client, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    fn model_path(&self) -> String {
-        let project = self.client.project();
-        let location = self.client.location();
-        format!(
-            "projects/{project}/locations/{location}/publishers/google/models/{}",
-            self.model
-        )
     }
 }
 
-impl CompletionModel {
-    /// Executes one completion RPC and returns provider-native output.
-    /// Returns request-conversion, client-initialization, or RPC errors.
-    /// The output type also deserializes from [`CompletionResponse::raw`].
-    pub async fn raw_completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<VertexGenerateContentOutput, ProviderError> {
+/// One `GenerateContent` request: the model it addresses and the request.
+pub struct VertexRequest {
+    model: String,
+    request: VertexCompletionRequest,
+}
+
+impl Wire for GenerateContent {
+    type Op = Completion;
+    type Payload = VertexRequest;
+    type Frame = vertexai::model::GenerateContentResponse;
+    type Decoder = VertexDecoder;
+
+    fn name(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<VertexRequest, EncodeError> {
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
         );
+        Ok(VertexRequest {
+            model: self.model.clone(),
+            request: VertexCompletionRequest(request),
+        })
+    }
 
-        let vertex_request = VertexCompletionRequest(request);
+    fn decoder(&self, _mode: Mode) -> VertexDecoder {
+        VertexDecoder::default()
+    }
+}
 
-        let generation_config = vertex_request.generation_config()?;
-        let system_instruction = vertex_request.system_instruction();
-        let tools = vertex_request.tools();
-        let tool_config = vertex_request.tool_config();
-        let contents = vertex_request.contents()?;
-        let model_path = self.model_path();
-
-        let mut request_builder = self
-            .client
-            .inner()
-            .await
-            .map_err(|error| ProviderError::Provider(error.to_string()))?
-            .generate_content()
-            .set_model(&model_path)
-            .set_contents(contents);
-
-        if let Some(config) = generation_config {
-            request_builder = request_builder.set_generation_config(config);
-        }
-
-        if let Some(system_instruction) = system_instruction {
-            request_builder = request_builder.set_system_instruction(system_instruction);
-        }
-
-        if let Some(tools) = tools {
-            request_builder = request_builder.set_tools([tools]);
-        }
-
-        if let Some(tool_config) = tool_config {
-            request_builder = request_builder.set_tool_config(tool_config);
-        }
-
-        let response = request_builder
-            .send()
-            .await
-            .map_err(|error| rpc_error(&error))?;
-
-        tracing::debug!(
-            target: "rig_core::vertexai",
-            "Vertex AI completion response: {response:?}"
+/// Both modes send the unary RPC; a streamed call re-emits its reply.
+impl Transport<GenerateContent> for VertexAi {
+    fn send(
+        &self,
+        payload: VertexRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<VertexRequest, vertexai::model::GenerateContentResponse>>
+        + Send
+        + 'static
+        + use<>,
+        ProviderError,
+    > {
+        let VertexRequest { model, request } = payload;
+        let generation_config = request.generation_config()?;
+        let system_instruction = request.system_instruction();
+        let tools = request.tools();
+        let tool_config = request.tool_config();
+        let contents = request.contents()?;
+        let model_path = format!(
+            "projects/{}/locations/{}/publishers/google/models/{model}",
+            self.project(),
+            self.location()
         );
-
-        Ok(VertexGenerateContentOutput(response))
-    }
-}
-
-fn streaming_unsupported() -> ProviderError {
-    ProviderError::Provider(
-        "Streaming is not supported for Vertex AI in this integration".to_string(),
-    )
-}
-
-impl CompletionModelTrait for CompletionModel {
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        self.raw_completion(request).await?.try_into()
-    }
-
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Err(streaming_unsupported())
+        let client = self.clone();
+        Ok(async move {
+            let service = match client.inner().await {
+                Ok(service) => service,
+                Err(error) => return Opened::failed(ProviderError::Provider(error.to_string())),
+            };
+            let mut request_builder = service
+                .generate_content()
+                .set_model(&model_path)
+                .set_contents(contents);
+            if let Some(config) = generation_config {
+                request_builder = request_builder.set_generation_config(config);
+            }
+            if let Some(system_instruction) = system_instruction {
+                request_builder = request_builder.set_system_instruction(system_instruction);
+            }
+            if let Some(tools) = tools {
+                request_builder = request_builder.set_tools([tools]);
+            }
+            if let Some(tool_config) = tool_config {
+                request_builder = request_builder.set_tool_config(tool_config);
+            }
+            match request_builder.send().await {
+                Ok(response) => {
+                    tracing::debug!(
+                        target: "rig_core::vertexai",
+                        "Vertex AI completion response: {response:?}"
+                    );
+                    Opened::new(futures::stream::iter([Ok(response)]))
+                }
+                Err(error) => Opened::failed(rpc_error(&error)),
+            }
+        })
     }
 }
 

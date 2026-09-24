@@ -10993,6 +10993,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bevy_app",
+ "futures",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
  "google-cloud-gax",
