@@ -930,3 +930,32 @@ async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
         .collect();
     assert_eq!(issuers, ["anthropic"]);
 }
+
+/// Opening a Converse stream sends nothing until the first poll, as an HTTP
+/// stream does, so a send that fails is the stream's first item rather than
+/// an error from `stream`.
+#[tokio::test]
+async fn a_converse_stream_whose_send_fails_reports_it_in_band() {
+    use aws_sdk_bedrockruntime::config::{
+        BehaviorVersion, Credentials, Region, retry::RetryConfig,
+    };
+    let config = aws_sdk_bedrockruntime::Config::builder()
+        .behavior_version(BehaviorVersion::latest())
+        .region(Region::new("us-east-1"))
+        .credentials_provider(Credentials::new("id", "secret", None, None, "test"))
+        // Nothing listens on port 1, so the send fails without a network.
+        .endpoint_url("http://127.0.0.1:1")
+        .retry_config(RetryConfig::disabled())
+        .build();
+    let runtime =
+        crate::client::BedrockRuntime::from(aws_sdk_bedrockruntime::Client::from_conf(config));
+    let request = rig_core::completion::CompletionRequestBuilder::unbound("hi").build();
+    let mut stream = Model::new(Converse::new("amazon.nova-lite-v1:0"), runtime)
+        .stream(request, None)
+        .expect("opening a stream sends nothing");
+    let first = stream.next().await.expect("the stream yields the failure");
+    assert!(
+        first.is_err(),
+        "the failed send is the first item: {first:?}"
+    );
+}
