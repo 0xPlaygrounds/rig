@@ -1088,3 +1088,17 @@ fn every_way_a_provider_quotes_a_team_id_is_scrubbed() {
         assert!(scrub_cassette_contents(&yaml).contains(team), "{kept}");
     }
 }
+
+#[test]
+fn a_team_key_holding_a_uuid_is_scrubbed() {
+    let team = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+    let yaml = format!(
+        "when:\n  path: /v1/x\n  method: POST\n  body: ''\nthen:\n  status: 200\n  body: '{{\"team\":\"{team}\",\"name\":\"team\"}}'\n"
+    );
+    let scrubbed = scrub_cassette_contents(&yaml);
+    assert!(!scrubbed.contains(team), "{scrubbed}");
+    assert!(scrubbed.contains("team_REDACTED_1"), "{scrubbed}");
+    // A `team` key holding anything but a UUID is data.
+    assert!(scrubbed.contains(r#""name":"team""#), "{scrubbed}");
+    assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+}

@@ -503,3 +503,51 @@ fn every_stream_but_a_known_binary_one_is_tapped() {
         assert!(!StreamLedgerTap::taps(&headers(binary)), "{binary}");
     }
 }
+
+fn json_tap(ledger_path: &Path) -> StreamLedgerTap {
+    StreamLedgerTap {
+        recorder: openai_direct_recorder(ledger_path),
+        method: "POST".to_owned(),
+        uri: "https://api.openai.com/v1/responses".to_owned(),
+        request_body: Bytes::from_static(b"{}"),
+        status: 200,
+        pending: Vec::new(),
+    }
+}
+
+#[test]
+fn a_stream_dropped_before_its_end_still_logs_what_it_held() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    // A JSON (not SSE) reply is only checked once complete: the caller reads
+    // all of it but drops the stream before polling its end.
+    let mut tap = json_tap(&ledger_path);
+    tap.feed(br#"{"id":"resp_dropped","object":"response"}"#);
+    assert!(ledger::outstanding(&ledger_path).is_empty());
+    drop(tap);
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_dropped"]);
+}
+
+#[test]
+fn a_poisoned_tap_keeps_logging() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let shared = Arc::new(std::sync::Mutex::new(json_tap(&ledger_path)));
+    let poisoner = shared.clone();
+    let _ = std::thread::spawn(move || {
+        let _guard = poisoner.lock();
+        panic!("poison the tap's lock");
+    })
+    .join();
+    assert!(shared.is_poisoned());
+    StreamLedgerTap::locked(&shared).feed(CREATED_STREAM.as_bytes());
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_direct"]);
+}
