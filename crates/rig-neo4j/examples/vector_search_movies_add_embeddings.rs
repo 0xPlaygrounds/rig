@@ -5,7 +5,7 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
-use rig_reqwest::prelude::*;
+use rig_core::Model;
 use std::env;
 
 use rig_core::{
@@ -37,7 +37,8 @@ const INDEX_NAME: &str = "moviePlots";
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client = OpenAI::new(&openai_api_key).bound()?;
+    let openai_client = OpenAI::new(&openai_api_key);
+    let http = rig_reqwest::bundled()?;
 
     let neo4j_uri = env::var("NEO4J_URI")?;
     let neo4j_username = env::var("NEO4J_USERNAME")?;
@@ -101,7 +102,10 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = Model::new(
+        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
+        http,
+    );
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client

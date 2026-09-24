@@ -17,8 +17,9 @@ const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cohere = Cohere::from_env()?.bound()?;
-    let model = cohere.completion(COMMAND_A_03_2025);
+    let cohere = Cohere::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
+    let model = Model::new(cohere.completion(COMMAND_A_03_2025), http);
     let agent = CONTEXT_DOCS
         .iter()
         .copied()

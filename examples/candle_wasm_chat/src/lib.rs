@@ -3,8 +3,9 @@
 use std::cell::RefCell;
 
 use rig::{
+    Model,
     agent::{Agent, AgentBuilder},
-    candle::{CandleModel, GgufModelData},
+    candle::{CandleModel, Generation, GgufModelData},
     message::Message,
 };
 use wasm_bindgen::prelude::*;
@@ -73,7 +74,7 @@ pub fn initialize() -> Result<(), JsValue> {
         weights: WEIGHTS,
     })
     .map_err(|error| js_error(BrowserModelError::Initialization(error.to_string())))?;
-    let agent = AgentBuilder::new(model)
+    let agent = AgentBuilder::new(Model::new(Generation, model))
         .preamble(
             "Repeat facts the user asks you to remember. Use those facts in later answers. \
              Never claim you cannot remember conversation history.",

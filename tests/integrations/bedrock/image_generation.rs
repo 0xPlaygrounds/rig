@@ -1,7 +1,5 @@
 //! AWS Bedrock image generation smoke test inspired by OpenAI image generation tests.
 
-use rig::image_generation::ImageGenerationModel;
-
 use super::{
     BEDROCK_IMAGE_MODEL, client,
     support::{IMAGE_PROMPT, assert_nonempty_bytes},

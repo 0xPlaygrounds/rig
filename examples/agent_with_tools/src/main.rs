@@ -48,17 +48,18 @@ fn runtime_tools() -> Vec<DynamicTool> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_4O)
-        .preamble(
-            "You are a calculator here to help the user perform arithmetic operations. \
+    let agent = AgentBuilder::new(Model::new(
+        OpenAI::from_env()?.completion(openai::GPT_4O),
+        rig::rig_reqwest::bundled()?,
+    ))
+    .preamble(
+        "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",
-        )
-        .dynamic_tools(runtime_tools())
-        .max_tokens(1024)
-        .default_max_turns(2)
-        .build();
+    )
+    .dynamic_tools(runtime_tools())
+    .max_tokens(1024)
+    .default_max_turns(2)
+    .build();
 
     let response = agent.prompt("Calculate 2 - 5.").await?.output;
     println!("{response}");

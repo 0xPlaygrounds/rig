@@ -72,8 +72,9 @@ impl Tool for TranslatorTool {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.completion(openai::GPT_4O);
+    let openai_client = OpenAI::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
+    let model = Model::new(openai_client.completion(openai::GPT_4O), http);
 
     let translator_agent = AgentBuilder::new(model.clone())
                 .preamble(

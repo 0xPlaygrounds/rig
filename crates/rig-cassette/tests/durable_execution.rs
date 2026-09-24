@@ -218,7 +218,9 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                 let request = prepared
                     .apply(CompletionRequestBuilder::unbound(prompt))
                     .build();
-                let response = within(model.complete(request)).await.expect("the model");
+                let response = within(model.complete(request, None))
+                    .await
+                    .expect("the model");
                 run.model_response(ModelTurn::new(
                     None,
                     response.choice,

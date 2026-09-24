@@ -1,6 +1,6 @@
-use rig_bedrock::client::Client;
-use rig_bedrock::image::AMAZON_NOVA_CANVAS;
-use rig_core::image_generation::ImageGenerationModel;
+use rig_bedrock::client::BedrockRuntime;
+use rig_bedrock::image::{AMAZON_NOVA_CANVAS, Images};
+use rig_core::Model;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -9,8 +9,8 @@ const DEFAULT_PATH: &str = "./output.png";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = Client::from_env()?;
-    let image_generation_model = client.image_generation(AMAZON_NOVA_CANVAS);
+    let image_generation_model =
+        Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env()?);
     let response = image_generation_model
         .image_generation_request("A castle sitting upon a large mountain, overlooking the water.")
         .width(512)

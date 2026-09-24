@@ -26,7 +26,6 @@
 
 use rig_core::client::ProviderClientError;
 use rig_core::providers::openai::OpenAI;
-use rig_reqwest::prelude::*;
 
 fn empty_the_ca_store() {
     // SAFETY: this test binary has one test and no other threads read the

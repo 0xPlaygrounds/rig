@@ -1752,7 +1752,7 @@ impl Lookup {
                 }
                 let request = request.build();
                 let response = model
-                    .complete(request)
+                    .complete(request, None)
                     .await
                     .expect("the nested completion");
                 response

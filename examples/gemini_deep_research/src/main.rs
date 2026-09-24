@@ -1,7 +1,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, CompletionRequestBuilder};
-use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::interactions_api::{
@@ -104,16 +104,15 @@ fn print_interaction_result(interaction: &Interaction) {
 /// provider's own lifecycle fields — `status`, `steps` — are read back out of
 /// `raw` by deserializing Gemini's own type.
 async fn poll_until_terminal(
-    gemini: &Bound<Gemini>,
+    gemini: &Gemini,
+    http: &BoxedHttpClient,
     interaction_id: &str,
     request: &CompletionRequest,
 ) -> Result<Interaction> {
-    let model = gemini
-        .clone()
-        .map_wire(|gemini| gemini.interaction(interaction_id));
+    let model = Model::new(gemini.interaction(interaction_id), http.clone());
 
     loop {
-        let response = model.completion(request.clone()).await?;
+        let response = model.call(request.clone(), None).await?;
         let interaction: Interaction = serde_json::from_value(response.raw)?;
         if interaction.is_terminal() {
             return Ok(interaction);
@@ -195,7 +194,8 @@ async fn main() -> Result<()> {
 
     let use_streaming = std::env::args().any(|arg| arg == "--stream");
     let agent = deep_research_agent();
-    let gemini = Gemini::from_env()?.bound()?;
+    let gemini = Gemini::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
 
     let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
 
@@ -210,17 +210,14 @@ async fn main() -> Result<()> {
             // the one already running by id. They are two different wires, so
             // the branches meet at the opened stream rather than at the model.
             let opened = if attempt == 0 {
-                gemini
-                    .clone()
-                    .map_wire(|gemini| gemini.interactions(agent.as_str()))
-                    .stream(request.clone())
-                    .await
+                Model::new(gemini.interactions(agent.as_str()), http.clone())
+                    .stream(request.clone(), None)
             } else if let Some(interaction_id) = state.interaction_id.as_deref() {
-                gemini
-                    .clone()
-                    .map_wire(|gemini| gemini.interaction_resumed(interaction_id, None))
-                    .stream(request.clone())
-                    .await
+                Model::new(
+                    gemini.interaction_resumed(interaction_id, None),
+                    http.clone(),
+                )
+                .stream(request.clone(), None)
             } else {
                 eprintln!("Stream closed before an interaction id was received.");
                 break;
@@ -258,11 +255,9 @@ async fn main() -> Result<()> {
 
             // Official Deep Research guidance recommends checking the background
             // interaction status before reconnecting a dropped/expired stream.
-            let probe = gemini
-                .clone()
-                .map_wire(|gemini| gemini.interaction(interaction_id.as_str()));
+            let probe = Model::new(gemini.interaction(interaction_id.as_str()), http.clone());
             let interaction: Interaction =
-                serde_json::from_value(probe.completion(request.clone()).await?.raw)?;
+                serde_json::from_value(probe.call(request.clone(), None).await?.raw)?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);
@@ -281,7 +276,7 @@ async fn main() -> Result<()> {
             && let Some(interaction_id) = state.interaction_id.as_deref()
         {
             println!("Switching to polling for interaction {interaction_id}...");
-            let interaction = poll_until_terminal(&gemini, interaction_id, &request).await?;
+            let interaction = poll_until_terminal(&gemini, &http, interaction_id, &request).await?;
             print_interaction_result(&interaction);
         }
 
@@ -294,10 +289,8 @@ async fn main() -> Result<()> {
 
     println!("== Deep Research (background polling) ==");
     println!("Agent: {agent}");
-    let opened = gemini
-        .clone()
-        .map_wire(|gemini| gemini.interactions(agent.as_str()))
-        .completion(request.clone())
+    let opened = Model::new(gemini.interactions(agent.as_str()), http.clone())
+        .call(request.clone(), None)
         .await?;
     // rig normalizes the interaction id onto `response_id`, so opening a
     // background run needs no reach into `raw`.
@@ -307,7 +300,7 @@ async fn main() -> Result<()> {
     };
     println!("Research started: {interaction_id}");
 
-    let interaction = poll_until_terminal(&gemini, &interaction_id, &request).await?;
+    let interaction = poll_until_terminal(&gemini, &http, &interaction_id, &request).await?;
     print_interaction_result(&interaction);
 
     Ok(())

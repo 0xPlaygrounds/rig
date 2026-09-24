@@ -21,11 +21,11 @@ use std::{
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
-use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionRequestBuilder, CompletionResponse, ModelRef, Usage};
+use rig_core::completion::{AssistantContent, CompletionRequest, CompletionRequestBuilder, CompletionResponse, ModelRef, Usage};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
-use rig_core::serve::adapters::CompletionAdapter;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::serve::adapters::ModelAdapter;
+use rig_core::streaming::CompletionStream;
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver.register(
         "model",
-        CompletionAdapter::new(ModelRef::new("fixture"), ScriptedModel::default()),
+        ModelAdapter::new(ModelRef::new("fixture"), ScriptedModel::default()),
     )?;
     let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
     assert_eq!(model.model_ref().as_str(), "fixture");

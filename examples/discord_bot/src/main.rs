@@ -8,11 +8,11 @@ use rig::providers::openai::{self, OpenAI};
 async fn main() -> Result<(), anyhow::Error> {
     let discord_bot_token = std::env::var("DISCORD_BOT_TOKEN")?;
     // Create the OpenAI provider
-    let client = OpenAI::from_env()?.bound()?;
+    let client = OpenAI::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
 
     // Create agent with a single context prompt
-    let mut discord_bot = client
-        .agent(openai::GPT_4O)
+    let mut discord_bot = AgentBuilder::new(Model::new(client.completion(openai::GPT_4O), http))
         .preamble("You are a helpful assistant.")
         .build()
         .into_discord_bot(&discord_bot_token)

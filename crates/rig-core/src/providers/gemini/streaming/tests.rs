@@ -626,7 +626,7 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod terminal_emission {
-    use crate::driver::Model;
+
     use crate::providers::gemini::Gemini;
     use crate::providers::gemini::completion::{GEMINI_2_5_PRO_PREVIEW_06_05, GenerateContent};
     use crate::streaming::{Delta, StreamEvent};

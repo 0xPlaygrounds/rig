@@ -5,8 +5,8 @@ use rig_core::{
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
-use rig_bedrock::client::Client;
-use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_bedrock::client::BedrockRuntime;
+use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
 use tracing::info;
 
 const DOCUMENT_URL: &str = "https://bitcoin.org/bitcoin.pdf";
@@ -20,12 +20,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = Client::from_env()?;
-    let agent = client
-        .agent(AMAZON_NOVA_LITE)
-        .preamble("Describe this document")
-        .temperature(0.5)
-        .build();
+    let agent = AgentBuilder::new(rig_core::Model::new(
+        Converse::new(AMAZON_NOVA_LITE),
+        BedrockRuntime::from_env()?,
+    ))
+    .preamble("Describe this document")
+    .temperature(0.5)
+    .build();
 
     let reqwest_client = reqwest::Client::new();
     let response = reqwest_client.get(DOCUMENT_URL).send().await?;

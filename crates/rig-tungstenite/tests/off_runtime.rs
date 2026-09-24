@@ -11,8 +11,7 @@
 #![cfg(not(target_family = "wasm"))]
 #![allow(clippy::expect_used, clippy::panic)]
 
-use rig_core::completion::CompletionModel as _;
-use rig_core::driver::Bound;
+use rig_core::driver::Model;
 use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt as _;
 use rig_core::test_utils::RecordingHttpClient;
@@ -152,7 +151,7 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
         let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
-        let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
+        let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
         let mut session = match bound.responses_websocket().await {
             Ok(session) => session,
@@ -202,7 +201,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
         let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
-        let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
+        let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
         let mut session = match bound
             .responses_websocket_builder()
@@ -266,7 +265,7 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
         let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
-        let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
+        let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
         let mut session = match bound.responses_websocket().await {
             Ok(session) => session,

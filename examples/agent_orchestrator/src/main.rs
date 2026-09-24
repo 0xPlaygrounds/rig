@@ -24,8 +24,9 @@ struct TaskResults {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI Responses API to the default transport
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.completion(openai::GPT_4);
+    let openai_client = OpenAI::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
+    let model = Model::new(openai_client.completion(openai::GPT_4), http);
 
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood

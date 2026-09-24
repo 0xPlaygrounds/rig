@@ -49,7 +49,7 @@ fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, Pro
 
 /// A stream over a scripted event sequence.
 fn scripted(build: impl FnOnce(&mut AdapterOutput)) -> CompletionStream {
-    opened(TEST_PROVIDER, (futures::stream::iter(script(build))))
+    opened(TEST_PROVIDER, futures::stream::iter(script(build)))
 }
 
 /// A whole tool call under a wire key, the key doubling as the tool id.
@@ -108,7 +108,7 @@ fn create_mock_stream() -> CompletionStream {
         }
     };
 
-    opened(TEST_PROVIDER, (stream))
+    opened(TEST_PROVIDER, stream)
 }
 
 /// #2258 review P3: non-yielding events (duplicate terminal records
@@ -131,7 +131,7 @@ async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
             yield Ok(StreamEvent::Final(mock_final_with_total_tokens(99)));
         }
     };
-    let mut stream = opened(TEST_PROVIDER, (raw));
+    let mut stream = opened(TEST_PROVIDER, raw);
 
     let mut texts = Vec::new();
     let mut terminals = 0;
@@ -1390,7 +1390,7 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
     use futures::FutureExt;
     for explicit_first in [false, true] {
         let (sender, receiver) = futures::channel::mpsc::unbounded();
-        let mut response = opened(TEST_PROVIDER, (receiver));
+        let mut response = opened(TEST_PROVIDER, receiver);
         let mut generated = SyntheticIds::tool();
         let key = generated.mint();
         for (position, explicit) in [explicit_first, !explicit_first].into_iter().enumerate() {

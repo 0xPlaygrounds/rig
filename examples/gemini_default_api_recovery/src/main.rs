@@ -338,13 +338,10 @@ fn workspace_canary_prompt(attempt: usize) -> String {
 async fn run_workspace_canary_attempt(
     attempt: usize,
 ) -> Result<WorkspaceStreamObservation, String> {
-    let client = Gemini::from_env()
-        .map_err(|error| error.to_string())?
-        .bound()
-        .map_err(|error| error.to_string())?;
+    let client = Gemini::from_env().map_err(|error| error.to_string())?;
+    let http = rig::rig_reqwest::bundled().map_err(|error| error.to_string())?;
     let agent_name = format!("workspace-default-api-canary-{attempt}");
-    let agent = client
-        .agent(GEMINI_CANARY_MODEL)
+    let agent = AgentBuilder::new(Model::new(client.completion(GEMINI_CANARY_MODEL), http))
         .name(&agent_name)
         .preamble(WORKSPACE_STYLE_PREAMBLE)
         .additional_params(gemini_canary_additional_params().map_err(|error| error.to_string())?)

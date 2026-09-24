@@ -20,8 +20,9 @@ fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, S
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = OpenAI::from_env()?.bound()?;
-    let model = client.completion(openai::GPT_4O);
+    let client = OpenAI::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
+    let model = Model::new(client.completion(openai::GPT_4O), http);
     let files = load_example_contexts()?;
 
     let agent = files

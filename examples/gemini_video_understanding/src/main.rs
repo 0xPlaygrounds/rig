@@ -42,10 +42,10 @@ fn build_additional_params() -> Result<serde_json::Value> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Gemini::from_env()?.bound()?;
+    let client = Gemini::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
     let additional_params = build_additional_params()?;
-    let agent = client
-        .agent(MODEL)
+    let agent = AgentBuilder::new(Model::new(client.completion(MODEL), http))
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         .additional_params(additional_params)

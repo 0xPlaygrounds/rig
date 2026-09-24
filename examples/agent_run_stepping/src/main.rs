@@ -22,7 +22,6 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
-use rig::completion::CompletionModel;
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -91,8 +90,9 @@ impl AgentHook for ToolLoggerHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let openai = OpenAI::from_env()?.bound()?;
-    let model = openai.completion(openai::GPT_4O);
+    let openai = OpenAI::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
+    let model = Model::new(openai.completion(openai::GPT_4O), http);
     let agent = rig::agent::AgentBuilder::new(model.clone())
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)

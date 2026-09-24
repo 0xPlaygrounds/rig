@@ -1,16 +1,15 @@
 //! VoyageAI reranking smoke test.
 
-use rig::prelude::*;
 use rig::providers::voyageai::{self, wire::VoyageAi};
-use rig::rerank::RerankModel;
+use rig_test_support::endpoint::Endpoint;
 
 #[tokio::test]
 #[ignore = "requires VOYAGE_API_KEY"]
 async fn rerank_smoke() {
-    let provider = VoyageAi::from_env()
-        .expect("config should build from VOYAGE_API_KEY env var")
-        .bound()
-        .expect("transport should build");
+    let provider = Endpoint::new(
+        VoyageAi::from_env().expect("config should build from VOYAGE_API_KEY env var"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let model = provider.rerank(voyageai::RERANK_2_5);
 
     let response = model

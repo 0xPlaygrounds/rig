@@ -1,7 +1,6 @@
 //! AWS Bedrock streaming smoke tests inspired by the OpenAI and Anthropic provider tests.
 
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::tool::Tool;
 
 use super::{
@@ -48,8 +47,7 @@ async fn raw_streaming_tool_call_smoke() {
 
     let observation = collect_raw_stream_observation(
         model
-            .stream(request)
-            .await
+            .stream(request, None)
             .expect("raw Bedrock stream should start"),
     )
     .await;

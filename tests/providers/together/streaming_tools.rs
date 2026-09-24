@@ -1,8 +1,8 @@
 //! Together streaming tools smoke test.
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, TOGETHER};
 use rig::providers::together;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
@@ -12,10 +12,10 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn streaming_tools_smoke() {
-    let provider = OpenAI::from_env_with(&TOGETHER)
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
+    let provider = Endpoint::new(
+        OpenAI::from_env_with(&TOGETHER).expect("config should build from env"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let agent = provider
         .agent(together::LLAMA_2_70B_CHAT_TOGETHER)
         .preamble(STREAMING_TOOLS_PREAMBLE)

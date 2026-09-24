@@ -5,7 +5,6 @@
 use anyhow::{Context, Result};
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
-use rig::driver::Bind;
 use rig::{prelude::*, providers::anthropic, providers::anthropic::wire::Anthropic};
 
 fn build_http_client() -> rig::rig_reqwest::ReqwestMiddlewareClient {
@@ -20,11 +19,12 @@ fn build_http_client() -> rig::rig_reqwest::ReqwestMiddlewareClient {
 async fn main() -> Result<()> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set")?;
     let http_client = build_http_client();
-    let agent = Anthropic::new(api_key)
-        .bind(http_client)
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-        .preamble("You are a helpful assistant.")
-        .build();
+    let agent = AgentBuilder::new(Model::new(
+        Anthropic::new(api_key).completion(anthropic::completion::CLAUDE_SONNET_4_6),
+        http_client,
+    ))
+    .preamble("You are a helpful assistant.")
+    .build();
 
     let response = agent.prompt("What is 2 + 2?").await?.output;
     println!("Response: {response}");

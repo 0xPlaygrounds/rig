@@ -1,5 +1,5 @@
 //! Matrix O's mock cells: a rerank through a mock `RerankModel` behind a
-//! `RerankAdapter` on a host's bus (no keyed provider in the tree has a
+//! `ModelAdapter` on a host's bus (no keyed provider in the tree has a
 //! rerank cassette suite), and a `Prompted` answer the run returns
 //! unvalidated.
 
@@ -24,7 +24,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
     driver
         .register_erased(
             model_key.clone(),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 MockCompletionModel::text("ready"),
             )),

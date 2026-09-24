@@ -1,10 +1,12 @@
 use std::vec;
 
 use rig_agent::prelude::*;
-use rig_bedrock::client::Client;
-use rig_bedrock::completion::AMAZON_NOVA_LITE;
-use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
-use rig_core::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
+use rig_bedrock::client::BedrockRuntime;
+use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
+use rig_bedrock::embedding::{AMAZON_TITAN_EMBED_TEXT_V2_0, Embeddings};
+use rig_core::{
+    Model, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
+};
 use serde::Serialize;
 use tracing::info;
 
@@ -26,8 +28,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = Client::from_env()?;
-    let embedding_model = client.embedding(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
+    let runtime = BedrockRuntime::from_env()?;
+    let embedding_model = Model::new(
+        Embeddings::new(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256)),
+        runtime.clone(),
+    );
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -66,7 +71,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
 
-    let rag_agent = client.agent(AMAZON_NOVA_LITE)
+    let rag_agent = AgentBuilder::new(Model::new(Converse::new(AMAZON_NOVA_LITE), runtime))
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

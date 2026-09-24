@@ -240,7 +240,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                     .apply(CompletionRequestBuilder::unbound(prompt))
                     .build();
                 let response =
-                    tokio::time::timeout(Duration::from_secs(5), model.complete(request))
+                    tokio::time::timeout(Duration::from_secs(5), model.complete(request, None))
                         .await
                         .expect("never hangs")
                         .expect("the model");

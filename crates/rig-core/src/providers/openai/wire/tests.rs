@@ -142,7 +142,6 @@ fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
 /// would not survive a round trip.
 #[test]
 fn a_configured_route_overrides_the_dialects_and_round_trips() {
-    use crate::wire::Wire as _;
     let on_chat = OpenAI::new("sk-secret").with_route(Route::Chat);
     let on_responses = OpenAI::with_key(&GROQ, "gsk-secret").with_route(Route::Responses);
     assert_eq!(on_chat.completion_route(), Route::Chat);

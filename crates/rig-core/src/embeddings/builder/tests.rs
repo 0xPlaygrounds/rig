@@ -1,5 +1,5 @@
 use crate::embeddings::embed::{EmbedError, TextEmbedder};
-use crate::embeddings::{Embed, Embedding, EmbeddingResponse};
+use crate::embeddings::{Embed, Embedding};
 use crate::error::ProviderError;
 use crate::test_utils::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 
@@ -479,7 +479,7 @@ impl Transport<Batches> for OneAtATimeReversedLatency {
     > {
         let model = self.clone();
         Ok(async move {
-            let this = &model;
+            let _this = &model;
             let documents: Vec<String> = documents.into_iter().collect();
             // Earlier texts wait longer, so completion order is close to the
             // reverse of submission order. Texts are named `d{doc}t{i}`, so the

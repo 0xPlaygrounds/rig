@@ -2,8 +2,8 @@
 
 use futures::StreamExt;
 use rig::agent::AgentBuilder;
+use rig::bedrock::completion::Converse;
 use rig::completion::AssistantContent;
-use rig::prelude::*;
 use rig::streaming::StreamEvent;
 use serde_json::json;
 
@@ -23,9 +23,10 @@ fn adaptive_thinking_params() -> serde_json::Value {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
-    let model = client()
-        .completion(anthropic_adaptive_model())
-        .with_prompt_caching();
+    let model = rig_test_support::endpoint::map_wire(
+        client().completion(anthropic_adaptive_model()),
+        Converse::with_prompt_caching,
+    );
     let agent = AgentBuilder::new(model)
         .preamble(
             "You must call tools when the user asks for their result. \
@@ -55,8 +56,7 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
         .additional_params(adaptive_thinking_params())
         .build();
     let mut stream = model
-        .stream(request)
-        .await
+        .stream(request, None)
         .expect("adaptive-thinking Bedrock stream should start");
 
     let mut reasoning_chunks = 0;

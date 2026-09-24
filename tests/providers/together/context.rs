@@ -1,18 +1,18 @@
 //! Together context smoke test.
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, TOGETHER};
 use rig::providers::together;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn context_smoke() {
-    let provider = OpenAI::from_env_with(&TOGETHER)
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
+    let provider = Endpoint::new(
+        OpenAI::from_env_with(&TOGETHER).expect("config should build from env"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let agent = CONTEXT_DOCS
         .iter()
         .copied()

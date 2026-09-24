@@ -2266,7 +2266,6 @@ fn file_id_document_serializes_as_input_item_content() {
 
 #[tokio::test]
 async fn responses_completion_http_non_success_preserves_status_and_body() {
-    use crate::driver::Model;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
@@ -2708,7 +2707,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
 /// double that carries response headers.
 mod raw_capture {
     use super::*;
-    use crate::driver::Model;
+
     use crate::test_utils::RecordingHttpClient;
 
     const REQUEST_ID: &str = "req_unit_responses_0001";

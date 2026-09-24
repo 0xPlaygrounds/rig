@@ -11,6 +11,7 @@
 // 3. Run the example:
 //    cargo run --release --example vectorize_vector_search
 
+use rig_core::Model;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -18,7 +19,6 @@ use rig_core::{
     vector_store::request::VectorSearchRequest,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_reqwest::prelude::*;
 use rig_vectorize::VectorizeVectorStore;
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
@@ -30,8 +30,12 @@ struct Word {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+    let openai_client = OpenAI::from_env()?;
+    let http = rig_reqwest::bundled()?;
+    let model = Model::new(
+        openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+        http,
+    );
 
     let vector_store = VectorizeVectorStore::new(
         model.clone(),

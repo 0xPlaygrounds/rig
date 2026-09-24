@@ -63,15 +63,22 @@ fn print_matches(matches: &[SearchMatch]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let cohere_client = Cohere::from_env()?.bound()?;
+    let cohere_client = Cohere::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
     // Cohere scores a document and a query differently, so the two wires
     // differ only in the `input_type` they send.
-    let document_model = cohere_client
-        .embedding(cohere::EMBED_ENGLISH_V3, None)
-        .map_wire(|wire| wire.with_input_type("search_document"));
-    let search_model = cohere_client
-        .embedding(cohere::EMBED_ENGLISH_V3, None)
-        .map_wire(|wire| wire.with_input_type("search_query"));
+    let document_model = Model::new(
+        cohere_client
+            .embedding(cohere::EMBED_ENGLISH_V3, None)
+            .with_input_type("search_document"),
+        http.clone(),
+    );
+    let search_model = Model::new(
+        cohere_client
+            .embedding(cohere::EMBED_ENGLISH_V3, None)
+            .with_input_type("search_query"),
+        http,
+    );
     let embeddings = EmbeddingsBuilder::new(document_model.clone())
         .documents(sample_documents())?
         .build()

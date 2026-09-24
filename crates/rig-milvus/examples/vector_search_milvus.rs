@@ -1,3 +1,4 @@
+use rig_core::Model;
 use rig_core::vector_store::InsertDocuments;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -6,7 +7,6 @@ use rig_core::{
     providers::openai::{self, wire::OpenAI},
     vector_store::VectorStoreIndex,
 };
-use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -29,8 +29,12 @@ impl std::fmt::Display for WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+    let openai_client = OpenAI::from_env()?;
+    let http = rig_reqwest::bundled()?;
+    let model = Model::new(
+        openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+        http,
+    );
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;
     let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;

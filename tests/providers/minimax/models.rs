@@ -5,18 +5,17 @@
 //! the OpenAI-style `{"object":"list","data":[…]}` envelope this decodes
 //! (rig#2079).
 
-use rig::model::ModelLister;
-use rig::prelude::*;
 use rig::providers::openai::wire::{self as openai_wire, OpenAI};
+use rig_test_support::endpoint::Endpoint;
 
 #[tokio::test]
 #[ignore = "requires MINIMAX_API_KEY"]
 async fn list_models_smoke() {
-    let client = OpenAI::from_env_with(&openai_wire::MINIMAX)
-        .expect("MINIMAX_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let models = match client.models().list_all().await {
+    let client = Endpoint::new(
+        OpenAI::from_env_with(&openai_wire::MINIMAX).expect("MINIMAX_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("client should build"),
+    );
+    let models = match client.models().call((), None).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing MiniMax models should succeed\nDisplay: {error}\nDebug: {error:#?}")

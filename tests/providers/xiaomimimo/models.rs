@@ -1,20 +1,19 @@
 //! Xiaomi MiMo model listing smoke test.
 
-use rig::model::ModelLister;
-use rig::prelude::*;
 use rig::providers::openai::wire::{self as openai_wire, OpenAI};
 use rig::providers::xiaomimimo::{
     MIMO_V2_5, MIMO_V2_5_PRO, MIMO_V2_FLASH, MIMO_V2_OMNI, MIMO_V2_PRO,
 };
+use rig_test_support::endpoint::Endpoint;
 
 #[tokio::test]
 #[ignore = "requires XIAOMI_MIMO_API_KEY"]
 async fn list_models_smoke() {
-    let client = OpenAI::from_env_with(&openai_wire::XIAOMIMIMO)
-        .expect("XIAOMI_MIMO_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let models = match client.models().list_all().await {
+    let client = Endpoint::new(
+        OpenAI::from_env_with(&openai_wire::XIAOMIMIMO).expect("XIAOMI_MIMO_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("client should build"),
+    );
+    let models = match client.models().call((), None).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Xiaomi MiMo models should succeed\nDisplay: {error}\nDebug: {error:#?}")

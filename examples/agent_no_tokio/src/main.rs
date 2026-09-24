@@ -17,7 +17,6 @@ use std::{thread, time::Duration};
 use anyhow::Result;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool, futures::check_ready};
 use rig::agent::MultiTurnStreamItem;
-use rig::driver::Bind;
 use rig::http_client::ReqwestClient;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -30,14 +29,15 @@ const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
-    // bound provider is `Bound<OpenAI, BoxedHttpClient>`, so no
-    // transport type reaches this crate's signatures.
+    // model is `Model<OpenAiWire, BoxedHttpClient>`, so no transport type
+    // reaches this crate's signatures.
     let transport = ReqwestClient::default().boxed();
-    let agent = OpenAI::from_env()?
-        .bind(transport)
-        .agent(openai::GPT_4O)
-        .preamble(PREAMBLE)
-        .build();
+    let agent = AgentBuilder::new(Model::new(
+        OpenAI::from_env()?.completion(openai::GPT_4O),
+        transport,
+    ))
+    .preamble(PREAMBLE)
+    .build();
 
     // Split the run: a future for the pool, an event feed for the frame loop.
     let (run, mut events) = agent.prompt(PROMPT).run_channel();

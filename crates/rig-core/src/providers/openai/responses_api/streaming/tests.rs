@@ -3,7 +3,7 @@ use super::{
     ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
     reasoning_from_done_item,
 };
-use crate::driver::{Model, WireDriver};
+use crate::driver::WireDriver;
 use crate::error::ProviderError;
 use crate::error::{ErrorKind, ErrorReport};
 use crate::message::{AssistantContent, ReasoningContent};

@@ -10883,6 +10883,7 @@ name = "rig-sqlite"
 version = "0.42.0"
 dependencies = [
  "anyhow",
+ "futures",
  "httpmock",
  "rig-core",
  "rig-reqwest",
@@ -10902,6 +10903,7 @@ name = "rig-surrealdb"
 version = "0.42.0"
 dependencies = [
  "anyhow",
+ "futures",
  "rig-core",
  "rig-reqwest",
  "serde",

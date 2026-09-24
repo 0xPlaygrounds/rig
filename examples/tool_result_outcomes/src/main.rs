@@ -335,12 +335,13 @@ async fn main() -> Result<()> {
     };
     println!("Running simulated {operation} path");
 
-    let agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_4O)
-        .preamble("Follow the user's requested system_probe operation exactly.")
-        .tool(SystemProbe)
-        .build();
+    let agent = AgentBuilder::new(Model::new(
+        OpenAI::from_env()?.completion(openai::GPT_4O),
+        rig::rig_reqwest::bundled()?,
+    ))
+    .preamble("Follow the user's requested system_probe operation exactly.")
+    .tool(SystemProbe)
+    .build();
 
     let response = agent
         .prompt(prompt)

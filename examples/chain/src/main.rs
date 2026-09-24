@@ -2,9 +2,9 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
-use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
-use rig::providers::openai::{self, OpenAI};
+use rig::providers::openai::{self, OpenAI, wire::OpenAiWire};
 use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
@@ -19,9 +19,8 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(client: &Bound<OpenAI>) -> rig::agent::Agent {
-    client
-        .agent(openai::GPT_4)
+fn build_dictionary_agent(model: Model<OpenAiWire, BoxedHttpClient>) -> rig::agent::Agent {
+    AgentBuilder::new(model)
         .preamble(
             "
             You are a dictionary assistant here to help the user understand non-standard words.
@@ -44,8 +43,12 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
-    let client = OpenAI::from_env()?.bound()?;
-    let embedding_model = client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let client = OpenAI::from_env()?;
+    let http = rig::rig_reqwest::bundled()?;
+    let embedding_model = Model::new(
+        client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
+        http.clone(),
+    );
 
     let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
     for definition in sample_definitions() {
@@ -53,7 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     let vector_store = InMemoryVectorStore::from_documents(builder.build().await?);
     let index = vector_store.index(embedding_model);
-    let agent = build_dictionary_agent(&client);
+    let agent = build_dictionary_agent(Model::new(client.completion(openai::GPT_4), http));
 
     // Retrieve the most relevant definition, fold it into the prompt, then
     // prompt the agent. (The old pipeline ran the lookup "in parallel" with a

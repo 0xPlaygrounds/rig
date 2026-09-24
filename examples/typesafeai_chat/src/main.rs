@@ -130,9 +130,13 @@ async fn main() -> Result<()> {
         }
     }
 
-    let jev = Jev::from_env()?.bound()?;
-    let openai = if with_agent {
-        Some(OpenAI::from_env()?.bound()?)
+    let http = rig::rig_reqwest::bundled()?;
+    let jev = Model::new(Jev::from_env()?, http.clone());
+    let assistant = if with_agent {
+        Some(Model::new(
+            OpenAI::from_env()?.completion("gpt-5.6-sol"),
+            http,
+        ))
     } else {
         None
     };
@@ -192,8 +196,8 @@ async fn main() -> Result<()> {
         );
 
         let policy = next_action(&route, clarification.noul);
-        let reply = if let Some(client) = &openai {
-            let agent = client.agent("gpt-5.6-sol")
+        let reply = if let Some(model) = &assistant {
+            let agent = AgentBuilder::new(model.clone())
                 .preamble(format!(
                     "You support a hosted document workspace. {policy} \
                      You have no account access or tools; never claim to change settings or issue refunds. \

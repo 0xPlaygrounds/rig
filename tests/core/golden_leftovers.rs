@@ -98,7 +98,7 @@ async fn denied_completion_effect_log_is_the_golden_fixture() {
     driver
         .register_erased(
             model_key.clone(),
-            ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 MockCompletionModel::text("never asked"),
             ))
@@ -172,7 +172,7 @@ async fn denied_custom_from_hook_effect_log_is_the_golden_fixture() {
     driver
         .register_erased(
             model_key.clone(),
-            ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 MockCompletionModel::text("ready"),
             )),
@@ -217,9 +217,7 @@ async fn over_host(
     driver
         .register_erased(
             model_key.clone(),
-            ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
-                "default", model,
-            )),
+            ErasedHandler::new(rig::serve::adapters::ModelAdapter::new("default", model)),
         )
         .expect("a fresh key");
     host(&mut driver);
@@ -331,9 +329,9 @@ async fn required_embed_effect_log_is_the_golden_fixture() {
         driver
             .register_erased(
                 HandlerKey::from("host/embed"),
-                ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
+                ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "host",
-                    rig::test_utils::MockEmbeddingModel,
+                    rig::test_utils::MockEmbeddingModel::default(),
                 )),
             )
             .expect("a fresh key");
@@ -348,7 +346,10 @@ async fn required_rerank_effect_log_is_the_golden_fixture() {
         driver
             .register_erased(
                 HandlerKey::from("host/rerank"),
-                ErasedHandler::new(rig::serve::adapters::ModelAdapter::new("host", rig::Model::new(MockRerank, MockRerank))),
+                ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
+                    "host",
+                    rig::Model::new(MockRerank, MockRerank),
+                )),
             )
             .expect("a fresh key");
     })
