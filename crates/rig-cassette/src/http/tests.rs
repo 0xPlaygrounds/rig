@@ -1043,3 +1043,42 @@ fn a_team_id_a_provider_quotes_is_scrubbed() {
     // Scrubbing is idempotent, so a scrubbed fixture passes the safety check.
     assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
 }
+
+#[test]
+fn every_way_a_provider_quotes_a_team_id_is_scrubbed() {
+    let team = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+    let upper = "0A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C5D";
+    for phrasing in [
+        format!("your team {team} lacks access"),
+        format!("quote your team ID {team}"),
+        format!("team_id: {team}"),
+        format!("see https://console.x.ai/team/{team}/usage"),
+        format!("Team={upper}"),
+    ] {
+        let yaml = format!(
+            "when:\n  path: /v1/x\n  method: POST\n  body: ''\nthen:\n  status: 404\n  body: '{phrasing}'\n"
+        );
+        let scrubbed = scrub_cassette_contents(&yaml);
+        assert!(
+            scrubbed.contains("team_REDACTED_1"),
+            "{phrasing}: {scrubbed}"
+        );
+        assert!(
+            !scrubbed.contains(team) && !scrubbed.contains(upper),
+            "{phrasing}: {scrubbed}"
+        );
+        assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed, "{phrasing}");
+    }
+    // A UUID after `team` inside another word, or with other words between,
+    // is not named as the team.
+    for kept in [
+        format!("steam {team}"),
+        format!("teammate {team}"),
+        format!("team idea {team}"),
+    ] {
+        let yaml = format!(
+            "when:\n  path: /v1/x\n  method: POST\n  body: ''\nthen:\n  status: 404\n  body: '{kept}'\n"
+        );
+        assert!(scrub_cassette_contents(&yaml).contains(team), "{kept}");
+    }
+}
