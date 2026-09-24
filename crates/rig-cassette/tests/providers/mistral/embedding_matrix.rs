@@ -56,9 +56,9 @@ async fn raw_round_trips() {
             .expect("embedding request should succeed");
 
         let raw: openai::CompatibleEmbeddingResponse =
-            serde_json::from_value(response.raw.clone()).expect("raw round-trips");
-        assert_eq!(raw.data.len(), response.embeddings.len());
-        assert_eq!(Some(raw.model.as_str()), response.model.as_deref());
+            serde_json::from_value(response.meta.raw.clone()).expect("raw round-trips");
+        assert_eq!(raw.data.len(), response.output.len());
+        assert_eq!(Some(raw.model.as_str()), response.meta.model.as_deref());
         assert_eq!(
             raw.object, "list",
             "the envelope tag reaches the caller through `raw`, which the \
@@ -84,12 +84,13 @@ async fn raw_route_parity() {
             .embed_texts_response(inputs())
             .await
             .expect("the same request should succeed again");
-        assert_eq!(again.embeddings.len(), normalized.embeddings.len());
+        assert_eq!(again.output.len(), normalized.output.len());
 
-        let raw: openai::CompatibleEmbeddingResponse = serde_json::from_value(again.raw.clone())
-            .expect("raw is the compatible embeddings payload");
-        assert_eq!(raw.data.len(), normalized.embeddings.len());
-        assert_eq!(Some(raw.model.as_str()), normalized.model.as_deref());
+        let raw: openai::CompatibleEmbeddingResponse =
+            serde_json::from_value(again.meta.raw.clone())
+                .expect("raw is the compatible embeddings payload");
+        assert_eq!(raw.data.len(), normalized.output.len());
+        assert_eq!(Some(raw.model.as_str()), normalized.meta.model.as_deref());
     })
     .await;
 }
@@ -106,14 +107,14 @@ async fn single_text_convenience() {
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
                 .expect("single-text embedding should succeed");
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].document, EMBEDDING_INPUTS[0]);
-            assert_eq!(response.provider, "mistral");
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.output[0].document, EMBEDDING_INPUTS[0]);
+            assert_eq!(response.meta.provider, "mistral");
             let embedding = model
                 .embed_text(EMBEDDING_INPUTS[0])
                 .await
                 .expect("convenience embedding should succeed");
-            assert_eq!(embedding.vec.len(), response.embeddings[0].vec.len());
+            assert_eq!(embedding.vec.len(), response.output[0].vec.len());
         },
     )
     .await;
@@ -134,7 +135,7 @@ async fn dimensions_request() {
             .embed_texts_response(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
-        for embedding in &response.embeddings {
+        for embedding in &response.output {
             assert_eq!(embedding.vec.len(), ndims);
         }
     })
@@ -187,11 +188,12 @@ async fn bug_mistral_request_id_dropped() {
                 .expect("embedding request should succeed");
             assert!(
                 response
+                    .meta
                     .provider_request_id
                     .as_deref()
                     .is_some_and(|id| !id.is_empty()),
                 "the correlation id must survive onto the normalized response: {:?}",
-                response.provider_request_id
+                response.meta.provider_request_id
             );
         },
     )

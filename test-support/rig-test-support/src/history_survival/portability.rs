@@ -52,7 +52,7 @@ where
     let raw = serde_json::from_str::<Value>(body)
         .map_err(|error| ProviderError::Response(error.to_string()))?;
     fold.finish(Reply {
-        provider: wire.name().to_owned(),
+        provider: rig_core::id::ProviderName::new(wire.name().to_owned()).expect("a non-empty id"),
         raw,
         provider_request_id: None,
     })

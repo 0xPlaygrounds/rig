@@ -20,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // save image
     let mut file = File::create_new(Path::new(DEFAULT_PATH))?;
-    file.write_all(&response.image)?;
+    file.write_all(&response.output)?;
 
     Ok(())
 }

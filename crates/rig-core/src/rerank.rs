@@ -2,7 +2,7 @@
 //!
 //! Reranking models reorder a list of documents by relevance to a query.
 //! The [`RerankModel`] trait defines the interface, and [`RerankResponse`]
-//! carries both the scored results and token usage.
+//! carries the scored results and the provider's metadata.
 //!
 //! ```no_run
 //! use rig_core::rerank::RerankModel;
@@ -16,8 +16,7 @@
 
 use crate::error::ProviderError;
 use crate::{
-    completion::{ResponseIdentity, Usage},
-    id::{ModelName, RequestId, ResponseId},
+    response::Response,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
@@ -49,56 +48,6 @@ pub struct RerankResult {
     pub relevance_score: f64,
 }
 
-/// Ranked documents and normalized provider metadata.
-/// Provider-specific response data is available through [`Self::raw`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RerankResponse {
-    /// Reranked results sorted by relevance (highest first).
-    pub results: Vec<RerankResult>,
-    /// Provider-reported model identifier, or `None` when omitted.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelName>,
-    /// Token usage for this rerank request; every counter is `None` when the
-    /// provider reported none (see [`Usage`]).
-    #[serde(default)]
-    pub usage: Usage,
-    /// Stable descriptor name of the provider that produced this response,
-    /// for example `"voyageai"`. Always populated.
-    pub provider: String,
-    /// Provider-assigned response-scoped identifier, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<ResponseId>,
-    /// Transport request ID from HTTP headers, or `None` when unreported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<RequestId>,
-    /// Provider response document. Defaults to null until populated.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub raw: serde_json::Value,
-}
-
-impl RerankResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset.
-    pub fn new(results: Vec<RerankResult>, provider: impl Into<String>) -> Self {
-        Self {
-            results,
-            model: None,
-            usage: Usage::default(),
-            provider: provider.into(),
-            response_id: None,
-            provider_request_id: None,
-            raw: serde_json::Value::Null,
-        }
-    }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
-}
+/// Reranked results, highest relevance first, and the metadata the provider
+/// reported.
+pub type RerankResponse = Response<Vec<RerankResult>>;

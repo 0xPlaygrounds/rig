@@ -19,5 +19,5 @@ async fn image_generation_smoke() {
         .await
         .expect("image generation request should succeed");
 
-    assert_nonempty_bytes(&response.image);
+    assert_nonempty_bytes(&response.output);
 }

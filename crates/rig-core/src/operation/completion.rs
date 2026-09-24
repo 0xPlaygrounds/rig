@@ -177,14 +177,14 @@ impl Fold<Completion> for CompletionFold {
         let issuer = self
             .terminal
             .as_ref()
-            .map_or(reply.provider.clone(), |terminal| {
+            .map_or(reply.provider.to_string(), |terminal| {
                 terminal.issuer().to_owned()
             });
         let mut response = crate::streaming::fold_finish(
             self.accumulator,
             self.terminal.as_ref(),
             self.message_id,
-            reply.provider,
+            reply.provider.into_string(),
             &issuer,
             reply.raw,
         );

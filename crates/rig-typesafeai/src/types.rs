@@ -56,7 +56,7 @@ pub enum Answer {
 /// Rig token accounting; counters absent from Jev remain unknown.
 pub use rig_core::completion::Usage;
 
-/// Raw response, including the transport's request identifier.
+/// Raw response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
     /// The model identifier returned by the provider.
@@ -66,7 +66,4 @@ pub struct Response {
     #[serde(default)]
     /// Token accounting when reported by the provider.
     pub usage: Option<Usage>,
-    #[serde(skip)]
-    /// Transport request identifier for diagnostics.
-    pub provider_request_id: Option<String>,
 }

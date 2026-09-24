@@ -20,11 +20,11 @@ async fn nano_banana_image_generation_smoke() {
                 .expect("Nano Banana image generation should succeed");
 
             assert!(
-                response.image.len() > 100,
+                response.output.len() > 100,
                 "expected non-empty generated image bytes"
             );
             assert_eq!(
-                response.model.as_deref(),
+                response.meta.model.as_deref(),
                 Some(gemini::GEMINI_2_5_FLASH_IMAGE),
                 "expected Gemini response to identify the image model"
             );

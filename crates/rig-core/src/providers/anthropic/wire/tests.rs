@@ -81,7 +81,7 @@ fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
     Fold::<Completion>::finish(
         fold,
         crate::wire::Reply {
-            provider: "anthropic".to_owned(),
+            provider: crate::id::ProviderName::new("anthropic".to_owned()).expect("a non-empty id"),
             raw: serde_json::from_str(body).unwrap_or(serde_json::Value::Null),
             provider_request_id: Some(
                 crate::id::RequestId::new("req_REDACTED_1".to_owned()).expect("a non-empty id"),

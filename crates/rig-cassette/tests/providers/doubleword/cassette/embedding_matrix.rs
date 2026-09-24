@@ -57,20 +57,20 @@ async fn raw_round_trips() {
             .await
             .expect("embedding request should succeed");
 
-        let reply = openai::CompatibleEmbeddingResponse::deserialize(&response.raw)
+        let reply = openai::CompatibleEmbeddingResponse::deserialize(&response.meta.raw)
             .expect("raw is the shared OpenAI-compatible embeddings response");
-        assert_eq!(reply.data.len(), response.embeddings.len());
-        assert_eq!(Some(reply.model.as_str()), response.model.as_deref());
+        assert_eq!(reply.data.len(), response.output.len());
+        assert_eq!(Some(reply.model.as_str()), response.meta.model.as_deref());
         let native_usage = reply.usage.as_ref().expect("Doubleword reports usage");
         assert_eq!(
-            response.usage.total_tokens,
+            response.meta.usage.total_tokens,
             Some(native_usage.total_tokens as u64)
         );
         assert_eq!(
-            response.usage.input_tokens,
+            response.meta.usage.input_tokens,
             Some(native_usage.prompt_tokens as u64)
         );
-        for (datum, embedding) in reply.data.iter().zip(&response.embeddings) {
+        for (datum, embedding) in reply.data.iter().zip(&response.output) {
             assert_eq!(datum.embedding.len(), embedding.vec.len());
         }
     })
@@ -96,14 +96,14 @@ async fn raw_route_parity() {
             .await
             .expect("the same request should succeed again");
 
-        assert_eq!(again.embeddings.len(), normalized.embeddings.len());
-        assert_eq!(again.model, normalized.model);
-        assert_eq!(again.usage, normalized.usage);
+        assert_eq!(again.output.len(), normalized.output.len());
+        assert_eq!(again.meta.model, normalized.meta.model);
+        assert_eq!(again.meta.usage, normalized.meta.usage);
 
-        let reply = openai::CompatibleEmbeddingResponse::deserialize(&again.raw)
+        let reply = openai::CompatibleEmbeddingResponse::deserialize(&again.meta.raw)
             .expect("raw is the shared OpenAI-compatible embeddings response");
-        assert_eq!(reply.data.len(), normalized.embeddings.len());
-        assert_eq!(Some(reply.model.as_str()), normalized.model.as_deref());
+        assert_eq!(reply.data.len(), normalized.output.len());
+        assert_eq!(Some(reply.model.as_str()), normalized.meta.model.as_deref());
     })
     .await;
 
@@ -131,14 +131,14 @@ async fn single_text_convenience() {
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
                 .expect("single-text embedding should succeed");
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].document, EMBEDDING_INPUTS[0]);
-            assert_eq!(response.provider, "doubleword");
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.output[0].document, EMBEDDING_INPUTS[0]);
+            assert_eq!(response.meta.provider, "doubleword");
             let embedding = model
                 .embed_text(EMBEDDING_INPUTS[0])
                 .await
                 .expect("convenience embedding should succeed");
-            assert_eq!(embedding.vec.len(), response.embeddings[0].vec.len());
+            assert_eq!(embedding.vec.len(), response.output[0].vec.len());
         },
     )
     .await;

@@ -329,13 +329,13 @@ impl Decoder<Verify> for VerifyKeyDecoder {
 
     fn interpret(&mut self, _event: Self::Event, out: &mut Output<Verify>) {
         self.answered = true;
-        out.push(Ok(()));
+        out.push(Ok(crate::response::Reported::new(())));
     }
 
     /// Emit success if no recognized page supplied an event.
     fn finish(&mut self, out: &mut Output<Verify>) {
         if !self.answered {
-            out.push(Ok(()));
+            out.push(Ok(crate::response::Reported::new(())));
         }
     }
 }

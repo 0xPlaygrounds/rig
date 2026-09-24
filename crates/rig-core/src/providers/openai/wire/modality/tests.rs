@@ -41,7 +41,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
         .expect("the recorded reply decodes");
 
     let inputs: Vec<&str> = response
-        .embeddings
+        .output
         .iter()
         .map(|embedding| embedding.document.as_str())
         .collect();
@@ -52,19 +52,22 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
     );
     assert!(
         response
-            .embeddings
+            .output
             .iter()
             .all(|embedding| embedding.vec.len() == 1536),
         "widths: {:?}",
         response
-            .embeddings
+            .output
             .iter()
             .map(|embedding| embedding.vec.len())
             .collect::<Vec<_>>()
     );
-    assert_eq!(response.provider, "openai");
-    assert_eq!(response.model.as_deref(), Some("text-embedding-3-small"));
-    assert!(response.usage.input_tokens.is_some());
+    assert_eq!(response.meta.provider, "openai");
+    assert_eq!(
+        response.meta.model.as_deref(),
+        Some("text-embedding-3-small")
+    );
+    assert!(response.meta.usage.input_tokens.is_some());
 }
 
 /// A batch whose reply carries the wrong number of vectors is a provider
@@ -242,7 +245,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     .embed_texts_response(vec!["one".to_owned()])
     .await
     .expect("Together may omit usage");
-    assert_eq!(response.embeddings.len(), 1);
+    assert_eq!(response.output.len(), 1);
 }
 
 /// The catalogue decodes, and Groq's context/output limits land on the
@@ -379,8 +382,8 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
     .image_generation(request())
     .await
     .expect("a reply without `created` still decodes");
-    assert_eq!(response.image, b"hi");
-    assert_eq!(response.provider, "xai");
+    assert_eq!(response.output, b"hi");
+    assert_eq!(response.meta.provider, "xai");
 }
 
 /// xAI spells its speech endpoint `/v1/tts` and takes a body of its own.
@@ -502,19 +505,19 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
 
     // Score order is the server's, preserved as sent.
     let ranked: Vec<(usize, f64)> = response
-        .results
+        .output
         .iter()
         .map(|result| (result.index, result.relevance_score))
         .collect();
     assert_eq!(ranked, vec![(2, 0.98), (0, 0.41), (1, 0.02)]);
-    assert_eq!(response.provider, "llamacpp");
-    assert_eq!(response.model.as_deref(), Some("bge-reranker-v2-m3"));
-    assert_eq!(response.usage.input_tokens, Some(37));
-    assert_eq!(response.usage.total_tokens, Some(37));
+    assert_eq!(response.meta.provider, "llamacpp");
+    assert_eq!(response.meta.model.as_deref(), Some("bge-reranker-v2-m3"));
+    assert_eq!(response.meta.usage.input_tokens, Some(37));
+    assert_eq!(response.meta.usage.total_tokens, Some(37));
     // llama.cpp never echoes the document text on this path.
     assert!(
         response
-            .results
+            .output
             .iter()
             .all(|result| result.document.is_none())
     );
@@ -535,9 +538,9 @@ async fn a_rerank_reply_accepts_either_score_key() {
     .rerank("q", vec!["a".to_owned()])
     .await
     .expect("the reply decodes");
-    assert_eq!(response.results[0].relevance_score, 0.75);
+    assert_eq!(response.output[0].relevance_score, 0.75);
     // A server that omits `model` still produced a ranking.
-    assert_eq!(response.model, None);
+    assert_eq!(response.meta.model, None);
 }
 
 #[test]
@@ -618,8 +621,8 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
     .image_generation(request())
     .await
     .expect("Hyperbolic's reply shape decodes");
-    assert_eq!(response.image, b"hi");
-    assert_eq!(response.provider, "hyperbolic");
+    assert_eq!(response.output, b"hi");
+    assert_eq!(response.meta.provider, "hyperbolic");
 }
 
 /// Hugging Face's router takes the prompt as `inputs` and the size nested
@@ -688,11 +691,11 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
     })
     .await
     .expect("raw image bytes decode");
-    assert_eq!(response.image, png);
-    assert_eq!(response.provider, "huggingface");
+    assert_eq!(response.output, png);
+    assert_eq!(response.meta.provider, "huggingface");
     // There is no reply document, so `raw` is null rather than a re-encoding
     // of the image.
-    assert!(response.raw.is_null(), "{}", response.raw);
+    assert!(response.meta.raw.is_null(), "{}", response.meta.raw);
 }
 
 /// Hyperbolic addresses speech by language and answers with base64 in a JSON
@@ -736,8 +739,8 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
     .audio_generation(request())
     .await
     .expect("Hyperbolic's base64 envelope decodes");
-    assert_eq!(response.audio, b"hi");
-    assert_eq!(response.provider, "hyperbolic");
+    assert_eq!(response.output, b"hi");
+    assert_eq!(response.meta.provider, "hyperbolic");
 
     // OpenAI's own endpoint answers with the bytes themselves, so the same
     // decoder must not go looking for an envelope there.
@@ -748,7 +751,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
     .audio_generation(request())
     .await
     .expect("raw bytes decode");
-    assert_eq!(openai.audio, b"ID3\x04raw-mp3");
+    assert_eq!(openai.output, b"ID3\x04raw-mp3");
 }
 
 /// Azure must never address an unversioned endpoint, so a configuration

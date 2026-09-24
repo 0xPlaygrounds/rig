@@ -40,7 +40,7 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
     Fold::<Completion>::finish(
         fold,
         crate::wire::Reply {
-            provider: "anthropic".to_owned(),
+            provider: crate::id::ProviderName::new("anthropic".to_owned()).expect("a non-empty id"),
             raw: body,
             provider_request_id: None,
         },

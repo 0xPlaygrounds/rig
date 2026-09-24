@@ -15,6 +15,7 @@ use crate::error::ProviderError;
 use crate::id::ResponseId;
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
+use crate::response::Reported;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
     WireFrame,
@@ -289,13 +290,6 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                 return;
             }
         };
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                out.push(Err(error.into()));
-                return;
-            }
-        };
         let usage = reply
             .meta
             .as_ref()
@@ -313,11 +307,10 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
             })
             .collect();
         // Cohere's `/v1/embed` reply names no model.
-        out.push(Ok(crate::embeddings::EmbeddingResponse {
+        out.push(Ok(Reported {
             response_id: ResponseId::non_empty(reply.id),
             usage,
-            raw,
-            ..crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+            ..Reported::new(vectors)
         }));
     }
 }
@@ -414,12 +407,10 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
             document: String::new(),
             vec: vector.iter().filter_map(|n| n.as_f64()).collect(),
         };
-        // The driver captures all batch reply bodies; setting raw here would
-        // let the fold retain only the first page's metadata.
-        out.push(Ok(crate::embeddings::ImageEmbeddingResponse {
+        out.push(Ok(Reported {
             response_id: reply.id.and_then(ResponseId::non_empty),
             usage,
-            ..crate::embeddings::ImageEmbeddingResponse::new(vec![vector], PROVIDER_NAME)
+            ..Reported::new(vec![vector])
         }));
     }
 }

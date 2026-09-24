@@ -23,7 +23,7 @@ async fn image_generation_smoke() {
         .await
         .expect("image generation should succeed");
 
-    assert_nonempty_bytes(&response.image);
+    assert_nonempty_bytes(&response.output);
 }
 
 #[tokio::test]
@@ -43,9 +43,9 @@ async fn gpt_image_2_image_generation_smoke() {
         .await
         .expect("gpt-image-2 image generation should succeed");
 
-    assert_nonempty_bytes(&response.image);
+    assert_nonempty_bytes(&response.output);
 
     let output_path = std::env::temp_dir().join("rig-openai-gpt-image-2-smoke.png");
-    std::fs::write(&output_path, &response.image).expect("generated image should save to disk");
+    std::fs::write(&output_path, &response.output).expect("generated image should save to disk");
     println!("saved generated image to {}", output_path.display());
 }

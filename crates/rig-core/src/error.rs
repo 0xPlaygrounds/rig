@@ -706,6 +706,14 @@ impl From<BoxError> for EncodeError {
     }
 }
 
+/// An empty name or identifier where one was required: a request that
+/// cannot be attributed.
+impl From<crate::id::EmptyId> for ProviderError {
+    fn from(error: crate::id::EmptyId) -> Self {
+        Self::Request(Box::new(error))
+    }
+}
+
 impl From<http::Error> for ProviderError {
     fn from(error: http::Error) -> Self {
         Self::Request(Box::new(error))

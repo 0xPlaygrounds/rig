@@ -33,7 +33,7 @@ async fn image_generation_smoke() {
                 .await
                 .expect("image generation should succeed");
 
-            assert_image_bytes(&response.image);
+            assert_image_bytes(&response.output);
         },
     )
     .await;

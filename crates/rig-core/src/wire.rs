@@ -212,9 +212,6 @@ pub trait Operation: Sized + 'static {
     /// nothing.
     fn stamp_request_id(_event: &mut Self::Event, _request_id: &Option<crate::id::RequestId>) {}
 
-    /// Stamp what the driver learned about a unary reply beyond its events.
-    fn stamp_reply(_response: &mut Self::Response, _reply: Reply) {}
-
     /// Converts an unmodeled payload to a passthrough event, or skips it with
     /// `None` by default.
     fn unknown(_payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
@@ -237,6 +234,13 @@ pub trait Operation: Sized + 'static {
         tracing::Span::none()
     }
 
+    /// The provider metadata a response carries, which the driver records
+    /// on the operation's span. `None` for operations whose responses carry
+    /// none.
+    fn meta(_response: &Self::Response) -> Option<&crate::response::ResponseMeta> {
+        None
+    }
+
     /// Record the folded response onto the operation's span.
     fn record(_span: &tracing::Span, _response: &Self::Response) {}
 
@@ -251,15 +255,36 @@ pub trait Operation: Sized + 'static {
 }
 
 /// What the driver learned about a unary reply beyond its events: the
-/// provider's name, the body as JSON (a completion's `raw`) and the
-/// transport request id.
+/// provider that answered, the reply as JSON and the transport request id.
+/// These are the driver's facts in a response's metadata.
 pub struct Reply {
-    /// The provider descriptor name, for the response's `provider` field.
-    pub provider: String,
-    /// The reply body parsed as JSON, `Null` when it is not JSON.
+    /// The wire's provider name.
+    pub provider: crate::id::ProviderName,
+    /// The reply body parsed as JSON (an array of the page documents when
+    /// the call sent several requests), `Null` when it is not JSON.
     pub raw: serde_json::Value,
     /// The provider's transport request id from the reply headers.
     pub provider_request_id: Option<crate::id::RequestId>,
+}
+
+impl Reply {
+    /// The response metadata: the driver's facts plus what the decoder
+    /// reported.
+    pub fn meta(
+        self,
+        model: Option<crate::id::ModelName>,
+        response_id: Option<crate::id::ResponseId>,
+        usage: crate::completion::Usage,
+    ) -> crate::response::ResponseMeta {
+        crate::response::ResponseMeta {
+            provider: self.provider,
+            model,
+            response_id,
+            provider_request_id: self.provider_request_id,
+            usage,
+            raw: self.raw,
+        }
+    }
 }
 
 /// Where a decoder writes the events of one `interpret` step.

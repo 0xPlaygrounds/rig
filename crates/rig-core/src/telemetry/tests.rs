@@ -129,14 +129,19 @@ fn instrument_modality_records_usage_and_identity() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     tracing::subscriber::with_default(subscriber, || {
         let response = crate::embeddings::EmbeddingResponse {
-            model: Some("probe-embed-v2".try_into().expect("a non-empty id")),
-            response_id: Some("emb_123".try_into().expect("a non-empty id")),
-            usage: Usage {
-                input_tokens: Some(7),
-                total_tokens: Some(7),
-                ..Usage::default()
+            output: vec![],
+            meta: crate::response::ResponseMeta {
+                model: Some("probe-embed-v2".try_into().expect("a non-empty id")),
+                response_id: Some("emb_123".try_into().expect("a non-empty id")),
+                usage: Usage {
+                    input_tokens: Some(7),
+                    total_tokens: Some(7),
+                    ..Usage::default()
+                },
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("probe").expect("a provider name"),
+                )
             },
-            ..crate::embeddings::EmbeddingResponse::new(vec![], "probe")
         };
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
@@ -219,7 +224,7 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
                 .embed_texts_response(["hello".to_owned()])
                 .await
                 .expect("embedding succeeds");
-            assert_eq!(response.usage.input_tokens, Some(4));
+            assert_eq!(response.meta.usage.input_tokens, Some(4));
 
             let store = InMemoryVectorStore::from_documents([(
                 "doc".to_owned(),

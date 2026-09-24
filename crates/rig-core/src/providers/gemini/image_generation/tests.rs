@@ -123,11 +123,11 @@ fn response_parsing_returns_first_non_thought_inline_image() {
         error: None,
     };
 
-    let parsed = response
-        .normalize(super::super::completion::PROVIDER_NAME)
+    let parsed: Reported<Vec<u8>> = response
+        .normalize()
         .expect("response should contain an image");
 
-    assert_eq!(parsed.image, b"final image");
+    assert_eq!(parsed.output, b"final image");
 }
 
 #[test]
@@ -159,9 +159,8 @@ fn response_parsing_rejects_text_only_response() {
         error: None,
     };
 
-    let err = response
-        .normalize(super::super::completion::PROVIDER_NAME)
-        .expect_err("text-only responses should fail");
+    let err =
+        Normalize::<Vec<u8>>::normalize(response).expect_err("text-only responses should fail");
 
     assert!(err.to_string().contains("did not include image data"));
 }
@@ -210,13 +209,12 @@ fn the_wire_decodes_a_recorded_image_reply() {
     // The base64 the cassette carries, decoded: `\x89PNG\r\n\x1a\n` then the
     // 13-byte-length `IHDR` chunk header.
     assert_eq!(
-        response.image,
+        response.output,
         [
             0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H',
             b'D', b'R', 0x00, 0x00
         ]
     );
-    assert_eq!(response.provider, super::super::completion::PROVIDER_NAME);
     assert_eq!(response.model.as_deref(), Some("gemini-2.5-flash-image"));
     assert_eq!(response.response_id.as_deref(), Some("id_REDACTED_1"));
     assert_eq!(response.usage.input_tokens, Some(15));

@@ -223,7 +223,12 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                     .collect::<Vec<embeddings::Embedding>>();
 
                 // In-process execution reports no raw payload, usage, or request id.
-                Ok(embeddings::EmbeddingResponse::new(docs, "fastembed"))
+                Ok(embeddings::EmbeddingResponse {
+                    output: docs,
+                    meta: rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new(
+                        "fastembed",
+                    )?),
+                })
             },
         )
         .await

@@ -193,7 +193,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 
     assert_eq!(
         response
-            .embeddings
+            .output
             .iter()
             .map(|embedding| (embedding.document.as_str(), embedding.vec.as_slice()))
             .collect::<Vec<_>>(),
@@ -202,10 +202,10 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
             ("second", [0.125, 0.0].as_slice()),
         ]
     );
-    assert_eq!(response.usage.input_tokens, Some(7));
-    assert_eq!(response.usage.total_tokens, Some(7));
+    assert_eq!(response.meta.usage.input_tokens, Some(7));
+    assert_eq!(response.meta.usage.total_tokens, Some(7));
     assert_eq!(
-        response.response_id.as_deref(),
+        response.meta.response_id.as_deref(),
         Some("b2e4b0f7-0000-0000-0000-000000000000")
     );
 }
@@ -294,7 +294,7 @@ async fn an_image_batch_folds_its_replies_in_input_order() {
     assert_eq!(http.requests().len(), 2);
     assert_eq!(
         response
-            .embeddings
+            .output
             .iter()
             .map(|embedding| embedding.vec.as_slice())
             .collect::<Vec<_>>(),
@@ -303,20 +303,17 @@ async fn an_image_batch_folds_its_replies_in_input_order() {
     // An image has no text to name it: the identity is a digest of its
     // bytes, and the bytes themselves never travel back.
     assert_eq!(
-        response.embeddings[0].document,
+        response.output[0].document,
         crate::embeddings::image_document(&png(b"first"))
     );
-    assert_ne!(
-        response.embeddings[0].document,
-        response.embeddings[1].document
-    );
+    assert_ne!(response.output[0].document, response.output[1].document);
     // Both replies billed one image each.
-    assert_eq!(response.usage.input_tokens, None);
+    assert_eq!(response.meta.usage.input_tokens, None);
     // The per-image sequence, in input order: Cohere bills an image embed in
     // images, not tokens, so `meta.billed_units.images` on each page is the
     // only route to an image count and every page has to be reachable.
     let pages: Vec<super::super::embeddings::ImageEmbeddingResponse> =
-        serde_json::from_value(response.raw.clone()).expect("raw is the per-image array");
+        serde_json::from_value(response.meta.raw.clone()).expect("raw is the per-image array");
     assert_eq!(pages.len(), 2);
     assert_eq!(
         pages
@@ -344,11 +341,11 @@ async fn a_single_image_embed_captures_the_bare_document() {
     // One request, one page: `raw` is that document itself, not a one-element
     // array, so a single-image embed reads the same as any non-batched wire.
     assert!(
-        response.raw.is_object(),
+        response.meta.raw.is_object(),
         "one page is captured bare: {}",
-        response.raw
+        response.meta.raw
     );
     let page: super::super::embeddings::ImageEmbeddingResponse =
-        serde_json::from_value(response.raw.clone()).expect("raw is Cohere's own answer");
+        serde_json::from_value(response.meta.raw.clone()).expect("raw is Cohere's own answer");
     assert_eq!(page.id.as_deref(), Some("img-0.5"));
 }

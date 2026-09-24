@@ -29,7 +29,7 @@ use rig_core::{
         FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, RerankRequest,
         RetrieveQuery, RetrievedDocuments, family,
     },
-    embeddings::{Embedding, EmbeddingResponse, ImageEmbeddingResponse},
+    embeddings::{Embedding, EmbeddingResponse},
     error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::Message,
@@ -602,7 +602,7 @@ impl EmbedHandle {
     pub fn embed_text(&self, text: &str) -> Typed<family::Embed, Embedding> {
         fn first(outputs: EmbedOutputs) -> Result<Embedding, ErrorReport> {
             match outputs {
-                EmbedOutputs::Texts(mut response) => response.embeddings.pop().ok_or_else(|| {
+                EmbedOutputs::Texts(mut response) => response.output.pop().ok_or_else(|| {
                     ErrorReport::new(
                         ErrorKind::Response,
                         "embedding handler returned an empty response for embed_text",
@@ -622,10 +622,7 @@ impl EmbedHandle {
     }
 
     /// Embed image bytes.
-    pub fn embed_images(
-        &self,
-        images: Vec<Vec<u8>>,
-    ) -> Typed<family::Embed, ImageEmbeddingResponse> {
+    pub fn embed_images(&self, images: Vec<Vec<u8>>) -> Typed<family::Embed, EmbeddingResponse> {
         Typed::narrow(
             self.dispatch_wrapped(family::Embed::wrap(EmbedInputs::Images(images))),
             |outputs| match outputs {

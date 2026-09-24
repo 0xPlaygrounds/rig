@@ -24,13 +24,13 @@ async fn embeddings_smoke() {
                 .await
                 .expect("embedding request should succeed");
 
-            assert_embeddings_nonempty_and_consistent(&response.embeddings, EMBEDDING_INPUTS.len());
+            assert_embeddings_nonempty_and_consistent(&response.output, EMBEDDING_INPUTS.len());
             // The normalized response names its provider, and `raw` is the
             // provider's own payload, serialized — it round-trips to the type
             // `raw_embed_texts` returns.
-            assert_eq!(response.provider, "gcp.gemini");
+            assert_eq!(response.meta.provider, "gcp.gemini");
             let raw: gemini::embedding::gemini_api_types::EmbeddingResponse =
-                serde_json::from_value(response.raw)
+                serde_json::from_value(response.meta.raw)
                     .expect("raw payload should round-trip to Gemini's own type");
             assert_eq!(raw.embeddings.len(), EMBEDDING_INPUTS.len());
         },

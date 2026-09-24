@@ -12,7 +12,8 @@ use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::{Embedding, EmbeddingCapabilities, Rerank as RerankOp, RerankRequest};
-use crate::rerank::{RerankResponse, RerankResult};
+use crate::rerank::RerankResult;
+use crate::response::Reported;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
@@ -209,13 +210,6 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                out.push(Err(error.into()));
-                return;
-            }
-        };
         // Voyage reports one count; every token of an embedding is input.
         let usage = crate::completion::Usage {
             input_tokens: Some(reply.usage.total_tokens as u64),
@@ -232,11 +226,10 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                 vec: embedding.embedding,
             })
             .collect();
-        out.push(Ok(crate::embeddings::EmbeddingResponse {
+        out.push(Ok(Reported {
             model: crate::id::ModelName::non_empty(reply.model),
             usage,
-            raw,
-            ..crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+            ..Reported::new(vectors)
         }));
     }
 }
@@ -375,13 +368,6 @@ impl Decoder<RerankOp> for RerankDecoder {
                 return;
             }
         };
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                out.push(Err(error.into()));
-                return;
-            }
-        };
         // Voyage reports one count; every token of a rerank is input.
         let usage = crate::completion::Usage {
             input_tokens: Some(reply.usage.total_tokens as u64),
@@ -397,11 +383,10 @@ impl Decoder<RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        out.push(Ok(RerankResponse {
+        out.push(Ok(Reported {
             model: crate::id::ModelName::non_empty(reply.model),
             usage,
-            raw,
-            ..RerankResponse::new(results, PROVIDER_NAME)
+            ..Reported::new(results)
         }));
     }
 }

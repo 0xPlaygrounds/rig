@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::{CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities},
-    embeddings::{EmbeddingResponse, ImageEmbeddingResponse},
+    embeddings::EmbeddingResponse,
     error::ErrorReport,
     id::ConversationId,
     rerank::RerankResponse,
@@ -897,7 +897,7 @@ pub enum EmbedOutputs {
     /// Text embeddings.
     Texts(EmbeddingResponse),
     /// Image embeddings.
-    Images(ImageEmbeddingResponse),
+    Images(EmbeddingResponse),
 }
 
 /// The answer to a [`MemoryOp`].

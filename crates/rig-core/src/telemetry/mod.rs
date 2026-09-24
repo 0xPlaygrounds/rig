@@ -368,8 +368,10 @@ where
     debug_assert!(!Op::telemetry(false).is_completion());
     let span = SpanBuilder::new(provider, request_model, Op::telemetry(false)).build();
     let result = tracing::Instrument::instrument(call, span.clone()).await;
-    if let Ok(response) = &result {
-        Op::record(&span, response);
+    if let Ok(response) = &result
+        && let Some(meta) = Op::meta(response)
+    {
+        span.record_meta(meta);
     }
     result
 }
@@ -757,6 +759,16 @@ pub trait SpanCombinator {
 
     /// Record a response's ID, model, and token usage on the span.
     fn record_response(&self, response_id: Option<&str>, model: Option<&str>, usage: &Usage);
+
+    /// Record a response's provider metadata: its response id, model and
+    /// usage.
+    fn record_meta(&self, meta: &crate::response::ResponseMeta) {
+        self.record_response(
+            meta.response_id.as_deref(),
+            meta.model.as_deref(),
+            &meta.usage,
+        );
+    }
 }
 
 impl SpanCombinator for tracing::Span {

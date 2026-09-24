@@ -2,10 +2,10 @@
 
 use rig_core::client::{EnvError, env};
 use rig_core::error::EncodeError;
-use rig_core::id::RequestId;
 use rig_core::operation::{One, Take};
+use rig_core::response::Reported;
 use rig_core::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
+    Body, Decoder, Encoded, Framing, Mode, Operation, Output, Secret, Sink, Wire, WireEvent,
     WireFrame,
 };
 use serde::{Deserialize, Serialize};
@@ -17,24 +17,18 @@ pub struct Evaluation;
 
 impl Operation for Evaluation {
     type Request = Request;
-    type Event = Response;
-    type Response = Response;
+    type Event = Reported<Response>;
+    type Response = rig_core::response::Response<Response>;
     type Capabilities = ();
     type Output = One<Self>;
-    type Fold = Take<Self>;
+    type Fold = Take<Response>;
     type Telemetry = ();
     const NAME: &'static str = "evaluation";
 
-    fn is_terminal(_event: &Response) -> bool {
+    fn is_terminal(_event: &Self::Event) -> bool {
         true
     }
     fn telemetry(_streaming: bool) {}
-    fn stamp_request_id(event: &mut Response, request_id: &Option<RequestId>) {
-        event.provider_request_id = request_id.as_deref().map(str::to_owned);
-    }
-    fn stamp_reply(response: &mut Response, reply: Reply) {
-        response.provider_request_id = reply.provider_request_id.map(String::from);
-    }
 }
 
 /// Configuration for Jev's `POST /v1/systemone` endpoint.
@@ -144,6 +138,6 @@ impl Decoder<Evaluation> for JevDecoder {
     }
 
     fn interpret(&mut self, response: Response, out: &mut Output<Evaluation>) {
-        out.push(Ok(response));
+        out.push(Ok(Reported::new(response)));
     }
 }

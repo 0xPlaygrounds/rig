@@ -27,12 +27,12 @@ async fn audio_generation_smoke() {
                 .expect("Venice speech synthesis should succeed");
 
             assert!(
-                response.audio.len() > 1024,
+                response.output.len() > 1024,
                 "expected synthesized audio bytes, got {} bytes",
-                response.audio.len()
+                response.output.len()
             );
             assert_eq!(
-                &response.audio[..3],
+                &response.output[..3],
                 b"ID3",
                 "expected an MP3 payload for the requested response format"
             );

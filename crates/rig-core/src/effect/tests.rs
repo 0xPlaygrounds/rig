@@ -336,13 +336,15 @@ fn every_outcome_round_trips() {
             EffectFamily::Tool,
         ),
         (
-            Outcome::Embeddings(EmbedOutputs::Texts(EmbeddingResponse::new(
-                vec![Embedding {
+            Outcome::Embeddings(EmbedOutputs::Texts(EmbeddingResponse {
+                output: vec![Embedding {
                     document: "a".into(),
                     vec: vec![0.5, 0.25],
                 }],
-                "mock",
-            ))),
+                meta: crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("mock").expect("a provider name"),
+                ),
+            })),
             EffectFamily::Embed,
         ),
         (
@@ -486,8 +488,8 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     .expect("a request has a wire form");
     assert_eq!(rerank.family(), EffectFamily::Rerank);
     assert!(matches!(
-        family::Rerank::unwrap(Outcome::Reranked(RerankResponse::new(vec![], "mock"))),
-        Ok(response) if response.provider == "mock"
+        family::Rerank::unwrap(Outcome::Reranked(RerankResponse { output: vec![], meta: crate::response::ResponseMeta::new(crate::id::ProviderName::new("mock").expect("a provider name")) })),
+        Ok(response) if response.meta.provider == "mock"
     ));
 
     let embed = family::Embed::wrap(EmbedInputs::Texts(vec!["a".into()]))
@@ -495,13 +497,15 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     assert_eq!(embed.family(), EffectFamily::Embed);
     assert!(
         family::Embed::unwrap(Outcome::Embeddings(EmbedOutputs::Texts(
-            EmbeddingResponse::new(
-                vec![Embedding {
+            EmbeddingResponse {
+                output: vec![Embedding {
                     document: "a".into(),
                     vec: vec![0.0],
                 }],
-                "mock",
-            )
+                meta: crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("mock").expect("a provider name")
+                )
+            }
         )))
         .is_ok()
     );

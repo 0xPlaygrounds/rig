@@ -727,7 +727,7 @@ fn fold_events(
         fold.absorb(event)?;
     }
     fold.finish(Reply {
-        provider: provider.to_owned(),
+        provider: crate::id::ProviderName::new(provider)?,
         raw: serde_json::to_value(response)?,
         // The websocket carries no reply headers past the handshake.
         provider_request_id: None,

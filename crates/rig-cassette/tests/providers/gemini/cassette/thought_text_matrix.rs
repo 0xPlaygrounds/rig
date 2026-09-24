@@ -8,7 +8,7 @@
 //! become `AssistantContent::Reasoning`); two other readers of the same
 //! payload did not:
 //!
-//! * `NormalizeTranscriptionResponse for GenerateContentResponse` read
+//! * `Normalize<String> for GenerateContentResponse` read
 //!   `parts.first()`. With thoughts on, parts[0] is the reasoning — so
 //!   `response.text` was **the model's private reasoning** and the actual
 //!   transcript, sitting in parts[1], was dropped. A transcript split across
@@ -233,7 +233,7 @@ async fn transcription_body(
     }
 
     let response = request.send().await.expect("transcription should succeed");
-    let raw: GenerateContentResponse = serde_json::from_value(response.raw.clone())
+    let raw: GenerateContentResponse = serde_json::from_value(response.meta.raw.clone())
         .expect("raw payload should round-trip to Gemini's own response type");
     let (visible, thoughts) = split_parts(&raw);
 
@@ -255,21 +255,21 @@ async fn transcription_body(
     // The invariant, re-derived from the recorded bytes: the transcript is
     // exactly the turn's visible text — every visible part, and only those.
     assert_eq!(
-        response.text, visible,
+        response.output, visible,
         "{scenario}: the transcript must be the turn's visible text; returning the \
              chain-of-thought (or only the first part) is the bug"
     );
     for thought in &thoughts {
         assert!(
-            !response.text.contains(thought.as_str()),
+            !response.output.contains(thought.as_str()),
             "{scenario}: reasoning text must not appear in the transcript"
         );
     }
     if let Some(words) = expected_words {
         assert!(
-            response.text.contains(words),
+            response.output.contains(words),
             "{scenario}: expected the spoken words {words:?} in {:?}",
-            response.text
+            response.output
         );
     }
 }
@@ -1135,8 +1135,8 @@ mod unit {
     use rig::prelude::*;
     use rig::providers::gemini::Gemini;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
+    use rig::response::{Normalize, Reported};
     use rig::test_utils::RecordingHttpClient;
-    use rig::transcription::{NormalizeTranscriptionResponse, TranscriptionResponse};
     use serde_json::{Value, json};
 
     /// A thought part with the shape recorded in
@@ -1243,11 +1243,10 @@ mod unit {
             "model",
         );
 
-        let transcription = response
-            .normalize("gcp.gemini")
-            .expect("transcription should convert");
+        let transcription: Reported<String> =
+            response.normalize().expect("transcription should convert");
         assert_eq!(
-            transcription.text,
+            transcription.output,
             "The sun was setting slowly, casting long shadows across the empty field.",
             "every visible text part belongs to the transcript, joined without an \
              invented separator"
@@ -1261,17 +1260,17 @@ mod unit {
     fn transcription_rejects_a_thought_only_candidate() {
         let response = response_with(vec![thought_part("Let me listen again...")], "model");
         assert_transcription_response_error(
-            response.normalize("gcp.gemini"),
+            response.normalize(),
             "a thought-only candidate has no transcript",
         );
     }
 
     fn assert_transcription_response_error(
-        result: Result<TranscriptionResponse, rig::error::ProviderError>,
+        result: Result<Reported<String>, rig::error::ProviderError>,
         context: &str,
     ) {
         match result {
-            Ok(response) => panic!("{context}; got transcript {:?}", response.text),
+            Ok(response) => panic!("{context}; got transcript {:?}", response.output),
             Err(error) => assert!(
                 matches!(error, rig::error::ProviderError::Response(_)),
                 "{context}: expected a ResponseError, got {error:?}"
@@ -1287,10 +1286,10 @@ mod unit {
     #[test]
     fn transcription_keeps_an_empty_visible_text_part() {
         let response = response_with(vec![thought_part("hmm"), text_part("")], "model");
-        let transcription = response
-            .normalize("gcp.gemini")
+        let transcription: Reported<String> = response
+            .normalize()
             .expect("an empty visible text part is still a (blank) transcript");
-        assert_eq!(transcription.text, "");
+        assert_eq!(transcription.output, "");
     }
 
     /// Not a recording as a *transcription* turn, though the shape is real:
@@ -1310,7 +1309,7 @@ mod unit {
         }))
         .expect("recorded-shape payload should deserialize");
         assert_transcription_response_error(
-            response.normalize("gcp.gemini"),
+            response.normalize(),
             "a candidate with no parts at all has no transcript",
         );
     }
@@ -1325,7 +1324,7 @@ mod unit {
             "model",
         );
         assert_transcription_response_error(
-            response.normalize("gcp.gemini"),
+            response.normalize(),
             "a candidate with no text part has no transcript",
         );
     }

@@ -17,7 +17,7 @@ async fn transcription_smoke() {
             .await
             .expect("transcription should succeed");
 
-        assert_nonempty_response(&response.text);
+        assert_nonempty_response(&response.output);
     })
     .await;
 }

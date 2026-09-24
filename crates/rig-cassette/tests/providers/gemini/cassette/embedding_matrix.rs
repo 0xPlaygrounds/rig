@@ -53,14 +53,14 @@ async fn raw_round_trips() {
             .expect("embedding request should succeed");
 
         let raw: gemini::embedding::gemini_api_types::EmbeddingResponse =
-            serde_json::from_value(response.raw.clone()).expect("raw round-trips");
-        assert_eq!(raw.embeddings.len(), response.embeddings.len());
+            serde_json::from_value(response.meta.raw.clone()).expect("raw round-trips");
+        assert_eq!(raw.embeddings.len(), response.output.len());
 
         // One decoder, two views: Gemini's own reply typed out of `raw` says
         // what the normalized response says, vector for vector. Re-normalizing
         // it by hand would only compare the decoder's mapping to a copy of
         // itself.
-        for (typed, normalized) in raw.embeddings.iter().zip(&response.embeddings) {
+        for (typed, normalized) in raw.embeddings.iter().zip(&response.output) {
             assert_eq!(
                 typed.values.len(),
                 normalized.vec.len(),
@@ -86,8 +86,9 @@ async fn raw_route_parity() {
             .await
             .expect("the same request should succeed again");
         let raw: gemini::embedding::gemini_api_types::EmbeddingResponse =
-            serde_json::from_value(again.raw.clone()).expect("raw is Gemini's own embed reply");
-        assert_eq!(raw.embeddings.len(), normalized.embeddings.len());
+            serde_json::from_value(again.meta.raw.clone())
+                .expect("raw is Gemini's own embed reply");
+        assert_eq!(raw.embeddings.len(), normalized.output.len());
     })
     .await;
 }
@@ -102,9 +103,9 @@ async fn single_text_convenience() {
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
                 .expect("single-text embedding should succeed");
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].document, EMBEDDING_INPUTS[0]);
-            assert_eq!(response.provider, "gcp.gemini");
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.output[0].document, EMBEDDING_INPUTS[0]);
+            assert_eq!(response.meta.provider, "gcp.gemini");
         },
     )
     .await;
@@ -120,7 +121,7 @@ async fn dimensions_request() {
             .embed_texts_response(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
-        for embedding in &response.embeddings {
+        for embedding in &response.output {
             assert_eq!(embedding.vec.len(), 256);
         }
     })

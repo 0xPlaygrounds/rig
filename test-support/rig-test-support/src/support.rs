@@ -1830,41 +1830,37 @@ pub fn assert_normalized_embedding_response(
     inputs: &[&str],
     expectations: &EmbeddingMatrixExpectations,
 ) {
-    assert_embeddings_nonempty_and_consistent(&response.embeddings, inputs.len());
-    for (embedding, input) in response.embeddings.iter().zip(inputs) {
+    assert_embeddings_nonempty_and_consistent(&response.output, inputs.len());
+    for (embedding, input) in response.output.iter().zip(inputs) {
         assert_eq!(
             embedding.document, *input,
             "embeddings must preserve input order"
         );
     }
-    assert_eq!(response.provider, expectations.provider);
+    assert_eq!(response.meta.provider, expectations.provider);
     assert_eq!(
-        response.usage.is_reported(),
+        response.meta.usage.is_reported(),
         expectations.reports_usage,
         "usage mismatch for {}: got {:?}",
         expectations.provider,
-        response.usage
+        response.meta.usage
     );
     assert_eq!(
-        response.model.is_some(),
+        response.meta.model.is_some(),
         expectations.reports_model,
         "model echo mismatch for {}: got {:?}",
         expectations.provider,
-        response.model
+        response.meta.model
     );
     assert_eq!(
-        response.provider_request_id.is_some(),
+        response.meta.provider_request_id.is_some(),
         expectations.reports_request_id,
         "request-id mismatch for {}: got {:?}",
         expectations.provider,
-        response.provider_request_id
-    );
-    assert_eq!(
-        response.identity().provider_request_id,
-        response.provider_request_id
+        response.meta.provider_request_id
     );
     assert!(
-        !response.raw.is_null(),
+        !response.meta.raw.is_null(),
         "every HTTP provider seam populates `raw`"
     );
 }

@@ -56,11 +56,11 @@ async fn raw_round_trips() {
             .await
             .expect("embedding request should succeed");
 
-        let data = response.raw["data"]
+        let data = response.meta.raw["data"]
             .as_array()
             .expect("raw carries the provider's `data` array");
-        assert_eq!(data.len(), response.embeddings.len());
-        for (index, (datum, embedding)) in data.iter().zip(&response.embeddings).enumerate() {
+        assert_eq!(data.len(), response.output.len());
+        for (index, (datum, embedding)) in data.iter().zip(&response.output).enumerate() {
             assert_eq!(datum["index"].as_u64(), Some(index as u64));
             let vector = datum["embedding"]
                 .as_array()
@@ -69,13 +69,13 @@ async fn raw_round_trips() {
             assert_eq!(vector[0].as_f64(), Some(embedding.vec[0]));
         }
         assert_eq!(
-            response.raw["model"].as_str(),
-            response.model.as_deref(),
+            response.meta.raw["model"].as_str(),
+            response.meta.model.as_deref(),
             "the normalized model is the one the payload names"
         );
         assert_eq!(
-            response.raw["usage"]["total_tokens"].as_u64(),
-            response.usage.total_tokens,
+            response.meta.raw["usage"]["total_tokens"].as_u64(),
+            response.meta.usage.total_tokens,
             "the normalized usage is the one the payload reports"
         );
     })
@@ -101,17 +101,20 @@ async fn raw_route_parity() {
             .await
             .expect("the same request should succeed again");
 
-        assert_eq!(again.embeddings.len(), normalized.embeddings.len());
-        assert_eq!(again.model, normalized.model);
-        assert_eq!(again.usage, normalized.usage);
+        assert_eq!(again.output.len(), normalized.output.len());
+        assert_eq!(again.meta.model, normalized.meta.model);
+        assert_eq!(again.meta.usage, normalized.meta.usage);
 
-        let data = again.raw["data"]
+        let data = again.meta.raw["data"]
             .as_array()
             .expect("raw carries the provider's `data` array");
-        assert_eq!(data.len(), normalized.embeddings.len());
-        assert_eq!(again.raw["model"].as_str(), again.model.as_deref());
+        assert_eq!(data.len(), normalized.output.len());
         assert_eq!(
-            again.raw["object"].as_str(),
+            again.meta.raw["model"].as_str(),
+            again.meta.model.as_deref()
+        );
+        assert_eq!(
+            again.meta.raw["object"].as_str(),
             Some("list"),
             "the payload's envelope kind is not normalized anywhere else"
         );
@@ -142,14 +145,14 @@ async fn single_text_convenience() {
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
                 .expect("single-text embedding should succeed");
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].document, EMBEDDING_INPUTS[0]);
-            assert_eq!(response.provider, "venice");
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.output[0].document, EMBEDDING_INPUTS[0]);
+            assert_eq!(response.meta.provider, "venice");
             let embedding = model
                 .embed_text(EMBEDDING_INPUTS[0])
                 .await
                 .expect("convenience embedding should succeed");
-            assert_eq!(embedding.vec.len(), response.embeddings[0].vec.len());
+            assert_eq!(embedding.vec.len(), response.output[0].vec.len());
         },
     )
     .await;
@@ -168,7 +171,7 @@ async fn dimensions_request() {
             .embed_texts_response(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
-        for embedding in &response.embeddings {
+        for embedding in &response.output {
             assert_eq!(embedding.vec.len(), ndims);
         }
     })

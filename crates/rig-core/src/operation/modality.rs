@@ -10,7 +10,9 @@
 use super::{One, Take};
 use crate::embeddings::Embedding as Vector;
 use crate::error::ProviderError;
-use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
+use crate::id::{ModelName, ResponseId};
+use crate::response::{Reported, Response, ResponseMeta};
+use crate::telemetry::{GenAiOperation, SpanBuilder};
 use crate::wire::{Fold, Operation, Reply};
 
 /// Embedding batch limit, resolved dimensions, and optional caller-declared width.
@@ -88,7 +90,7 @@ macro_rules! modality_operation {
         $(#[$doc:meta])*
         $op:ident {
             request: $request:ty,
-            response: $response:ty,
+            output: $output:ty,
             capabilities: $capabilities:ty,
             telemetry: $telemetry:ident,
             name: $name:literal,
@@ -102,8 +104,8 @@ macro_rules! modality_operation {
 
         impl Operation for $op {
             type Request = $request;
-            type Event = $response;
-            type Response = $response;
+            type Event = Reported<$output>;
+            type Response = Response<$output>;
             type Capabilities = $capabilities;
             type Output = One<Self>;
             type Fold = $fold;
@@ -124,15 +126,6 @@ macro_rules! modality_operation {
                 GenAiOperation::$telemetry
             }
 
-            fn stamp_reply(response: &mut Self::Response, reply: Reply) {
-                if response.provider_request_id.is_none() {
-                    response.provider_request_id = reply.provider_request_id;
-                }
-                if response.raw.is_null() {
-                    response.raw = reply.raw;
-                }
-            }
-
             fn span(
                 provider: &str,
                 model: Option<&str>,
@@ -143,12 +136,8 @@ macro_rules! modality_operation {
                 SpanBuilder::new(provider, model.unwrap_or_default(), telemetry).build()
             }
 
-            fn record(span: &tracing::Span, response: &Self::Response) {
-                span.record_response(
-                    response.response_id.as_deref(),
-                    response.model.as_deref(),
-                    &response.usage,
-                );
+            fn meta(response: &Self::Response) -> Option<&ResponseMeta> {
+                Some(&response.meta)
             }
         }
     };
@@ -158,7 +147,7 @@ modality_operation!(
     /// Embedding a batch of texts.
     Embedding {
         request: Vec<String>,
-        response: crate::embeddings::EmbeddingResponse,
+        output: Vec<Vector>,
         capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
         name: "embedding",
@@ -171,7 +160,7 @@ modality_operation!(
     /// Embedding a batch of images from their encoded file bytes.
     ImageEmbedding {
         request: Vec<Vec<u8>>,
-        response: crate::embeddings::ImageEmbeddingResponse,
+        output: Vec<Vector>,
         capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
         name: "image_embedding",
@@ -186,11 +175,11 @@ modality_operation!(
     /// Ordering documents by relevance to a query.
     Rerank {
         request: RerankRequest,
-        response: crate::rerank::RerankResponse,
+        output: Vec<crate::rerank::RerankResult>,
         capabilities: usize,
         telemetry: Rerank,
         name: "rerank",
-        fold: Take<Self>,
+        fold: Take<Vec<crate::rerank::RerankResult>>,
         seed: |_: &_| Take::default(),
     }
 );
@@ -199,11 +188,11 @@ modality_operation!(
     /// Transcribes audio using provider-specific request encoding.
     Transcription {
         request: crate::transcription::TranscriptionRequest,
-        response: crate::transcription::TranscriptionResponse,
+        output: String,
         capabilities: (),
         telemetry: Transcription,
         name: "transcription",
-        fold: Take<Self>,
+        fold: Take<String>,
         seed: |_: &_| Take::default(),
     }
 );
@@ -213,11 +202,11 @@ modality_operation!(
     /// Generating an image.
     ImageGeneration {
         request: crate::image_generation::ImageGenerationRequest,
-        response: crate::image_generation::ImageGenerationResponse,
+        output: Vec<u8>,
         capabilities: (),
         telemetry: ImageGeneration,
         name: "image_generation",
-        fold: Take<Self>,
+        fold: Take<Vec<u8>>,
         seed: |_: &_| Take::default(),
     }
 );
@@ -227,34 +216,25 @@ modality_operation!(
     /// Generating speech.
     AudioGeneration {
         request: crate::audio_generation::AudioGenerationRequest,
-        response: crate::audio_generation::AudioGenerationResponse,
+        output: Vec<u8>,
         capabilities: (),
         telemetry: AudioGeneration,
         name: "audio_generation",
-        fold: Take<Self>,
+        fold: Take<Vec<u8>>,
         seed: |_: &_| Take::default(),
     }
 );
 
 /// Accumulates vectors in reply order and pairs them positionally with request
 /// documents. Finishing rejects missing replies or unequal vector/document counts.
-/// Usage is summed; other metadata comes from the first reply.
+/// Usage is summed; the model and response id come from the first reply.
 #[derive(Default)]
 pub struct Embedded {
     documents: Vec<String>,
     vectors: Vec<Vec<f64>>,
-    /// The first reply's metadata; usage sums across replies.
-    metadata: Option<Metadata>,
+    /// The first reply's model and response id, once a reply arrived.
+    first: Option<(Option<ModelName>, Option<ResponseId>)>,
     usage: crate::completion::Usage,
-}
-
-/// What an embedding reply reports besides its vectors.
-struct Metadata {
-    provider: String,
-    model: Option<crate::id::ModelName>,
-    response_id: Option<crate::id::ResponseId>,
-    provider_request_id: Option<crate::id::RequestId>,
-    raw: serde_json::Value,
 }
 
 impl Embedded {
@@ -265,21 +245,21 @@ impl Embedded {
             ..Self::default()
         }
     }
+}
 
-    fn absorb_parts(
-        &mut self,
-        vectors: impl IntoIterator<Item = Vector>,
-        usage: crate::completion::Usage,
-        metadata: Metadata,
-    ) {
+impl<Op> Fold<Op> for Embedded
+where
+    Op: Operation<Event = Reported<Vec<Vector>>, Response = Response<Vec<Vector>>>,
+{
+    fn absorb(&mut self, reply: Reported<Vec<Vector>>) -> Result<(), ProviderError> {
         self.vectors
-            .extend(vectors.into_iter().map(|vector| vector.vec));
-        self.usage += usage;
-        self.metadata.get_or_insert(metadata);
+            .extend(reply.output.into_iter().map(|vector| vector.vec));
+        self.usage += reply.usage;
+        self.first.get_or_insert((reply.model, reply.response_id));
+        Ok(())
     }
 
-    /// The vectors, paired with the inputs they belong to.
-    fn zipped(self) -> Result<(Vec<Vector>, Metadata, crate::completion::Usage), ProviderError> {
+    fn finish(self, reply: Reply) -> Result<Response<Vec<Vector>>, ProviderError> {
         if self.vectors.len() != self.documents.len() {
             return Err(ProviderError::Response(format!(
                 "provider returned {} embeddings for {} documents",
@@ -287,87 +267,20 @@ impl Embedded {
                 self.documents.len()
             )));
         }
-        let Some(metadata) = self.metadata else {
+        let Some((model, response_id)) = self.first else {
             return Err(ProviderError::Response(
                 "embedding reply carried no payload".to_owned(),
             ));
         };
-        let embeddings = self
+        let output = self
             .documents
             .into_iter()
             .zip(self.vectors)
             .map(|(document, vec)| Vector { document, vec })
             .collect();
-        Ok((embeddings, metadata, self.usage))
-    }
-}
-
-impl Fold<Embedding> for Embedded {
-    fn absorb(&mut self, reply: crate::embeddings::EmbeddingResponse) -> Result<(), ProviderError> {
-        self.absorb_parts(
-            reply.embeddings,
-            reply.usage,
-            Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
-            },
-        );
-        Ok(())
-    }
-
-    fn finish(self, reply: Reply) -> Result<crate::embeddings::EmbeddingResponse, ProviderError> {
-        let (embeddings, metadata, usage) = self.zipped()?;
-        let mut response = crate::embeddings::EmbeddingResponse {
-            embeddings,
-            usage,
-            provider: metadata.provider,
-            model: metadata.model,
-            response_id: metadata.response_id,
-            provider_request_id: metadata.provider_request_id,
-            raw: metadata.raw,
-        };
-        Embedding::stamp_reply(&mut response, reply);
-        Ok(response)
-    }
-}
-
-impl Fold<ImageEmbedding> for Embedded {
-    fn absorb(
-        &mut self,
-        reply: crate::embeddings::ImageEmbeddingResponse,
-    ) -> Result<(), ProviderError> {
-        self.absorb_parts(
-            reply.embeddings,
-            reply.usage,
-            Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
-            },
-        );
-        Ok(())
-    }
-
-    fn finish(
-        self,
-        reply: Reply,
-    ) -> Result<crate::embeddings::ImageEmbeddingResponse, ProviderError> {
-        let (embeddings, metadata, usage) = self.zipped()?;
-        let mut response = crate::embeddings::ImageEmbeddingResponse {
-            embeddings,
-            usage,
-            provider: metadata.provider,
-            model: metadata.model,
-            response_id: metadata.response_id,
-            provider_request_id: metadata.provider_request_id,
-            raw: metadata.raw,
-        };
-        ImageEmbedding::stamp_reply(&mut response, reply);
-        Ok(response)
+        Ok(Response {
+            output,
+            meta: reply.meta(model, response_id, self.usage),
+        })
     }
 }

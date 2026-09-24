@@ -22,5 +22,5 @@ async fn audio_generation_smoke() {
         .await
         .expect("audio generation should succeed");
 
-    assert_nonempty_bytes(&response.audio);
+    assert_nonempty_bytes(&response.output);
 }

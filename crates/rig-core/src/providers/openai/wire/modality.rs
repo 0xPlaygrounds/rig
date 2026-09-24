@@ -21,6 +21,7 @@ use crate::providers::openai::completion::Usage;
 use crate::providers::openai::embedding::{
     CompatibleEmbeddingResponse, EncodingFormat, model_dimensions_from_identifier,
 };
+use crate::response::Reported;
 use crate::transcription::TranscriptionRequest;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
@@ -261,10 +262,10 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         } else {
             event.model
         };
-        out.push(Ok(embeddings::EmbeddingResponse {
+        out.push(Ok(Reported {
             model: crate::id::ModelName::non_empty(model),
             usage,
-            ..embeddings::EmbeddingResponse::new(embeddings, self.provider)
+            ..Reported::new(embeddings)
         }));
     }
 }
@@ -477,9 +478,7 @@ fn audio_format_of(filename: &str) -> &'static str {
 
 /// The transcription decoder.
 #[derive(Default)]
-pub struct TranscriptionsDecoder {
-    provider: &'static str,
-}
+pub struct TranscriptionsDecoder;
 
 impl Decoder<Transcription> for TranscriptionsDecoder {
     type Event = crate::providers::openai::transcription::TranscriptionResponse;
@@ -489,18 +488,7 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
-        use crate::transcription::NormalizeTranscriptionResponse;
-
-        match serde_json::to_value(&event) {
-            Ok(raw) => match event.normalize(self.provider) {
-                Ok(response) => out.push(Ok(crate::transcription::TranscriptionResponse {
-                    raw,
-                    ..response
-                })),
-                Err(error) => out.push(Err(error)),
-            },
-            Err(error) => out.push(Err(ProviderError::from(error))),
-        }
+        out.push(crate::response::Normalize::normalize(event));
     }
 }
 
@@ -537,9 +525,7 @@ impl Wire for Transcriptions {
     }
 
     fn decoder(&self, _mode: Mode) -> TranscriptionsDecoder {
-        TranscriptionsDecoder {
-            provider: self.provider.dialect.name,
-        }
+        TranscriptionsDecoder
     }
 }
 
@@ -572,7 +558,6 @@ impl Images {
 #[cfg(feature = "image")]
 #[derive(Default)]
 pub struct ImagesDecoder {
-    provider: &'static str,
     /// Which reply shape this dialect answers with.
     body: ImageBody,
 }
@@ -671,14 +656,12 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         event: Self::Event,
         out: &mut Output<crate::operation::ImageGeneration>,
     ) {
-        use crate::image_generation::ImageGenerationResponse;
         use base64::Engine;
 
         let reply = match event {
-            // The image is already the payload, and the reply is not a
-            // document, so `raw` stays null rather than restating the bytes.
+            // The image is already the payload; the reply is not a document.
             ImagesEvent::Raw(image) => {
-                out.push(Ok(ImageGenerationResponse::new(image, self.provider)));
+                out.push(Ok(Reported::new(image)));
                 return;
             }
             ImagesEvent::Json(reply) => reply,
@@ -696,11 +679,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
                 return;
             }
         };
-        let raw = serde_json::to_value(&reply).unwrap_or(serde_json::Value::Null);
-        out.push(Ok(ImageGenerationResponse {
-            raw,
-            ..ImageGenerationResponse::new(image, self.provider)
-        }));
+        out.push(Ok(Reported::new(image)));
     }
 }
 
@@ -780,7 +759,6 @@ impl Wire for Images {
 
     fn decoder(&self, _mode: Mode) -> ImagesDecoder {
         ImagesDecoder {
-            provider: self.provider.dialect.name,
             body: self.provider.dialect.quirks.image_body,
         }
     }
@@ -811,7 +789,6 @@ impl Speech {
 #[cfg(feature = "audio")]
 #[derive(Default)]
 pub struct SpeechDecoder {
-    provider: &'static str,
     /// Which reply shape this dialect answers with.
     body: SpeechBody,
 }
@@ -865,10 +842,7 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
                 }
             }
         };
-        out.push(Ok(crate::audio_generation::AudioGenerationResponse::new(
-            audio,
-            self.provider,
-        )));
+        out.push(Ok(Reported::new(audio)));
     }
 }
 
@@ -929,7 +903,6 @@ impl Wire for Speech {
 
     fn decoder(&self, _mode: Mode) -> SpeechDecoder {
         SpeechDecoder {
-            provider: self.provider.dialect.name,
             body: self.provider.dialect.quirks.speech_body,
         }
     }
@@ -1118,9 +1091,7 @@ pub struct RerankReply {
 
 /// The rerank decoder.
 #[derive(Default)]
-pub struct RerankDecoder {
-    provider: &'static str,
-}
+pub struct RerankDecoder;
 
 impl Decoder<RerankOp> for RerankDecoder {
     type Event = RerankReply;
@@ -1130,7 +1101,6 @@ impl Decoder<RerankOp> for RerankDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<RerankOp>) {
-        let raw = serde_json::to_value(&event).unwrap_or(serde_json::Value::Null);
         let usage = event
             .usage
             .map(|usage| crate::completion::Usage {
@@ -1148,11 +1118,10 @@ impl Decoder<RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        out.push(Ok(crate::rerank::RerankResponse {
+        out.push(Ok(Reported {
             model: event.model.and_then(crate::id::ModelName::non_empty),
             usage,
-            raw,
-            ..crate::rerank::RerankResponse::new(results, self.provider)
+            ..Reported::new(results)
         }));
     }
 }
@@ -1211,9 +1180,7 @@ impl Wire for Rerank {
     }
 
     fn decoder(&self, _mode: Mode) -> RerankDecoder {
-        RerankDecoder {
-            provider: self.provider.dialect.name,
-        }
+        RerankDecoder
     }
 }
 

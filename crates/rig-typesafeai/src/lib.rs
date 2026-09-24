@@ -76,7 +76,10 @@ impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
     {
         let encoded = serde_json::value::to_raw_value(&questions)?;
         let ids = validation::request_ids(&encoded)?;
-        let response = call(
+        let rig_core::response::Response {
+            output: response,
+            meta,
+        } = call(
             &self.wire,
             &self.http,
             types::Request {
@@ -95,7 +98,7 @@ impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
             answers: questions.decode(serde_json::from_str(response.answers.get())?)?,
             model: response.model,
             usage: response.usage,
-            provider_request_id: response.provider_request_id,
+            provider_request_id: meta.provider_request_id.map(String::from),
         })
     }
 }

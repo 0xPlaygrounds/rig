@@ -11,10 +11,10 @@
 
 use serde_json::json;
 
-use crate::embeddings;
 use crate::error::EncodeError;
 use crate::operation::EmbeddingCapabilities;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
+use crate::response::Normalize;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
@@ -137,25 +137,7 @@ impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<crate::operation::Embedding>) {
-        let vectors = event
-            .embeddings
-            .into_iter()
-            .map(|embedding| embeddings::Embedding {
-                // The document each vector belongs to is not on this wire;
-                // the operation's fold pairs the batch back on by position.
-                document: String::new(),
-                vec: embedding
-                    .values
-                    .into_iter()
-                    .filter_map(|value| value.as_f64())
-                    .collect(),
-            })
-            .collect();
-        // Gemini supplies no usage or response id; the driver attaches the raw body.
-        out.push(Ok(embeddings::EmbeddingResponse::new(
-            vectors,
-            super::PROVIDER_NAME,
-        )));
+        out.push(event.normalize());
     }
 }
 
@@ -170,7 +152,8 @@ pub mod gemini_api_types {
     use crate::error::ProviderError;
     use serde::{Deserialize, Serialize};
 
-    use crate::embeddings::{self, NormalizeEmbeddingResponse};
+    use crate::embeddings;
+    use crate::response::{Normalize, Reported};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingResponse {
@@ -183,31 +166,25 @@ pub mod gemini_api_types {
         pub values: Vec<serde_json::Number>,
     }
 
-    impl NormalizeEmbeddingResponse for EmbeddingResponse {
-        fn normalize(
-            self,
-            provider: &str,
-            documents: Vec<String>,
-        ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-            if self.embeddings.len() != documents.len() {
-                return Err(ProviderError::Response(
-                    "Number of returned embeddings does not match input".into(),
-                ));
-            }
-            let docs = documents
+    impl Normalize<Vec<embeddings::Embedding>> for EmbeddingResponse {
+        /// The vectors in reply order. The document each belongs to is not
+        /// on this wire: the operation's fold pairs the batch back on by
+        /// position. `batchEmbedContents` reports neither usage nor a
+        /// response id.
+        fn normalize(self) -> Result<Reported<Vec<embeddings::Embedding>>, ProviderError> {
+            let vectors = self
+                .embeddings
                 .into_iter()
-                .zip(self.embeddings)
-                .map(|(document, embedding)| embeddings::Embedding {
-                    document,
+                .map(|embedding| embeddings::Embedding {
+                    document: String::new(),
                     vec: embedding
                         .values
                         .into_iter()
-                        .filter_map(|n| n.as_f64())
+                        .filter_map(|value| value.as_f64())
                         .collect(),
                 })
                 .collect();
-            // batchEmbedContents reports neither usage nor a response id.
-            Ok(embeddings::EmbeddingResponse::new(docs, provider))
+            Ok(Reported::new(vectors))
         }
     }
 }

@@ -1,7 +1,6 @@
 use crate::completion::Usage;
 use crate::error::ProviderError;
-use crate::transcription;
-use crate::transcription::NormalizeTranscriptionResponse;
+use crate::response::{Normalize, Reported};
 use serde::{Deserialize, Serialize};
 
 pub const WHISPER_1: &str = "whisper-1";
@@ -9,8 +8,8 @@ pub const WHISPER_1: &str = "whisper-1";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResponse {
     pub text: String,
-    /// Optional endpoint-reported usage. Token counts normalize into
-    /// [`transcription::TranscriptionResponse::usage`]; duration remains raw.
+    /// Optional endpoint-reported usage. Token counts normalize into the
+    /// response's usage; duration remains raw.
     #[serde(default)]
     pub usage: Option<TranscriptionUsage>,
 }
@@ -74,11 +73,8 @@ pub struct TranscriptionInputTokenDetails {
     pub text_tokens: u64,
 }
 
-impl NormalizeTranscriptionResponse for TranscriptionResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<transcription::TranscriptionResponse, ProviderError> {
+impl Normalize<String> for TranscriptionResponse {
+    fn normalize(self) -> Result<Reported<String>, ProviderError> {
         let usage = match &self.usage {
             Some(TranscriptionUsage::Tokens {
                 input_tokens,
@@ -97,9 +93,9 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
             | Some(TranscriptionUsage::Other(_))
             | None => Usage::default(),
         };
-        Ok(transcription::TranscriptionResponse {
+        Ok(Reported {
             usage,
-            ..transcription::TranscriptionResponse::new(self.text, provider)
+            ..Reported::new(self.text)
         })
     }
 }

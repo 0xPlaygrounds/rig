@@ -340,12 +340,38 @@ fn outcome_to_current(outcome: &mut Value) {
         }
         Some("embeddings") => {
             if let Some(response) = outcome.get_mut("response") {
-                drop_empty(response, &["response_id", "provider_request_id", "model"]);
+                envelope(response, "embeddings");
             }
         }
-        Some("reranked") => drop_empty(outcome, &["response_id", "provider_request_id", "model"]),
+        Some("reranked") => envelope(outcome, "results"),
         _ => {}
     }
+}
+
+/// A format-0 modality response in the current shape: its `output_key`
+/// field becomes `output`, and the metadata fields move under `meta`.
+/// Fields the envelope does not name (an outcome's tag) stay in place.
+fn envelope(response: &mut Value, output_key: &str) {
+    drop_empty(response, &["response_id", "provider_request_id", "model"]);
+    let Some(fields) = response.as_object_mut() else {
+        return;
+    };
+    let mut meta = Map::new();
+    for key in [
+        "provider",
+        "model",
+        "response_id",
+        "provider_request_id",
+        "usage",
+        "raw",
+    ] {
+        if let Some(value) = fields.remove(key) {
+            meta.insert(key.to_owned(), value);
+        }
+    }
+    let output = fields.remove(output_key).unwrap_or(Value::Null);
+    fields.insert("output".to_owned(), output);
+    fields.insert("meta".to_owned(), Value::Object(meta));
 }
 
 /// A format-0 stream event in the current shape.

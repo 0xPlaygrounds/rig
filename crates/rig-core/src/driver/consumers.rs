@@ -17,9 +17,7 @@ use super::{Bound, call, stream};
 use crate::completion::{
     CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
 };
-use crate::embeddings::{
-    EmbeddingModel, EmbeddingResponse, ImageEmbeddingModel, ImageEmbeddingResponse,
-};
+use crate::embeddings::{EmbeddingModel, EmbeddingResponse, ImageEmbeddingModel};
 use crate::error::ProviderError;
 use crate::http_client::HttpClientExt;
 use crate::model::ModelList;
@@ -111,10 +109,7 @@ where
         // Reject vectors whose width violates the model's declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
-            response
-                .embeddings
-                .iter()
-                .map(|embedding| embedding.vec.len()),
+            response.output.iter().map(|embedding| embedding.vec.len()),
         )?;
         Ok(response)
     }
@@ -136,16 +131,13 @@ where
     async fn embed_images_response(
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> Result<ImageEmbeddingResponse, ProviderError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         let images: Vec<Vec<u8>> = images.into_iter().collect();
         let response = call(&self.wire, &self.http, images, None).await?;
         // Image vectors must also honor the declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
-            response
-                .embeddings
-                .iter()
-                .map(|embedding| embedding.vec.len()),
+            response.output.iter().map(|embedding| embedding.vec.len()),
         )?;
         Ok(response)
     }
@@ -233,6 +225,7 @@ where
     pub async fn verify(&self) -> Result<(), ProviderError> {
         call(&self.wire.verify(), &self.http, (), None)
             .await
+            .map(|_| ())
             .map_err(crate::client::verify::authentication)
     }
 }

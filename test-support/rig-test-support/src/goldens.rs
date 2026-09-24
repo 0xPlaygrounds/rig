@@ -1131,7 +1131,7 @@ impl rig_agent::agent::AgentHook for EmbedPrompt {
             .expect("the host embeds");
         match outputs {
             rig_core::effect::EmbedOutputs::Texts(response) => {
-                assert_eq!(response.embeddings.len(), 1, "{response:?}")
+                assert_eq!(response.output.len(), 1, "{response:?}")
             }
             rig_core::effect::EmbedOutputs::Images(_) => panic!("a text embedding"),
         }
@@ -1505,10 +1505,13 @@ impl rig_core::rerank::RerankModel for MockRerank {
             })
             .collect();
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
-        let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
-        response.model =
-            Some(rig_core::id::ModelName::new("mock-rerank".to_owned()).expect("a non-empty id"));
-        Ok(response)
+        Ok(rig_core::rerank::RerankResponse {
+            output: results,
+            meta: rig_core::response::ResponseMeta {
+                model: Some(rig_core::id::ModelName::new("mock-rerank")?),
+                ..rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new("mock")?)
+            },
+        })
     }
 }
 
@@ -1537,7 +1540,7 @@ impl rig_agent::agent::AgentHook for RerankDocs {
             })
             .await
             .expect("the host reranks");
-        assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        assert_eq!(ranked.output.len(), 2, "{ranked:?}");
         rig_agent::agent::RunStartAction::continue_run()
     }
 }

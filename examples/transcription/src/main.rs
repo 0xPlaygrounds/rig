@@ -35,7 +35,7 @@ async fn whisper(file_path: &str) -> Result<(), anyhow::Error> {
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
-    println!("Whisper-1: {}", response.text);
+    println!("Whisper-1: {}", response.output);
     Ok(())
 }
 
@@ -45,7 +45,7 @@ async fn gemini(file_path: &str) -> Result<(), anyhow::Error> {
     let response = TranscriptionRequestBuilder::from_file(model, file_path)?
         .send()
         .await?;
-    println!("Gemini: {}", response.text);
+    println!("Gemini: {}", response.output);
     Ok(())
 }
 
@@ -55,7 +55,7 @@ async fn azure(file_path: &str) -> Result<(), anyhow::Error> {
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
-    println!("Azure Whisper-1: {}", response.text);
+    println!("Azure Whisper-1: {}", response.output);
     Ok(())
 }
 
@@ -65,7 +65,7 @@ async fn groq(file_path: &str) -> Result<(), anyhow::Error> {
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
-    println!("Groq Whisper-Large-V3: {}", response.text);
+    println!("Groq Whisper-Large-V3: {}", response.output);
     Ok(())
 }
 
@@ -75,7 +75,7 @@ async fn huggingface(file_path: &str) -> Result<(), anyhow::Error> {
     let response = TranscriptionRequestBuilder::from_file(whisper, file_path)?
         .send()
         .await?;
-    println!("HuggingFace Whisper-Large-V3: {}", response.text);
+    println!("HuggingFace Whisper-Large-V3: {}", response.output);
     Ok(())
 }
 
@@ -85,6 +85,6 @@ async fn mistral(file_path: &str) -> Result<(), anyhow::Error> {
     let response = TranscriptionRequestBuilder::from_file(model, file_path)?
         .send()
         .await?;
-    println!("Mistral: {}", response.text);
+    println!("Mistral: {}", response.output);
     Ok(())
 }

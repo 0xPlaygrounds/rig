@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
         .await?;
 
     let output_path = "/tmp/rig-nanobanana.png";
-    std::fs::write(output_path, response.image)?;
+    std::fs::write(output_path, response.output)?;
 
     println!("Wrote generated image to {output_path}");
 

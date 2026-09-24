@@ -14,7 +14,8 @@ use crate::{
         visible_text_parts,
     },
     providers::internal::wire::classify_marker_keyed_frame,
-    transcription::{self, NormalizeTranscriptionResponse},
+    response::{Normalize, Reported},
+    transcription,
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
 };
 
@@ -153,15 +154,12 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
-        out.push(event.normalize(super::PROVIDER_NAME));
+        out.push(event.normalize());
     }
 }
 
-impl NormalizeTranscriptionResponse for GenerateContentResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<transcription::TranscriptionResponse, ProviderError> {
+impl Normalize<String> for GenerateContentResponse {
+    fn normalize(self) -> Result<Reported<String>, ProviderError> {
         let candidate = self
             .candidates
             .first()
@@ -187,11 +185,11 @@ impl NormalizeTranscriptionResponse for GenerateContentResponse {
             .map(Usage::from)
             .unwrap_or_default();
 
-        Ok(transcription::TranscriptionResponse {
+        Ok(Reported {
             model: self.model_version.and_then(crate::id::ModelName::non_empty),
             response_id: crate::id::ResponseId::non_empty(self.response_id),
             usage,
-            ..transcription::TranscriptionResponse::new(text, provider)
+            ..Reported::new(text)
         })
     }
 }

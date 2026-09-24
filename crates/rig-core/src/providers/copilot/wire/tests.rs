@@ -505,10 +505,10 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         .embed_texts_response(documents.clone())
         .await
         .expect("the recorded embeddings body folds");
-    assert_eq!(response.provider, PROVIDER_NAME);
-    assert_eq!(response.embeddings.len(), documents.len());
-    assert_eq!(response.embeddings[0].document, documents[0]);
-    assert!(!response.embeddings[0].vec.is_empty());
+    assert_eq!(response.meta.provider, PROVIDER_NAME);
+    assert_eq!(response.output.len(), documents.len());
+    assert_eq!(response.output[0].document, documents[0]);
+    assert!(!response.output[0].vec.is_empty());
 }
 
 /// The recorded embeddings request carries the width resolved from the model

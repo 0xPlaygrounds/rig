@@ -34,13 +34,13 @@ async fn image_generation_smoke() {
                 .expect("Venice image generation should succeed");
 
             assert_eq!(
-                crate::support::assert_image_bytes(&response.image),
+                crate::support::assert_image_bytes(&response.output),
                 crate::support::ImageContainer::Webp,
                 "the requested webp format reaches the bytes"
             );
-            assert_eq!(response.provider, "venice");
+            assert_eq!(response.meta.provider, "venice");
             let raw: rig::providers::venice::ImageGenerationResponse =
-                serde_json::from_value(response.raw)
+                serde_json::from_value(response.meta.raw)
                     .expect("raw payload should round-trip to Venice's own type");
             assert!(
                 !raw.id.is_empty(),

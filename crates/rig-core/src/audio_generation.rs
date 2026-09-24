@@ -10,74 +10,14 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::id::{ModelName, RequestId, ResponseId};
+use crate::response::Response;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
-/// Generated audio and normalized provider metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AudioGenerationResponse {
-    /// The generated audio bytes.
-    pub audio: Vec<u8>,
-    /// Usage as the provider reported it; every counter is `None` when the
-    /// provider reported none (see [`Usage`]).
-    #[serde(default)]
-    pub usage: Usage,
-    /// Stable descriptor name of the provider that produced this response,
-    /// for example `"openai"`. Always populated.
-    pub provider: String,
-    /// Provider-reported model identifier, when the wire response named one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelName>,
-    /// Provider-assigned response-scoped identifier, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<ResponseId>,
-    /// Transport request ID from HTTP headers, or `None` when unreported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<RequestId>,
-    /// Provider response metadata. May be null for byte-only responses or
-    /// responses constructed without metadata; audio bytes remain in [`Self::audio`].
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub raw: serde_json::Value,
-}
-
-impl AudioGenerationResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset.
-    pub fn new(audio: Vec<u8>, provider: impl Into<String>) -> Self {
-        Self {
-            audio,
-            usage: Usage::default(),
-            provider: provider.into(),
-            model: None,
-            response_id: None,
-            provider_request_id: None,
-            raw: serde_json::Value::Null,
-        }
-    }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
-}
-
-/// Normalizes provider audio payloads, attributing the response to the supplied
-/// provider name.
-pub trait NormalizeAudioGenerationResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<AudioGenerationResponse, ProviderError>;
-}
+/// The generated audio bytes and the metadata the provider reported.
+pub type AudioGenerationResponse = Response<Vec<u8>>;
 
 /// Generates speech from text. Only [`Self::audio_generation_request`] requires
 /// cloning; `Arc<M>` forwards generation calls.

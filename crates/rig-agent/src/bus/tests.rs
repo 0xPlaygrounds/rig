@@ -1808,8 +1808,8 @@ impl RerankModel for CloneCountingRerank {
         _query: &str,
         documents: Vec<String>,
     ) -> Result<RerankResponse, ProviderError> {
-        Ok(RerankResponse::new(
-            documents
+        Ok(RerankResponse {
+            output: documents
                 .into_iter()
                 .enumerate()
                 .map(|(index, document)| RerankResult {
@@ -1818,8 +1818,10 @@ impl RerankModel for CloneCountingRerank {
                     relevance_score: 1.0,
                 })
                 .collect(),
-            "probe",
-        ))
+            meta: rig_core::response::ResponseMeta::new(
+                rig_core::id::ProviderName::new("probe").expect("a provider name"),
+            ),
+        })
     }
 }
 
@@ -1850,12 +1852,12 @@ async fn a_rerank_adapter_never_clones_the_model_and_publishes_its_batch_size() 
         let response = within(handle.rerank("q", vec!["a".to_owned(), "b".to_owned()]))
             .await
             .expect("rerank");
-        assert_eq!(response.results.len(), 2);
-        assert_eq!(response.provider, "probe");
+        assert_eq!(response.output.len(), 2);
+        assert_eq!(response.meta.provider, "probe");
         let via_clone = within(handle.clone().rerank("q", vec!["c".to_owned()]))
             .await
             .expect("rerank via clone");
-        assert_eq!(via_clone.results[0].document.as_deref(), Some("c"));
+        assert_eq!(via_clone.output[0].document.as_deref(), Some("c"));
     }
     assert_eq!(clones.load(Ordering::SeqCst), 0);
     assert_eq!(handle.max_documents(), Some(7));

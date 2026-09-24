@@ -86,7 +86,7 @@ async fn default_body_returns_mp3() {
                 .await
                 .expect("speech synthesis should succeed");
 
-            assert_eq!(container(&response.audio), "mp3");
+            assert_eq!(container(&response.output), "mp3");
         },
     )
     .await;
@@ -107,7 +107,7 @@ async fn response_format_wav_changes_the_container() {
                 .expect("speech synthesis should succeed");
 
             assert_eq!(
-                container(&response.audio),
+                container(&response.output),
                 "wav",
                 "the caller's response_format must reach the endpoint"
             );
@@ -130,7 +130,7 @@ async fn response_format_flac_changes_the_container() {
                 .await
                 .expect("speech synthesis should succeed");
 
-            assert_eq!(container(&response.audio), "flac");
+            assert_eq!(container(&response.output), "flac");
         },
     )
     .await;
@@ -153,7 +153,7 @@ async fn instructions_reach_the_tts_model() {
                 .await
                 .expect("speech synthesis should succeed");
 
-            assert!(!response.audio.is_empty());
+            assert!(!response.output.is_empty());
         },
     )
     .await;
@@ -179,7 +179,7 @@ async fn completions_client_shares_the_fixed_body() {
                 .await
                 .expect("speech synthesis should succeed");
 
-            assert_eq!(container(&response.audio), "wav");
+            assert_eq!(container(&response.output), "wav");
         },
     )
     .await;
@@ -200,7 +200,7 @@ async fn additional_params_can_override_voice() {
                 .await
                 .expect("speech synthesis should succeed");
 
-            assert!(!response.audio.is_empty());
+            assert!(!response.output.is_empty());
         },
     )
     .await;
@@ -221,7 +221,7 @@ async fn non_object_additional_params_are_a_no_op() {
                 .await
                 .expect("speech synthesis should succeed");
 
-            assert_eq!(container(&response.audio), "mp3");
+            assert_eq!(container(&response.output), "mp3");
         },
     )
     .await;

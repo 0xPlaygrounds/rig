@@ -124,11 +124,8 @@ where
 
                 let response: EmbeddingResponse = self.model.embed_texts_response(batch).await?;
                 Ok::<_, ProviderError>((
-                    slots
-                        .into_iter()
-                        .zip(response.embeddings)
-                        .collect::<Vec<_>>(),
-                    response.usage,
+                    slots.into_iter().zip(response.output).collect::<Vec<_>>(),
+                    response.meta.usage,
                 ))
             })
             .buffer_unordered(max(1, 1024 / max_documents))

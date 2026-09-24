@@ -65,16 +65,18 @@ impl EmbeddingModel for Tiny {
         &self,
         texts: impl IntoIterator<Item = String> + Send,
     ) -> Result<EmbeddingResponse, rig_core::error::ProviderError> {
-        Ok(EmbeddingResponse::new(
-            texts
+        Ok(EmbeddingResponse {
+            output: texts
                 .into_iter()
                 .map(|document| Embedding {
                     vec: vec![document.len() as f64, 1.0],
                     document,
                 })
                 .collect(),
-            "tiny",
-        ))
+            meta: rig_core::response::ResponseMeta::new(
+                rig_core::id::ProviderName::new("tiny").expect("a provider name"),
+            ),
+        })
     }
 }
 

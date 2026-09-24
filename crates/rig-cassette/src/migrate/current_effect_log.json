@@ -50,7 +50,7 @@
       "outcome": {
         "Ok": {
           "outcome": "reranked",
-          "results": [
+          "output": [
             {
               "index": 1,
               "document": "the orchard label",
@@ -62,9 +62,11 @@
               "relevance_score": 0.16
             }
           ],
-          "model": "mock-rerank",
-          "usage": {},
-          "provider": "mock"
+          "meta": {
+            "provider": "mock",
+            "model": "mock-rerank",
+            "usage": {}
+          }
         }
       }
     },

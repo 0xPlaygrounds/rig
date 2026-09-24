@@ -12,8 +12,7 @@
 
 use crate::error::ProviderError;
 use crate::{
-    completion::{ResponseIdentity, Usage},
-    id::{ModelName, RequestId, ResponseId},
+    response::Response,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
@@ -27,7 +26,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn ndims(&self) -> usize;
 
     /// Embed multiple text documents in a single request and return the full
-    /// normalized response: embeddings, usage, provider, and identity.
+    /// response: the embeddings and the provider's metadata.
     ///
     /// Implementations must preserve input order in the returned embeddings.
     fn embed_texts_response(
@@ -44,7 +43,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
     {
-        async { Ok(self.embed_texts_response(texts).await?.embeddings) }
+        async { Ok(self.embed_texts_response(texts).await?.output) }
     }
 
     /// Embeds one text, returning the last vector or an error if none is returned.
@@ -71,7 +70,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     {
         async {
             let response = self.embed_texts_response(vec![text.to_string()]).await?;
-            if response.embeddings.is_empty() {
+            if response.output.is_empty() {
                 return Err(ProviderError::Response(
                     "embedding provider returned an empty response for embed_text_response"
                         .to_string(),
@@ -82,122 +81,9 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     }
 }
 
-/// Text embeddings and normalized provider metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddingResponse {
-    /// The embeddings returned by the provider, one per input text, in input order.
-    pub embeddings: Vec<Embedding>,
-    /// Token usage for this request; every counter is `None` when the
-    /// provider reported none (see [`Usage`]).
-    #[serde(default)]
-    pub usage: Usage,
-    /// Stable descriptor name of the provider that produced this response,
-    /// for example `"openai"`. Always populated.
-    pub provider: String,
-    /// Provider-reported model identifier, when the wire response named one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelName>,
-    /// Provider-assigned response-scoped identifier, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<ResponseId>,
-    /// Transport request identifier from HTTP response headers, or `None` when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<RequestId>,
-    /// Provider response payload, or null when no raw payload was attached.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub raw: serde_json::Value,
-}
-
-impl EmbeddingResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset.
-    pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
-        Self {
-            embeddings,
-            usage: Usage::default(),
-            provider: provider.into(),
-            model: None,
-            response_id: None,
-            provider_request_id: None,
-            raw: serde_json::Value::Null,
-        }
-    }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
-}
-
-/// Normalizes embedding payloads using the supplied provider name and input documents.
-pub trait NormalizeEmbeddingResponse {
-    /// Normalize this payload, attributing it to `provider`. `documents` are
-    /// the inputs in request order, for [`Embedding::document`].
-    fn normalize(
-        self,
-        provider: &str,
-        documents: Vec<String>,
-    ) -> Result<EmbeddingResponse, ProviderError>;
-}
-
-/// Image embeddings and normalized provider metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageEmbeddingResponse {
-    /// The embeddings returned by the provider, one per input image, in input order.
-    pub embeddings: Vec<Embedding>,
-    /// Token usage for this request; every counter is `None` when the
-    /// provider reported none (see [`Usage`]).
-    #[serde(default)]
-    pub usage: Usage,
-    /// Stable descriptor name of the provider that produced this response,
-    /// for example `"openai"`. Always populated.
-    pub provider: String,
-    /// Provider-reported model identifier, when the wire response named one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelName>,
-    /// Provider-assigned response-scoped identifier, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<ResponseId>,
-    /// Transport request identifier from HTTP response headers, or `None` when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<RequestId>,
-    /// Provider response payload, or null when no raw payload was attached.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub raw: serde_json::Value,
-}
-
-impl ImageEmbeddingResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset.
-    pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
-        Self {
-            embeddings,
-            usage: Usage::default(),
-            provider: provider.into(),
-            model: None,
-            response_id: None,
-            provider_request_id: None,
-            raw: serde_json::Value::Null,
-        }
-    }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
-}
+/// Embeddings, one per input in input order, and the metadata the provider
+/// reported. Text and image embeddings share it.
+pub type EmbeddingResponse = Response<Vec<Embedding>>;
 
 /// Trait for embedding models that can generate embeddings for images.
 pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
@@ -218,7 +104,7 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_images_response(
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, ProviderError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend;
 
     /// Embed a batch of images from their encoded file bytes.
     fn embed_images(
@@ -226,7 +112,7 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
     ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
     {
-        async { Ok(self.embed_images_response(images).await?.embeddings) }
+        async { Ok(self.embed_images_response(images).await?.output) }
     }
 
     /// Embeds one encoded image, returning the last vector or an error if none

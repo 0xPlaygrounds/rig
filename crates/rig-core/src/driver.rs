@@ -22,6 +22,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::id::RequestId;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterSlot};
 use crate::providers::internal::wire::WireEvent;
+use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{
     Body, Decoder, Encoded, Event, Fold, Mode, Operation, Reply, Request, Response, Sink, Wire,
@@ -362,7 +363,7 @@ where
     } = wire.encode(request, Mode::Unary)?;
 
     let mut reply = Reply {
-        provider: wire.name().to_owned(),
+        provider: provider_name(wire)?,
         raw: serde_json::Value::Null,
         provider_request_id: None,
     };
@@ -531,6 +532,9 @@ where
 
     let request_id = reply.provider_request_id.clone();
     let response = fold.finish(reply)?;
+    if let Some(meta) = <W::Op as Operation>::meta(&response) {
+        span.record_meta(meta);
+    }
     <W::Op as Operation>::record(span, &response);
     record_request_id(span, request_id.as_deref());
     Ok(response)
@@ -709,6 +713,12 @@ fn stamped<W: Wire>(
             Err(error)
         }
     }
+}
+
+/// The wire's provider name. A wire that names none cannot attribute a
+/// response, so the call fails before anything is sent.
+fn provider_name<W: Wire>(wire: &W) -> Result<crate::id::ProviderName, ProviderError> {
+    Ok(crate::id::ProviderName::new(wire.name())?)
 }
 
 /// Drop request content no issuer this wire accepts for the request's model

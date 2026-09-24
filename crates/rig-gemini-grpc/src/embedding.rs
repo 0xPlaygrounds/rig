@@ -116,10 +116,12 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 // gRPC: the native answers are prost messages, not JSON, and
                 // `EmbedContent` reports no usage or response id. `raw` stays `Null`;
                 // `raw_embed_texts` is the typed route.
-                Ok(embeddings::EmbeddingResponse::new(
-                    embeddings,
-                    super::completion::PROVIDER_NAME,
-                ))
+                Ok(embeddings::EmbeddingResponse {
+                    output: embeddings,
+                    meta: rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new(
+                        super::completion::PROVIDER_NAME,
+                    )?),
+                })
             },
         )
         .await

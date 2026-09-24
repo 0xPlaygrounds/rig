@@ -13,6 +13,7 @@ use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::model::{Model, ModelList};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
+use crate::response::Reported;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
     WireFrame,
@@ -235,13 +236,6 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                out.push(Err(error.into()));
-                return;
-            }
-        };
         // Ollama counts the prompt it embedded and nothing else: every token
         // of an embedding is input.
         let usage = crate::completion::Usage {
@@ -259,11 +253,10 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                 vec,
             })
             .collect();
-        out.push(Ok(crate::embeddings::EmbeddingResponse {
+        out.push(Ok(Reported {
             model: crate::id::ModelName::non_empty(reply.model),
             usage,
-            raw,
-            ..crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+            ..Reported::new(vectors)
         }));
     }
 }

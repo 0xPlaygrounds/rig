@@ -103,7 +103,7 @@ async fn embed_images_preserves_batch_order() {
                 .embed_images_response([decode_image(PNG_2X2), decode_image(GIF_2X2)])
                 .await
                 .expect("image embedding batch should succeed");
-            let embeddings = response.embeddings.clone();
+            let embeddings = response.output.clone();
 
             assert_embeddings_nonempty_and_consistent(&embeddings, 2);
             // Two images are two requests on this wire, so the operation has
@@ -112,7 +112,8 @@ async fn embed_images_preserves_batch_order() {
             // carries its own `meta.billed_units.images`, the only route to an
             // image count: `Usage` is token-denominated and has no slot for it.
             let raw: Vec<cohere::embeddings::ImageEmbeddingResponse> =
-                serde_json::from_value(response.raw.clone()).expect("raw is the per-image array");
+                serde_json::from_value(response.meta.raw.clone())
+                    .expect("raw is the per-image array");
             assert_eq!(raw.len(), 2, "one answer per input image: {raw:?}");
             for page in &raw {
                 assert_eq!(

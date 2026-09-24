@@ -32,7 +32,7 @@ fn fold_document<W: Wire<Op = Completion>>(wire: &W, body: &Value) -> Completion
     Fold::<Completion>::finish(
         fold,
         Reply {
-            provider: wire.name().to_owned(),
+            provider: crate::id::ProviderName::new(wire.name().to_owned()).expect("a non-empty id"),
             raw: serde_json::from_str(&body).unwrap_or(Value::Null),
             provider_request_id: None,
         },

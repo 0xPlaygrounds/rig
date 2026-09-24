@@ -105,17 +105,18 @@ fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
     let response = Fold::<crate::operation::Embedding>::finish(
         fold,
         Reply {
-            provider: PROVIDER_NAME.to_owned(),
+            provider: crate::id::ProviderName::new(PROVIDER_NAME.to_owned())
+                .expect("a non-empty id"),
             raw: serde_json::Value::Null,
             provider_request_id: None,
         },
     )
     .expect("the fold produces a response");
 
-    assert_eq!(response.provider, PROVIDER_NAME);
+    assert_eq!(response.meta.provider, PROVIDER_NAME);
     assert_eq!(
         response
-            .embeddings
+            .output
             .iter()
             .map(|embedding| embedding.document.as_str())
             .collect::<Vec<_>>(),
@@ -123,7 +124,7 @@ fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
     );
     assert_eq!(
         response
-            .embeddings
+            .output
             .iter()
             .map(|embedding| (
                 embedding.vec.len(),

@@ -4,9 +4,9 @@ use crate::types::errors::AwsSdkInvokeModelError;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
 use rig_core::error::ProviderError;
-use rig_core::image_generation::{
-    self, ImageGenerationRequest, ImageGenerationResponse, NormalizeImageGenerationResponse,
-};
+use rig_core::id::ProviderName;
+use rig_core::image_generation::{self, ImageGenerationRequest, ImageGenerationResponse};
+use rig_core::response::{Normalize, ResponseMeta};
 
 pub use crate::completion::{
     AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
@@ -92,12 +92,19 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
                 let (response, provider_request_id) = self
                     .raw_image_generation_with_request_id(generation_request)
                     .await?;
-                let captured = serde_json::to_value(&response)?;
+                let raw = serde_json::to_value(&response)?;
+                let reported = response.normalize()?;
                 Ok(ImageGenerationResponse {
-                    provider_request_id: provider_request_id
-                        .and_then(rig_core::id::RequestId::non_empty),
-                    raw: captured,
-                    ..response.normalize(PROVIDER_NAME)?
+                    output: reported.output,
+                    meta: ResponseMeta {
+                        provider_request_id: provider_request_id
+                            .and_then(rig_core::id::RequestId::non_empty),
+                        raw,
+                        usage: reported.usage,
+                        model: reported.model,
+                        response_id: reported.response_id,
+                        ..ResponseMeta::new(ProviderName::new(PROVIDER_NAME)?)
+                    },
                 })
             },
         )

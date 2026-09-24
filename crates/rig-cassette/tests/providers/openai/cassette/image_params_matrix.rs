@@ -112,7 +112,7 @@ async fn unlisted_model_generates_without_response_format() {
                 .await
                 .expect("a model outside the old allowlist must be able to generate at all");
 
-            crate::support::assert_image_bytes(&response.image);
+            crate::support::assert_image_bytes(&response.output);
         },
     )
     .await;
@@ -140,7 +140,7 @@ async fn allowlisted_model_still_generates() {
                 .await
                 .expect("the previously-allowlisted path must be unchanged");
 
-            crate::support::assert_image_bytes(&response.image);
+            crate::support::assert_image_bytes(&response.output);
         },
     )
     .await;
@@ -199,7 +199,7 @@ async fn additional_params_quality_reaches_the_api() {
                 .await
                 .expect("generation with caller parameters");
 
-            crate::support::assert_image_bytes(&response.image);
+            crate::support::assert_image_bytes(&response.output);
         },
     )
     .await;
@@ -227,7 +227,7 @@ async fn additional_params_output_format_reaches_the_api() {
                 .expect("generation with caller parameters");
 
             assert_eq!(
-                crate::support::assert_image_bytes(&response.image),
+                crate::support::assert_image_bytes(&response.output),
                 crate::support::ImageContainer::Jpeg,
                 "the requested output_format reaches the bytes"
             );
@@ -262,7 +262,7 @@ async fn completions_client_shares_the_fixed_body() {
                 .await
                 .expect("the chat-route image model must behave identically");
 
-            crate::support::assert_image_bytes(&response.image);
+            crate::support::assert_image_bytes(&response.output);
         },
     )
     .await;

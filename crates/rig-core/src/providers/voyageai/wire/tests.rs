@@ -38,7 +38,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 
     assert_eq!(
         response
-            .embeddings
+            .output
             .iter()
             .map(|embedding| (embedding.document.as_str(), embedding.vec.as_slice()))
             .collect::<Vec<_>>(),
@@ -47,11 +47,11 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
             ("second", [0.125, 0.0].as_slice()),
         ]
     );
-    assert_eq!(response.model.as_deref(), Some("voyage-3.5"));
+    assert_eq!(response.meta.model.as_deref(), Some("voyage-3.5"));
     // Voyage reports one counter; every token of an embedding is input.
-    assert_eq!(response.usage.input_tokens, Some(9));
-    assert_eq!(response.usage.total_tokens, Some(9));
-    assert_eq!(response.usage.output_tokens, None);
+    assert_eq!(response.meta.usage.input_tokens, Some(9));
+    assert_eq!(response.meta.usage.total_tokens, Some(9));
+    assert_eq!(response.meta.usage.output_tokens, None);
 }
 
 /// Voyage's server defaults are "field absent", so an unset option must not
@@ -124,15 +124,15 @@ async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
 
     assert_eq!(
         response
-            .results
+            .output
             .iter()
             .map(|result| (result.index, result.relevance_score))
             .collect::<Vec<_>>(),
         vec![(1, 0.9), (0, 0.1)]
     );
-    assert_eq!(response.model.as_deref(), Some("rerank-2.5"));
-    assert_eq!(response.usage.input_tokens, Some(26));
-    assert_eq!(response.usage.total_tokens, Some(26));
+    assert_eq!(response.meta.model.as_deref(), Some("rerank-2.5"));
+    assert_eq!(response.meta.usage.input_tokens, Some(26));
+    assert_eq!(response.meta.usage.total_tokens, Some(26));
 }
 
 #[test]

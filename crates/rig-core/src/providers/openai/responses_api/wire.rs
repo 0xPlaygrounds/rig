@@ -277,7 +277,7 @@ pub(crate) fn fold_body(
     use crate::wire::{Decoder, Fold, Operation, Reply, Sink};
 
     let reply = Reply {
-        provider: provider.to_owned(),
+        provider: crate::id::ProviderName::new(provider)?,
         raw: serde_json::to_value(&response)?,
         provider_request_id: response
             .provider_request_id

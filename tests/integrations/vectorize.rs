@@ -515,7 +515,12 @@ impl EmbeddingModel for MockEmbeddingModel {
                 }
             })
             .collect();
-        Ok(rig::embeddings::EmbeddingResponse::new(embeddings, "mock"))
+        Ok(rig::embeddings::EmbeddingResponse {
+            output: embeddings,
+            meta: rig::response::ResponseMeta::new(
+                rig::id::ProviderName::new("mock").expect("a provider name"),
+            ),
+        })
     }
 }
 

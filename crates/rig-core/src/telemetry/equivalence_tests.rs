@@ -221,10 +221,15 @@ fn cases() -> Vec<Value> {
     );
     run("instrument_modality ok", &mut out, || {
         let response = EmbeddingResponse {
-            response_id: Some("emb_id".try_into().expect("a non-empty id")),
-            model: Some("emb_model".try_into().expect("a non-empty id")),
-            usage: usage(),
-            ..EmbeddingResponse::new(vec![], "prov")
+            output: vec![],
+            meta: crate::response::ResponseMeta {
+                response_id: Some("emb_id".try_into().expect("a non-empty id")),
+                model: Some("emb_model".try_into().expect("a non-empty id")),
+                usage: usage(),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("prov").expect("a provider name"),
+                )
+            },
         };
         let result = futures::executor::block_on(instrument_modality::<Embedding, _>(
             "prov",
@@ -289,12 +294,17 @@ fn cases() -> Vec<Value> {
             &vec!["a".to_owned()],
         );
         let response = EmbeddingResponse {
-            response_id: Some("emb_id".try_into().expect("a non-empty id")),
-            model: Some("emb_model".try_into().expect("a non-empty id")),
-            usage: usage(),
-            ..EmbeddingResponse::new(vec![], "prov")
+            output: vec![],
+            meta: crate::response::ResponseMeta {
+                response_id: Some("emb_id".try_into().expect("a non-empty id")),
+                model: Some("emb_model".try_into().expect("a non-empty id")),
+                usage: usage(),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("prov").expect("a provider name"),
+                )
+            },
         };
-        Embedding::record(&span, &response);
+        span.record_meta(&response.meta);
     });
     run("rerank operation span+record", &mut out, || {
         let request = RerankRequest {
@@ -303,12 +313,17 @@ fn cases() -> Vec<Value> {
         };
         let span = Rerank::span("prov", Some("model"), Rerank::telemetry(false), &request);
         let response = RerankResponse {
-            response_id: Some("rr_id".try_into().expect("a non-empty id")),
-            model: Some("rr_model".try_into().expect("a non-empty id")),
-            usage: usage(),
-            ..RerankResponse::new(vec![], "prov")
+            output: vec![],
+            meta: crate::response::ResponseMeta {
+                response_id: Some("rr_id".try_into().expect("a non-empty id")),
+                model: Some("rr_model".try_into().expect("a non-empty id")),
+                usage: usage(),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("prov").expect("a provider name"),
+                )
+            },
         };
-        Rerank::record(&span, &response);
+        span.record_meta(&response.meta);
     });
     run("transcription operation span+record", &mut out, || {
         let request = TranscriptionRequest {
@@ -326,11 +341,16 @@ fn cases() -> Vec<Value> {
             &request,
         );
         let response = TranscriptionResponse {
-            response_id: Some("tr_id".try_into().expect("a non-empty id")),
-            usage: usage(),
-            ..TranscriptionResponse::new("text", "prov")
+            output: "text".to_owned(),
+            meta: crate::response::ResponseMeta {
+                response_id: Some("tr_id".try_into().expect("a non-empty id")),
+                usage: usage(),
+                ..crate::response::ResponseMeta::new(
+                    crate::id::ProviderName::new("prov").expect("a provider name"),
+                )
+            },
         };
-        Transcription::record(&span, &response);
+        span.record_meta(&response.meta);
     });
     run("span combinator on a native response", &mut out, || {
         SpanBuilder::new("prov", "model", GenAiOperation::Chat)

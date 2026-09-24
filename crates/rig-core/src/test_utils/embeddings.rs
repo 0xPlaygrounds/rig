@@ -27,16 +27,16 @@ impl EmbeddingModel for MockEmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
-        Ok(EmbeddingResponse::new(
-            documents
+        Ok(EmbeddingResponse {
+            output: documents
                 .into_iter()
                 .map(|document| Embedding {
                     document,
                     vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
                 })
                 .collect(),
-            "mock",
-        ))
+            meta: crate::response::ResponseMeta::new(crate::id::ProviderName::new("mock")?),
+        })
     }
 }
 

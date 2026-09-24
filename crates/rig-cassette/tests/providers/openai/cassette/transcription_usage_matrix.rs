@@ -81,7 +81,7 @@ fn audio() -> Vec<u8> {
 /// The provider's own payload, recovered from the normalized response's
 /// `raw` field — the endpoint's reply, beside the normalized view of it.
 fn raw(response: &rig::transcription::TranscriptionResponse) -> openai::TranscriptionResponse {
-    serde_json::from_value(response.raw.clone())
+    serde_json::from_value(response.meta.raw.clone())
         .expect("raw payload should round-trip to OpenAI's own transcription type")
 }
 
@@ -112,7 +112,7 @@ async fn whisper_reports_duration_usage() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_transcribed(&response.text);
+            assert_transcribed(&response.output);
             match raw(&response).usage {
                 Some(TranscriptionUsage::Duration { seconds, .. }) => assert!(seconds > 0.0),
                 other => panic!("whisper-1 bills by duration, got {other:?}"),
@@ -136,7 +136,7 @@ async fn gpt_4o_transcribe_reports_token_usage() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_transcribed(&response.text);
+            assert_transcribed(&response.output);
             match raw(&response).usage {
                 Some(TranscriptionUsage::Tokens {
                     input_tokens,
@@ -173,7 +173,7 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_transcribed(&response.text);
+            assert_transcribed(&response.output);
             assert!(matches!(
                 raw(&response).usage,
                 Some(TranscriptionUsage::Tokens { .. })
@@ -199,7 +199,7 @@ async fn completions_client_reports_duration_usage() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_transcribed(&response.text);
+            assert_transcribed(&response.output);
             assert!(matches!(
                 raw(&response).usage,
                 Some(TranscriptionUsage::Duration { .. })
@@ -223,7 +223,7 @@ async fn completions_client_reports_token_usage() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_transcribed(&response.text);
+            assert_transcribed(&response.output);
             assert!(matches!(
                 raw(&response).usage,
                 Some(TranscriptionUsage::Tokens { .. })
@@ -252,7 +252,7 @@ async fn verbose_json_still_reports_duration_usage() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_transcribed(&response.text);
+            assert_transcribed(&response.output);
             // The variant, not merely its presence: this response also carries
             // a top-level `duration` float, so it is the payload where a
             // variant-selection regression would surface first.
@@ -285,9 +285,9 @@ async fn transcript_still_reaches_the_normalized_response() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_eq!(response.text, raw(&response).text);
-            assert_eq!(response.provider, "openai");
-            assert_transcribed(&response.text);
+            assert_eq!(response.output, raw(&response).text);
+            assert_eq!(response.meta.provider, "openai");
+            assert_transcribed(&response.output);
         },
     )
     .await;

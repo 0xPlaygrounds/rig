@@ -81,38 +81,38 @@ async fn multiple_documents_come_back_ranked() {
             .await
             .expect("a multi-document rerank should succeed");
 
-        assert_eq!(reranked.results.len(), 3, "{:?}", reranked.results);
+        assert_eq!(reranked.output.len(), 3, "{:?}", reranked.output);
         assert_eq!(
-            reranked.results[0].index, 2,
+            reranked.output[0].index, 2,
             "the sentence that actually defines a panda must rank first: {:?}",
-            reranked.results
+            reranked.output
         );
         // Descending by score, which is what "reranked" means.
-        for pair in reranked.results.windows(2) {
+        for pair in reranked.output.windows(2) {
             assert!(
                 pair[0].relevance_score >= pair[1].relevance_score,
                 "results must be ordered by score: {:?}",
-                reranked.results
+                reranked.output
             );
         }
         // Every index points back into the input list, since llama.cpp never
         // echoes the document text.
-        let mut indices = reranked.results.iter().map(|r| r.index).collect::<Vec<_>>();
+        let mut indices = reranked.output.iter().map(|r| r.index).collect::<Vec<_>>();
         indices.sort();
         assert_eq!(indices, vec![0, 1, 2]);
         assert!(
-            reranked.results.iter().all(|r| r.document.is_none()),
+            reranked.output.iter().all(|r| r.document.is_none()),
             "llama.cpp has no `return_documents` on this path: {:?}",
-            reranked.results
+            reranked.output
         );
 
         assert!(
-            reranked.usage.total_tokens.is_some_and(|n| n > 0),
+            reranked.meta.usage.total_tokens.is_some_and(|n| n > 0),
             "the server bills the ranking: {:?}",
-            reranked.usage
+            reranked.meta.usage
         );
-        assert_eq!(reranked.model.as_deref(), Some(CASSETTE_RERANK_MODEL));
-        assert_eq!(reranked.provider, "llamacpp");
+        assert_eq!(reranked.meta.model.as_deref(), Some(CASSETTE_RERANK_MODEL));
+        assert_eq!(reranked.meta.provider, "llamacpp");
     })
     .await;
 
@@ -150,21 +150,21 @@ async fn scores_are_raw_logits_and_may_be_negative() {
 
         assert!(
             reranked
-                .results
+                .output
                 .iter()
                 .any(|result| result.relevance_score < 0.0),
             "llama.cpp returns logits, so an irrelevant document scores below \
              zero — the trait's `relevance_score` doc says 0..1 and this is why \
              that wording was corrected: {:?}",
-            reranked.results
+            reranked.output
         );
         assert!(
             reranked
-                .results
+                .output
                 .iter()
                 .any(|result| result.relevance_score > 0.0),
             "and the relevant one scores above it: {:?}",
-            reranked.results
+            reranked.output
         );
     })
     .await;
@@ -187,8 +187,8 @@ async fn a_single_document_is_still_a_ranking() {
             .await
             .expect("a single-document rerank should succeed");
 
-        assert_eq!(reranked.results.len(), 1, "{:?}", reranked.results);
-        assert_eq!(reranked.results[0].index, 0);
+        assert_eq!(reranked.output.len(), 1, "{:?}", reranked.output);
+        assert_eq!(reranked.output[0].index, 0);
     })
     .await;
 
@@ -212,10 +212,10 @@ async fn top_n_beyond_the_document_count_is_clamped() {
             .expect("an over-large top_n is clamped, not refused");
 
         assert_eq!(
-            reranked.results.len(),
+            reranked.output.len(),
             3,
             "clamped to the document count: {:?}",
-            reranked.results
+            reranked.output
         );
     })
     .await;
@@ -244,11 +244,11 @@ async fn top_n_below_the_document_count_truncates() {
             .await
             .expect("a truncating top_n should succeed");
 
-        assert_eq!(reranked.results.len(), 1, "{:?}", reranked.results);
+        assert_eq!(reranked.output.len(), 1, "{:?}", reranked.output);
         assert_eq!(
-            reranked.results[0].index, 2,
+            reranked.output[0].index, 2,
             "truncation keeps the *highest scoring* document, not the first: {:?}",
-            reranked.results
+            reranked.output
         );
     })
     .await;
@@ -279,14 +279,14 @@ async fn top_n_zero_returns_an_empty_ranking() {
             .expect("top_n 0 is a valid request, not an error");
 
         assert!(
-            reranked.results.is_empty(),
+            reranked.output.is_empty(),
             "zero means zero — not the whole list: {:?}",
-            reranked.results
+            reranked.output
         );
         assert!(
-            reranked.usage.total_tokens.is_some_and(|n| n > 0),
+            reranked.meta.usage.total_tokens.is_some_and(|n| n > 0),
             "the documents were still scored and still billed: {:?}",
-            reranked.usage
+            reranked.meta.usage
         );
     })
     .await;

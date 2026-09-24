@@ -2955,15 +2955,15 @@ impl EmbeddingModel for TestEmbeddingModel {
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
-        Ok(EmbeddingResponse::new(
-            texts
+        Ok(EmbeddingResponse {
+            output: texts
                 .into_iter()
                 .map(|text| Embedding {
                     document: text,
                     vec: vec![1.0, 0.0],
                 })
                 .collect(),
-            "mock",
-        ))
+            meta: rig_core::response::ResponseMeta::new(rig_core::id::ProviderName::new("mock")?),
+        })
     }
 }

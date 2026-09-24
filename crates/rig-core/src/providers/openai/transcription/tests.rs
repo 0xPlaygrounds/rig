@@ -86,7 +86,7 @@ fn normalize_carries_token_billing_and_leaves_duration_billing_empty() {
     fn normalized(body: &str) -> crate::completion::Usage {
         serde_json::from_str::<TranscriptionResponse>(body)
             .expect("response should decode")
-            .normalize("openai")
+            .normalize()
             .expect("normalization is infallible for this wire")
             .usage
     }

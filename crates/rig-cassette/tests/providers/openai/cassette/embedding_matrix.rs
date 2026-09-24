@@ -36,19 +36,23 @@ fn inputs() -> Vec<String> {
 /// One decoder produces both views, so this pins that mapping rather than
 /// comparing it to a second copy of itself.
 fn assert_raw_agrees_with_normalized(response: &EmbeddingResponse) {
-    let reply: openai::CompatibleEmbeddingResponse = serde_json::from_value(response.raw.clone())
-        .expect("`raw` is the serialized openai::CompatibleEmbeddingResponse");
-    assert_eq!(reply.data.len(), response.embeddings.len());
-    assert_eq!(Some(reply.model.as_str()), response.model.as_deref());
-    for (datum, embedding) in reply.data.iter().zip(&response.embeddings) {
+    let reply: openai::CompatibleEmbeddingResponse =
+        serde_json::from_value(response.meta.raw.clone())
+            .expect("`raw` is the serialized openai::CompatibleEmbeddingResponse");
+    assert_eq!(reply.data.len(), response.output.len());
+    assert_eq!(Some(reply.model.as_str()), response.meta.model.as_deref());
+    for (datum, embedding) in reply.data.iter().zip(&response.output) {
         assert_eq!(datum.embedding.len(), embedding.vec.len());
     }
     let usage = reply.usage.expect("OpenAI reports embedding usage");
     assert_eq!(
-        response.usage.input_tokens,
+        response.meta.usage.input_tokens,
         Some(usage.prompt_tokens as u64)
     );
-    assert_eq!(response.usage.total_tokens, Some(usage.total_tokens as u64));
+    assert_eq!(
+        response.meta.usage.total_tokens,
+        Some(usage.total_tokens as u64)
+    );
 }
 
 #[tokio::test]
@@ -108,7 +112,7 @@ async fn raw_route_parity() {
 
         assert_raw_agrees_with_normalized(&first);
         assert_raw_agrees_with_normalized(&second);
-        assert_eq!(first.model, second.model);
+        assert_eq!(first.meta.model, second.meta.model);
     })
     .await;
 }
@@ -127,14 +131,14 @@ async fn single_text_convenience() {
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
                 .expect("single-text embedding should succeed");
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].document, EMBEDDING_INPUTS[0]);
-            assert_eq!(response.provider, "openai");
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.output[0].document, EMBEDDING_INPUTS[0]);
+            assert_eq!(response.meta.provider, "openai");
             let embedding = model
                 .embed_text(EMBEDDING_INPUTS[0])
                 .await
                 .expect("convenience embedding should succeed");
-            assert_eq!(embedding.vec.len(), response.embeddings[0].vec.len());
+            assert_eq!(embedding.vec.len(), response.output[0].vec.len());
         },
     )
     .await;
@@ -155,7 +159,7 @@ async fn dimensions_request() {
             .embed_texts_response(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
-        for embedding in &response.embeddings {
+        for embedding in &response.output {
             assert_eq!(embedding.vec.len(), ndims);
         }
     })

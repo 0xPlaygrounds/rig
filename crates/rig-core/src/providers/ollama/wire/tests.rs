@@ -303,7 +303,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 
     assert_eq!(
         response
-            .embeddings
+            .output
             .iter()
             .map(|embedding| (embedding.document.as_str(), embedding.vec.as_slice()))
             .collect::<Vec<_>>(),
@@ -312,11 +312,11 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
             ("second", [0.125, 0.0].as_slice()),
         ]
     );
-    assert_eq!(response.model.as_deref(), Some("all-minilm"));
+    assert_eq!(response.meta.model.as_deref(), Some("all-minilm"));
     // Every token of an embedding is input; Ollama reports one counter.
-    assert_eq!(response.usage.input_tokens, Some(6));
-    assert_eq!(response.usage.total_tokens, Some(6));
-    assert_eq!(response.usage.output_tokens, None);
+    assert_eq!(response.meta.usage.input_tokens, Some(6));
+    assert_eq!(response.meta.usage.total_tokens, Some(6));
+    assert_eq!(response.meta.usage.output_tokens, None);
 }
 
 #[test]

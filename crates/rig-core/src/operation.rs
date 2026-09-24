@@ -11,6 +11,7 @@
 //! ```
 
 use crate::error::ProviderError;
+use crate::response::{Reported, Response};
 use crate::wire::{Fold, Operation, Reply, Sink};
 
 mod cached_content;
@@ -58,38 +59,42 @@ impl<Op: Operation> Sink<Op> for One<Op> {
     }
 }
 
-/// Retains the first event and ignores later events. Finishing without an
-/// event returns a decode error; otherwise reply metadata is stamped on the response.
-pub struct Take<Op: Operation> {
-    value: Option<Op::Event>,
+/// Retains the first reply and ignores later ones. Finishing without a
+/// reply returns a decode error; otherwise the driver's metadata completes
+/// the reply into the response.
+pub struct Take<T> {
+    value: Option<Reported<T>>,
 }
 
-impl<Op: Operation> Default for Take<Op> {
+impl<T> Default for Take<T> {
     fn default() -> Self {
         Self { value: None }
     }
 }
 
-impl<Op> Fold<Op> for Take<Op>
+impl<Op, T> Fold<Op> for Take<T>
 where
-    Op: Operation,
-    Op::Event: Into<Op::Response>,
+    Op: Operation<Event = Reported<T>, Response = Response<T>>,
 {
-    fn absorb(&mut self, event: Op::Event) -> Result<(), ProviderError> {
+    fn absorb(&mut self, event: Reported<T>) -> Result<(), ProviderError> {
         if self.value.is_none() {
             self.value = Some(event);
         }
         Ok(())
     }
 
-    fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError> {
-        let mut response: Op::Response = self
-            .value
-            .ok_or_else(|| {
-                ProviderError::Response(format!("{} reply carried no payload", Op::NAME))
-            })?
-            .into();
-        Op::stamp_reply(&mut response, reply);
-        Ok(response)
+    fn finish(self, reply: Reply) -> Result<Response<T>, ProviderError> {
+        let Reported {
+            output,
+            model,
+            response_id,
+            usage,
+        } = self.value.ok_or_else(|| {
+            ProviderError::Response(format!("{} reply carried no payload", Op::NAME))
+        })?;
+        Ok(Response {
+            output,
+            meta: reply.meta(model, response_id, usage),
+        })
     }
 }

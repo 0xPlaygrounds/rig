@@ -57,12 +57,15 @@ async fn raw_round_trips() {
             .expect("embedding request should succeed");
 
         let raw: openai::CompatibleEmbeddingResponse =
-            serde_json::from_value(response.raw.clone()).expect("raw round-trips");
-        assert_eq!(raw.data.len(), response.embeddings.len());
-        assert_eq!(raw.model, response.model.as_deref().unwrap_or_default());
+            serde_json::from_value(response.meta.raw.clone()).expect("raw round-trips");
+        assert_eq!(raw.data.len(), response.output.len());
+        assert_eq!(
+            raw.model,
+            response.meta.model.as_deref().unwrap_or_default()
+        );
         // One decoder, one mapping: the document's vectors, in wire order, are
         // the vectors the normalized response joined back onto the inputs.
-        for (datum, embedding) in raw.data.iter().zip(&response.embeddings) {
+        for (datum, embedding) in raw.data.iter().zip(&response.output) {
             assert_eq!(datum.embedding.len(), embedding.vec.len());
         }
     })
@@ -88,12 +91,13 @@ async fn raw_route_parity() {
             .await
             .expect("the same request should succeed again");
 
-        assert_eq!(first.embeddings.len(), second.embeddings.len());
-        assert_eq!(first.model, second.model);
-        let raw: openai::CompatibleEmbeddingResponse = serde_json::from_value(second.raw.clone())
-            .expect("raw is the compatible embeddings payload");
-        assert_eq!(raw.data.len(), second.embeddings.len());
-        assert_eq!(raw.model, second.model.as_deref().unwrap_or_default());
+        assert_eq!(first.output.len(), second.output.len());
+        assert_eq!(first.meta.model, second.meta.model);
+        let raw: openai::CompatibleEmbeddingResponse =
+            serde_json::from_value(second.meta.raw.clone())
+                .expect("raw is the compatible embeddings payload");
+        assert_eq!(raw.data.len(), second.output.len());
+        assert_eq!(raw.model, second.meta.model.as_deref().unwrap_or_default());
     })
     .await;
 
@@ -121,14 +125,14 @@ async fn single_text_convenience() {
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
                 .expect("single-text embedding should succeed");
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].document, EMBEDDING_INPUTS[0]);
-            assert_eq!(response.provider, "openrouter");
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.output[0].document, EMBEDDING_INPUTS[0]);
+            assert_eq!(response.meta.provider, "openrouter");
             let embedding = model
                 .embed_text(EMBEDDING_INPUTS[0])
                 .await
                 .expect("convenience embedding should succeed");
-            assert_eq!(embedding.vec.len(), response.embeddings[0].vec.len());
+            assert_eq!(embedding.vec.len(), response.output[0].vec.len());
         },
     )
     .await;

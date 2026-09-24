@@ -126,7 +126,7 @@ fn an_empty_identifier_migrates_to_absent() {
 
     let (migrated, _) = migrate(log).unwrap();
     let mut expected = parse(CURRENT_LOG);
-    expected["records"][0]["outcome"]["Ok"]
+    expected["records"][0]["outcome"]["Ok"]["meta"]
         .as_object_mut()
         .unwrap()
         .remove("model");

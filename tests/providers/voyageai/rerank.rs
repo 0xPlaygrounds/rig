@@ -25,27 +25,28 @@ async fn rerank_smoke() {
         .expect("rerank request should succeed");
 
     assert!(
-        !response.results.is_empty(),
+        !response.output.is_empty(),
         "should have at least one result"
     );
     assert!(
-        response.results[0].relevance_score > 0.0,
+        response.output[0].relevance_score > 0.0,
         "top result should have positive relevance"
     );
     assert!(
-        response.results[0].index == 0,
+        response.output[0].index == 0,
         "Paris should be the top result"
     );
     assert!(
-        response.usage.total_tokens.is_some_and(|n| n > 0),
+        response.meta.usage.total_tokens.is_some_and(|n| n > 0),
         "usage should be positive"
     );
     assert!(
         response
+            .meta
             .model
             .as_deref()
             .is_some_and(|model| !model.is_empty()),
         "model name should be present"
     );
-    assert_eq!(response.provider, "voyageai");
+    assert_eq!(response.meta.provider, "voyageai");
 }

@@ -1011,7 +1011,7 @@ impl AgentHook for EmbedPrompt {
             .expect("the host embeds");
         match outputs {
             rig_core::effect::EmbedOutputs::Texts(response) => {
-                assert_eq!(response.embeddings.len(), 1, "{response:?}")
+                assert_eq!(response.output.len(), 1, "{response:?}")
             }
             rig_core::effect::EmbedOutputs::Images(_) => panic!("a text embedding"),
         }
@@ -2120,7 +2120,7 @@ impl AgentHook for RerankDocs {
             .dispatch(rerank_request(&query))
             .await
             .expect("the host reranks");
-        assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        assert_eq!(ranked.output.len(), 2, "{ranked:?}");
         RunStartAction::continue_run()
     }
 }
@@ -3573,7 +3573,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
             let ranked = within(host.dispatch(rerank_request(prompt)))
                 .await
                 .expect("the replayer reranked");
-            assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+            assert_eq!(ranked.output.len(), 2, "{ranked:?}");
         }
         if program.hooks.contains(&Hook::EmbedPrompt) {
             let host = replay

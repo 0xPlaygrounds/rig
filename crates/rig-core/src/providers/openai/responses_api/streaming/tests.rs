@@ -305,7 +305,7 @@ fn folded_stream_events(
     raw_response: &CompletionResponse,
 ) -> Result<crate::completion::CompletionResponse, ProviderError> {
     let reply = Reply {
-        provider: provider.to_owned(),
+        provider: crate::id::ProviderName::new(provider.to_owned()).expect("a non-empty id"),
         raw: serde_json::to_value(raw_response)?,
         provider_request_id: raw_response
             .provider_request_id

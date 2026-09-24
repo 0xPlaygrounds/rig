@@ -233,16 +233,18 @@ impl EmbeddingModel for SlowFirstBatchModel {
         if nth == 0 {
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         }
-        Ok(EmbeddingResponse::new(
-            documents
+        Ok(EmbeddingResponse {
+            output: documents
                 .into_iter()
                 .map(|document| Embedding {
                     document,
                     vec: vec![0.0; 10],
                 })
                 .collect(),
-            "mock",
-        ))
+            meta: crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("mock").expect("a provider name"),
+            ),
+        })
     }
 }
 
@@ -285,16 +287,18 @@ impl EmbeddingModel for DescendingLatencyModel {
             120u64.saturating_sub(nth * 40),
         ))
         .await;
-        Ok(EmbeddingResponse::new(
-            documents
+        Ok(EmbeddingResponse {
+            output: documents
                 .into_iter()
                 .map(|document| Embedding {
                     document,
                     vec: vec![0.0; 10],
                 })
                 .collect(),
-            "mock",
-        ))
+            meta: crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("mock").expect("a provider name"),
+            ),
+        })
     }
 }
 
@@ -479,16 +483,18 @@ impl EmbeddingModel for OneAtATimeReversedLatency {
         );
         let delay = position.map_or(0, |n| 60u64.saturating_sub(n * 10));
         tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-        Ok(EmbeddingResponse::new(
-            documents
+        Ok(EmbeddingResponse {
+            output: documents
                 .into_iter()
                 .map(|document| Embedding {
                     document,
                     vec: vec![0.0; 10],
                 })
                 .collect(),
-            "mock",
-        ))
+            meta: crate::response::ResponseMeta::new(
+                crate::id::ProviderName::new("mock").expect("a provider name"),
+            ),
+        })
     }
 }
 

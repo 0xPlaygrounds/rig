@@ -17,10 +17,10 @@ use crate::completion::Usage;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::id::{ModelName, ResponseId};
-use crate::image_generation;
-use crate::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
+use crate::image_generation::ImageGenerationRequest;
 use crate::operation::ImageGeneration;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
+use crate::response::{Normalize, Reported};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
@@ -31,11 +31,8 @@ use serde_json::Value;
 /// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
 pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMAGE;
 
-impl NormalizeImageGenerationResponse for GenerateContentResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
+impl Normalize<Vec<u8>> for GenerateContentResponse {
+    fn normalize(self) -> Result<Reported<Vec<u8>>, ProviderError> {
         let image = first_image_bytes(&self)?;
         let usage = self
             .usage_metadata
@@ -43,11 +40,11 @@ impl NormalizeImageGenerationResponse for GenerateContentResponse {
             .map(Usage::from)
             .unwrap_or_default();
 
-        Ok(image_generation::ImageGenerationResponse {
+        Ok(Reported {
             model: self.model_version.and_then(ModelName::non_empty),
             response_id: ResponseId::non_empty(self.response_id),
             usage,
-            ..image_generation::ImageGenerationResponse::new(image, provider)
+            ..Reported::new(image)
         })
     }
 }
@@ -217,7 +214,7 @@ impl Decoder<ImageGeneration> for ImagesDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<ImageGeneration>) {
-        out.push(event.normalize(super::PROVIDER_NAME));
+        out.push(event.normalize());
     }
 }
 

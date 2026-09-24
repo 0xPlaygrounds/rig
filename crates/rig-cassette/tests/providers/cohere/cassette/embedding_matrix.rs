@@ -55,7 +55,7 @@ async fn normalized_response_is_complete() {
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
             // Cohere's one extra identity axis: the response-scoped id.
             assert!(
-                response.response_id.is_some(),
+                response.meta.response_id.is_some(),
                 "Cohere reports a response id: {response:?}"
             );
         },
@@ -78,20 +78,20 @@ async fn raw_round_trips() {
         // what the normalized response says. Re-normalizing it by hand would
         // only compare the decoder's mapping to a copy of itself.
         let raw: cohere::embeddings::EmbeddingResponse =
-            serde_json::from_value(response.raw.clone()).expect("raw round-trips");
-        assert_eq!(raw.embeddings.len(), response.embeddings.len());
-        assert_eq!(Some(raw.id.as_str()), response.response_id.as_deref());
+            serde_json::from_value(response.meta.raw.clone()).expect("raw round-trips");
+        assert_eq!(raw.embeddings.len(), response.output.len());
+        assert_eq!(Some(raw.id.as_str()), response.meta.response_id.as_deref());
         assert_eq!(
             raw.meta
                 .as_ref()
                 .and_then(|meta| meta.billed_units.input_tokens)
                 .map(u64::from),
-            response.usage.input_tokens,
+            response.meta.usage.input_tokens,
             "the billed input tokens reach the normalized usage"
         );
         assert_eq!(
             raw.texts.len(),
-            response.embeddings.len(),
+            response.output.len(),
             "one vector per text Cohere echoed back"
         );
     })
@@ -117,8 +117,9 @@ async fn raw_route_parity() {
             .await
             .expect("the same request should succeed again");
         let raw: cohere::embeddings::EmbeddingResponse =
-            serde_json::from_value(again.raw.clone()).expect("raw is Cohere's own embed response");
-        assert_eq!(raw.embeddings.len(), normalized.embeddings.len());
+            serde_json::from_value(again.meta.raw.clone())
+                .expect("raw is Cohere's own embed response");
+        assert_eq!(raw.embeddings.len(), normalized.output.len());
         assert!(raw.meta.is_some(), "billed units ride the raw payload");
     })
     .await;
@@ -136,9 +137,9 @@ async fn single_text_convenience() {
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
                 .expect("single-text embedding should succeed");
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].document, EMBEDDING_INPUTS[0]);
-            assert_eq!(response.provider, "cohere");
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.output[0].document, EMBEDDING_INPUTS[0]);
+            assert_eq!(response.meta.provider, "cohere");
         },
     )
     .await;
@@ -184,16 +185,16 @@ async fn image_normalized_and_raw_round_trip() {
                 .await
                 .expect("image embedding should succeed");
 
-            assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.provider, "cohere");
-            assert_eq!(response.embeddings[0].vec.len(), model.ndims());
+            assert_eq!(response.output.len(), 1);
+            assert_eq!(response.meta.provider, "cohere");
+            assert_eq!(response.output[0].vec.len(), model.ndims());
             // Cohere bills image embeds as `billed_units.images`, not tokens
             // — `Usage` is token-denominated, so no counter is reported and
             // the image count is read off the raw payload.
             assert!(
-                !response.usage.is_reported(),
+                !response.meta.usage.is_reported(),
                 "no token usage exists to report for an image embed: {:?}",
-                response.usage
+                response.meta.usage
             );
 
             // Cohere embeds one image per request, so this wire is an
@@ -204,7 +205,7 @@ async fn image_normalized_and_raw_round_trip() {
             // shape, where `raw` is the sequence, is pinned by
             // `embeddings::embed_images_preserves_batch_order`.
             let raw: cohere::embeddings::ImageEmbeddingResponse =
-                serde_json::from_value(response.raw.clone())
+                serde_json::from_value(response.meta.raw.clone())
                     .expect("raw is Cohere's own per-image answer");
             assert_eq!(
                 raw.embeddings.values.len(),
@@ -228,7 +229,7 @@ async fn image_normalized_and_raw_round_trip() {
             // so the two recorded replies differ in `id` alone. What repeats is
             // the shape and the billing.
             let again_raw: cohere::embeddings::ImageEmbeddingResponse =
-                serde_json::from_value(again.raw.clone())
+                serde_json::from_value(again.meta.raw.clone())
                     .expect("the second capture is Cohere's own per-image answer");
             assert_eq!(again_raw.embeddings.values.len(), 1);
             assert_eq!(

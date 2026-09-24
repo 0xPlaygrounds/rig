@@ -10,77 +10,17 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::id::{ModelName, RequestId, ResponseId};
 use crate::json_utils;
+use crate::response::Response;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
 use std::{fs, path::Path};
 
-/// Transcript and normalized provider metadata, with provider-specific data
-/// available through [`Self::raw`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranscriptionResponse {
-    /// The transcribed text.
-    pub text: String,
-    /// Provider-reported token usage. Unreported counters remain `None`;
-    /// this field does not contain audio duration.
-    #[serde(default)]
-    pub usage: Usage,
-    /// Stable descriptor name of the provider that produced this response,
-    /// for example `"openai"`. Always populated.
-    pub provider: String,
-    /// Provider-reported model identifier, when the wire response named one.
-    /// This is the model the provider says answered, not the model requested.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelName>,
-    /// Provider-assigned response-scoped identifier, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<ResponseId>,
-    /// Transport request ID from HTTP headers, or `None` when unreported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<RequestId>,
-    /// Provider response document. Defaults to null until populated.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub raw: serde_json::Value,
-}
-
-impl TranscriptionResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset.
-    pub fn new(text: impl Into<String>, provider: impl Into<String>) -> Self {
-        Self {
-            text: text.into(),
-            usage: Usage::default(),
-            provider: provider.into(),
-            model: None,
-            response_id: None,
-            provider_request_id: None,
-            raw: serde_json::Value::Null,
-        }
-    }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// Transcriptions are never replayed as assistant messages, so
-    /// `message_id` is always `None`.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
-}
-
-/// Converts provider payloads into normalized transcription responses.
-/// Implementations must attribute the response to the supplied provider name.
-pub trait NormalizeTranscriptionResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<TranscriptionResponse, ProviderError>;
-}
+/// A transcript and the metadata the provider reported. The usage holds
+/// token counts only, never an audio duration.
+pub type TranscriptionResponse = Response<String>;
 
 /// Transcribes audio into normalized responses. Only
 /// [`Self::transcription_request`] requires cloning; `Arc<M>` forwards operations.
