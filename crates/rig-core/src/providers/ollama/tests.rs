@@ -66,12 +66,11 @@ fn leaves_unterminated_or_inline_reasoning_markers_visible() {
 /// Fold one `/api/chat` reply body through the bound chat wire, the way a
 /// caller's `completion()` does.
 async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse, ProviderError> {
-    use crate::completion::CompletionModel as _;
     let model = ollama_model(crate::test_utils::RecordingHttpClient::new(
         body.to_string(),
     ));
     model
-        .completion(model.completion_request("hello").build())
+        .call(model.completion_request("hello").build(), None)
         .await
 }
 
@@ -1126,8 +1125,8 @@ fn test_completion_request_without_output_schema() {
 }
 
 /// The chat wire bound to `http_client`: the model every case below drives.
-fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Bound<Chat, H> {
-    crate::driver::Bound::new(Ollama::new(), http_client).completion(LLAMA3_2)
+fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Model<Chat, H> {
+    crate::driver::Model::new(Ollama::new().completion(LLAMA3_2), http_client)
 }
 
 // Proves a truncated NDJSON stream — content chunks then EOF without a
@@ -1135,7 +1134,6 @@ fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Bound<Chat, H> {
 // terminal record.
 #[tokio::test]
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -1149,7 +1147,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     });
     let request = model.completion_request("hello").build();
 
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request, None).expect("stream should open");
 
     let mut texts = Vec::new();
     let mut saw_terminal = false;
@@ -1169,7 +1167,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "EOF without a done record must not synthesize a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 // Proves a malformed NDJSON line between valid lines surfaces as an
@@ -1177,7 +1175,6 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 // the `done: true` record still arrive.
 #[tokio::test]
 async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -1196,7 +1193,7 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     });
     let request = model.completion_request("hello").build();
 
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request, None).expect("stream should open");
 
     let mut texts = Vec::new();
     let mut saw_error = false;
@@ -1227,7 +1224,6 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
 // terminal record reach the consumer.
 #[tokio::test]
 async fn content_after_the_done_record_is_not_yielded() {
-    use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -1245,7 +1241,7 @@ async fn content_after_the_done_record_is_not_yielded() {
     });
     let request = model.completion_request("hello").build();
 
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request, None).expect("stream should open");
 
     let mut texts = Vec::new();
     let mut terminal = None;
@@ -1283,7 +1279,6 @@ async fn content_after_the_done_record_is_not_yielded() {
 // (issue #1931).
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::completion::CompletionModel;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":"model not found"}"#;
@@ -1293,7 +1288,7 @@ async fn completion_non_success_preserves_status_and_body() {
     let request = model.completion_request("hello").build();
 
     let error = model
-        .completion(request)
+        .call(request, None)
         .await
         .expect_err("should fail with non-success status");
 
@@ -1310,13 +1305,12 @@ async fn completion_non_success_preserves_status_and_body() {
 // (issue #1931).
 #[tokio::test]
 async fn embeddings_non_success_preserves_status_and_body() {
-    use crate::embeddings::EmbeddingModel;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(Ollama::new(), http_client).embedding(ALL_MINILM, None);
+    let model = crate::driver::Model::new(Ollama::new().embedding(ALL_MINILM, None), http_client);
 
     let error = model
         .embed_texts(vec!["hello".to_string()])
@@ -1340,7 +1334,6 @@ async fn embeddings_non_success_preserves_status_and_body() {
 /// to answer more than the normalized response does.
 mod raw_capture {
     use super::*;
-    use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     const BODY: &str = r#"{
@@ -1357,7 +1350,7 @@ mod raw_capture {
             "eval_duration": 4709213000
         }"#;
 
-    fn model() -> crate::driver::Bound<Chat, RecordingHttpClient> {
+    fn model() -> crate::driver::Model<Chat, RecordingHttpClient> {
         ollama_model(RecordingHttpClient::new(BODY))
     }
 
@@ -1384,7 +1377,7 @@ mod raw_capture {
         let model = model();
 
         let response = model
-            .completion(model.completion_request("hello").build())
+            .call(model.completion_request("hello").build(), None)
             .await
             .expect("completion");
 
@@ -1468,10 +1461,7 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
 /// correlate by `tool_name`.
 #[test]
 fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
-    use crate::message::{
-        AssistantContent, Message as RigMessage, ProviderCallId, ToolCall, ToolCallId,
-        ToolFunction, ToolResult, ToolResultContent, UserContent,
-    };
+    use crate::message::{AssistantContent, Message as RigMessage, ProviderCallId, ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent, UserContent};
 
     let call = |provider: Option<ProviderCallId>| RigMessage::Assistant {
         id: None,

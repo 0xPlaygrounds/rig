@@ -3,17 +3,12 @@ use crate::error::ProviderError;
 
 #[tokio::test]
 async fn embeddings_non_success_preserves_status_and_body() {
-    use crate::embeddings::EmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client,
-    )
-    .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None), http_client);
 
     let error = model
         .embed_texts(["hello".to_string()])
@@ -34,16 +29,11 @@ async fn embeddings_non_success_preserves_status_and_body() {
 /// failure about missing embeddings.
 #[tokio::test]
 async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
-    use crate::embeddings::EmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client,
-    )
-    .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None), http_client);
 
     let error = model
         .embed_texts(["hello".to_string()])
@@ -117,15 +107,10 @@ fn image_data_url_rejects_unsupported_and_oversized_inputs() {
 /// opens a socket.
 #[tokio::test]
 async fn image_batches_are_fully_validated_before_any_request() {
-    use crate::embeddings::ImageEmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::default();
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client.clone(),
-    )
-    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").image_embedding(), http_client.clone());
 
     let error = model
         .embed_images([b"\x89PNG\r\n\x1a\n".to_vec(), b"not an image".to_vec()])
@@ -138,17 +123,12 @@ async fn image_batches_are_fully_validated_before_any_request() {
 
 #[tokio::test]
 async fn image_embeddings_non_success_preserves_status_and_body() {
-    use crate::embeddings::ImageEmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client,
-    )
-    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").image_embedding(), http_client);
 
     let error = model
         .embed_image(b"\x89PNG\r\n\x1a\n")
@@ -167,16 +147,11 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
 /// answer a 200 with the same envelope — and preserves it the same way.
 #[tokio::test]
 async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
-    use crate::embeddings::ImageEmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client,
-    )
-    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").image_embedding(), http_client);
 
     let error = model
         .embed_image(b"\x89PNG\r\n\x1a\n")

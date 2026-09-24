@@ -325,7 +325,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
     }
 
     let hook = IdentityHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")
         .with_message_id("msg_1")
         .with_response_id("resp_1")
         .with_provider_request_id("req_1")]))
@@ -354,7 +354,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
 /// error and never a fabricated value.
 #[tokio::test]
 async fn absent_identity_metadata_stays_none() {
-    let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")]))
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")]))
         .build()
         .prompt(Message::user("prompt"))
         .run()
@@ -374,7 +374,7 @@ async fn absent_identity_metadata_stays_none() {
 #[tokio::test]
 async fn failed_attempt_error_carries_its_own_request_id() {
     let hook = TurnIdentityHook::default();
-    let error = AgentBuilder::new(MockCompletionModel::new([
+    let error = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 2, "y": 3}))
             .with_provider_request_id("req-success-1"),
         MockTurn::provider_response_error(
@@ -467,7 +467,7 @@ fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent
 #[tokio::test]
 async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     let hook = TurnIdentityHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3}))
             .with_provider_request_id("req-turn-1")
             .with_response_id("resp-turn-1"),
@@ -623,7 +623,7 @@ async fn retried_turn_reports_the_retried_attempts_own_identity() {
     }
 
     let hook = RetryOnceCapturingIdentity::default();
-    AgentBuilder::new(MockCompletionModel::new([
+    AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("first attempt").with_provider_request_id("req-attempt-1"),
         MockTurn::text("second attempt").with_provider_request_id("req-attempt-2"),
     ]))
@@ -744,7 +744,7 @@ async fn hook_events_carry_raw_blocking() {
     let payload = raw_payload("blocking");
 
     let hook = RawCaptureHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("reply").with_raw(payload.clone())
     ]))
     .add_hook(hook.clone())
@@ -806,7 +806,7 @@ async fn completion_calls_carry_each_attempts_own_raw_blocking() {
     assert_ne!(first, second);
 
     let hook = RawCaptureHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3})).with_raw(first.clone()),
         MockTurn::text("5").with_raw(second.clone()),
     ]))
@@ -933,7 +933,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_blocking() {
     let second = raw_payload("attempt-2");
 
     let hook = RetryOnceCapturingRaw::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("first attempt").with_raw(first.clone()),
         MockTurn::text("second attempt").with_raw(second.clone()),
     ]))
@@ -1030,7 +1030,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
 #[tokio::test]
 async fn response_scoped_id_is_not_promoted_into_history() {
     let prompt = Message::user("prompt");
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("reply").with_response_id("chatcmpl-123")
     ]))
     .build()
@@ -1053,7 +1053,7 @@ async fn response_scoped_id_is_not_promoted_into_history() {
 #[tokio::test]
 async fn message_id_is_promoted_into_history() {
     let prompt = Message::user("prompt");
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("reply").with_message_id("msg_abc")
     ]))
     .build()

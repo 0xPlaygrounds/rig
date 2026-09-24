@@ -1387,7 +1387,7 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
     tracing::callsite::rebuild_interest_cache();
     spans.clear();
 
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call(
             "tool_call_1",
             "default_api",

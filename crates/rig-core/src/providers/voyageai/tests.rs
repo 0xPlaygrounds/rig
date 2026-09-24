@@ -3,14 +3,12 @@
 #[tokio::test]
 async fn rerank_non_success_preserves_status_and_body() {
     use crate::error::ProviderError;
-    use crate::rerank::RerankModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(super::VoyageAi::new("test-key"), http_client)
-        .rerank(super::RERANK_2_5);
+    let model = crate::driver::Model::new(super::VoyageAi::new("test-key").rerank(super::RERANK_2_5), http_client);
 
     let error = model
         .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
@@ -32,13 +30,11 @@ async fn rerank_non_success_preserves_status_and_body() {
 #[tokio::test]
 async fn rerank_2xx_error_envelope_preserves_status_and_body() {
     use crate::error::ProviderError;
-    use crate::rerank::RerankModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
-    let model = crate::driver::Bound::new(super::VoyageAi::new("test-key"), http_client)
-        .rerank(super::RERANK_2_5);
+    let model = crate::driver::Model::new(super::VoyageAi::new("test-key").rerank(super::RERANK_2_5), http_client);
 
     let error = model
         .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])

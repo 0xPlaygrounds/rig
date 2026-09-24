@@ -1,24 +1,14 @@
-use super::{
-    ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator, ResponsesDecoder,
-    ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
-    reasoning_from_done_item,
-};
-use crate::completion::CompletionModel;
-use crate::driver::{Bound, WireDriver};
+use super::{ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator, ResponsesDecoder, ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame, reasoning_from_done_item};
+use crate::driver::{Model, WireDriver};
 use crate::error::ProviderError;
 use crate::error::{ErrorKind, ErrorReport};
 use crate::message::{AssistantContent, ReasoningContent};
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
-use crate::providers::internal::openai_chat_completions_compatible::test_support::{
-    sse_bytes_from_data_lines, sse_bytes_from_json_events,
-};
+use crate::providers::internal::openai_chat_completions_compatible::test_support::{sse_bytes_from_data_lines, sse_bytes_from_json_events};
 use crate::providers::internal::wire::WireEvent;
 use crate::providers::openai::OpenAI;
-use crate::providers::openai::responses_api::{
-    AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
-    ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
-};
+use crate::providers::openai::responses_api::{AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails, ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage};
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::wire::WireFrame;
@@ -242,18 +232,19 @@ fn sample_response(status: ResponseStatus) -> CompletionResponse {
 
 /// The OpenAI Responses stream one scripted transport yields: the live
 /// loop, over a socket that answers from a script.
-async fn responses_stream<H: crate::driver::Socket>(
-    http: H,
-) -> crate::streaming::StreamingCompletionResponse {
-    let model = Bound::new(OpenAI::new("test-key").responses("gpt-5.4"), http);
+async fn responses_stream<H>(http: H) -> crate::streaming::CompletionStream
+where
+    H: crate::driver::Transport<crate::providers::openai::responses_api::wire::Responses>,
+{
+    let model = crate::driver::Model::new(OpenAI::new("test-key").responses("gpt-5.4"), http);
     let request = model.completion_request("hello").build();
-    model.stream(request).await.expect("stream should start")
+    model.stream(request, None).expect("stream should start")
 }
 
 /// The same, for a body scripted as JSON events.
 async fn responses_stream_of(
     events: &[serde_json::Value],
-) -> crate::streaming::StreamingCompletionResponse {
+) -> crate::streaming::CompletionStream {
     responses_stream(MockStreamingClient {
         sse_bytes: sse_bytes_from_json_events(events),
     })
@@ -358,7 +349,7 @@ async fn stream_final_from_event(event: serde_json::Value) -> crate::streaming::
 /// terminal error: the call's block events (its start, then the end
 /// carrying the completed call) come first, then the error, then nothing.
 async fn flushed_tool_call_then_error(
-    stream: &mut crate::streaming::StreamingCompletionResponse,
+    stream: &mut crate::streaming::CompletionStream,
 ) -> (crate::message::ToolCall, ErrorReport) {
     let mut tool_call = None;
     let err = loop {
@@ -954,7 +945,7 @@ async fn multi_block_reasoning_done_item_yields_one_part() {
     );
 
     // The aggregated choice replays as exactly one reasoning input item.
-    let choice = stream.snapshot();
+    let choice = stream.folded().snapshot();
     let reasoning_parts = choice
         .iter()
         .filter(|content| matches!(content, crate::message::AssistantContent::Reasoning(_)))
@@ -1020,7 +1011,7 @@ async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
         stream.next().await.is_none(),
         "stream should terminate immediately after the terminal error"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 /// Same ordering for a transport failure: fully-delivered tool call, then
@@ -1065,7 +1056,7 @@ async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
         stream.next().await.is_none(),
         "nothing may follow the terminal error"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 /// A known terminal event with a data-level defect (malformed `usage`) is
@@ -1103,7 +1094,7 @@ async fn known_terminal_with_malformed_usage_surfaces_error_without_terminal() {
         !saw_final,
         "a terminal that failed to parse must not produce a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 /// An invented event type stays skippable for forward compatibility; a
@@ -1259,7 +1250,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "EOF without response.completed must not synthesize a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 #[tokio::test]

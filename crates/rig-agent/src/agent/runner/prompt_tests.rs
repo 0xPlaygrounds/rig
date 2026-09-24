@@ -705,7 +705,7 @@ fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
 async fn prompt_response_records_completion_call_without_reported_usage() {
     let turn = MockTurn::text("ok");
     let raw = turn.raw().expect("a scripted turn has a document");
-    let model = MockCompletionModel::new([turn]);
+    let model = MockCompletionModel::from_turns([turn]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent.prompt("say ok").await.expect("prompt should succeed");
@@ -728,7 +728,7 @@ async fn typed_prompt_response_preserves_completion_calls() {
     };
     let turn = MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage);
     let raw = turn.raw().expect("a scripted turn has a document");
-    let model = MockCompletionModel::new([turn]);
+    let model = MockCompletionModel::from_turns([turn]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent
@@ -858,7 +858,7 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
 
 #[tokio::test]
 async fn unknown_tool_call_fails_before_non_streaming_second_request() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 1, "y": 2})),
         MockTurn::text("should not be requested"),
     ]);
@@ -893,7 +893,7 @@ async fn unknown_tool_call_fails_before_non_streaming_second_request() {
 /// threaded all the way to the tool the agent loop executes.
 #[tokio::test]
 async fn tool_context_reaches_tool_through_agent_loop() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
         MockTurn::text("done"),
     ]);
@@ -919,7 +919,7 @@ async fn tool_context_reaches_tool_through_agent_loop() {
 /// rounds; both must observe the same injected value, not just the first.
 #[tokio::test]
 async fn tool_context_persists_across_multiple_rounds() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("c1", "context_probe", json!({})),
         MockTurn::tool_call("c2", "context_probe", json!({})),
         MockTurn::text("done"),
@@ -948,7 +948,7 @@ async fn tool_context_persists_across_multiple_rounds() {
 /// stale value) — the backward-compatible default path.
 #[tokio::test]
 async fn tool_runs_with_empty_context_when_none_supplied() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
         MockTurn::text("done"),
     ]);
@@ -981,7 +981,7 @@ async fn probe_direct_call_uses_context() {
 #[tokio::test]
 async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
     let invalid_hook = RecordingInvalidToolCallHook::default();
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 1, "y": 2}))
             .with_call_id("provider_call_1"),
         MockTurn::text("should not be requested"),
@@ -1013,7 +1013,7 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
 
 #[tokio::test]
 async fn disallowed_specific_tool_call_fails_before_non_streaming_second_request() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "subtract", json!({"x": 3, "y": 1})),
         MockTurn::text("should not be requested"),
     ]);
@@ -1055,7 +1055,7 @@ async fn disallowed_specific_tool_call_fails_before_non_streaming_second_request
 
 #[tokio::test]
 async fn tool_choice_none_rejects_non_streaming_tool_call() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
         MockTurn::text("should not be requested"),
     ]);
@@ -1091,7 +1091,7 @@ async fn tool_choice_none_rejects_non_streaming_tool_call() {
 
 #[tokio::test]
 async fn invalid_tool_call_hook_can_repair_non_streaming_tool_name() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("done"),
     ]);
@@ -1131,7 +1131,7 @@ async fn invalid_tool_call_hook_can_repair_non_streaming_tool_name() {
 
 #[tokio::test]
 async fn invalid_tool_call_hook_retry_adds_feedback_and_retries_non_streaming() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("retried"),
     ]);
@@ -1183,7 +1183,7 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
         ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
     )
     .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::from_contents([
             AssistantContent::ToolCall(valid_tool_call),
             AssistantContent::ToolCall(invalid_tool_call),
@@ -1277,7 +1277,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
         ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
     )
     .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::from_contents([
             AssistantContent::ToolCall(valid_tool_call),
             AssistantContent::ToolCall(invalid_tool_call),
@@ -1341,7 +1341,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
 
 #[tokio::test]
 async fn invalid_tool_call_hook_retry_budget_exhaustion_fails() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("should not be requested"),
     ]);
@@ -1372,7 +1372,7 @@ async fn invalid_tool_call_hook_retry_budget_exhaustion_fails() {
 
 #[tokio::test]
 async fn invalid_tool_call_hook_can_skip_structured_non_streaming_call() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("skipped"),
     ]);
@@ -1411,7 +1411,7 @@ async fn invalid_tool_call_hook_can_skip_structured_non_streaming_call() {
 
 #[tokio::test]
 async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("skipped"),
     ]);
@@ -1456,7 +1456,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
 
 #[tokio::test]
 async fn repair_to_disallowed_specific_tool_fails() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("should not be requested"),
     ]);
@@ -1487,7 +1487,7 @@ async fn repair_to_disallowed_specific_tool_fails() {
 
 #[tokio::test]
 async fn repair_under_tool_choice_none_fails() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("should not be requested"),
     ]);
@@ -1515,7 +1515,7 @@ async fn repair_under_tool_choice_none_fails() {
 
 #[tokio::test]
 async fn skip_under_tool_choice_none_fails() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text("should not be requested"),
     ]);
@@ -1543,7 +1543,7 @@ async fn skip_under_tool_choice_none_fails() {
 
 #[tokio::test]
 async fn typed_prompt_default_invalid_tool_call_fails_fast() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text(r#"{"value":"should not be requested"}"#),
     ]);
@@ -1571,7 +1571,7 @@ async fn typed_prompt_default_invalid_tool_call_fails_fast() {
 
 #[tokio::test]
 async fn typed_prompt_invalid_tool_call_hook_can_repair_tool_name() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text(r#"{"value":"repaired"}"#),
     ]);
@@ -1594,7 +1594,7 @@ async fn typed_prompt_invalid_tool_call_hook_can_repair_tool_name() {
 
 #[tokio::test]
 async fn typed_prompt_invalid_tool_call_hook_can_retry_and_parse_response() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text(r#"{"value":"retried"}"#),
     ]);
@@ -1620,7 +1620,7 @@ async fn typed_prompt_invalid_tool_call_hook_can_retry_and_parse_response() {
 
 #[tokio::test]
 async fn typed_prompt_invalid_tool_call_retry_budget_exhaustion_fails() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
         MockTurn::text(r#"{"value":"should not be requested"}"#),
     ]);
@@ -1676,7 +1676,7 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
 
 #[tokio::test]
 async fn allowed_specific_tool_call_executes_normally() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
         MockTurn::text("done"),
     ]);
@@ -1718,7 +1718,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     let second_turn = MockTurn::text("").with_usage(second_call_usage);
     let first_raw = first_turn.raw().expect("a scripted turn has a document");
     let second_raw = second_turn.raw().expect("a scripted turn has a document");
-    let model = MockCompletionModel::new([first_turn, second_turn]);
+    let model = MockCompletionModel::from_turns([first_turn, second_turn]);
     let agent = AgentBuilder::new(model.clone()).tool(MockAddTool).build();
 
     let response = agent
@@ -1796,7 +1796,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
 
 #[tokio::test]
 async fn prompt_request_concatenates_text_blocks_without_inserted_newlines() {
-    let model = MockCompletionModel::new([MockTurn::from_contents([
+    let model = MockCompletionModel::from_turns([MockTurn::from_contents([
         AssistantContent::Text(Text::new("According to the document, ")),
         AssistantContent::Text(Text::new("the grass is green")),
         AssistantContent::Text(Text::new(" and the sky is blue.")),
@@ -1827,7 +1827,7 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
     }))
     .expect("object params")
     .expect("params carry data");
-    let model = MockCompletionModel::new([MockTurn::from_content(AssistantContent::Text(Text {
+    let model = MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Text(Text {
         text: String::new(),
         additional_params: Some(metadata.clone()),
     }))]);
@@ -1953,7 +1953,7 @@ async fn explicit_with_history_overrides_memory() {
 #[tokio::test]
 async fn memory_unchanged_on_provider_error() {
     let memory = InMemoryConversationMemory::new();
-    let model = MockCompletionModel::new([MockTurn::error("boom")]);
+    let model = MockCompletionModel::from_turns([MockTurn::error("boom")]);
 
     let agent = AgentBuilder::new(model).memory(memory.clone()).build();
     let result = agent.prompt("hello").conversation("t1").await;
@@ -1969,7 +1969,7 @@ async fn multi_step_tool_run_appends_committed_turn_exactly_once() {
     // run: the committed turn must be appended to memory exactly once, not
     // once per model call.
     let memory = CountingMemory::default();
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "add", json!({"x": 2, "y": 3})),
         MockTurn::text("sum is 5"),
     ]);
@@ -2092,7 +2092,7 @@ async fn committed_transcript_roles_form_a_valid_sequence() {
     // consecutive assistant messages, and pairs each assistant tool call
     // with a following user tool-result message.
     let memory = CountingMemory::default();
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "add", json!({"x": 1, "y": 1})),
         MockTurn::text("done"),
     ]);

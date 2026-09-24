@@ -1,11 +1,4 @@
-use crate::{
-    message,
-    providers::gemini::completion::gemini_api_types::{
-        BlockReason, CitationMetadata, ContentCandidate, FinishReason, GenerateContentResponse,
-        LogprobsResult, ModalityTokenCount, PromptFeedback, Schema, TopCandidate, UsageMetadata,
-        flatten_schema, map_finish_reason, tool_parameters_to_schema,
-    },
-};
+use crate::{message, providers::gemini::completion::gemini_api_types::{BlockReason, CitationMetadata, ContentCandidate, FinishReason, GenerateContentResponse, LogprobsResult, ModalityTokenCount, PromptFeedback, Schema, TopCandidate, UsageMetadata, flatten_schema, map_finish_reason, tool_parameters_to_schema}};
 
 use super::*;
 use serde_json::json;
@@ -1018,9 +1011,7 @@ fn test_txt_document_conversion_to_text_part() {
 #[test]
 fn test_tool_result_with_image_content() {
     // Test that a ToolResult with image content converts correctly to Gemini's Part format
-    use crate::message::{
-        DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
-    };
+    use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent};
 
     // Create a tool result with both text and image content
     let tool_result = ToolResult {
@@ -1506,9 +1497,7 @@ fn test_user_image_url_renders_as_file_data() {
 
 #[test]
 fn test_tool_result_with_url_image_is_rejected() {
-    use crate::message::{
-        DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
-    };
+    use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent};
 
     let tool_result = ToolResult {
         call: message::ToolCallId::minted(0),
@@ -1678,14 +1667,13 @@ fn test_create_request_body_without_documents() {
 /// path may narrow it by parsing before the caller sees it.
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::completion::CompletionModel as _;
 
     let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let error = Bound::new(
+    let error = crate::driver::Model::new(
         wire(super::GEMINI_3_FLASH_PREVIEW),
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
     )
-    .completion(wire_request("hello"))
+    .call(wire_request("hello"), None)
     .await
     .expect_err("should fail with non-success status");
 
@@ -1744,7 +1732,6 @@ async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
 // for: the unary reply and the streamed reply of the SAME turn, decoded by
 // the SAME decoder, fold to the same answer.
 
-use crate::driver::Bound;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Mode, Wire};
 use futures::StreamExt;
@@ -1788,7 +1775,7 @@ fn wire_request(prompt: &str) -> CompletionRequest {
 }
 
 fn wire(model: &str) -> GenerateContent {
-    crate::providers::gemini::Gemini::new("test-key").generate_content(model)
+    crate::providers::gemini::Gemini::new("test-key").completion(model)
 }
 
 /// What a folded response says, for comparing two transports.
@@ -1814,9 +1801,8 @@ async fn fold_unary(
     model: &str,
     body: impl Into<bytes::Bytes>,
 ) -> Result<crate::completion::CompletionResponse, ProviderError> {
-    use crate::completion::CompletionModel as _;
-    Bound::new(wire(model), RecordingHttpClient::new(body))
-        .completion(wire_request("probe"))
+    crate::driver::Model::new(wire(model), RecordingHttpClient::new(body))
+        .call(wire_request("probe"), None)
         .await
 }
 
@@ -1827,15 +1813,13 @@ async fn unary(model: &str, body: &'static str) -> crate::completion::Completion
 }
 
 async fn streamed(model: &str, body: &'static str) -> crate::completion::CompletionResponse {
-    use crate::completion::CompletionModel as _;
-    let mut stream = Bound::new(
+    let mut stream = crate::driver::Model::new(
         wire(model),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(body.as_bytes()),
         },
     )
-    .stream(wire_request("probe"))
-    .await
+    .stream(wire_request("probe"), None)
     .expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("the recorded stream carries no in-band error");
@@ -2066,7 +2050,7 @@ fn a_text_signature_reaches_no_other_wire() {
 
     fn body<W>(wire: &W, request: CompletionRequest) -> String
     where
-        W: Wire,
+        W: Wire<Payload = crate::wire::Encoded>,
         W::Op: crate::wire::Operation<Request = CompletionRequest>,
     {
         let encoded = wire
@@ -2114,7 +2098,7 @@ fn a_text_signature_reaches_no_other_wire() {
             "anthropic",
             body(
                 &crate::providers::anthropic::Anthropic::new("sk-test")
-                    .messages("claude-haiku-4-5"),
+                    .completion("claude-haiku-4-5"),
                 request.clone(),
             ),
         ),

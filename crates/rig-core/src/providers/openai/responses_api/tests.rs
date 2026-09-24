@@ -256,7 +256,6 @@ fn reasoning_input_items(items: &[InputItem]) -> Vec<serde_json::Value> {
 /// A wire-plausible id keeps round-tripping.
 #[tokio::test]
 async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
-    use crate::completion::CompletionModel as _;
     use crate::test_utils::MockStreamEvent;
     use futures::StreamExt as _;
 
@@ -268,9 +267,9 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
         MockStreamEvent::final_response_with_default_usage(),
     ]]);
     let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
-    let mut stream = model.stream(request).await.expect("mock stream");
+    let mut stream = model.stream(request, None).expect("mock stream");
     while stream.next().await.is_some() {}
-    let choice = stream.snapshot();
+    let choice = stream.folded().snapshot();
     // The provenance funnel: a minted stream identity never becomes the
     // durable `Reasoning::id`, so the replayed history carries no id at
     // all — there is nothing for a serializer gate to filter, and no
@@ -2266,17 +2265,16 @@ fn file_id_document_serializes_as_input_item_content() {
 
 #[tokio::test]
 async fn responses_completion_http_non_success_preserves_status_and_body() {
-    use crate::completion::CompletionModel;
-    use crate::driver::Bound;
+    use crate::driver::Model;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
     let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-    let model = Bound::new(openai_wire("gpt-4o-mini"), http_client);
+    let model = crate::driver::Model::new(openai_wire("gpt-4o-mini"), http_client);
     let request = model.completion_request("hello").build();
 
     let error = model
-        .completion(request)
+        .call(request, None)
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -2709,8 +2707,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
 /// double that carries response headers.
 mod raw_capture {
     use super::*;
-    use crate::completion::CompletionModel as _;
-    use crate::driver::Bound;
+    use crate::driver::Model;
     use crate::test_utils::RecordingHttpClient;
 
     const REQUEST_ID: &str = "req_unit_responses_0001";
@@ -2759,13 +2756,13 @@ mod raw_capture {
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let mut headers = http::HeaderMap::new();
         headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let model = Bound::new(
+        let model = crate::driver::Model::new(
             openai_wire("gpt-4o-mini"),
             RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers),
         );
 
         let response = model
-            .completion(model.completion_request("hello").build())
+            .call(model.completion_request("hello").build(), None)
             .await
             .expect("completion");
 
@@ -2801,9 +2798,7 @@ mod raw_capture {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
-        adapter_requests, assert_adapter_pairs,
-    };
+    use crate::providers::internal::tool_call_ids::tests::{adapter_requests, assert_adapter_pairs};
     for request in adapter_requests() {
         let wire = CompletionRequest::try_from(("test".to_owned(), request.clone())).unwrap();
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());

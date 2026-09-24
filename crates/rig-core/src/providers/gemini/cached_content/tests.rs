@@ -196,7 +196,7 @@ fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpRespons
 fn caches(
     pages: Vec<MockHttpResponse>,
 ) -> (
-    crate::driver::Bound<CachedContents, SequencedHttpClient>,
+    crate::driver::Model<CachedContents, SequencedHttpClient>,
     SequencedHttpClient,
 ) {
     let http_client = SequencedHttpClient::new(pages);
@@ -228,8 +228,8 @@ async fn pagination_stops_on_an_empty_cursor() {
         cached_page(&["b"], None),
     ]);
 
-    let listed = caches
-        .list_with_page_size(1)
+    let listed = crate::driver::Model::new(caches.wire.clone().with_page_size(1), caches.transport.clone())
+        .list()
         .await
         .expect("listing should terminate");
 
@@ -249,8 +249,8 @@ async fn pagination_percent_encodes_the_cursor() {
         cached_page(&["b"], None),
     ]);
 
-    caches
-        .list_with_page_size(1)
+    crate::driver::Model::new(caches.wire.clone().with_page_size(1), caches.transport.clone())
+        .list()
         .await
         .expect("listing should succeed");
 
@@ -268,7 +268,7 @@ async fn pagination_percent_encodes_the_cursor() {
 // ── the resource API on a bound provider ────────────────────────────────
 //
 // The cache lifecycle moved off the client layer onto
-// `Bound<Gemini, H>::cached_contents()`. These two cells are the in-tree
+// `crate::driver::Model<Gemini, H>::cached_contents()`. These two cells are the in-tree
 // proof that it moved *without moving the bytes*: they pin the paths the
 // recorded traffic and the axum-stub harness cells
 // (`crates/rig-cassette/tests/providers/gemini/support.rs`, which asserts the literal
@@ -276,9 +276,8 @@ async fn pagination_percent_encodes_the_cursor() {
 
 fn bound_caches(
     http: SequencedHttpClient,
-) -> crate::driver::Bound<CachedContents, SequencedHttpClient> {
-    crate::driver::Bound::new(crate::providers::gemini::Gemini::new("test-key"), http)
-        .cached_contents()
+) -> crate::driver::Model<CachedContents, SequencedHttpClient> {
+    crate::driver::Model::new(crate::providers::gemini::Gemini::new("test-key").cached_contents(), http)
 }
 
 #[tokio::test]
@@ -331,8 +330,8 @@ async fn the_bound_cache_follows_the_listing_cursor() {
     ]);
     let caches = bound_caches(http.clone());
 
-    let all = caches
-        .list_with_page_size(1)
+    let all = crate::driver::Model::new(caches.wire.clone().with_page_size(1), caches.transport.clone())
+        .list()
         .await
         .expect("both pages decode");
     assert_eq!(
@@ -425,12 +424,7 @@ async fn a_deletes_empty_object_is_the_acknowledgement() {
     let wire = crate::providers::gemini::Gemini::new("test-key").cached_contents();
     let http = SequencedHttpClient::new([MockHttpResponse::success("{}")]);
 
-    let reply = crate::driver::call(
-        &wire,
-        &http,
-        CachedContentRequest::Delete("leaky".to_owned()),
-        None,
-    )
+    let reply = crate::driver::Model::new(wire.clone(), http.clone()).call(CachedContentRequest::Delete("leaky".to_owned()), None)
     .await
     .expect("the empty object acknowledges the delete");
 

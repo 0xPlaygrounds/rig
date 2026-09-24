@@ -116,14 +116,9 @@ fn unknown_finish_reason_survives_verbatim() {
 /// Fold one `/v2/chat` reply body through the bound chat wire, the way a
 /// caller's `completion()` does.
 async fn unary(body: &'static str) -> completion::CompletionResponse {
-    use crate::completion::CompletionModel as _;
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        crate::test_utils::RecordingHttpClient::new(body),
-    )
-    .completion(crate::providers::cohere::COMMAND_A_03_2025);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_A_03_2025), crate::test_utils::RecordingHttpClient::new(body));
     model
-        .completion(model.completion_request("hello").build())
+        .call(model.completion_request("hello").build(), None)
         .await
         .expect("the reply decodes")
 }
@@ -343,22 +338,17 @@ fn unsupported_tool_choices_are_rejected_before_the_request_is_sent() {
 /// must stop them before the HTTP boundary.
 #[tokio::test]
 async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_sent() {
-    use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::new("{}");
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client.clone(),
-    )
-    .completion(crate::providers::cohere::COMMAND_A_03_2025);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_A_03_2025), http_client.clone());
     let request = model
         .completion_request("hello")
         .tool_choice(ToolChoice::Required)
         .build();
 
     let error = model
-        .completion(request)
+        .call(request, None)
         .await
         .expect_err("REQUIRED without tools should fail locally");
 
@@ -444,21 +434,16 @@ fn tool_choice_is_omitted_when_unset() {
 
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client,
-    )
-    .completion(crate::providers::cohere::COMMAND_A_03_2025);
+    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_A_03_2025), http_client);
     let request = model.completion_request("hello").build();
 
     let error = model
-        .completion(request)
+        .call(request, None)
         .await
         .expect_err("should fail with non-success status");
 
@@ -473,9 +458,7 @@ async fn completion_non_success_preserves_status_and_body() {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
-        adapter_requests, assert_adapter_pairs,
-    };
+    use crate::providers::internal::tool_call_ids::tests::{adapter_requests, assert_adapter_pairs};
     for request in adapter_requests() {
         let wire =
             CohereCompletionRequest::try_from(("command-a-03-2025", request.clone())).unwrap();

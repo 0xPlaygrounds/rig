@@ -3,7 +3,7 @@
 //! The streaming sibling of `rig-agent`'s `model_conformance`: each scenario
 //! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
 //! streaming path — bytes → decode → normalize → aggregated
-//! [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse)
+//! [`StreamingCompletionResponse`](crate::streaming::CompletionStream)
 //! — and asserts the [`StreamFinal`] contract
 //! table documented on that type. Scenarios state the contract; a per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
@@ -27,13 +27,7 @@ use futures::future::BoxFuture;
 
 use crate::error::ProviderError;
 use crate::streaming::BlockId;
-use crate::{
-    completion::FinishReason,
-    error::ErrorReport,
-    http_client,
-    message::AssistantContent,
-    streaming::{Delta, StreamEvent, StreamFinal},
-};
+use crate::{completion::FinishReason, error::ErrorReport, http_client, message::AssistantContent, streaming::{Delta, StreamEvent, StreamFinal}};
 
 /// Typed failure from a wire-conformance scenario.
 #[derive(Debug, thiserror::Error)]

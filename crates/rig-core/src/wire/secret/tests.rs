@@ -64,15 +64,15 @@ fn a_reloaded_wire_sends_no_credential_sentinel() {
         "sk-bearer-key",
     );
     sends_no_sentinel(
-        &Anthropic::new("sk-header-key").messages("claude-haiku-4-5"),
+        &Anthropic::new("sk-header-key").completion("claude-haiku-4-5"),
         "sk-header-key",
     );
     sends_no_sentinel(
-        &Gemini::new("AIzaSyQUERY-KEY").generate_content("gemini-2.5-flash"),
+        &Gemini::new("AIzaSyQUERY-KEY").completion("gemini-2.5-flash"),
         "AIzaSyQUERY-KEY",
     );
     sends_no_sentinel(
-        &Cohere::new("cohere-bearer-key").chat("command-a-03-2025"),
+        &Cohere::new("cohere-bearer-key").completion("command-a-03-2025"),
         "cohere-bearer-key",
     );
 
@@ -98,7 +98,7 @@ fn probe_request() -> CompletionRequest {
 }
 
 /// Every URI and header one encode produced, as one searchable string.
-pub(crate) fn request_envelope<W: Wire<Op = Completion>>(wire: &W) -> String {
+pub(crate) fn request_envelope<W: Wire<Op = Completion, Payload = crate::wire::Encoded>>(wire: &W) -> String {
     let encoded = wire
         .encode(probe_request(), Mode::Unary)
         .expect("the request encodes");
@@ -152,7 +152,9 @@ pub(crate) fn a_config_reloads_without_its_credential<C>(
 /// serialized form sends the sentinel nowhere.
 fn sends_no_sentinel<W>(wire: &W, key: &str)
 where
-    W: Wire<Op = Completion> + serde::Serialize + serde::de::DeserializeOwned,
+    W: Wire<Op = Completion, Payload = crate::wire::Encoded>
+        + serde::Serialize
+        + serde::de::DeserializeOwned,
 {
     let sent = request_envelope(wire);
     assert!(
@@ -203,7 +205,7 @@ fn copilot_auth_context_debug_redacts_retained_credential() {
 fn gemini_encoded_debug_redacts_query_without_removing_authentication() -> anyhow::Result<()> {
     let key = "synthetic-gemini-query-key";
     let encoded = Gemini::new(key)
-        .generate_content("gemini-2.5-flash")
+        .completion("gemini-2.5-flash")
         .encode(probe_request(), Mode::Unary)?;
     anyhow::ensure!(
         encoded.requests[0].uri().query() == Some("key=synthetic-gemini-query-key"),

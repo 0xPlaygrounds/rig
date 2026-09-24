@@ -1,9 +1,5 @@
 use super::*;
-use crate::{
-    error::ErrorKind,
-    message::Message,
-    streaming::{Delta, StreamEvent, StreamFinal},
-};
+use crate::{error::ErrorKind, message::Message, streaming::{Delta, StreamEvent, StreamFinal}};
 use futures::StreamExt;
 
 fn request(prompt: &str) -> CompletionRequest {
@@ -23,14 +19,14 @@ fn request(prompt: &str) -> CompletionRequest {
 
 #[tokio::test]
 async fn completion_consumes_scripted_turns_and_records_requests() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::text("first").with_message_id("msg_1"),
         MockTurn::tool_call("tool_1", "calculator", serde_json::json!({"x": 1}))
             .with_call_id("call_1"),
     ]);
 
     let first = model
-        .completion(request("hello"))
+        .call(request("hello"), None)
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(first.message_id.as_deref(), Some("msg_1"));
@@ -40,7 +36,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     ));
 
     let second = model
-        .completion(request("use a tool"))
+        .call(request("use a tool"), None)
         .await
         .expect("second scripted turn should succeed");
     assert!(matches!(
@@ -68,19 +64,19 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
     let expected_unscripted = unscripted_turn
         .raw()
         .expect("a scripted turn has a document");
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::text("first").with_raw(payload.clone()),
         unscripted_turn,
     ]);
 
     let scripted = model
-        .completion(request("hello"))
+        .call(request("hello"), None)
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(scripted.raw, payload);
 
     let unscripted = model
-        .completion(request("hello"))
+        .call(request("hello"), None)
         .await
         .expect("second scripted turn should succeed");
     assert_eq!(unscripted.raw, expected_unscripted);
@@ -110,11 +106,10 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
     ]]);
 
     let mut stream = model
-        .stream(request("hello"))
-        .await
+        .stream(request("hello"), None)
         .expect("stream should open");
     while stream.next().await.is_some() {}
-    let terminal = stream.response.expect("terminal record");
+    let terminal = stream.folded().terminal().cloned().expect("terminal record");
     let raw = &terminal.raw;
     let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
     assert_eq!(typed.usage.total_tokens, Some(3));
@@ -136,7 +131,7 @@ async fn missing_completion_turn_returns_provider_error() {
     let model = MockCompletionModel::default();
 
     let err = model
-        .completion(request("hello"))
+        .call(request("hello"), None)
         .await
         .expect_err("missing turn should error");
 
@@ -161,8 +156,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
     ]]);
 
     let mut stream = model
-        .stream(request("stream"))
-        .await
+        .stream(request("stream"), None)
         .expect("stream should be created");
 
     let mut text = String::new();
@@ -216,7 +210,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
     assert!(saw_arguments_delta);
     assert!(saw_tool_call);
     assert!(saw_final);
-    assert_eq!(stream.message_id.as_deref(), Some("msg_stream"));
+    assert_eq!(stream.folded().message_id().map(str::to_owned).as_deref(), Some("msg_stream"));
     assert_eq!(model.request_count(), 1);
 }
 
@@ -224,8 +218,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
 async fn stream_error_event_is_returned() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::error("boom")]]);
     let mut stream = model
-        .stream(request("stream"))
-        .await
+        .stream(request("stream"), None)
         .expect("stream should be created");
 
     let err = stream

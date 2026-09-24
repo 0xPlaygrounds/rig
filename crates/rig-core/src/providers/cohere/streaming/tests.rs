@@ -5,12 +5,8 @@ use serde_json::json;
 /// drives.
 fn cohere_model<H: Clone>(
     http_client: H,
-) -> crate::driver::Bound<crate::providers::cohere::Chat, H> {
-    crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
-        http_client,
-    )
-    .completion(crate::providers::cohere::COMMAND_R_08_2024)
+) -> crate::driver::Model<crate::providers::cohere::Chat, H> {
+    crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_R_08_2024), http_client)
 }
 
 fn classify(data: &str) -> wire::WireEvent<StreamingEvent> {
@@ -54,7 +50,6 @@ fn classify_known_event_with_defective_payload_is_corrupt() {
 
 #[tokio::test]
 async fn stream_terminal_record_is_normalized() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -73,8 +68,7 @@ async fn stream_terminal_record_is_normalized() {
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut terminal = None;
@@ -101,7 +95,6 @@ async fn stream_terminal_record_is_normalized() {
 
 #[tokio::test]
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -120,8 +113,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -142,12 +134,11 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "EOF without message-end must not synthesize a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 #[tokio::test]
 async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -170,8 +161,7 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -200,7 +190,6 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
 
 #[tokio::test]
 async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -221,8 +210,7 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut saw_error = false;
@@ -253,7 +241,6 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
 
 #[tokio::test]
 async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -275,8 +262,7 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -299,7 +285,6 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
 
 #[tokio::test]
 async fn message_end_without_delta_still_emits_the_terminal_record() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -320,8 +305,7 @@ async fn message_end_without_delta_still_emits_the_terminal_record() {
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -346,7 +330,6 @@ async fn message_end_without_delta_still_emits_the_terminal_record() {
 
 #[tokio::test]
 async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
-    use crate::completion::CompletionModel as _;
     use crate::message::AssistantContent;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -372,8 +355,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut reasoning_deltas = Vec::new();
@@ -388,7 +370,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     }
     assert_eq!(reasoning_deltas, ["step one, ", "step two"]);
 
-    let parts = stream.snapshot();
+    let parts = stream.folded().snapshot();
     assert_eq!(parts.len(), 2, "one reasoning part, one text part");
     assert!(matches!(
         parts.first(),
@@ -407,7 +389,6 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
 
 #[tokio::test]
 async fn errored_stream_does_not_synthesize_a_terminal_record() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::StreamEvent;
     use crate::test_utils::HttpErrorStreamingClient;
     use futures::StreamExt;
@@ -418,8 +399,7 @@ async fn errored_stream_does_not_synthesize_a_terminal_record() {
     ));
     let request = model.completion_request("hello").build();
 
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
 
     let mut saw_error = false;
@@ -437,7 +417,7 @@ async fn errored_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "a failed stream must not be reported as a successful, zero-usage completion"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 #[test]
@@ -663,7 +643,6 @@ fn test_streaming_event_order() {
 /// assertion.
 #[tokio::test]
 async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
-    use crate::completion::CompletionModel as _;
     use crate::streaming::{BlockId, BlockKind, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -689,8 +668,7 @@ async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
     );
     let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("add twice").build();
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
-        .await
+    let mut stream = model.stream(request, None)
         .expect("stream should open");
     let mut starts = Vec::new();
     let mut ends = Vec::new();

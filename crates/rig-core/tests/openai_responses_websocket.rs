@@ -15,11 +15,8 @@
 #[path = "common/websocket_script.rs"]
 mod websocket_script;
 
-use rig_core::completion::{AssistantContent, CompletionModel as _, FinishReason};
-use rig_core::providers::openai::responses_api::{
-    CompletionResponse, IncompleteDetailsReason, Output, ResponseObject, ResponseStatus,
-    ResponsesUsage,
-};
+use rig_core::completion::{AssistantContent, FinishReason};
+use rig_core::providers::openai::responses_api::{CompletionResponse, IncompleteDetailsReason, Output, ResponseObject, ResponseStatus, ResponsesUsage};
 use serde_json::json;
 use std::time::Duration;
 use websocket_script::{Script, session, session_with_timeout, test_client};

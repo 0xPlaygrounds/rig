@@ -1,11 +1,6 @@
 use super::*;
-use crate::completion::CompletionModel as _;
-use crate::driver::Bound;
-use crate::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use crate::message::AssistantContent;
-use crate::test_utils::{
-    MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient,
-};
+use crate::test_utils::{MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
 
@@ -93,23 +88,22 @@ fn text_of(choice: &[AssistantContent]) -> String {
 
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
-    let buffered = Bound::new(
-        cohere().chat("command-a-03-2025"),
+    let buffered = crate::driver::Model::new(
+        cohere().completion("command-a-03-2025"),
         RecordingHttpClient::new(UNARY_BODY),
     )
-    .completion(recorded_request())
+    .call(recorded_request(), None)
     .await
     .expect("the recorded reply decodes");
 
-    let streaming = Bound::new(
-        cohere().chat("command-a-03-2025"),
+    let streaming = crate::driver::Model::new(
+        cohere().completion("command-a-03-2025"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(STREAM_BODY.as_bytes()),
         },
     );
     let mut response = streaming
-        .stream(recorded_request())
-        .await
+        .stream(recorded_request(), None)
         .expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
@@ -139,7 +133,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
 /// `streaming/streaming_smoke.yaml` with).
 #[test]
 fn the_mode_is_the_only_difference_between_the_two_requests() {
-    let wire = cohere().chat("command-a-03-2025");
+    let wire = cohere().completion("command-a-03-2025");
     let unary = wire
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
@@ -164,7 +158,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
 fn a_serialized_config_carries_no_key_material() {
     a_config_reloads_without_its_credential(&cohere(), "cohere-test-key", |cohere| &cohere.api_key);
 
-    let wire = cohere().chat("command-a-03-2025");
+    let wire = cohere().completion("command-a-03-2025");
     let serialized = serde_json::to_string(&wire).expect("the wire serializes");
     assert!(
         !serialized.contains("cohere-test-key"),
@@ -180,11 +174,11 @@ const EMBED_BODY: &str = r#"{"id":"b2e4b0f7-0000-0000-0000-000000000000","texts"
 
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
-    let response = Bound::new(
-        cohere().embeddings("embed-v4.0", None),
+    let response = crate::driver::Model::new(
+        cohere().embedding("embed-v4.0", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
-    .embed_texts_response(vec!["first".to_owned(), "second".to_owned()])
+    .call(vec!["first".to_owned(), "second".to_owned()], None)
     .await
     .expect("the reply decodes");
 
@@ -209,11 +203,11 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 
 #[test]
 fn an_embedding_wire_reports_the_models_published_width() {
-    let wire = cohere().embeddings("embed-english-light-v3.0", None);
+    let wire = cohere().embedding("embed-english-light-v3.0", None);
     assert_eq!(wire.capabilities(), EmbeddingCapabilities::new(96, 384));
     assert_eq!(
         cohere()
-            .embeddings("embed-english-light-v3.0", Some(64))
+            .embedding("embed-english-light-v3.0", Some(64))
             .ndims,
         64,
         "a width the caller named wins over the model's table"
@@ -232,7 +226,7 @@ fn png(tail: &[u8]) -> Vec<u8> {
 #[test]
 fn an_image_batch_encodes_one_request_per_image_in_input_order() {
     let encoded = cohere()
-        .image_embeddings()
+        .image_embedding()
         .encode(vec![png(b"first"), png(b"second")], Mode::Unary)
         .expect("both images are PNGs");
 
@@ -261,7 +255,7 @@ fn an_image_batch_encodes_one_request_per_image_in_input_order() {
 #[test]
 fn an_image_the_provider_will_not_accept_never_reaches_the_wire() {
     let rejected = cohere()
-        .image_embeddings()
+        .image_embedding()
         .encode(vec![b"not an image".to_vec()], Mode::Unary);
     let Err(error) = rejected else {
         panic!("an unsniffable format must be rejected before the request is built");
@@ -283,8 +277,8 @@ fn image_reply(first: f64) -> MockHttpResponse {
 #[tokio::test]
 async fn an_image_batch_folds_its_replies_in_input_order() {
     let http = SequencedHttpClient::new([image_reply(0.5), image_reply(0.75)]);
-    let response = Bound::new(cohere().image_embeddings(), http.clone())
-        .embed_images_response(vec![png(b"first"), png(b"second")])
+    let response = crate::driver::Model::new(cohere().image_embedding(), http.clone())
+        .call(vec![png(b"first"), png(b"second")], None)
         .await
         .expect("both replies decode");
 
@@ -332,8 +326,8 @@ async fn an_image_batch_folds_its_replies_in_input_order() {
 #[tokio::test]
 async fn a_single_image_embed_captures_the_bare_document() {
     let http = SequencedHttpClient::new([image_reply(0.5)]);
-    let response = Bound::new(cohere().image_embeddings(), http.clone())
-        .embed_images_response(vec![png(b"only")])
+    let response = crate::driver::Model::new(cohere().image_embedding(), http.clone())
+        .call(vec![png(b"only")], None)
         .await
         .expect("the reply decodes");
 

@@ -518,7 +518,7 @@ async fn top_n_honors_filter_and_threshold() {
         ("b", item("veg", "carrot"), embedding("carrot")),
         ("c", item("fruit", "apple"), embedding("apple")),
     ])
-    .index(MockEmbeddingModel);
+    .index(MockEmbeddingModel::default());
 
     let ids = |req| async {
         let mut out: Vec<String> = index
@@ -599,7 +599,7 @@ async fn top_n_excludes_non_finite_similarity() {
             embedding("degenerate", vec![0.0; 10]),
         ),
     ])
-    .index(MockEmbeddingModel);
+    .index(MockEmbeddingModel::default());
 
     let ids: Vec<String> = index
         .top_n_ids(
@@ -639,7 +639,7 @@ async fn top_n_ranks_document_by_best_finite_embedding() {
             },
         ],
     )])
-    .index(MockEmbeddingModel);
+    .index(MockEmbeddingModel::default());
 
     let results = index
         .top_n_ids(
@@ -682,7 +682,7 @@ async fn top_n_returns_documents_best_first_then_by_id() {
             ("z", "z".to_string(), embedding("z", &far)),
             ("b", "b".to_string(), embedding("b", &query)),
         ])
-        .index(MockEmbeddingModel);
+        .index(MockEmbeddingModel::default());
         let request = VectorSearchRequest::builder()
             .query("q")
             .samples(10)

@@ -587,7 +587,7 @@ fn the_configured_version_and_betas_reach_the_request_headers() {
         panic!("a Messages configuration");
     };
     let mut encoded = config
-        .messages(reference.model())
+        .completion(reference.model())
         .encode(
             CompletionRequestBuilder::unbound("hello").build(),
             Mode::Unary,

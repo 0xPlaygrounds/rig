@@ -21,16 +21,6 @@ pub struct MockEmbeddings;
 /// A deterministic embedding model that returns a fixed vector for each input document.
 pub type MockEmbeddingModel = Model<MockEmbeddings, MockEmbeddings>;
 
-impl MockEmbeddingModel {
-    /// The mock embedding model.
-    pub const fn mock() -> Self {
-        Model {
-            wire: MockEmbeddings,
-            transport: MockEmbeddings,
-        }
-    }
-}
-
 impl Wire for MockEmbeddings {
     type Op = crate::operation::Embedding;
     type Payload = Vec<String>;

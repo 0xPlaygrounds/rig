@@ -5,7 +5,6 @@ use serde_json::json;
 
 use super::*;
 use crate::completion::{CompletionRequest, CompletionRequestBuilder, ToolDefinition};
-use crate::driver::{HasCompletion, HasEmbedding, HasModelListing, HasRerank, HasVerify};
 use crate::message::ToolChoice;
 use crate::providers::anthropic::Anthropic;
 use crate::providers::cohere::Cohere;
@@ -207,12 +206,12 @@ fn provider_encode_failures_classify_as_request_building() {
         ),
         (
             "anthropic verify",
-            failure(HasVerify::verify(&anthropic).encode((), Mode::Unary)),
+            failure(anthropic.verify().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (
             "anthropic models",
-            failure(anthropic.model_listing().encode((), Mode::Unary)),
+            failure(anthropic.models().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (

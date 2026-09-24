@@ -182,8 +182,7 @@ fn instrument_modality_records_usage_and_identity() {
 /// instrumentation.
 #[test]
 fn embedding_seam_and_vector_search_record_on_the_span() {
-    use crate::driver::Bind as _;
-    use crate::embeddings::{Embedding, EmbeddingModel as _};
+    use crate::embeddings::Embedding;
     use crate::vector_store::VectorStoreIndex as _;
     use crate::vector_store::in_memory_store::InMemoryVectorStore;
     use crate::vector_store::request::VectorSearchRequest;
@@ -201,12 +200,10 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
     });
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     tracing::subscriber::with_default(subscriber, || {
-        let model = crate::providers::openai::wire::OpenAI::with_key(
+        let model = crate::driver::Model::new(crate::providers::openai::wire::OpenAI::with_key(
             &crate::providers::openai::wire::OPENAI,
             "test-key",
-        )
-        .bind(crate::test_utils::RecordingHttpClient::new(BODY))
-        .embedding("text-embedding-3-small", Some(2));
+        ).embedding("text-embedding-3-small", Some(2)), crate::test_utils::RecordingHttpClient::new(BODY));
 
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -214,7 +211,7 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
             .expect("runtime");
         runtime.block_on(async {
             let response = model
-                .embed_texts_response(["hello".to_owned()])
+                .call(vec!["hello".to_owned()], None)
                 .await
                 .expect("embedding succeeds");
             assert_eq!(response.usage.input_tokens, Some(4));

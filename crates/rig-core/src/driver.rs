@@ -38,7 +38,7 @@ mod http_transport;
 ///
 /// The pair holds no invariant, so both halves are public. To share one
 /// transport across models, clone it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Model<W, T> {
     /// What to send and how to read the reply.
     pub wire: W,
@@ -249,7 +249,7 @@ where
         observation: Option<AdapterContext>,
         span: tracing::Span,
     ) -> Result<
-        impl futures::Stream<Item = Result<Step<W>, ProviderError>> + WasmCompatSend + 'static,
+        impl futures::Stream<Item = Result<Step<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>,
         ProviderError,
     > {
         let wire = self.wire.clone();
@@ -714,4 +714,4 @@ fn record_request_id(span: &tracing::Span, request_id: Option<&str>) {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

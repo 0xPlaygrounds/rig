@@ -26,7 +26,7 @@ fn streaming_request() -> crate::completion::CompletionRequest {
 fn streamed(
     model: &str,
     frames: &[&str],
-) -> crate::driver::Bound<
+) -> crate::driver::Model<
     crate::providers::gemini::completion::GenerateContent,
     crate::test_utils::MockStreamingClient,
 > {
@@ -36,8 +36,8 @@ fn streamed(
             .map(|frame| format!("data: {frame}\n\n"))
             .collect::<String>(),
     );
-    crate::driver::Bound::new(
-        crate::providers::gemini::Gemini::new("test-key").generate_content(model),
+    crate::driver::Model::new(
+        crate::providers::gemini::Gemini::new("test-key").completion(model),
         crate::test_utils::MockStreamingClient { sse_bytes },
     )
 }
@@ -159,8 +159,7 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
     ];
 
     let model = streamed("gemini-2.5-flash", &frames);
-    let mut stream = crate::completion::CompletionModel::stream(&model, streaming_request())
-        .await
+    let mut stream = model.stream(streaming_request(), None)
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -189,7 +188,7 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
         items_after_error, 0,
         "the in-band failure must end the stream: no later text, Unknown passthrough, or terminal"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 #[test]
@@ -626,7 +625,7 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod terminal_emission {
-    use crate::driver::Bound;
+    use crate::driver::Model;
     use crate::providers::gemini::Gemini;
     use crate::providers::gemini::completion::{GEMINI_2_5_PRO_PREVIEW_06_05, GenerateContent};
     use crate::streaming::{Delta, StreamEvent};
@@ -635,7 +634,7 @@ mod terminal_emission {
 
     /// The wire under test, unbound.
     fn wire() -> GenerateContent {
-        Gemini::new("test-key").generate_content(GEMINI_2_5_PRO_PREVIEW_06_05)
+        Gemini::new("test-key").completion(GEMINI_2_5_PRO_PREVIEW_06_05)
     }
 
     const CONTENT_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"}}],"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;
@@ -656,12 +655,11 @@ mod terminal_emission {
         Vec<String>,
         bool,
         bool,
-        crate::streaming::StreamingCompletionResponse,
+        crate::streaming::CompletionStream,
     ) {
-        let model = Bound::new(wire(), MockStreamingClient { sse_bytes });
+        let model = crate::driver::Model::new(wire(), MockStreamingClient { sse_bytes });
         let mut stream =
-            crate::completion::CompletionModel::stream(&model, super::streaming_request())
-                .await
+            model.stream(super::streaming_request(), None)
                 .expect("stream should open");
 
         let mut texts = Vec::new();
@@ -688,15 +686,14 @@ mod terminal_emission {
         // provider state even when no thought text accumulated.
         const SIGNATURE_ONLY_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"","thought":true,"thoughtSignature":"sig-only"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1,"totalTokenCount":4}}"#;
 
-        let model = Bound::new(
+        let model = crate::driver::Model::new(
             wire(),
             MockStreamingClient {
                 sse_bytes: sse(&[SIGNATURE_ONLY_CHUNK]),
             },
         );
         let mut stream =
-            crate::completion::CompletionModel::stream(&model, super::streaming_request())
-                .await
+            model.stream(super::streaming_request(), None)
                 .expect("stream should open");
 
         let mut signed = None;
@@ -726,7 +723,7 @@ mod terminal_emission {
             !saw_terminal,
             "EOF without a finishReason chunk must not synthesize a terminal record"
         );
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 
     #[tokio::test]
@@ -735,7 +732,7 @@ mod terminal_emission {
 
         // A transport failure after some content must reach the consumer
         // and must not be papered over with a synthesized terminal record.
-        let model = Bound::new(
+        let model = crate::driver::Model::new(
             wire(),
             SequencedStreamingHttpClient::new(vec![
                 Ok(sse(&[CONTENT_CHUNK])),
@@ -747,8 +744,7 @@ mod terminal_emission {
             ]),
         );
         let mut stream =
-            crate::completion::CompletionModel::stream(&model, super::streaming_request())
-                .await
+            model.stream(super::streaming_request(), None)
                 .expect("stream should open");
 
         let mut texts = Vec::new();
@@ -772,7 +768,7 @@ mod terminal_emission {
             !saw_terminal,
             "a failed stream must not synthesize a terminal record"
         );
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 
     #[tokio::test]
@@ -786,7 +782,7 @@ mod terminal_emission {
             !saw_terminal,
             "a parse error followed by EOF must not read as a completed turn"
         );
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 
     #[tokio::test]
@@ -801,7 +797,7 @@ mod terminal_emission {
         assert!(!saw_error);
         assert!(saw_terminal);
         assert_eq!(
-            stream.response.unwrap().response_id.as_deref(),
+            stream.folded().terminal().cloned().unwrap().response_id.as_deref(),
             Some("last-response")
         );
     }
@@ -817,7 +813,7 @@ mod terminal_emission {
             saw_terminal,
             "a genuine finishReason chunk after a parse error still completes the stream"
         );
-        let terminal = stream.response.expect("terminal record");
+        let terminal = stream.folded().terminal().cloned().expect("terminal record");
         assert_eq!(
             terminal.finish_reason,
             Some(crate::completion::FinishReason::Stop)
@@ -852,9 +848,9 @@ mod terminal_emission {
             let body = format!(
                 r#"{{"candidates":[{{"finishReason":"{reason}","index":0}}],"usageMetadata":{{"promptTokenCount":9,"candidatesTokenCount":32,"totalTokenCount":41}}}}"#
             );
-            let model = Bound::new(wire(), RecordingHttpClient::new(body));
+            let model = crate::driver::Model::new(wire(), RecordingHttpClient::new(body));
             let response =
-                crate::completion::CompletionModel::completion(&model, super::streaming_request())
+                model.call(super::streaming_request(), None)
                     .await
                     .expect("a terminal that cut the turn short legalizes an empty choice");
             assert!(response.choice.is_empty());
@@ -862,14 +858,14 @@ mod terminal_emission {
             assert_eq!(response.usage.output_tokens, Some(32));
         }
 
-        let completed = Bound::new(
+        let completed = crate::driver::Model::new(
             wire(),
             RecordingHttpClient::new(
                 r#"{"candidates":[{"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":9}}"#,
             ),
         );
         let error =
-            crate::completion::CompletionModel::completion(&completed, super::streaming_request())
+            completed.call(super::streaming_request(), None)
                 .await
                 .expect_err("a turn that ran to completion and delivered nothing is a defect");
         assert!(
@@ -879,9 +875,9 @@ mod terminal_emission {
             "{error}"
         );
 
-        let silent = Bound::new(wire(), RecordingHttpClient::new(SILENT));
+        let silent = crate::driver::Model::new(wire(), RecordingHttpClient::new(SILENT));
         let error =
-            crate::completion::CompletionModel::completion(&silent, super::streaming_request())
+            silent.call(super::streaming_request(), None)
                 .await
                 .expect_err("a whole reply that named no terminal and delivered nothing");
         assert!(
@@ -897,7 +893,7 @@ mod terminal_emission {
         assert!(texts.is_empty());
         assert!(!saw_error, "a stream that delivered nothing is truncation");
         assert!(!saw_terminal);
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 }
 
@@ -913,14 +909,13 @@ async fn collect_stream(
     use futures::StreamExt;
 
     let model = streamed("gemini-2.5-flash", frames);
-    let mut stream = crate::completion::CompletionModel::stream(&model, streaming_request())
-        .await
+    let mut stream = model.stream(streaming_request(), None)
         .expect("stream should open");
     let mut items = Vec::new();
     while let Some(item) = stream.next().await {
         items.push(item);
     }
-    let finished = stream.response.is_some();
+    let finished = stream.folded().terminal().is_some();
     (items, finished)
 }
 

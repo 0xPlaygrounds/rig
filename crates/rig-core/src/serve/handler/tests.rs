@@ -461,17 +461,10 @@ impl Observe for ProviderObserver {
 
 #[tokio::test]
 async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins() {
-    use crate::{
-        completion::CompletionModel as _,
-        driver::Bind as _,
-        observe::{Action, AdapterContext, AdapterEnding, AdapterEvent, ObservationLog, Subject},
-        test_utils::RecordingHttpClient,
-    };
+    use crate::{observe::{Action, AdapterContext, AdapterEnding, AdapterEvent, ObservationLog, Subject}, test_utils::RecordingHttpClient};
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
-    let model = crate::providers::gemini::Gemini::new("key")
-        .bind(RecordingHttpClient::new(body))
-        .completion("gemini-test");
-    let handler = crate::serve::adapters::CompletionAdapter::new("gemini-test", model.clone());
+    let model = crate::driver::Model::new(crate::providers::gemini::Gemini::new("key").completion("gemini-test"), RecordingHttpClient::new(body));
+    let handler = crate::serve::adapters::ModelAdapter::new("gemini-test", model.clone());
     let bus_log = Arc::new(ObservationLog::default());
     let direct_log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(bus_log.clone(), Subject::default(), "bus-operation");
@@ -549,10 +542,7 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
 /// the observer is told exactly one outcome.
 #[test]
 fn an_observer_never_changes_what_the_consumer_receives() {
-    use crate::{
-        message::{AssistantContent, DocumentSourceKind, Image},
-        streaming::{BlockId, StreamFinal, UnknownPayload},
-    };
+    use crate::{message::{AssistantContent, DocumentSourceKind, Image}, streaming::{BlockId, StreamFinal, UnknownPayload}};
 
     type Shape = fn() -> Reply;
     fn terminal() -> Result<StreamEvent, ErrorReport> {
@@ -658,9 +648,9 @@ fn an_observer_never_changes_what_the_consumer_receives() {
 #[test]
 fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
     use crate::message::{AssistantContent, Reasoning};
-    use crate::streaming::{BlockAccumulator, StreamEvent};
+    use crate::streaming::StreamEvent;
 
-    let mut accumulator = BlockAccumulator::new();
+    let mut tap = StreamTap::new();
     for event in events_from_response(&CompletionResponse::new(
         vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
             "thinking",
@@ -670,15 +660,16 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
         "aws_bedrock",
         serde_json::Value::Null,
     )) {
-        if let Ok(event) = event
+        if let Ok(event) = &event
             && !matches!(event, StreamEvent::Final(_))
         {
-            accumulator.apply(&event).expect("a valid event");
+            assert!(tap.observe(&Ok(event.clone())).is_none(), "a valid event");
         }
     }
     let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
         .with_reasoning_issuer("anthropic");
-    let Ok(Outcome::Completion(response)) = finish_unary(&mut accumulator, None, terminal) else {
+    let Some(Ok(Outcome::Completion(response))) = tap.observe(&Ok(StreamEvent::Final(terminal)))
+    else {
         panic!("a completion outcome");
     };
     let issuers: Vec<_> = response

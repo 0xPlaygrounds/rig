@@ -24,8 +24,10 @@ use std::path::PathBuf;
 /// instead of inheriting the core driver's exemption.
 const ALLOWED_POLICY_HOMES: &[&str] = &[
     // The one driver: `WireDriver` is where the policy table lives now, and
-    // `call`/`stream` are the only consumers of it.
+    // `Model::call`/`Model::stream` are the only consumers of it. The HTTP
+    // transport is the driver's framing half.
     "rig-core/src/driver.rs",
+    "rig-core/src/driver/http_transport.rs",
     // The trait definitions and the "write a provider" page: `Decoder`'s
     // contract names the variants it is defined over, and `WireFrame` — the
     // framed-but-undecoded payload the variants are about — is defined here.
@@ -33,7 +35,7 @@ const ALLOWED_POLICY_HOMES: &[&str] = &[
     "rig-core/src/providers/internal/wire.rs",
 ];
 
-/// Whether `path` is one of the three files [`ALLOWED_POLICY_HOMES`] names:
+/// Whether `path` is one of the files [`ALLOWED_POLICY_HOMES`] names:
 /// the exemption BOTH guards share.
 fn is_named_policy_home(path: &std::path::Path) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
@@ -572,9 +574,16 @@ fn is_serde_wall_target(path: &std::path::Path, shipped: &str) -> bool {
     {
         return true;
     }
+    // A wire declaring the frame type its transport delivers names the type
+    // without handling a frame.
+    let machinery: String = shipped
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("type Frame ="))
+        .collect::<Vec<_>>()
+        .join("\n");
     WIRE_MACHINERY_MARKERS
         .iter()
-        .any(|marker| shipped.contains(marker))
+        .any(|marker| machinery.contains(marker))
 }
 
 /// One allowlist entry: `path suffix | line snippet | justification`.

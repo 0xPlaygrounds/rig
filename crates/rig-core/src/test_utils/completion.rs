@@ -1,9 +1,6 @@
 //! Completion helpers for deterministic agent-loop tests.
 
-use std::{
-    collections::VecDeque,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::{collections::VecDeque, sync::{Arc, Mutex, MutexGuard}};
 
 use crate::driver::{Model, Observation, Opened, Transport};
 use crate::error::{EncodeError, ProviderError};
@@ -11,10 +8,7 @@ use crate::operation::{AdapterOutput, Completion};
 use crate::streaming::SyntheticIds;
 use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{Decoder, Mode, Wire, WireEvent};
-use crate::{
-    completion::{AssistantContent, CompletionRequest, CompletionResponse, Usage},
-    message::{ToolCall, ToolFunction},
-};
+use crate::{completion::{AssistantContent, CompletionRequest, CompletionResponse, Usage}, message::{ToolCall, ToolFunction}};
 
 use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
 

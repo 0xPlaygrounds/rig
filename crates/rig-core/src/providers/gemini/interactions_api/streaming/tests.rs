@@ -25,7 +25,7 @@ fn interactions_request() -> crate::completion::CompletionRequest {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn interactions_stream(
     frames: &[&str],
-) -> crate::driver::Bound<
+) -> crate::driver::Model<
     crate::providers::gemini::interactions_api::Interactions,
     crate::test_utils::MockStreamingClient,
 > {
@@ -35,7 +35,7 @@ fn interactions_stream(
             .map(|event| format!("data: {event}\n\n"))
             .collect::<String>(),
     );
-    crate::driver::Bound::new(
+    crate::driver::Model::new(
         crate::providers::gemini::Gemini::new("test-key").interactions("gemini-2.5-pro"),
         crate::test_utils::MockStreamingClient { sse_bytes },
     )
@@ -97,8 +97,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let model = interactions_stream(&[
         r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#,
     ]);
-    let mut stream = crate::completion::CompletionModel::stream(&model, interactions_request())
-        .await
+    let mut stream = model.stream(interactions_request(), None)
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -119,7 +118,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         !saw_terminal,
         "EOF without interaction.completed must not synthesize a terminal record"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 /// Drive Interactions SSE frames through the full normalized path and
@@ -129,13 +128,12 @@ async fn drive_frames(
     frames: &[&str],
 ) -> (
     Vec<Result<crate::streaming::StreamEvent, String>>,
-    crate::streaming::StreamingCompletionResponse,
+    crate::streaming::CompletionStream,
 ) {
     use futures::StreamExt;
 
     let model = interactions_stream(frames);
-    let mut stream = crate::completion::CompletionModel::stream(&model, interactions_request())
-        .await
+    let mut stream = model.stream(interactions_request(), None)
         .expect("stream should open");
 
     let mut items = Vec::new();
@@ -349,9 +347,9 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
     assert_eq!(tool_call.id.explicit(), Some("fc_1"));
 
     // The turn completed normally: the terminal record survives too.
-    assert!(stream.response.is_some());
+    assert!(stream.folded().terminal().is_some());
     let aggregated_calls = stream
-        .snapshot()
+        .folded().snapshot()
         .iter()
         .filter(|content| matches!(content, crate::message::AssistantContent::ToolCall(_)))
         .count();
@@ -395,7 +393,7 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
         )),
         "content before the error must survive"
     );
-    assert!(stream.response.is_none());
+    assert!(stream.folded().terminal().is_none());
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -436,7 +434,7 @@ async fn thought_signature_completes_the_accumulated_reasoning_block() {
 
     // The aggregated choice keeps exactly one reasoning part carrying the
     // signature — the signed restatement superseded the deltas.
-    let choice = stream.snapshot();
+    let choice = stream.folded().snapshot();
     let aggregated: Vec<_> = choice
         .iter()
         .filter_map(|content| match content {

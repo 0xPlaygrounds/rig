@@ -1,8 +1,4 @@
-use super::super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl,
-    Message, SystemContent, apply_prompt_cache_control, build_tool_definitions,
-    resolve_top_level_cache_control,
-};
+use super::super::completion::{AnthropicCompletionRequest, AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent, apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control};
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::completion::Message as RigMessage;
@@ -60,21 +56,15 @@ fn message_delta(stop_reason: &str, usage: PartialUsage) -> StreamingEvent {
     }
 }
 
-/// Wrap hand-built decoder output as the stream
-/// [`crate::streaming::StreamingCompletionResponse`] consumes, exactly as
+/// Wrap hand-built decoder output as the stream a model opens, exactly as
 /// the driver would yield it.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn to_stream_result(
-    items: Vec<Result<StreamEvent, ProviderError>>,
-) -> crate::streaming::StreamingResult {
-    Box::pin(futures::stream::iter(items))
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-fn to_stream_result(
-    items: Vec<Result<StreamEvent, ProviderError>>,
-) -> crate::streaming::StreamingResult {
-    Box::pin(futures::stream::iter(items))
+fn opened(items: Vec<Result<StreamEvent, ProviderError>>) -> crate::streaming::CompletionStream {
+    crate::streaming::CompletionStream::opened(
+        crate::operation::CompletionFold::opened("anthropic", None),
+        Box::pin(futures::stream::iter(items.into_iter().map(|item| {
+            item.map_err(|error| crate::error::ErrorReport::from(&error))
+        }))),
+    )
 }
 
 /// The streaming request body the [`Messages`](super::super::wire::Messages)
@@ -90,7 +80,7 @@ fn built_streaming_body(
 ) -> Result<Value, ProviderError> {
     use crate::wire::{Body, Mode, Wire};
 
-    let wire = crate::providers::anthropic::wire::Anthropic::new("test-key").messages(model);
+    let wire = crate::providers::anthropic::wire::Anthropic::new("test-key").completion(model);
     let wire = if strict_tools {
         wire.with_strict_tools()
     } else {
@@ -1347,13 +1337,10 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
     );
     adapter.interpret(message_delta("end_turn", PartialUsage::default()), &mut out);
 
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
-        "anthropic",
-        to_stream_result(out.into_items()),
-    );
+    let mut stream = opened(out.into_items());
     while stream.next().await.is_some() {}
 
-    let choice_items = stream.snapshot();
+    let choice_items = stream.folded().snapshot();
     assert_eq!(choice_items.len(), 3);
     assert!(
         choice_items
@@ -1470,10 +1457,10 @@ async fn test_streaming_citation_deltas_are_preserved_on_final_text() {
     );
 
     let mut stream =
-        crate::streaming::StreamingCompletionResponse::stream("anthropic", to_stream_result(items));
+        opened(items);
     while stream.next().await.is_some() {}
 
-    let choice_items = stream.snapshot();
+    let choice_items = stream.folded().snapshot();
     let Some(crate::message::AssistantContent::Text(text)) = choice_items.first() else {
         panic!("expected accumulated text item");
     };
@@ -1688,13 +1675,10 @@ async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
         &mut out,
     );
 
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
-        "anthropic",
-        to_stream_result(out.into_items()),
-    );
+    let mut stream = opened(out.into_items());
     while stream.next().await.is_some() {}
 
-    let terminal = stream.response.expect("expected a terminal record");
+    let terminal = stream.folded().terminal().cloned().expect("expected a terminal record");
     assert_eq!(terminal.provider, "anthropic");
     assert_eq!(terminal.message_id.as_deref(), Some("msg_1"));
     assert_eq!(terminal.model.as_deref(), Some(CLAUDE_OPUS_4_8));
@@ -1721,13 +1705,10 @@ async fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_c
     );
     adapter.interpret(message_delta("end_turn", PartialUsage::default()), &mut out);
 
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
-        "anthropic",
-        to_stream_result(out.into_items()),
-    );
+    let mut stream = opened(out.into_items());
     while stream.next().await.is_some() {}
 
-    let terminal = stream.response.expect("expected a terminal record");
+    let terminal = stream.folded().terminal().cloned().expect("expected a terminal record");
     assert_eq!(
         terminal.finish_reason,
         Some(crate::completion::FinishReason::ToolCalls)
@@ -1743,10 +1724,10 @@ async fn unknown_stop_reason_survives_onto_the_terminal_record() {
     );
 
     let mut stream =
-        crate::streaming::StreamingCompletionResponse::stream("anthropic", to_stream_result(items));
+        opened(items);
     while stream.next().await.is_some() {}
 
-    let terminal = stream.response.expect("expected a terminal record");
+    let terminal = stream.folded().terminal().cloned().expect("expected a terminal record");
     assert_eq!(
         terminal.finish_reason,
         Some(crate::completion::FinishReason::Other(
@@ -1758,8 +1739,6 @@ async fn unknown_stop_reason_survives_onto_the_terminal_record() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod terminal_emission {
     use super::super::super::completion::CLAUDE_SONNET_4_6;
-    use crate::completion::CompletionModel as _;
-    use crate::driver::Bind;
     use crate::providers::anthropic::wire::Anthropic;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -1787,14 +1766,12 @@ mod terminal_emission {
         Vec<String>,
         bool,
         bool,
-        crate::streaming::StreamingCompletionResponse,
+        crate::streaming::CompletionStream,
     ) {
-        let bound = Anthropic::new("test-key")
-            .messages(CLAUDE_SONNET_4_6)
-            .bind(MockStreamingClient { sse_bytes });
+        let bound = crate::driver::Model::new(Anthropic::new("test-key")
+            .completion(CLAUDE_SONNET_4_6), MockStreamingClient { sse_bytes });
         let request = bound.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
-            .await
+        let mut stream = bound.stream(request, None)
             .expect("stream should open");
 
         let mut texts = Vec::new();
@@ -1825,7 +1802,7 @@ mod terminal_emission {
             !saw_terminal,
             "EOF without message_delta must not synthesize a terminal record"
         );
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 
     #[tokio::test]
@@ -1835,19 +1812,16 @@ mod terminal_emission {
         // A transport failure injected into the byte stream after some
         // content must be forwarded (via `from_stream_transport`) and must
         // not be papered over with a synthesized terminal record.
-        let bound = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6).bind(
-            SequencedStreamingHttpClient::new(vec![
+        let bound = crate::driver::Model::new(Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6), SequencedStreamingHttpClient::new(vec![
                 Ok(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA])),
                 Err(crate::http_client::Error::non_success_with_details(
                     http::StatusCode::BAD_GATEWAY,
                     http::HeaderMap::new(),
                     "connection reset".to_string(),
                 )),
-            ]),
-        );
+            ]),);
         let request = bound.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
-            .await
+        let mut stream = bound.stream(request, None)
             .expect("stream should open");
 
         let mut texts = Vec::new();
@@ -1871,7 +1845,7 @@ mod terminal_emission {
             !saw_terminal,
             "a failed stream must not synthesize a terminal record"
         );
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 
     #[tokio::test]
@@ -1898,7 +1872,7 @@ mod terminal_emission {
             !saw_terminal,
             "a message_delta after an in-band provider error must not read as a completed turn"
         );
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 
     /// The streamed surface preserves the in-band envelope with the same
@@ -1917,14 +1891,12 @@ mod terminal_emission {
     async fn streamed_error_envelope_preserves_the_verbatim_body() {
         const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
         let bound =
-            Anthropic::new("test-key")
-                .messages(CLAUDE_SONNET_4_6)
-                .bind(MockStreamingClient {
+            crate::driver::Model::new(Anthropic::new("test-key")
+                .completion(CLAUDE_SONNET_4_6), MockStreamingClient {
                     sse_bytes: sse(&[MESSAGE_START, ENVELOPE]),
                 });
         let request = bound.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
-            .await
+        let mut stream = bound.stream(request, None)
             .expect("stream should open");
 
         let error = loop {
@@ -2002,7 +1974,7 @@ mod terminal_emission {
                 collect(sse(&[&start, TEXT_START, TEXT_DELTA, &delta])).await;
 
             assert!(saw_terminal, "{case}: the turn must complete");
-            let terminal = stream.response.expect("terminal record");
+            let terminal = stream.folded().terminal().cloned().expect("terminal record");
             assert_eq!(terminal.usage.input_tokens, Some(expected), "{case}");
         }
     }
@@ -2018,7 +1990,7 @@ mod terminal_emission {
             !saw_terminal,
             "a parse error followed by EOF must not read as a completed turn"
         );
-        assert!(stream.response.is_none());
+        assert!(stream.folded().terminal().is_none());
     }
 
     #[tokio::test]
@@ -2038,7 +2010,7 @@ mod terminal_emission {
             saw_terminal,
             "a genuine message_delta after a parse error still completes the stream"
         );
-        let terminal = stream.response.expect("terminal record");
+        let terminal = stream.folded().terminal().cloned().expect("terminal record");
         assert_eq!(
             terminal.finish_reason,
             Some(crate::completion::FinishReason::Stop)
@@ -2059,19 +2031,17 @@ mod terminal_emission {
         const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
         let bound =
-            Anthropic::new("test-key")
-                .messages(CLAUDE_SONNET_4_6)
-                .bind(MockStreamingClient {
+            crate::driver::Model::new(Anthropic::new("test-key")
+                .completion(CLAUDE_SONNET_4_6), MockStreamingClient {
                     sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
                 });
         let request = bound.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
-            .await
+        let mut stream = bound.stream(request, None)
             .expect("stream should open");
         while let Some(item) = stream.next().await {
             item.expect("stream item");
         }
-        let terminal = stream.response.expect("terminal record");
+        let terminal = stream.folded().terminal().cloned().expect("terminal record");
 
         let raw = &terminal.raw;
         let typed: super::super::StreamingCompletionResponse =
@@ -2153,10 +2123,7 @@ mod projection {
     use std::sync::Arc;
 
     use crate::completion::CompletionRequest;
-    use crate::observe::{
-        Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
-        AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
-    };
+    use crate::observe::{Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject};
     use crate::providers::anthropic::wire::{Anthropic, Messages};
     use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
     use futures::StreamExt;
@@ -2177,7 +2144,7 @@ mod projection {
     }
 
     fn wire() -> Messages {
-        Anthropic::new("test-key").messages("claude-test")
+        Anthropic::new("test-key").completion("claude-test")
     }
 
     fn request() -> CompletionRequest {
@@ -2204,7 +2171,7 @@ mod projection {
             r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
         );
         let log = Arc::new(ObservationLog::default());
-        let error = crate::driver::call(&wire(), &http, request(), context(&log))
+        let error = crate::driver::Model::new(wire(), http.clone()).call(request(), context(&log))
             .await
             .expect_err("the transport rejects the call");
         assert!(error.is_retryable());
@@ -2248,7 +2215,7 @@ mod projection {
             sse_bytes: bytes::Bytes::from(sse),
         };
         let log = Arc::new(ObservationLog::default());
-        let stream = crate::driver::stream(&wire(), &http, request(), context(&log))
+        let stream = crate::driver::tests::stream(&wire(), &http, request(), context(&log))
             .expect("the streamed request encodes");
         let mut stream = Box::pin(stream);
         while let Some(item) = stream.next().await {
