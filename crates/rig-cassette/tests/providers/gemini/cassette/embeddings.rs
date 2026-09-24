@@ -1,7 +1,6 @@
 //! Gemini embeddings smoke test.
 
 use rig::Embed;
-use rig::embeddings::EmbeddingModel;
 use rig::providers::gemini;
 
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};

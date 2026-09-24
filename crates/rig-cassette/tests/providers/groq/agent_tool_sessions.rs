@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::openai;
@@ -492,8 +492,11 @@ impl RawResponseMetadata {
 /// (`system_fingerprint`, Groq's queue and total timings): it holds the
 /// provider's reply verbatim, so reading it back as the shared OpenAI type
 /// keeps both views on a single cassette interaction.
-async fn raw_and_normalized_completion(
-    model: &(impl CompletionModel + Clone),
+async fn raw_and_normalized_completion<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     request: rig::completion::CompletionRequest,
 ) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
     let normalized = model.completion(request).await?;

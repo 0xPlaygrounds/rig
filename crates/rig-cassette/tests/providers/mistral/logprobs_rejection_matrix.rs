@@ -28,7 +28,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
 use futures::StreamExt as _;
-use rig::completion::CompletionModel;
 use serde_json::{Value, json};
 
 use super::support::{BoundMistral, with_mistral_logprobs_rejection_cassette_result};

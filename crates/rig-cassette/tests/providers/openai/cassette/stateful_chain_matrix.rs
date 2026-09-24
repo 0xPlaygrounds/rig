@@ -11,7 +11,7 @@ use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};
 
 use futures::FutureExt;
-use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolCall, ToolResultContent, UserContent};
 use serde_json::{Value, json};
 

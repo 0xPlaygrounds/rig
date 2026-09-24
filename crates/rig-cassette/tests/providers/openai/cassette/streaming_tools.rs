@@ -1,5 +1,4 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;

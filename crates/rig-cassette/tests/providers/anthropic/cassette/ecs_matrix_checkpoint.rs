@@ -3,11 +3,13 @@
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, checkpoint};
-use rig::completion::CompletionModel;
-use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
+use rig_test_support::endpoint::Endpoint;
 
-fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &Endpoint<Anthropic>,
+) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
+{
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
         model: client.completion("claude-haiku-4-5-20251001"),

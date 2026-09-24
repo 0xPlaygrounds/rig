@@ -3,7 +3,7 @@ use super::super::{hook_stress_support::ResultRewrite, tools_support::ToolEventR
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
 use rig::{
-    completion::{CompletionModel, PromptError},
+    completion::PromptError,
     effect::{EffectKind, Outcome},
     tool::ToolOutput,
 };
@@ -22,8 +22,11 @@ struct DispatchSlot(usize);
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 struct OutcomeSlot(usize);
 
-pub(super) fn agent(
-    model: impl CompletionModel + 'static,
+pub(super) fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
     name: &str,
     temperature: f64,

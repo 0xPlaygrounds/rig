@@ -11,12 +11,11 @@
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
-use rig::driver::Bound;
 use rig::effect::{EffectFamily, HandlerKey};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig::providers::anthropic::wire::Anthropic;
 use rig_cassette::agent::AgentReplayExt;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_serving_cassette};
 use crate::goldens::{RouteAfterFirstTurn, families};
@@ -47,7 +46,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 /// The two-tool stream program under a bus policy and a runner
 /// concurrency: the record is in dispatch order whatever the policy.
 async fn two_tools(
-    client: Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     bus: rig::serve::ServingPolicy,
     concurrency: usize,
     events: bool,
@@ -317,7 +316,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
 /// model under the agent's key, drives the bus and records; the agent
 /// stamps the log, whose header names no bus policy (the host's).
 async fn over_host_bus(
-    client: Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let (dispatcher, registrar, mut driver) = rig::bus::Bus::channel();
@@ -325,7 +324,7 @@ async fn over_host_bus(
     driver
         .register_erased(
             model_key.clone(),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 client.completion(CLAUDE_SONNET_4_6),
             )),

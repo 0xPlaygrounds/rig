@@ -16,7 +16,7 @@
 
 use anyhow::Result;
 use base64::Engine as _;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, UserContent};
 use rig::prelude::*;
 use rig::providers::mistral;

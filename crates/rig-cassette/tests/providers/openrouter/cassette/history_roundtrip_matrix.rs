@@ -37,7 +37,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::providers::openrouter;
 use rig::streaming::{Delta, StreamEvent};
@@ -165,8 +165,11 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model

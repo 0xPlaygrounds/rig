@@ -12,7 +12,7 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolResultContent,
     UserContent,
@@ -48,7 +48,7 @@ struct StreamRun {
     message_id: Option<String>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_blocks: Vec::new(),

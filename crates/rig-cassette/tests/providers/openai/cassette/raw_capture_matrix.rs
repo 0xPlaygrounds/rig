@@ -58,8 +58,7 @@
 //! `system_fingerprint`.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    ToolDefinition,
+    AssistantContent, CompletionRequest, CompletionResponse, FinishReason, ToolDefinition,
 };
 use rig::message::ToolChoice;
 use rig::providers::openai;
@@ -86,7 +85,12 @@ const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 const STRUCTURED_PROMPT: &str = "Put the single word pong in the `word` field.";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)
@@ -98,7 +102,12 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 /// (`effort: "medium"`), with a summary asked for so the reasoning item
 /// carries `summary` as well as the `encrypted_content` the provider adds to
 /// `include` on every reasoning request.
-fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn reasoning_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(REASONING_PROMPT)
         .additional_params(json!({
@@ -117,7 +126,12 @@ fn ping_tool() -> ToolDefinition {
 
 /// The forced tool call `raw_completion_parity_matrix` records: `required`
 /// leaves the model no text-only exit.
-fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn tool_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
         .tool(ping_tool())
@@ -134,7 +148,12 @@ struct Answer {
     word: String,
 }
 
-fn structured_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn structured_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(STRUCTURED_PROMPT)
         .output_schema(schemars::schema_for!(Answer))

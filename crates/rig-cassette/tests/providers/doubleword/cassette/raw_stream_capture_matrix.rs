@@ -34,7 +34,7 @@
 //! contracts no request-id header, so the terminal's `provider_request_id` is
 //! `None` — pinned as the documented outcome.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
@@ -56,7 +56,12 @@ const UNMODELLED_USAGE: [&str; 3] = [
     "cache_read_input_tokens",
 ];
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(256).build()
 }
 

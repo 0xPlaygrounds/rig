@@ -1,11 +1,11 @@
 //! Copilot OAuth and bootstrap smoke tests.
 
 use assert_fs::TempDir;
-use rig::driver::Bind;
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::prelude::*;
 use rig::providers::copilot::auth::AuthSource;
 use rig::providers::copilot::wire::Copilot;
+use rig_test_support::endpoint::Endpoint;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -39,10 +39,12 @@ fn transport() -> BoxedHttpClient {
 #[tokio::test]
 #[ignore = "requires GITHUB_COPILOT_API_KEY or COPILOT_API_KEY"]
 async fn api_key_completion_smoke() {
-    let client = authorize(AuthSource::ApiKey(required_copilot_api_key()), None, false)
-        .await
-        .expect("api key auth should succeed")
-        .bind(transport());
+    let client = Endpoint::new(
+        authorize(AuthSource::ApiKey(required_copilot_api_key()), None, false)
+            .await
+            .expect("api key auth should succeed"),
+        transport(),
+    );
 
     let response = client
         .agent(LIVE_MODEL)
@@ -58,14 +60,16 @@ async fn api_key_completion_smoke() {
 #[tokio::test]
 #[ignore = "requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN"]
 async fn github_access_token_completion_smoke() {
-    let client = authorize(
-        AuthSource::GitHubAccessToken(required_copilot_github_access_token()),
-        None,
-        false,
-    )
-    .await
-    .expect("bootstrap-token auth should succeed")
-    .bind(transport());
+    let client = Endpoint::new(
+        authorize(
+            AuthSource::GitHubAccessToken(required_copilot_github_access_token()),
+            None,
+            false,
+        )
+        .await
+        .expect("bootstrap-token auth should succeed"),
+        transport(),
+    );
 
     let response = client
         .agent(LIVE_MODEL)
@@ -102,9 +106,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "cached oauth auth should resolve the same credential"
     );
 
-    let response = provider
-        .clone()
-        .bind(transport())
+    let response = Endpoint::new(provider.clone(), transport())
         .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()
@@ -114,9 +116,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     assert_nonempty_response(&response.output);
 
-    let cached_response = authorize_oauth(token_dir)
-        .await
-        .bind(transport())
+    let cached_response = Endpoint::new(authorize_oauth(token_dir).await, transport())
         .agent(LIVE_MODEL)
         .build()
         .prompt("Reply with the single word cached.")
@@ -147,7 +147,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
     )
     .expect("expired api key record should be written");
 
-    let client = authorize_oauth(token_dir).await.bind(transport());
+    let client = Endpoint::new(authorize_oauth(token_dir).await, transport());
 
     let api_key_record: serde_json::Value = serde_json::from_slice(
         &fs::read(token_dir.join("api-key.json")).expect("api key record should exist"),

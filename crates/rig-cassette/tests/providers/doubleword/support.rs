@@ -1,8 +1,9 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -13,7 +14,7 @@ const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 /// The Doubleword dialect of the OpenAI config bound to the bundled
 /// transport — what a cassette test builds its models from, now that a model
 /// is a bound wire.
-pub(super) type BoundDoubleword = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundDoubleword = Endpoint<OpenAI, BoxedHttpClient>;
 
 async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDoubleword) {
     let cassette = ProviderCassette::start(
@@ -23,10 +24,11 @@ async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
         DOUBLEWORD_BASE_URL,
     )
     .await;
-    let doubleword = OpenAI::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let doubleword = Endpoint::new(
+        OpenAI::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
+            .with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
 
     (cassette, doubleword)
 }
@@ -59,10 +61,11 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let client = OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let client = Endpoint::new(
+        OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
+            .with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

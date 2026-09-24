@@ -13,7 +13,6 @@
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ErrorReport;
 use rig::prelude::*;
 use rig::providers::mistral;

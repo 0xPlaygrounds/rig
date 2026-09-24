@@ -99,8 +99,8 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition, Usage};
-use rig::driver::Bound;
+use rig::completion::{CompletionRequest, ToolDefinition, Usage};
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
@@ -109,7 +109,7 @@ use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_reasoning_usage_cassette};
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
 
 /// Anthropic's documented test string that forces `redacted_thinking` blocks.
 const REDACTED_THINKING_MAGIC_STRING: &str = "ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB";
@@ -339,7 +339,7 @@ fn request(
 
 async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
     model
-        .completion(request)
+        .call(request, None)
         .await
         .expect("completion should succeed")
         .usage
@@ -347,7 +347,7 @@ async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> U
 
 /// Drain a provider-native stream and return its terminal record's usage.
 async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request, None).expect("stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         if let StreamEvent::Final(record) = item.expect("stream item should not error") {
@@ -507,11 +507,10 @@ async fn blocking_with_prompt_caching() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_with_prompt_caching",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
-                });
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                |wire| wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour),
+            );
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant. ".repeat(200))
@@ -827,11 +826,10 @@ async fn streaming_with_prompt_caching() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_with_prompt_caching",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
-                });
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                |wire| wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour),
+            );
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant. ".repeat(200))
@@ -985,16 +983,13 @@ async fn normalized_stream_budget_thinking() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let mut stream = model
-                .stream(request(
-                    &model,
-                    THINKING_PROMPT,
-                    budget_thinking(1024),
-                    2048,
-                ))
-                .await
+                .stream(
+                    request(&model, THINKING_PROMPT, budget_thinking(1024), 2048),
+                    None,
+                )
                 .expect("stream should open");
             while stream.next().await.is_some() {}
-            slot.record(stream.usage());
+            slot.record(stream.folded().usage());
         },
     )
     .await;

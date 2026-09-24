@@ -31,7 +31,7 @@
 //! only frame carrying usage and the finish reason, and it is what rig's
 //! terminal record is built from.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::providers::cohere::streaming::StreamingCompletionResponse;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
@@ -44,7 +44,12 @@ use crate::support::{Observed, json_contains_key};
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)

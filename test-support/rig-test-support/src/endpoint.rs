@@ -144,3 +144,8 @@ endpoint!(voyageai::wire::VoyageAi {
     embedding(model: impl Into<String>, ndims: Option<usize>) -> voyageai::wire::Embeddings;
     rerank(model: impl Into<String>) -> voyageai::wire::Rerank;
 } embedding: voyageai::wire::Embeddings;);
+
+/// `model` with its wire transformed by `map`, over the same transport.
+pub fn map_wire<W, V, H>(model: Model<W, H>, map: impl FnOnce(W) -> V) -> Model<V, H> {
+    Model::new(map(model.wire), model.transport)
+}

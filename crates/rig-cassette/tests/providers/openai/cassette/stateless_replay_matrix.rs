@@ -38,7 +38,6 @@
 //! Unit cells for the (de)serializers live in
 //! `crates/rig-core/src/providers/openai/responses_api/stateless_replay_tests.rs`.
 
-use rig::completion::CompletionModel;
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -46,6 +45,7 @@ use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::{
     CompletionResponse as ProviderResponse, InputItem, Output,
 };
+use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -95,7 +95,7 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, ProviderResponse) {
+async fn two_turn_conversation(client: Endpoint<OpenAI>) -> (ProviderResponse, ProviderResponse) {
     let model = client.completion(openai::GPT_5_6_SOL);
     let first = model
         .completion(model.completion_request(TURN_ONE).build())

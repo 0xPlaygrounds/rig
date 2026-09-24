@@ -67,9 +67,8 @@
 //! those cells pin the normalized shape rather than the new field.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel as _;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
@@ -80,7 +79,7 @@ use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
 
 /// Emits `alpha`, `bravo`, `charlie`, `delta` on separate lines, so a stop
 /// sequence naming any of them cuts the turn at a known point.
@@ -126,8 +125,7 @@ async fn raw_terminal(
     request: CompletionRequest,
 ) -> StreamingCompletionResponse {
     let mut stream = model
-        .stream(request)
-        .await
+        .stream(request, None)
         .expect("stop-sequence stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -147,7 +145,7 @@ async fn provider_response(
     request: CompletionRequest,
 ) -> anthropic::completion::CompletionResponse {
     let response = model
-        .completion(request)
+        .call(request, None)
         .await
         .expect("blocking stop-sequence request should succeed");
     anthropic::completion::CompletionResponse::deserialize(&response.raw)
@@ -622,9 +620,10 @@ async fn raw_with_prompt_caching_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_with_prompt_caching_sequence_fires",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
-                .map_wire(|wire| wire.with_prompt_caching());
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                |wire| wire.with_prompt_caching(),
+            );
             let terminal =
                 raw_terminal(&model, request(&model, LIST_PROMPT, &["charlie"], 64)).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
@@ -810,17 +809,14 @@ async fn normalized_stream_single_sequence() {
         "stop_sequence_terminal_matrix/normalized_stream_single_sequence",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let mut stream = rig::completion::CompletionModel::stream(
-                &model,
-                request(&model, LIST_PROMPT, &["charlie"], 64),
-            )
-            .await
-            .expect("normalized stream should open");
+            let mut stream = model
+                .stream(request(&model, LIST_PROMPT, &["charlie"], 64), None)
+                .expect("normalized stream should open");
             while stream.next().await.is_some() {}
 
             let final_record = stream
-                .response
-                .as_ref()
+                .folded()
+                .terminal()
                 .expect("normalized stream should carry a terminal");
             // rig's normalized terminal deliberately has no `stop_sequence`:
             // the field is provider-specific and lives on the raw record. What

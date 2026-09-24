@@ -35,7 +35,7 @@
 //! literals keep the names they were recorded under; the cell names describe
 //! what the cells now assert.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::providers::openai;
 use rig::providers::openai::wire::OPENROUTER;
 use rig::providers::openrouter;
@@ -51,7 +51,12 @@ use crate::support::Observed;
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 

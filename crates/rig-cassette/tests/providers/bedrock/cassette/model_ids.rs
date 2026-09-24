@@ -8,7 +8,6 @@
 //! against a hand-written expectation.
 
 use rig::bedrock;
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;

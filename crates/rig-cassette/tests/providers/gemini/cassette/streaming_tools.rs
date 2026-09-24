@@ -1,6 +1,5 @@
 //! Gemini streaming tools coverage, including the migrated example path.
 
-use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::gemini;

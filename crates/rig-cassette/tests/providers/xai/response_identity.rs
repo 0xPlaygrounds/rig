@@ -2,7 +2,6 @@
 //! Responses-shaped API; blocking and streaming turns carry it identically.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::responses_api;
 use rig::providers::xai;

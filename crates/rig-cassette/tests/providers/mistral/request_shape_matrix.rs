@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
@@ -108,8 +108,11 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut params = json!({

@@ -37,7 +37,7 @@
 //! block, a finish reason, or a reasoning block fails loudly instead of
 //! covering nothing.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::deepseek;
 use serde::Deserialize;
@@ -58,7 +58,12 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 /// it answers, so the reasoning cell needs real headroom.
 const REASONING_BUDGET: u64 = 640;
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
@@ -67,7 +72,12 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
-fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn reasoning_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))

@@ -6,6 +6,7 @@ use rig::providers::openai;
 use rig::providers::openai::OpenAI;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;
+use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -95,7 +96,7 @@ async fn structured_output_smoke() {
 #[tokio::test]
 async fn classic_tool_mode_maps_through_openai_responses() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
-    let client = OpenAI::new("test-key").bind(http.clone());
+    let client = Endpoint::new(OpenAI::new("test-key"), http.clone());
     let agent = client
         .agent(openai::GPT_4O)
         .output_schema::<SmokeStructuredOutput>()

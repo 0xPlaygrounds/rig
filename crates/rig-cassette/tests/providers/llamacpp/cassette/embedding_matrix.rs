@@ -29,7 +29,6 @@
 //! that came back. A handle built without a width is untouched: it reports
 //! whatever the provider's own table says and has nothing to disagree with.
 
-use rig::embeddings::EmbeddingModel;
 use rig::error::ProviderError;
 use serde_json::Value;
 
@@ -89,7 +88,7 @@ async fn a_declared_width_that_matches_is_accepted() {
         "embedding_matrix/declared_width_matches",
         |client| async move {
             let model = client.embedding(CASSETTE_EMBEDDING_MODEL, Some(NATIVE_WIDTH));
-            assert_eq!(model.ndims(), NATIVE_WIDTH);
+            assert_eq!(model.capabilities().ndims, NATIVE_WIDTH);
 
             let embeddings = model
                 .embed_texts(["hello".to_string()])

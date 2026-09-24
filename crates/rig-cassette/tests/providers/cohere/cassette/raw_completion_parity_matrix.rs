@@ -34,7 +34,7 @@
 //! "the same bytes went out twice" from "one reply agreed with itself"; the
 //! harness replays interactions in order.
 
-use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
+use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::providers::cohere::completion::{CompletionResponse, FinishReason as CohereFinishReason};
 use serde::Deserialize;
 use serde_json::Value;
@@ -46,7 +46,12 @@ use crate::support::Observed;
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: parity";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)

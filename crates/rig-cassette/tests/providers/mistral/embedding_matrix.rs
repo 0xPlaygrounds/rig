@@ -7,7 +7,6 @@
 //! the single-text convenience, and the error path preserving the body.
 
 use super::support::with_mistral_embedding_cassette;
-use rig::embeddings::EmbeddingModel as _;
 use rig::providers::{mistral, openai};
 
 use crate::support::{

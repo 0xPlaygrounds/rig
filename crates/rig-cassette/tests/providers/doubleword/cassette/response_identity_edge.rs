@@ -22,8 +22,6 @@
 //! `Qwen/Qwen3.5-9B`, one of the backends that sends none, which is why both
 //! fixtures below carry only `content-type`.
 
-use rig::completion::CompletionModel;
-
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 
 #[tokio::test]

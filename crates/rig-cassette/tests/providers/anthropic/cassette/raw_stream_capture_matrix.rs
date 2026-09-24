@@ -47,10 +47,11 @@
 //! `stop_reason`.
 
 use rig::message::AssistantContent;
+use rig_test_support::endpoint::Endpoint;
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
-use rig::driver::Bound;
+use rig::completion::{FinishReason, ToolDefinition};
+use rig::driver::Model;
 use rig::message::{ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
@@ -89,7 +90,7 @@ const THINKING_SCENARIO: &str =
 const TOOL_USE_SCENARIO: &str =
     "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream";
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
 
 fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(32).build()
@@ -136,7 +137,7 @@ struct Streamed {
     terminal: StreamFinal,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> Streamed {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> Streamed {
     let mut items = Vec::new();
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -159,15 +160,14 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 /// [`capture_terminal`]; these two assert on the non-terminal items too, so
 /// the drain stays local.
 async fn streamed_body(
-    client: Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     model_name: &str,
     build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: Observed<Streamed>,
 ) {
     let model = client.completion(model_name);
     let stream = model
-        .stream(build(&model))
-        .await
+        .stream(build(&model), None)
         .expect("stream should open");
     sink.put(drain_stream(stream).await);
 }

@@ -33,8 +33,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message};
-use rig::driver::Bound;
+use rig::completion::Message;
+use rig::driver::Model;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::providers::openai;
 use rig::providers::openai::wire::Chat;
@@ -162,7 +162,10 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &Model<Chat, rig::http_client::BoxedHttpClient>,
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut builder = model.completion_request(prompt(cell.shape)).max_tokens(24);
     for message in history(cell.shape) {
         builder = builder.message(message);

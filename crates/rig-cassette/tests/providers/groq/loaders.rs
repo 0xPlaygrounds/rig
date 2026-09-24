@@ -3,6 +3,7 @@
 use rig::loaders::FileLoader;
 use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
 
@@ -11,10 +12,10 @@ use super::LOADERS_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn loaders_smoke() {
-    let groq = OpenAI::from_env_with(&GROQ)
-        .expect("GROQ_API_KEY should be set")
-        .bound()
-        .expect("transport should build");
+    let groq = Endpoint::new(
+        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")
         .read_with_path()

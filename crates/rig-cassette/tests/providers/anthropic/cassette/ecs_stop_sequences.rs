@@ -1,14 +1,18 @@
 //! Stop metadata and empty results from native agent execution.
 use super::{empty_stop_sequence_matrix as empty, stop_sequence_terminal_matrix as terminal};
 use crate::{ecs_agent::EcsAgent, ecs_lifecycle};
-use rig::{
-    completion::{CompletionModel, FinishReason},
-    providers::anthropic,
-};
+use rig::{completion::FinishReason, providers::anthropic};
 use rig_ecs::agent::{AdditionalParams, MaxTokens};
 use serde_json::json;
 
-fn agent(model: impl CompletionModel + 'static, tokens: u64, stop: &str) -> EcsAgent {
+fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
+    tokens: u64,
+    stop: &str,
+) -> EcsAgent {
     let mut ecs = ecs_lifecycle::agent(model, "");
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         MaxTokens(Some(tokens)),

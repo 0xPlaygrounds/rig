@@ -1,7 +1,6 @@
 //! AWS Bedrock raw completion cassette coverage ported from OpenAI completions tests.
 
 use rig::bedrock;
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::telemetry::ProviderResponseExt;
 

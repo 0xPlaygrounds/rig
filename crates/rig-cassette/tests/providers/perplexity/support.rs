@@ -1,8 +1,9 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, PERPLEXITY};
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -11,7 +12,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 /// The Perplexity dialect of the OpenAI config bound to the bundled
 /// transport — what a cassette test builds its models from, now that a model
 /// is a bound wire.
-pub(super) type BoundPerplexity = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundPerplexity = Endpoint<OpenAI, BoxedHttpClient>;
 
 async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundPerplexity) {
     let cassette = ProviderCassette::start(
@@ -21,10 +22,11 @@ async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
         "https://api.perplexity.ai",
     )
     .await;
-    let perplexity = OpenAI::with_key(&PERPLEXITY, cassette.api_key("PERPLEXITY_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("Perplexity cassette transport should build");
+    let perplexity = Endpoint::new(
+        OpenAI::with_key(&PERPLEXITY, cassette.api_key("PERPLEXITY_API_KEY"))
+            .with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("Perplexity cassette transport should build"),
+    );
 
     (cassette, perplexity)
 }

@@ -1,7 +1,6 @@
 //! ChatGPT completion normalization smoke tests.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::message::Message;
 use rig::prelude::*;

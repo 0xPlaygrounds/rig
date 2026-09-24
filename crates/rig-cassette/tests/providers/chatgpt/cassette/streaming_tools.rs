@@ -1,7 +1,6 @@
 //! ChatGPT cassette coverage for terminal responses that omit `output`.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::chatgpt;
 use rig::streaming::StreamEvent;

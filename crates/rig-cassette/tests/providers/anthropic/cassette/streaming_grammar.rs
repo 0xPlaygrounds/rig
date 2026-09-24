@@ -12,7 +12,7 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
@@ -31,7 +31,7 @@ struct StreamRun {
     message_id: Option<String>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_blocks: Vec::new(),
@@ -73,12 +73,12 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         }
     }
 
-    run.choice = stream.snapshot();
+    run.choice = stream.folded().snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
-    run.message_id = stream.message_id.clone();
+    run.response = stream.folded().terminal().cloned();
+    run.message_id = stream.folded().message_id().map(str::to_owned);
     run
 }
 
@@ -131,7 +131,7 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
                     "thinking": { "type": "enabled", "budget_tokens": 1536 }
                 }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_terminal(&run, FinishReason::Stop);
@@ -190,7 +190,7 @@ async fn parallel_tool_use_stays_distinct() {
             .tool(rig::tool::tool_definition(&BetaSignal))
             .max_tokens(1024)
             .build();
-        let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+        let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
         let aggregated: Vec<&ToolCall> = run

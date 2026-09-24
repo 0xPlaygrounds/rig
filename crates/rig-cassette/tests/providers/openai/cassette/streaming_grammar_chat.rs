@@ -12,7 +12,7 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall};
 use rig::providers::openai;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
@@ -32,7 +32,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         text_chunks: 0,

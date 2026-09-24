@@ -42,16 +42,16 @@
 //! recording that lost either would make the parity claim vacuous.
 
 use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-    ResponseIdentity, Usage,
+    CompletionResponse as RigCompletionResponse, FinishReason, ResponseIdentity, Usage,
 };
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::StreamFinal;
 use rig::tool::Tool;
+use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 
 use super::super::support::{
@@ -65,7 +65,7 @@ const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: parity probe";
 const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool.";
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
 
 fn text_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(TEXT_PROMPT).max_tokens(32).build()
@@ -321,7 +321,7 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
 /// shared counterpart, so the two drains stay here — each through the shared
 /// [`collect_required_terminal`].
 async fn capture_terminal_pair(
-    client: Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: Observed<(StreamFinal, StreamFinal)>,
 ) {
@@ -329,8 +329,7 @@ async fn capture_terminal_pair(
 
     let normalized = collect_required_terminal(
         model
-            .stream(build(&model))
-            .await
+            .stream(build(&model), None)
             .expect("`stream` should open"),
     )
     .await;
@@ -338,8 +337,7 @@ async fn capture_terminal_pair(
     // terminal record's `raw` — the provider's own record, serialized.
     let second_record = collect_required_terminal(
         model
-            .stream(build(&model))
-            .await
+            .stream(build(&model), None)
             .expect("second `stream` should open"),
     )
     .await;

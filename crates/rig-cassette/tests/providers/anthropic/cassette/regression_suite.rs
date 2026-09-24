@@ -7,8 +7,7 @@
 //! passing for the wrong reason the moment the premise changes.
 
 use rig::completion::FinishReason;
-use rig::driver::Bound;
-use rig::prelude::*;
+use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
 
@@ -104,9 +103,10 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
     with_anthropic_cassette(
         "regression/cache_hit_zero_uncached_input",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                |wire| wire.with_prompt_caching(),
+            );
 
             // A prefix long enough to clear Anthropic's minimum cacheable size.
             let padding = std::iter::repeat_n(
@@ -117,7 +117,8 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
             .collect::<Vec<_>>()
             .join(" ");
 
-            let send = |model: Bound<Messages>, padding: String| async move {
+            let send = |model: Model<Messages, rig::http_client::BoxedHttpClient>,
+                        padding: String| async move {
                 let agent = rig::agent::AgentBuilder::new(model)
                     .preamble(&padding)
                     .max_tokens(32)

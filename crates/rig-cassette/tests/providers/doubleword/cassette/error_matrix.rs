@@ -21,7 +21,6 @@
 //! that as the streaming contract and proves the body/status match blocking.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
 use rig::providers::doubleword;

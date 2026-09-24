@@ -9,7 +9,7 @@
 //! error path preserving the body.
 
 use super::super::support::with_openai_cassette;
-use rig::embeddings::{EmbeddingModel as _, EmbeddingResponse};
+use rig::embeddings::EmbeddingResponse;
 use rig::providers::openai;
 
 use crate::support::{

@@ -28,7 +28,6 @@
 //! the fixture holds the 200 beside the error, so a maintainer looking at
 //! this failure mode does not have to guess whether the server broke.
 
-use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolResult, ToolResultContent,
     UserContent,

@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::Value;
@@ -102,8 +102,11 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model.completion_request(prompt(cell.shape)).max_tokens(24);

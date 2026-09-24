@@ -5,6 +5,7 @@ use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_agent::test_utils::decode_structured_output;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::{
@@ -90,7 +91,7 @@ async fn classic_invalid_output_recovers_through_gemini_generate_content() {
         MockHttpResponse::success(text_response("not valid JSON", "gemini-runtime-invalid")),
         MockHttpResponse::success(output_tool_response("final_result")),
     ]);
-    let client = Gemini::new("test-key").bind(http.clone());
+    let client = Endpoint::new(Gemini::new("test-key"), http.clone());
     let agent = client
         .agent(gemini::completion::GEMINI_2_5_FLASH)
         .output_schema::<SmokeStructuredOutput>()

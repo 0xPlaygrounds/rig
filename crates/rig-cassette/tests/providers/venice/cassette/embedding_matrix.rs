@@ -8,7 +8,6 @@
 //! error path preserving the body.
 
 use super::super::support::with_venice_cassette;
-use rig::embeddings::EmbeddingModel as _;
 use rig::providers::venice;
 
 use crate::support::{

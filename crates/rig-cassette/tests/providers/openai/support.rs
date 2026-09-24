@@ -1,6 +1,7 @@
-use rig::driver::{Bind, Bound};
+use rig::driver::Model;
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::providers::openai::{OpenAI, Route};
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -29,15 +30,15 @@ use crate::cassettes::DirectRecordingHttpClient;
 /// still naming a typed wire when a cell reads the native reply.
 pub(super) struct OpenAiCassette<H = BoxedHttpClient> {
     /// The configuration on its flagship route, over the cassette's socket.
-    pub(super) openai: Bound<OpenAI, H>,
+    pub(super) openai: Endpoint<OpenAI, H>,
     /// The same configuration routed to Chat Completions.
-    pub(super) chat: Bound<OpenAI, H>,
+    pub(super) chat: Endpoint<OpenAI, H>,
 }
 
 impl<H: Clone> OpenAiCassette<H> {
     /// The configuration for `api_key` at `base_url`, over `http`.
     fn new(api_key: impl Into<String>, base_url: impl Into<String>, http: H) -> Self {
-        let openai = OpenAI::new(api_key).with_base_url(base_url).bind(http);
+        let openai = Endpoint::new(OpenAI::new(api_key).with_base_url(base_url), http);
         let chat = openai
             .clone()
             .map_wire(|openai| openai.with_route(Route::Chat));
@@ -69,7 +70,7 @@ async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Op
 
 async fn openai_completions_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, Bound<OpenAI>) {
+) -> (ProviderCassette, Endpoint<OpenAI>) {
     let (cassette, openai) = openai_cassette(spec).await;
     (cassette, openai.chat)
 }
@@ -217,7 +218,7 @@ pub(super) async fn with_openai_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Endpoint<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, chat) = openai_completions_cassette(spec).await;
@@ -243,7 +244,7 @@ pub(super) async fn with_openai_completions_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Endpoint<OpenAI>) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, chat) = openai_completions_cassette(spec).await;
@@ -554,7 +555,7 @@ pub(super) async fn with_openai_completions_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Endpoint<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_completions_cassette(spec, test_body).await;

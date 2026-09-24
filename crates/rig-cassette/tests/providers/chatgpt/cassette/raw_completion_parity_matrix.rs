@@ -43,10 +43,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_completion_parity_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_completion_parity_matrix/`.
 
-use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition,
-};
-use rig::driver::Bound;
+use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
+use rig::driver::Model;
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
@@ -76,7 +74,7 @@ fn weather_tool() -> ToolDefinition {
     }
 }
 
-type ChatGptModel = Bound<OpenAiWire>;
+type ChatGptModel = Model<OpenAiWire, rig::http_client::BoxedHttpClient>;
 
 fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()

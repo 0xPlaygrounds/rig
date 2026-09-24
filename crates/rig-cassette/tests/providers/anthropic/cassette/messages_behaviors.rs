@@ -7,7 +7,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::providers::anthropic;
 
@@ -28,7 +28,7 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("a truncated response should still convert, not error");
 

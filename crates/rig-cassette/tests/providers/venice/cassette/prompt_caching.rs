@@ -20,6 +20,7 @@
 use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -119,10 +120,10 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
 #[tokio::test]
 #[ignore = "requires VENICE_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = OpenAI::from_env_with(&VENICE)
-        .expect("VENICE_API_KEY")
-        .bound()
-        .expect("transport should build");
+    let client = Endpoint::new(
+        OpenAI::from_env_with(&VENICE).expect("VENICE_API_KEY"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(&observation, &VENICE_CACHE_SUPPORT, "live_cache_economics");

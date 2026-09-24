@@ -7,7 +7,6 @@
 //! outcomes, not skipped. The dimensions cell is absent: Cohere's embed wire
 //! takes no dimension parameter.
 
-use rig::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use rig::providers::cohere;
 
 use super::super::support::with_cohere_cassette;
@@ -186,7 +185,7 @@ async fn image_normalized_and_raw_round_trip() {
 
             assert_eq!(response.embeddings.len(), 1);
             assert_eq!(response.provider, "cohere");
-            assert_eq!(response.embeddings[0].vec.len(), model.ndims());
+            assert_eq!(response.embeddings[0].vec.len(), model.capabilities().ndims);
             // Cohere bills image embeds as `billed_units.images`, not tokens
             // — `Usage` is token-denominated, so no counter is reported and
             // the image count is read off the raw payload.

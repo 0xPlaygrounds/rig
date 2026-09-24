@@ -1,7 +1,6 @@
 //! Gemini model listing smoke test.
 
 use rig::error::ProviderError;
-use rig::model::ModelLister;
 
 use super::super::support::{with_gemini_cassette, with_gemini_cassette_bogus_key};
 

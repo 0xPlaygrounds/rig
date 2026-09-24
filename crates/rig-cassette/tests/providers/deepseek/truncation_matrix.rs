@@ -33,7 +33,7 @@
 //! the agent loop. See the module doc table in the PR body for per-cell status.
 
 use anyhow::Result;
-use rig::completion::{CompletionModel, ToolDefinition};
+use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
@@ -97,8 +97,11 @@ fn page_oncall_tool() -> ToolDefinition {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     preamble: &str,
     tools: Vec<ToolDefinition>,
     params: Value,
@@ -107,8 +110,11 @@ fn request(
     request_for(model, INCIDENT_PROMPT, preamble, tools, params, max_tokens)
 }
 
-fn request_for(
-    model: &(impl CompletionModel + Clone),
+fn request_for<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     prompt: &str,
     preamble: &str,
     tools: Vec<ToolDefinition>,

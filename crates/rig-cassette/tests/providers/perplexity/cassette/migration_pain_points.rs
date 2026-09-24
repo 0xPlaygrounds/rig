@@ -1,5 +1,4 @@
 //! Perplexity cassette coverage for regressions found during the #2040 provider migration.
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction, UserContent};
 use rig::providers::perplexity;
 use serde_json::json;

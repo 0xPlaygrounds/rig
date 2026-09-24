@@ -3,10 +3,9 @@ use crate::ecs_agent::{RuntimeHandler, io_runtime};
 use bevy_app::App;
 use bevy_ecs::prelude::*;
 use rig::{
-    completion::CompletionModel,
     serve::{
         ServingPolicy,
-        adapters::{CompletionAdapter, ToolAdapter},
+        adapters::{ModelAdapter, ToolAdapter},
     },
     tool::Tool,
 };
@@ -35,8 +34,11 @@ fn tool<T: Tool + 'static>(app: &mut App, agent: Entity, tool: T, order: u64) {
     .expect("unique named tool");
     app.world_mut().spawn((Grant(handler), ChildOf(agent)));
 }
-pub(super) async fn run(
-    model: impl CompletionModel + 'static,
+pub(super) async fn run<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
     prompt: &str,
     add: impl Tool + 'static,
@@ -53,7 +55,7 @@ pub(super) async fn run(
         handlers.register(
             "stress-agent/model:default",
             RuntimeHandler {
-                inner: Arc::new(CompletionAdapter::new("default", model)),
+                inner: Arc::new(ModelAdapter::new("default", model)),
                 runtime: io_runtime(),
             },
         )

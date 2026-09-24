@@ -3,9 +3,10 @@
 
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, cells, checkpoint};
-use rig::completion::CompletionModel;
 
-fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &BoundDeepSeek,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-flash"),

@@ -10,8 +10,8 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction,
     ModelTurnFinished,
 };
-use rig::completion::{CompletionModel, CompletionResponse, Document, Message};
-use rig::driver::Bound;
+use rig::completion::{CompletionResponse, Document, Message};
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::{
     CLAUDE_SONNET_4_6, CacheTtl, CompletionResponse as AnthropicResponse, Usage,
@@ -51,19 +51,23 @@ async fn caching_and_identity_share_the_wire_blocking() {
     with_anthropic_cassette(
         "response_identity_edge/caching_and_identity_share_the_wire_blocking",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6).map_wire(|wire| {
-                wire.with_prompt_caching()
-                    .with_static_prefix_cache_ttl(CacheTtl::OneHour)
-            });
-            let send = |model: Bound<Messages>| async move {
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(CLAUDE_SONNET_4_6),
+                |wire| {
+                    wire.with_prompt_caching()
+                        .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+                },
+            );
+            let send = |model: Model<Messages, rig::http_client::BoxedHttpClient>| async move {
                 model
-                    .completion(
+                    .call(
                         model
                             .completion_request("Reply with exactly: edge probe")
                             .preamble(cache_padding("caching-blocking"))
                             .temperature(0.0)
                             .max_tokens(16)
                             .build(),
+                        None,
                     )
                     .await
                     .expect("cached completion should succeed")
@@ -108,18 +112,20 @@ async fn caching_and_identity_share_the_wire_streaming() {
     with_anthropic_cassette(
         "response_identity_edge/caching_and_identity_share_the_wire_streaming",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6).map_wire(|wire| {
-                wire.with_prompt_caching()
-                    .with_static_prefix_cache_ttl(CacheTtl::OneHour)
-            });
-            let send = |model: Bound<Messages>| async move {
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(CLAUDE_SONNET_4_6),
+                |wire| {
+                    wire.with_prompt_caching()
+                        .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+                },
+            );
+            let send = |model: Model<Messages, rig::http_client::BoxedHttpClient>| async move {
                 let mut stream = model
                     .completion_request("Reply with exactly: stream edge probe")
                     .preamble(cache_padding("caching-streaming"))
                     .temperature(0.0)
                     .max_tokens(16)
                     .stream()
-                    .await
                     .expect("stream should open");
                 let mut terminal = None;
                 while let Some(item) = stream.next().await {
@@ -151,9 +157,10 @@ async fn strict_tools_and_identity() {
     with_anthropic_cassette(
         "response_identity_edge/strict_tools_and_identity",
         |client| async move {
-            let model = client
-                .completion(CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(CLAUDE_SONNET_4_6),
+                |wire| wire.with_strict_tools(),
+            );
             let response = model
                 .completion_request("Use the add tool: what is 2 + 3?")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -662,7 +669,6 @@ async fn stream_conversion_carries_live_identity() {
                 .completion_request("Reply with exactly: conversion probe")
                 .max_tokens(32)
                 .stream()
-                .await
                 .expect("stream should open");
             let mut terminal_id = None;
             while let Some(item) = stream.next().await {

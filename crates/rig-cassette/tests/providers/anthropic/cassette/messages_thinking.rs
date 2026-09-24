@@ -9,7 +9,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent};
@@ -54,7 +54,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .additional_params(thinking_params())
                 .build();
             let first_response = model
-                .completion(first_request)
+                .call(first_request, None)
                 .await
                 .expect("redacted-thinking completion should succeed");
 
@@ -78,7 +78,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .build();
 
             let second_response = model
-                .completion(second_request)
+                .call(second_request, None)
                 .await
                 .expect("history containing redacted_thinking should be accepted");
 
@@ -106,13 +106,14 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
     with_anthropic_cassette(
         "messages_thinking/static_prefix_ttl_coexists_with_extended_thinking",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
+            let model = rig_test_support::endpoint::map_wire(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                |wire| {
                     wire.with_automatic_caching().with_static_prefix_cache_ttl(
                         rig::providers::anthropic::completion::CacheTtl::OneHour,
                     )
-                });
+                },
+            );
 
             // The preamble must clear the model's minimum cacheable prompt
             // length or the API silently skips caching and the recorded
@@ -131,7 +132,7 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
                 .additional_params(thinking_params())
                 .build();
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("extended thinking with a 1h static prefix should succeed");
 
@@ -158,8 +159,7 @@ async fn redacted_thinking_streaming() {
                 .build();
 
             let mut stream = model
-                .stream(request)
-                .await
+                .stream(request, None)
                 .expect("redacted-thinking streaming request should start");
 
             let mut saw_redacted_reasoning = false;

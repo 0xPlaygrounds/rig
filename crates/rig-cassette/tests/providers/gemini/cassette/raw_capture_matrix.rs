@@ -51,7 +51,7 @@
 //! `generationConfig`.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason,
+    AssistantContent, CompletionResponse as RigCompletionResponse, FinishReason,
 };
 use rig::message::ToolChoice;
 use rig::providers::gemini::completion::gemini_api_types::{
@@ -78,15 +78,23 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: capture
 /// A prompt the forced-tool cell can only satisfy by calling `add`.
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded turn is a `functionCall` part.
-fn forced_tool_request(
-    model: &(impl CompletionModel + Clone),
+fn forced_tool_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
@@ -101,8 +109,11 @@ fn forced_tool_request(
 /// The structured-output request: rig maps `output_schema` onto
 /// `generationConfig.responseMimeType: application/json` +
 /// `responseJsonSchema`, Gemini's native structured-output controls.
-fn structured_output_request(
-    model: &(impl CompletionModel + Clone),
+fn structured_output_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(STRUCTURED_OUTPUT_PROMPT)

@@ -6,14 +6,21 @@
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop};
-use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::providers::gemini::Gemini;
+use rig_test_support::endpoint::Endpoint;
 
 // gemini-2.5-flash, not flash-lite: at temperature 0 flash-lite answered the
 // `list_files` functionResponse with an empty candidate (no parts,
 // finishReason STOP) on both endpoints, 3 attempts, first recording round.
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: Socket>(
+    client: &Endpoint<Gemini, H>,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
         model: client.completion("gemini-2.5-flash"),

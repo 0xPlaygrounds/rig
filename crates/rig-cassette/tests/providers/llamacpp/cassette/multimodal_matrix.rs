@@ -40,7 +40,6 @@
 //! other OpenAI-shaped part to send — and the refusal is clean, so this is a
 //! recorded boundary rather than a defect.
 
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ImageMediaType, Message, UserContent, VideoMediaType};
 use serde_json::Value;
 

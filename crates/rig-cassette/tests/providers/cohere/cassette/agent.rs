@@ -1,6 +1,6 @@
 //! Cassette-backed Cohere non-streaming completion coverage.
 
-use rig::completion::{AssistantContent, CompletionModel, Message};
+use rig::completion::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::cohere::completion::{
     CompletionResponse as CohereCompletionResponse, FinishReason,

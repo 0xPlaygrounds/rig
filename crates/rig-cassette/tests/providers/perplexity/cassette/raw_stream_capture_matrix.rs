@@ -36,7 +36,7 @@
 //! Perplexity contracts no request-id header, so the terminal's
 //! `provider_request_id` is `None` — pinned as the documented outcome.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::perplexity;
 use serde_json::{Value, json};
 
@@ -53,7 +53,12 @@ const PROMPT: &str = "Reply with the single word: pong";
 /// Names the dialect in the "no id header" outcome the cells pin.
 const DIALECT: &str = "Perplexity";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 

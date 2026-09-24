@@ -31,8 +31,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_stream_capture_matrix/`.
 
-use rig::completion::CompletionModel as _;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
@@ -49,7 +48,7 @@ const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-type ChatGptModel = Bound<OpenAiWire>;
+type ChatGptModel = Model<OpenAiWire, rig::http_client::BoxedHttpClient>;
 
 fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()

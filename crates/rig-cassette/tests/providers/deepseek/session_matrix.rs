@@ -2,7 +2,6 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::support::{BoundDeepSeek, with_deepseek_cassette};
-use rig::completion::CompletionModel;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -20,9 +19,9 @@ const CELL: Cell = Cell {
 fn models(
     client: BoundDeepSeek,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
 ) {
     (
         client.completion("deepseek-v4-flash"),

@@ -55,7 +55,6 @@
 //! defect — it is the model choice — so the cell records the shape and the
 //! streaming twin is dropped with this as its reason.
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use serde_json::Value;
 

@@ -42,7 +42,7 @@
 //! `prompt_cache_miss_tokens` split reaches `Usage::cached_input_tokens` on
 //! both transports.
 
-use rig::completion::{CompletionModel, Document, Message};
+use rig::completion::{Document, Message};
 use rig::message::{DocumentMediaType, DocumentSourceKind, ToolChoice, UserContent};
 use rig::providers::deepseek;
 use serde_json::{Value, json};

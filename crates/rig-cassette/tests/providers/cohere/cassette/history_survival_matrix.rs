@@ -1,7 +1,5 @@
 //! Cohere v2 history survival: tool-call ids across three prompts.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::{BoundCohere, with_cohere_cassette};
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
@@ -9,7 +7,10 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundCohere, cell: Cell) -> impl CompletionModel + 'static {
+fn model(
+    client: BoundCohere,
+    cell: Cell,
+) -> rig::Model<rig::providers::cohere::Chat, BoxedHttpClient> {
     client.completion(cell.model)
 }
 

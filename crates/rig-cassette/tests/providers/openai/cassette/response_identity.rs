@@ -3,7 +3,6 @@
 //! carry it identically.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;

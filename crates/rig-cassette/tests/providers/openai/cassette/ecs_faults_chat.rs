@@ -9,11 +9,11 @@
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::GPT_5_MINI;
 use rig::providers::openai::wire::OpenAI;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{
@@ -28,7 +28,9 @@ use crate::stream_faults::{
     CHAT_REFUSAL_TEXT, SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply,
 };
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &OpenAiCassette,
+) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client.openai.chat(GPT_5_MINI),
@@ -39,7 +41,9 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(
+    client: &OpenAiCassette,
+) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client.openai.chat("gpt-5-mini-nonexistent-rig-test"),
@@ -92,8 +96,10 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 
 /// The wire over a transport that answers one streaming request with
 /// `frames`, then EOF.
-fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = OpenAI::new(SCRIPTED_KEY).bind(scripted(vec![sse_bytes(frames)]));
+fn scripted_stream(
+    frames: &[String],
+) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
+    let client = Endpoint::new(OpenAI::new(SCRIPTED_KEY), scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client.chat(GPT_5_MINI),
@@ -105,8 +111,10 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
 
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
-fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = OpenAI::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
+fn scripted_unary(
+    replies: Vec<MockHttpResponse>,
+) -> Wire<rig::Model<rig::providers::openai::wire::Chat, SequencedHttpClient>> {
+    let client = Endpoint::new(OpenAI::new(SCRIPTED_KEY), SequencedHttpClient::new(replies));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client.chat(GPT_5_MINI),

@@ -190,8 +190,11 @@ pub(crate) fn provider_final(ecs: &mut EcsAgent) -> StreamFinal {
 }
 
 /// Preserve the original undeclared one-turn default; overrides stay run-local.
-pub(crate) fn agent(
-    model: impl rig::completion::CompletionModel + 'static,
+pub(crate) fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::new(model, preamble, 1);

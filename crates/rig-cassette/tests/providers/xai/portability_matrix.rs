@@ -1,8 +1,8 @@
 //! xAI continues histories other wires produced on the Responses dialect:
 //! Anthropic-signed and Gemini-signed reasoning beside a tool exchange.
 
-use rig::completion::CompletionModel;
 use rig::providers::xai;
+use rig_test_support::endpoint::Endpoint;
 
 use super::support::with_xai_cassette;
 use crate::history_survival::portability::{Cell, Source};
@@ -12,9 +12,9 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: rig::driver::Bound<rig::providers::openai::OpenAI>,
+    client: Endpoint<rig::providers::openai::OpenAI>,
     cell: Cell,
-) -> impl CompletionModel + 'static {
+) -> rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient> {
     client.completion(cell.model)
 }
 

@@ -9,7 +9,6 @@
 //! only the trace says which policy fired and on what text.
 
 use rig::bedrock;
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;

@@ -34,7 +34,7 @@
 use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
+use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde_json::{Value, json};
 
@@ -57,7 +57,12 @@ const TOOL_PREAMBLE: &str =
 const TOOL_PROMPT: &str = "Call lookup_city exactly once with city Paris.";
 const TOOL_NAME: &str = "lookup_city";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -73,7 +78,12 @@ fn lookup_city_tool() -> ToolDefinition {
     }
 }
 
-fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn tool_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
         .preamble(TOOL_PREAMBLE.to_owned())
@@ -91,7 +101,7 @@ struct ToolStreamObservation {
 }
 
 async fn collect_tool_calls_and_terminal(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> ToolStreamObservation {
     let mut observation = ToolStreamObservation {
         tool_calls: Vec::new(),

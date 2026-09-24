@@ -48,10 +48,8 @@
 //! by construction, and premise-asserts the fixture body carries the
 //! `tool_use` block.
 
-use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition,
-};
-use rig::driver::Bound;
+use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
+use rig::driver::Model;
 use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{CompletionResponse, Content};
@@ -84,7 +82,7 @@ const RENORMALIZED_SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_
 const THINKING_SCENARIO: &str = "raw_capture_matrix/raw_exposes_thinking_block_and_signature";
 const TOOL_USE_SCENARIO: &str = "raw_capture_matrix/raw_exposes_tool_use_block";
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
 
 fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(32).build()

@@ -16,7 +16,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, ProviderToolDefinition};
+use rig::completion::ProviderToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::streaming::{BlockKind, StreamEvent};
@@ -75,8 +75,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
                 .build();
 
             let mut stream = model
-                .stream(request)
-                .await
+                .stream(request, None)
                 .expect("streaming web-search request should open");
 
             let mut raw_types = Vec::new();
@@ -140,7 +139,7 @@ async fn blocking_web_search_preserves_server_tool_blocks() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("blocking web-search request should succeed");
 

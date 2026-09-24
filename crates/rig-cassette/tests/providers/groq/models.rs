@@ -11,7 +11,6 @@
 
 use anyhow::Result;
 use rig::error::ProviderError;
-use rig::model::ModelLister;
 use rig::providers::openai::wire::GROQ;
 
 use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_result};

@@ -1,8 +1,6 @@
 //! Responses continues histories other wires produced: Anthropic-signed,
 //! Gemini-signed and DeepSeek plain reasoning beside a tool exchange.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::history_survival::portability::{Cell, Source};
 
@@ -10,7 +8,13 @@ fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "reasoning": { "effort": "low" } }))
 }
 
-fn model(client: OpenAiCassette, cell: Cell) -> impl CompletionModel + 'static {
+fn model(
+    client: OpenAiCassette,
+    cell: Cell,
+) -> rig::Model<
+    rig::providers::openai::responses_api::wire::Responses,
+    rig::http_client::BoxedHttpClient,
+> {
     client.openai.responses(cell.model)
 }
 

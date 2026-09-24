@@ -1,6 +1,7 @@
 //! Mistral request-hook regression coverage.
 
 use anyhow::{Result, anyhow};
+use rig_test_support::endpoint::Endpoint;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -74,13 +75,13 @@ impl AgentHook for SessionIdHook<'_> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build")
-        .agent(DEFAULT_MODEL)
-        .preamble("You are a comedian here to entertain the user using humour and jokes.")
-        .build();
+    let agent = Endpoint::new(
+        OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("client should build"),
+    )
+    .agent(DEFAULT_MODEL)
+    .preamble("You are a comedian here to entertain the user using humour and jokes.")
+    .build();
 
     let hook = SessionIdHook {
         session_id: "abc123",

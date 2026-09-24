@@ -1,5 +1,4 @@
 //! DeepSeek streaming tools smoke test.
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::deepseek::DEEPSEEK_V4_FLASH;

@@ -10,15 +10,15 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
     };
     let provider = Anthropic::new("local-test-key");
     let cases = [
-        ("repair", provider.messages("model").with_prompt_caching()),
+        ("repair", provider.completion("model").with_prompt_caching()),
         (
             "repair_streamed",
-            provider.messages("model").with_automatic_caching_1h(),
+            provider.completion("model").with_automatic_caching_1h(),
         ),
         (
             "inventory",
             provider
-                .messages("model")
+                .completion("model")
                 .with_automatic_caching()
                 .with_static_prefix_cache_ttl(CacheTtl::OneHour),
         ),

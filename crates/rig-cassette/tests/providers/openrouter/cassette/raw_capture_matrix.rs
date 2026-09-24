@@ -35,7 +35,7 @@
 //! OpenRouter contracts no request-id header, so `provider_request_id` is
 //! `None` on every turn here — a documented outcome, pinned as such.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openrouter;
 use serde::Deserialize as _;
 use serde_json::json;
@@ -49,7 +49,12 @@ use crate::support::{Observed, assert_matches_recorded_document, assert_matches_
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 

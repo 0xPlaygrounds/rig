@@ -8,13 +8,12 @@
 
 use rig::agent::AgentBuilder;
 use rig::bus::Bus;
-use rig::driver::Bound;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ErasedHandler;
 use rig_cassette::agent::AgentReplayExt;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::{
     with_anthropic_corpus_hooks_cassette, with_anthropic_corpus_layers_cassette,
@@ -53,7 +52,7 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
 /// The program of the hooks cells with `layers` around `add` instead of
 /// a hook stack, on the agent's own bus.
 async fn own_bus(
-    client: Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
     hooks: impl FnOnce(
         AgentBuilder<rig::agent::WithToolServerHandle>,
@@ -152,7 +151,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
         driver
             .register_erased(
                 model_key.clone(),
-                ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+                ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "default",
                     client.completion(CLAUDE_SONNET_4_6),
                 )),

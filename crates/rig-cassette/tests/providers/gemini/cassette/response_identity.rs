@@ -5,7 +5,6 @@
 //! are the recorded proof of that absence, on both surfaces.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::StreamEvent;

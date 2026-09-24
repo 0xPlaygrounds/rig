@@ -61,11 +61,10 @@ use rig::agent::{
     MultiTurnStreamItem, StreamingError,
 };
 use rig::completion::PromptError;
-use rig::driver::Bound;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::streaming::StreamedUserContent;
+use rig_test_support::endpoint::Endpoint;
 use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
@@ -155,7 +154,7 @@ impl AgentHook for OnMalformed {
     }
 }
 
-fn agent(client: Bound<Anthropic>) -> rig::agent::Agent {
+fn agent(client: Endpoint<Anthropic>) -> rig::agent::Agent {
     client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(STREAMING_TOOLS_PREAMBLE)

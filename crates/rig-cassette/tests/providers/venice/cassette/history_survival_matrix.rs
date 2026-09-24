@@ -1,7 +1,5 @@
 //! Venice history survival: tool-call ids across three prompts.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::{BoundVenice, with_venice_cassette};
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
@@ -9,7 +7,10 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundVenice, cell: Cell) -> impl CompletionModel + 'static {
+fn model(
+    client: BoundVenice,
+    cell: Cell,
+) -> rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient> {
     client.completion(cell.model)
 }
 

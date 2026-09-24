@@ -40,7 +40,6 @@
 //! `arbitrary_precision`, round-trip) live beside the type in
 //! `crates/rig-core/src/providers/openai/responses_api/tests.rs`.
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::openai;
 use serde_json::Value;

@@ -5,7 +5,6 @@
 //! task is tool-driven, so the cells are registered as unsupported rather
 //! than recorded.
 
-use rig::completion::CompletionModel;
 use rig::providers::perplexity;
 
 use super::super::support::{BoundPerplexity, with_perplexity_cassette};
@@ -15,7 +14,10 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundPerplexity, cell: Cell) -> impl CompletionModel + 'static {
+fn model(
+    client: BoundPerplexity,
+    cell: Cell,
+) -> rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient> {
     client.completion(cell.model)
 }
 

@@ -3,8 +3,6 @@
 //! Chat Completions replays no reasoning, so the opaque fields under test
 //! are the provider-issued tool-call ids of parallel and retried calls.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
@@ -12,7 +10,10 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: OpenAiCassette, cell: Cell) -> impl CompletionModel + 'static {
+fn model(
+    client: OpenAiCassette,
+    cell: Cell,
+) -> rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient> {
     client.openai.chat(cell.model)
 }
 

@@ -1,21 +1,21 @@
 //! Migrated from `examples/ollama_streaming_pause_control.rs`.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 use rig::streaming::{Delta, StreamEvent};
+use rig_test_support::endpoint::Endpoint;
 use tokio::time::{Duration, sleep};
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn streaming_pause_and_resume() {
-    let model = Ollama::from_env()
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build")
-        .completion("gemma3:4b");
+    let model = Endpoint::new(
+        Ollama::from_env().expect("config should build from env"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    )
+    .completion("gemma3:4b");
     let request = model
         .completion_request("Explain backpropagation in neural networks.")
         .preamble("You are a helpful AI assistant. Provide concise explanations.".to_string())

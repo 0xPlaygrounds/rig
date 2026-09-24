@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use futures::FutureExt;
 
-use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, ToolCall,
     ToolResultContent, UserContent,

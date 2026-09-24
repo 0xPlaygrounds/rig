@@ -1,7 +1,6 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses wire.
 
 use rig::agent::AgentBuilder;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::wire::Responses;

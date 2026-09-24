@@ -61,8 +61,11 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 
 /// `think: false` keeps qwen3's reasoning trace out of the recording; the
 /// durations this matrix reads are reported either way.
-fn request(
-    model: &(impl rig::completion::CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)

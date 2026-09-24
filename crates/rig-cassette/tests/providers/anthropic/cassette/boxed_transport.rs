@@ -6,7 +6,6 @@
 //! matches on method, path, allowlisted headers and body bytes, so a boxed
 //! request that differed in any of them would not find its interaction.
 
-use rig::prelude::*;
 use rig::providers::anthropic;
 
 use super::super::support::with_anthropic_boxed_cassette;

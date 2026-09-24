@@ -15,7 +15,6 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::{EffectFamily, EffectKind, Outcome};
 use rig::message::{AssistantContent, Message, UserContent};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
 

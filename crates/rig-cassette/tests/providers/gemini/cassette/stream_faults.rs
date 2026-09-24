@@ -7,12 +7,13 @@
 //! after it.
 
 use bytes::Bytes;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
 use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::agent::AgentReplayExt;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_gemini_cassette;
 use crate::stream_faults::{
@@ -53,8 +54,10 @@ pub(super) fn gemini_sse(frames: &[&str]) -> Bytes {
 
 /// A client over a transport that answers one streaming request with
 /// `chunks`, then EOF.
-pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<Gemini, SequencedStreamingHttpClient> {
-    Gemini::new(SCRIPTED_KEY).bind(scripted(chunks))
+pub(super) fn scripted_client(
+    chunks: Vec<Bytes>,
+) -> Endpoint<Gemini, SequencedStreamingHttpClient> {
+    Endpoint::new(Gemini::new(SCRIPTED_KEY), scripted(chunks))
 }
 
 /// The model refuses the request before any frame: the run fails with the

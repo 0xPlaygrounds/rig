@@ -1,7 +1,5 @@
 //! Venice model listing smoke test.
 
-use rig::model::ModelLister;
-
 use super::super::support::with_venice_cassette;
 
 #[tokio::test]

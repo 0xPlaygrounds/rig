@@ -2,7 +2,7 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionModel;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -18,11 +18,11 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: rig::driver::Bound<rig::providers::anthropic::wire::Anthropic>,
+    client: Endpoint<rig::providers::anthropic::wire::Anthropic>,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
 ) {
     (
         client.completion("claude-haiku-4-5"),

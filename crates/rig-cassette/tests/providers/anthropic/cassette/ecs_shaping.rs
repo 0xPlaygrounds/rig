@@ -303,7 +303,7 @@ async fn route_on_first_turn_effect_log() {
                         "golden/model:fast",
                         RuntimeHandler {
                             inner: std::sync::Arc::new(
-                                rig_core::serve::adapters::CompletionAdapter::new(
+                                rig_core::serve::adapters::ModelAdapter::new(
                                     "fast",
                                     client.completion(CLAUDE_HAIKU_4_5),
                                 ),
@@ -364,12 +364,10 @@ async fn late_route_effect_log() {
                 handlers.register(
                     "golden/model:late",
                     RuntimeHandler {
-                        inner: std::sync::Arc::new(
-                            rig_core::serve::adapters::CompletionAdapter::new(
-                                "late",
-                                client.completion(CLAUDE_HAIKU_4_5),
-                            ),
-                        ),
+                        inner: std::sync::Arc::new(rig_core::serve::adapters::ModelAdapter::new(
+                            "late",
+                            client.completion(CLAUDE_HAIKU_4_5),
+                        )),
                         runtime: io_runtime(),
                     },
                 )

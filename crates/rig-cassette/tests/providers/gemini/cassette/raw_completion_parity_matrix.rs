@@ -35,7 +35,7 @@
 //! with itself"; the harness replays interactions in order and fails on an
 //! interaction nothing consumed, so both turns are still issued.
 
-use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
+use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
@@ -55,7 +55,12 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: parity"
 /// The one request both cells send, twice: the same built request through one
 /// seam is what makes "the same bytes went out twice" a claim about `encode`
 /// rather than about the cell.
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
 }
 

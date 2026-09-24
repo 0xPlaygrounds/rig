@@ -77,7 +77,6 @@
 //! dialect's extra usage fields so `completion_tokens_details` reaches both
 //! the normalized `Usage` and the reply document on `raw`.
 
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openrouter;
 use serde::Deserialize;

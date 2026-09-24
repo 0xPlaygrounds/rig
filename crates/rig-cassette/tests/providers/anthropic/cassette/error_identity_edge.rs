@@ -4,7 +4,6 @@
 //! contract classification.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ProviderError;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
@@ -101,8 +100,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
             let result = model
                 .completion_request("Never streamed")
                 .max_tokens(16)
-                .stream()
-                .await;
+                .stream();
             let error = match result {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => {
@@ -150,8 +148,7 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
             let result = model
                 .completion_request("Never streamed")
                 .max_tokens(16)
-                .stream()
-                .await;
+                .stream();
             let error = match result {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => {

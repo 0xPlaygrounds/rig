@@ -4,13 +4,14 @@
 //! have a producer here; a scripted row's oracle is the runner in the world
 //! cell's own test.
 
-use rig::completion::CompletionModel;
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
 
 use super::super::support::{BoundDoubleword, with_doubleword_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells, faults};
 
-fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &BoundDoubleword,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion(QWEN3_5_397B_A17B),
@@ -21,7 +22,9 @@ fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(
+    client: &BoundDoubleword,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion("rig/definitely-not-a-doubleword-model"),

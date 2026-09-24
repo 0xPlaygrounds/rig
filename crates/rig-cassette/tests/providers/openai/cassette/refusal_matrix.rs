@@ -70,7 +70,6 @@
 //! `crates/rig-core/src/providers/openai/completion/{mod,streaming}.rs`:
 //! `refusal_*` / `delta_text_*`.
 
-use rig::completion::CompletionModel;
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openai;

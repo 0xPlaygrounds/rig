@@ -1,6 +1,5 @@
 //! Cassette-backed Doubleword embeddings coverage.
 
-use rig::embeddings::EmbeddingModel;
 use rig::providers::doubleword;
 
 use super::super::support::with_doubleword_cassette;

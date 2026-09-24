@@ -58,11 +58,7 @@
 //!   400 that must survive rig's SSE funnel rather than the unary one.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
-use rig::embeddings::EmbeddingModel;
 use rig::error::ProviderError;
-use rig::model::ModelLister;
-use rig::rerank::RerankModel;
 use serde_json::{Value, json};
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};

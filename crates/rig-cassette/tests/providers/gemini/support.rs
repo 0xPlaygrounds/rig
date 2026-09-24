@@ -1,8 +1,9 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::gemini::Gemini;
+use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
@@ -292,7 +293,7 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
 /// serves both Gemini surfaces: `bound.completion(m)` is GenerateContent and
 /// `bound.map_wire(|gemini| gemini.interactions(m))` is the Interactions API,
 /// which is why the interactions wrapper hands out the same type.
-pub(super) type BoundGemini = Bound<Gemini, BoxedHttpClient>;
+pub(super) type BoundGemini = Endpoint<Gemini, BoxedHttpClient>;
 
 async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundGemini) {
     let cassette = ProviderCassette::start(
@@ -302,10 +303,10 @@ async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
         "https://generativelanguage.googleapis.com",
     )
     .await;
-    let gemini = Gemini::new(cassette.api_key("GEMINI_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let gemini = Endpoint::new(
+        Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
 
     (cassette, gemini)
 }
@@ -331,13 +332,12 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
         "https://generativelanguage.googleapis.com",
     )
     .await;
-    let client = Gemini::new(cassette.api_key("GEMINI_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bind(
-            rig::http_client::ReqwestClient::default()
-                .boxed()
-                .with_middleware(middleware),
-        );
+    let client = Endpoint::new(
+        Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url()),
+        rig::http_client::ReqwestClient::default()
+            .boxed()
+            .with_middleware(middleware),
+    );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -471,10 +471,10 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let client = Gemini::new(cassette.bogus_api_key())
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let client = Endpoint::new(
+        Gemini::new(cassette.bogus_api_key()).with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -614,10 +614,10 @@ mod always_deleting_cached_contents_tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("stub should serve");
         });
-        let client = Gemini::new("stub-key")
-            .with_base_url(format!("http://{addr}"))
-            .bound()
-            .expect("transport should build");
+        let client = Endpoint::new(
+            Gemini::new("stub-key").with_base_url(format!("http://{addr}")),
+            rig::rig_reqwest::bundled().expect("transport should build"),
+        );
 
         (client, server)
     }

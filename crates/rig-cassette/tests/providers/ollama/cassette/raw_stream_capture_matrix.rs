@@ -60,8 +60,11 @@ const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &(impl rig::completion::CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)

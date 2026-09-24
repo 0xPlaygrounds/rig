@@ -1,13 +1,13 @@
 //! Migrated from `examples/openai_websocket_mode.rs`.
 
 use anyhow::Result;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::support::assert_nonempty_response;
 
@@ -25,10 +25,10 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn websocket_session_roundtrip() -> Result<()> {
-    let client = OpenAI::from_env()
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
+    let client = Endpoint::new(
+        OpenAI::from_env().expect("config should build from env"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let model = client.responses(openai::GPT_4O_MINI);
     let mut session = model.responses_websocket().await?;
 

@@ -48,10 +48,10 @@
 //! assistant text. Rig surfaces exactly what the server sent, which is right;
 //! the cell records the shape so nobody mistakes it for a rig defect later.
 
+use rig_test_support::endpoint::Endpoint;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, ToolResult,
     ToolResultContent, UserContent,
@@ -612,10 +612,11 @@ async fn tool_choice_required_forces_a_call() {
 #[tokio::test]
 async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
-    let model = OpenAI::with_key(&LLAMACPP, "")
-        .with_base_url("http://127.0.0.1:1/v1")
-        .bind(rig::http_client::ReqwestClient::default())
-        .completion(CASSETTE_MODEL);
+    let model = Endpoint::new(
+        OpenAI::with_key(&LLAMACPP, "").with_base_url("http://127.0.0.1:1/v1"),
+        rig::http_client::ReqwestClient::default(),
+    )
+    .completion(CASSETTE_MODEL);
 
     let error = model
         .completion(
@@ -664,10 +665,11 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 /// that a checked fact rather than a reading.
 #[tokio::test]
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
-    let model = OpenAI::with_key(&LLAMACPP, "")
-        .with_base_url("http://127.0.0.1:1/v1")
-        .bind(rig::http_client::ReqwestClient::default())
-        .completion(CASSETTE_MODEL);
+    let model = Endpoint::new(
+        OpenAI::with_key(&LLAMACPP, "").with_base_url("http://127.0.0.1:1/v1"),
+        rig::http_client::ReqwestClient::default(),
+    )
+    .completion(CASSETTE_MODEL);
 
     let error = model
         .stream(

@@ -12,7 +12,7 @@
 //! carries.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use serde_json::{Value, json};
 
@@ -76,11 +76,15 @@ async fn turn(
     }
 }
 
-async fn run<M: CompletionModel>(
-    model: M,
+async fn run<W, T>(
+    model: rig::driver::Model<W, T>,
     request: CompletionRequest,
     streamed: bool,
-) -> Vec<AssistantContent> {
+) -> Vec<AssistantContent>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     if !streamed {
         return model
             .completion(request)

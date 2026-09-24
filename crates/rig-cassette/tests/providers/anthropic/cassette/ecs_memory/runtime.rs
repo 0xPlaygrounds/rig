@@ -17,6 +17,7 @@ use rig_ecs::{
     bus::{Bound, EffectOutcome, Handlers, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
+use rig_test_support::endpoint::Endpoint;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -45,7 +46,7 @@ pub(super) fn register_memory(
     .expect("memory key")
 }
 pub(super) fn agent(
-    client: &rig::driver::Bound<Anthropic>,
+    client: &Endpoint<Anthropic>,
     memory: impl ConversationMemory + 'static,
     preamble: &str,
     streamed: bool,
@@ -197,7 +198,7 @@ pub(super) async fn run_prompts(
     outputs
 }
 pub(super) async fn remembers(
-    client: rig::driver::Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     clears: Clears,
     prompts: &[&str],
     streamed: bool,

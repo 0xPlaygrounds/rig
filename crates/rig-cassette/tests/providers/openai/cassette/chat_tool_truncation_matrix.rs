@@ -44,8 +44,8 @@ use std::sync::{
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::driver::Bound;
+use rig::completion::{AssistantContent, FinishReason};
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::openai::wire::Chat;
 use rig::streaming::StreamEvent;
@@ -137,7 +137,10 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &Model<Chat, rig::http_client::BoxedHttpClient>,
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .preamble(PREAMBLE.to_owned())

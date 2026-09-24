@@ -42,7 +42,6 @@
 //! sides; neither is a rig defect, and a caller who does not know about the
 //! hole gets a constraint they did not ask for with no diagnostic.
 
-use rig::completion::CompletionModel;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

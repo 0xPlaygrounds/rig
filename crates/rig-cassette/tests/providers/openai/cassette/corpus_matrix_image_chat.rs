@@ -4,13 +4,14 @@
 //! the world cells (`ecs_matrix_image*.rs`) are compared to. This file holds
 //! the scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
-use rig::completion::CompletionModel;
 use rig::providers::openai::GPT_5_MINI;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &OpenAiCassette,
+) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
         model: client.openai.chat(GPT_5_MINI),

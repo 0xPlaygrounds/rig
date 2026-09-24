@@ -64,12 +64,12 @@
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini code_execution_matrix -- --test-threads=1`
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
+use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -156,7 +156,7 @@ fn text_of(choice: &[AssistantContent]) -> String {
 
 /// Drain a normalized stream into its text and terminal record.
 async fn drain(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> (String, Vec<AssistantContent>, bool) {
     let mut text = String::new();
     let mut saw_terminal = false;
@@ -193,7 +193,8 @@ async fn blocking_body(
         request = request.max_tokens(max_tokens);
     }
 
-    let response = CompletionModel::completion(&model, request.build())
+    let response = model
+        .call(request.build(), None)
         .await
         .expect("a turn carrying code-execution parts must still convert");
 
@@ -224,8 +225,8 @@ async fn streaming_body(
         request = request.max_tokens(max_tokens);
     }
 
-    let stream = CompletionModel::stream(&model, request.build())
-        .await
+    let stream = model
+        .stream(request.build(), None)
         .expect("stream should open");
     let (streamed, choice, saw_terminal) = drain(stream).await;
 
@@ -556,7 +557,8 @@ async fn blocking_code_execution_with_visible_thoughts() {
                 .additional_params(code_execution_params_with_thoughts())
                 .build();
 
-            let response = CompletionModel::completion(&model, request)
+            let response = model
+                .call(request, None)
                 .await
                 .expect("code-execution parts next to thought parts must still convert");
 
@@ -596,9 +598,7 @@ async fn streaming_code_execution_with_visible_thoughts() {
                 .additional_params(code_execution_params_with_thoughts())
                 .build();
 
-            let stream = CompletionModel::stream(&model, request)
-                .await
-                .expect("stream should open");
+            let stream = model.stream(request, None).expect("stream should open");
             let (streamed, choice, saw_terminal) = drain(stream).await;
 
             assert!(
@@ -642,7 +642,8 @@ async fn blocking_code_execution_with_preamble() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let response = CompletionModel::completion(&model, request)
+            let response = model
+                .call(request, None)
                 .await
                 .expect("systemInstruction + codeExecution must still convert");
             assert!(
@@ -673,9 +674,7 @@ async fn streaming_code_execution_with_preamble() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let stream = CompletionModel::stream(&model, request)
-                .await
-                .expect("stream should open");
+            let stream = model.stream(request, None).expect("stream should open");
             let (streamed, _, saw_terminal) = drain(stream).await;
 
             assert!(
@@ -970,7 +969,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 // --- 23-25: states a live turn cannot be made to produce ------------------
 
 mod unit {
-    use rig::completion::{CompletionModel, CompletionResponse};
+    use rig::completion::CompletionResponse;
     use rig::error::ProviderError;
     use rig::prelude::*;
     use rig::providers::gemini::Gemini;
@@ -1017,9 +1016,11 @@ mod unit {
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
-        let model = Gemini::new("unit-key")
-            .bind(RecordingHttpClient::new(reply_with(parts)))
-            .completion("gemini-2.5-flash");
+        let model = Endpoint::new(
+            Gemini::new("unit-key"),
+            RecordingHttpClient::new(reply_with(parts)),
+        )
+        .completion("gemini-2.5-flash");
         let request = model.completion_request("unit").build();
         model.completion(request).await
     }

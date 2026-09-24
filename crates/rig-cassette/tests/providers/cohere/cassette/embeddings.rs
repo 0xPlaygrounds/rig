@@ -1,9 +1,6 @@
 //! Cassette-backed Cohere embeddings coverage.
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use rig::embeddings::{
-    EmbeddingModel as TextEmbeddingModel, ImageEmbeddingModel as ImageEmbeddingModelTrait,
-};
 use rig::providers::cohere;
 
 use super::super::support::with_cohere_cassette;
@@ -24,7 +21,7 @@ async fn embed_texts_smoke() {
         let model = client
             .embedding(cohere::EMBED_V4, None)
             .map_wire(|wire| wire.with_input_type("search_document"));
-        assert_eq!(model.ndims(), 1536);
+        assert_eq!(model.capabilities().ndims, 1536);
 
         let embeddings = model
             .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
@@ -42,7 +39,7 @@ async fn embed_search_query_smoke() {
         let model = client
             .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
             .map_wire(|wire| wire.with_input_type("search_query"));
-        assert_eq!(model.ndims(), 384);
+        assert_eq!(model.capabilities().ndims, 384);
 
         let embeddings = model
             .embed_texts(["Where can I find coffee near the office?".to_string()])
@@ -62,7 +59,7 @@ async fn embed_classification_smoke() {
             let model = client
                 .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
                 .map_wire(|wire| wire.with_input_type("classification"));
-            assert_eq!(model.ndims(), 384);
+            assert_eq!(model.capabilities().ndims, 384);
 
             let embeddings = model
                 .embed_texts(["The package arrived early and in perfect condition.".to_string()])

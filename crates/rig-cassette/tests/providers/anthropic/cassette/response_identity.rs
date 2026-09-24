@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::StreamEvent;
@@ -60,7 +60,6 @@ async fn streaming_terminal_carries_identity() {
                 .completion_request("Reply with exactly: stream identity probe")
                 .max_tokens(32)
                 .stream()
-                .await
                 .expect("stream should open");
 
             let mut terminal = None;

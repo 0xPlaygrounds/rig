@@ -33,7 +33,7 @@
 //! in the response says so. The cell reads the recorded request bytes rather
 //! than trusting the builder.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::providers::openai::wire::{LLAMACPP, OpenAI};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::{Value, json};

@@ -1,7 +1,6 @@
 //! Migrated from `examples/gemini_interactions_api.rs`.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
@@ -351,7 +350,8 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
 
-            let response = rig::completion::CompletionModel::completion(&model, request)
+            let response = model
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
             let usage = response.usage;

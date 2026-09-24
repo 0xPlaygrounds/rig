@@ -1,9 +1,9 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
+use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -13,7 +13,7 @@ use futures::FutureExt;
 
 async fn with_openai_vllm_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Endpoint<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let base_url =
@@ -25,10 +25,10 @@ where
         &base_url,
     )
     .await;
-    let client = OpenAI::new("dummy-vllm-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("vLLM OpenAI-compatible client should build");
+    let client = Endpoint::new(
+        OpenAI::new("dummy-vllm-key").with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("vLLM OpenAI-compatible client should build"),
+    );
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;

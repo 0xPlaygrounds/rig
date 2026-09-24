@@ -16,9 +16,6 @@ use rig::streaming::Delta;
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::CompletionModel as _;
-use rig::embeddings::EmbeddingModel as _;
-use rig::model::ModelLister;
 use rig::providers::mistral;
 
 use super::support::with_mistral_capability_cassette;
@@ -57,7 +54,7 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.
-            let declared = model.ndims();
+            let declared = model.capabilities().ndims;
             let embedding = model.embed_text("dimension probe").await?;
             assert_declared_matches_returned(declared, embedding.vec.len());
             Ok::<_, anyhow::Error>(())
@@ -126,7 +123,7 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
         "capability_edges/streaming_with_two_candidates_answers_from_the_first",
         |client| async move {
             let model = client.completion(mistral::MISTRAL_SMALL);
-            let mut stream: rig::streaming::StreamingCompletionResponse = model
+            let mut stream: rig::streaming::CompletionStream = model
                 .completion_request("Say one random word.")
                 .temperature(1.0)
                 .max_tokens(8)

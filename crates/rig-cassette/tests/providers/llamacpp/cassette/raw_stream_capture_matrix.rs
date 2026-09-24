@@ -56,7 +56,6 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
-use rig::completion::CompletionModel;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -70,7 +69,12 @@ use crate::support::Observed;
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
 }
 

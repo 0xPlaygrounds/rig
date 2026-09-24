@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::mistral;
@@ -454,8 +454,11 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
 /// Mistral's own response type reads it back. Doing that here keeps the
 /// provider-native-versus-normalized checks below on a single cassette
 /// interaction.
-async fn raw_and_normalized_completion(
-    model: &(impl CompletionModel + Clone),
+async fn raw_and_normalized_completion<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     request: rig::completion::CompletionRequest,
 ) -> Result<(
     mistral::CompletionResponse,

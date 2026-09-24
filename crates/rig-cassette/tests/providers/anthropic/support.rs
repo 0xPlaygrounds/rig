@@ -1,20 +1,21 @@
 use futures::FutureExt;
-use rig::driver::{Bind, Bound};
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::prelude::*;
 use rig::providers::anthropic::wire::Anthropic;
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 pub(super) struct AnthropicFilesCassette {
-    pub(super) bound: Bound<Anthropic>,
+    pub(super) bound: Endpoint<Anthropic>,
     pub(super) base_url: String,
     pub(super) api_key: String,
 }
 
-async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<Anthropic>) {
+async fn anthropic_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, Endpoint<Anthropic>) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "anthropic",
@@ -22,10 +23,10 @@ async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
         "https://api.anthropic.com",
     )
     .await;
-    let bound = Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let bound = Endpoint::new(
+        Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
 
     (cassette, bound)
 }
@@ -38,7 +39,7 @@ pub(super) async fn with_anthropic_boxed_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic, BoxedHttpClient>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic, BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -48,9 +49,10 @@ pub(super) async fn with_anthropic_boxed_cassette<F, Fut>(
         "https://api.anthropic.com",
     )
     .await;
-    let bound = Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bind(ReqwestClient::default().boxed());
+    let bound = Endpoint::new(
+        Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url()),
+        ReqwestClient::default().boxed(),
+    );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -66,7 +68,7 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     test_body: F,
 ) where
     M: rig::http_client::HttpMiddleware + 'static,
-    F: FnOnce(Bound<Anthropic, BoxedHttpClient>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic, BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -76,16 +78,17 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
         "https://api.anthropic.com",
     )
     .await;
-    let bound = Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bind(ReqwestClient::default().boxed().with_middleware(middleware));
+    let bound = Endpoint::new(
+        Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url()),
+        ReqwestClient::default().boxed().with_middleware(middleware),
+    );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
 pub(super) async fn with_anthropic_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
@@ -101,7 +104,7 @@ pub(super) async fn with_anthropic_turn_metadata_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -126,7 +129,7 @@ pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -136,10 +139,10 @@ pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
         OPENROUTER_MESSAGES_BASE_URL,
     )
     .await;
-    let bound = Anthropic::new(cassette.api_key("OPENROUTER_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let bound = Endpoint::new(
+        Anthropic::new(cassette.api_key("OPENROUTER_API_KEY")).with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
 
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -154,7 +157,7 @@ pub(super) async fn with_anthropic_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, bound) = anthropic_cassette(spec).await;
@@ -179,11 +182,12 @@ pub(super) async fn with_anthropic_files_cassette<F, Fut>(
     .await;
     let base_url = normalize_anthropic_base_url(&cassette.base_url());
     let api_key = cassette.api_key("ANTHROPIC_API_KEY");
-    let bound = Anthropic::new(api_key.as_str())
-        .with_base_url(&base_url)
-        .with_beta(beta_header)
-        .bound()
-        .expect("transport should build");
+    let bound = Endpoint::new(
+        Anthropic::new(api_key.as_str())
+            .with_base_url(&base_url)
+            .with_beta(beta_header),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
 
     let parts = AnthropicFilesCassette {
         bound,
@@ -266,7 +270,7 @@ pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -281,7 +285,7 @@ pub(super) async fn with_anthropic_empty_stop_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -295,7 +299,7 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -307,10 +311,10 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = Anthropic::new("sk-invalid-edge-matrix-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let bound = Endpoint::new(
+        Anthropic::new("sk-invalid-edge-matrix-key").with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -324,7 +328,7 @@ pub(super) async fn with_anthropic_reasoning_usage_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -337,7 +341,7 @@ pub(super) async fn with_anthropic_corpus_request_shape_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -349,7 +353,7 @@ pub(super) async fn with_anthropic_corpus_hooks_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -361,7 +365,7 @@ pub(super) async fn with_anthropic_corpus_serving_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -373,7 +377,7 @@ pub(super) async fn with_anthropic_corpus_outcome_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -385,7 +389,7 @@ pub(super) async fn with_anthropic_corpus_endings_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -397,7 +401,7 @@ pub(super) async fn with_anthropic_corpus_oracle_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -409,7 +413,7 @@ pub(super) async fn with_anthropic_corpus_shaping_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -421,7 +425,7 @@ pub(super) async fn with_anthropic_corpus_memory_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -433,7 +437,7 @@ pub(super) async fn with_anthropic_corpus_layers_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -445,7 +449,7 @@ pub(super) async fn with_anthropic_corpus_causal_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -457,7 +461,7 @@ pub(super) async fn with_anthropic_corpus_host_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;
@@ -469,7 +473,7 @@ pub(super) async fn with_anthropic_corpus_output_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Endpoint<Anthropic>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_anthropic_cassette(spec, test_body).await;

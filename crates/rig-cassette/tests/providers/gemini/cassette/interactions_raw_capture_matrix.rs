@@ -37,8 +37,8 @@
 //! the interaction `id` is normalized into `response_id` *and* scrubbed into
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
-use rig::completion::{CompletionModel, FinishReason};
-use rig::driver::Bound;
+use rig::completion::FinishReason;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus, Interactions};
 use serde::Deserialize;
@@ -59,7 +59,7 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: capture
 /// The Interactions wire bound to the bundled cassette transport. One Gemini
 /// config serves both surfaces, so the wrapper hands out the config and each
 /// cell names the surface it is about.
-type Model = Bound<Interactions, BoxedHttpClient>;
+type Model = Model<Interactions, BoxedHttpClient>;
 
 fn request(model: &Model) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()

@@ -1,9 +1,10 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::cohere::wire::Cohere;
 use rig::tool::Tool;
+use rig_test_support::endpoint::Endpoint;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -15,7 +16,7 @@ const COHERE_BASE_URL: &str = "https://api.cohere.ai";
 
 /// The Cohere config bound to the bundled transport — what a cassette test
 /// builds its models from, now that a model is a bound wire.
-pub(super) type BoundCohere = Bound<Cohere, BoxedHttpClient>;
+pub(super) type BoundCohere = Endpoint<Cohere, BoxedHttpClient>;
 
 async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundCohere) {
     let cassette = ProviderCassette::start(
@@ -25,10 +26,10 @@ async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
         COHERE_BASE_URL,
     )
     .await;
-    let cohere = Cohere::new(cassette.api_key("COHERE_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("Cohere cassette transport should build");
+    let cohere = Endpoint::new(
+        Cohere::new(cassette.api_key("COHERE_API_KEY")).with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("Cohere cassette transport should build"),
+    );
 
     (cassette, cohere)
 }

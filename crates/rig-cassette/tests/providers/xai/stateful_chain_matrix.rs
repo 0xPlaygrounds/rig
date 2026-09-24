@@ -7,7 +7,7 @@
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
 use futures::FutureExt;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, UserContent,
 };

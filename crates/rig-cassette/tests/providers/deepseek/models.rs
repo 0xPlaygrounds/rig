@@ -4,7 +4,6 @@
 //! `cargo test -p rig --test deepseek list_models_smoke -- --ignored --nocapture`
 
 use rig::error::ProviderError;
-use rig::model::ModelLister;
 
 use super::support::with_deepseek_cassette;
 

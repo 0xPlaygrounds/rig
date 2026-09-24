@@ -6,7 +6,6 @@
 //! populate them") makes capture, not documentation, the fix.
 
 use anyhow::Result;
-use rig::completion::CompletionModel;
 
 use super::support::with_groq_cassette_result;
 

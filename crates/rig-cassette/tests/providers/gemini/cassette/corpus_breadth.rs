@@ -8,12 +8,13 @@ use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::bus::Bus;
 use rig::completion::PromptError;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_gemini_corpus_breadth_cassette;
 use crate::goldens::{
@@ -57,7 +58,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
 
 /// A host's bus with the model, and the host's note taker or embedding model.
 fn host_bus<H: Socket>(
-    client: &Bound<Gemini, H>,
+    client: &Endpoint<Gemini, H>,
     notes: bool,
     embeds: bool,
 ) -> (
@@ -71,7 +72,7 @@ fn host_bus<H: Socket>(
     driver
         .register_erased(
             model_key.clone(),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 client.completion(MODEL),
             )),
@@ -89,7 +90,7 @@ fn host_bus<H: Socket>(
         driver
             .register_erased(
                 HandlerKey::from(EMBED_KEY),
-                rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
+                rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "host",
                     client.embedding(gemini::embedding::EMBEDDING_001, None),
                 )),

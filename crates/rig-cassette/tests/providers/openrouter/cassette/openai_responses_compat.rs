@@ -1,7 +1,6 @@
 //! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI
 //! Responses wire: the `OPENROUTER` dialect routed to `/responses` once.
 
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::responses_api::CompletionResponse;
 use serde::Deserialize as _;

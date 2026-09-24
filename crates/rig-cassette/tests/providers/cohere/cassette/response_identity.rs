@@ -4,8 +4,6 @@
 //! `provider_request_id` is `None` by design. This fixture is the recorded
 //! proof of that absence.
 
-use rig::completion::CompletionModel;
-
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 
 #[tokio::test]

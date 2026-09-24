@@ -42,7 +42,7 @@ use std::sync::{
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
+use rig::completion::{AssistantContent, FinishReason};
 use rig::prelude::*;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
@@ -133,8 +133,11 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     model

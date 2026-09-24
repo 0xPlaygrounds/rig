@@ -77,7 +77,6 @@
 //! `crates/rig-core/src/providers/openai/wire/chat.rs`
 //! (`assistant_refusal_fallback`).
 
-use rig::completion::CompletionModel;
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openai::completion::Message as OpenAiMessage;

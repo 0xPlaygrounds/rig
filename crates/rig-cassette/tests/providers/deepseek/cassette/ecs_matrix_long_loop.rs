@@ -8,14 +8,16 @@
 
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
-use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::endpoint::Endpoint;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::DeepSeek;
 
-fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &BoundDeepSeek,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-flash"),
@@ -49,8 +51,13 @@ const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
-fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = OpenAI::with_key(&DEEPSEEK, SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
+fn scripted_unary(
+    replies: Vec<MockHttpResponse>,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, SequencedHttpClient>> {
+    let client = Endpoint::new(
+        OpenAI::with_key(&DEEPSEEK, SCRIPTED_KEY),
+        SequencedHttpClient::new(replies),
+    );
     Wire {
         thinking: THINKING,
         model: client.completion("deepseek-flash"),

@@ -38,7 +38,7 @@
 //! token budget leaves room for its hidden thinking before the one-word
 //! answer.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openai;
 use serde::Deserialize as _;
 use serde_json::json;
@@ -52,7 +52,12 @@ use crate::support::Observed;
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(256).build()
 }
 

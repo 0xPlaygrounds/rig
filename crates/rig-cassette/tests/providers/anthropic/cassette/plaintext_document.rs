@@ -1,5 +1,4 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
-use rig::completion::CompletionModel;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
@@ -194,7 +193,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             // call yields rig's normalized response and, in `raw`,
             // Anthropic's own reply.
             let first_turn = model
-                .completion(first_request)
+                .call(first_request, None)
                 .await
                 .expect("first document citation turn should succeed");
             let first_turn_raw_text = provider_text(&first_turn);

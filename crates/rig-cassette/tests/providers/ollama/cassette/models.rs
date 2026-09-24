@@ -3,8 +3,6 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::model::ModelLister;
-
 use super::super::support::with_ollama_cassette;
 
 #[tokio::test]

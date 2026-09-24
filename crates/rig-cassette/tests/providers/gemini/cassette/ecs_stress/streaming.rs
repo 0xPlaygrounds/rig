@@ -4,7 +4,6 @@ pub(super) use super::ecs_stress_tools_runtime::rewrite_result;
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
 use rig::{
-    completion::CompletionModel,
     effect::{EffectKind, Outcome},
     streaming::{Delta, StreamEvent},
     tool::ToolResult,
@@ -46,8 +45,11 @@ struct Taps(Vec<EventTap>);
 struct Published(usize);
 #[derive(Component)]
 struct TurnObserved;
-pub(super) fn agent(
-    model: impl CompletionModel + 'static,
+pub(super) fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
     name: &str,
     temperature: Option<f64>,

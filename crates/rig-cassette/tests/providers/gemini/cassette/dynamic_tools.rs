@@ -8,12 +8,13 @@
 //! turns.
 
 use rig::completion::Message;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig::tool::ToolSet;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::agent_run_support::{history_has_assistant_tool_call, tool_result_texts};
 use super::super::support::with_gemini_cassette;
@@ -24,11 +25,11 @@ use crate::support::assert_mentions_expected_number;
 
 /// Build an in-memory index over the toolset's embeddable schemas.
 async fn build_tool_index<H: Socket>(
-    client: &Bound<Gemini, H>,
+    client: &Endpoint<Gemini, H>,
     toolset: &ToolSet,
 ) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
     rig::embeddings::ToolSchema,
-    Bound<gemini::embedding::Embeddings, H>,
+    Model<gemini::embedding::Embeddings, H>,
 > {
     let embedding_model = client.embedding(gemini::embedding::EMBEDDING_001, None);
     // ToolSet::schemas() returns registration order, so the recorded

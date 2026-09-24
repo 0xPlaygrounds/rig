@@ -1,7 +1,6 @@
 //! Contract-vs-reality (rig#2265): DeepSeek rides the OpenAI-compatible path
 //! with the conservative `REQUEST_ID_HEADER = None` default.
 
-use rig::completion::CompletionModel;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;

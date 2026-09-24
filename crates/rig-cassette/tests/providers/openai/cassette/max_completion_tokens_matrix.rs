@@ -61,7 +61,6 @@
 //! which the untouched `mistralrs`, `vllm`, and `doubleword` suites replay as
 //! their own proof.
 
-use rig::completion::CompletionModel;
 use rig::extractor::ExtractorBuilder;
 use rig::prelude::*;
 use rig::providers::openai;

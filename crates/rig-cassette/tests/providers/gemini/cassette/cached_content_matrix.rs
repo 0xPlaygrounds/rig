@@ -53,6 +53,7 @@ use rig::error::ProviderError;
 use rig::prelude::*;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, Gemini};
+use rig_test_support::endpoint::Endpoint;
 use std::time::Duration;
 
 use super::super::support::{
@@ -338,10 +339,10 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 
     use super::super::tools_support::CountingPing;
 
-    let client = Gemini::new("not-a-real-key")
-        .with_base_url("http://127.0.0.1:1")
-        .bound()
-        .expect("transport should build");
+    let client = Endpoint::new(
+        Gemini::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
 
     let agent = AgentBuilder::new(
         client
@@ -988,8 +989,8 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     record_telemetry_content: false,
                 };
 
-                let mut stream = rig::completion::CompletionModel::stream(&model, request)
-                    .await
+                let mut stream = model
+                    .stream(request, None)
                     .expect("streamed cached-content request should start");
                 let mut usage = None;
                 while let Some(item) = stream.next().await {

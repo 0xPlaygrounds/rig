@@ -14,7 +14,6 @@ use rig::agent::MultiTurnStreamItem;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, Outcome};
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::{Delta, StreamEvent};
 use rig_cassette::agent::AgentReplayExt;

@@ -37,8 +37,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::driver::Bound;
+use rig::completion::{AssistantContent, FinishReason};
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::openai::wire::Chat;
 use rig::streaming::StreamEvent;
@@ -156,7 +156,10 @@ pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &Model<Chat, rig::http_client::BoxedHttpClient>,
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut builder = model
         .completion_request(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())

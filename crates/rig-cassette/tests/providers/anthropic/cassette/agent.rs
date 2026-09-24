@@ -1,6 +1,5 @@
 //! Anthropic agent completion smoke test.
 
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig_cassette::agent::AgentReplayExt;
 

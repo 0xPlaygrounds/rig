@@ -10,7 +10,6 @@ use futures::StreamExt;
 use rig::agent::{Agent, MultiTurnStreamItem};
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;

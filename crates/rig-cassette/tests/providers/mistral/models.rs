@@ -10,7 +10,6 @@
 
 use anyhow::Result;
 use rig::error::ProviderError;
-use rig::model::ModelLister;
 
 use super::support::{with_mistral_cassette_bogus_key_result, with_mistral_cassette_result};
 

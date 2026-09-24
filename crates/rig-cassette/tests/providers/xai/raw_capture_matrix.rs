@@ -32,8 +32,8 @@
 //! finish reason and accounting, and the provider-native view of the same
 //! reply — is [`crate::raw_capture::responses`].
 
-use rig::completion::{CompletionModel, CompletionRequest};
-use rig::driver::Bound;
+use rig::completion::CompletionRequest;
+use rig::driver::Model;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
@@ -52,7 +52,7 @@ const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
+fn request(model: &Model<OpenAiWire, rig::http_client::BoxedHttpClient>) -> CompletionRequest {
     model.completion_request(PROMPT).build()
 }
 

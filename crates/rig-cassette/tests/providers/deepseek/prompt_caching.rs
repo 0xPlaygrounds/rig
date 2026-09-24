@@ -36,6 +36,7 @@
 use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
+use rig_test_support::endpoint::Endpoint;
 
 use crate::cache_conformance::{
     CacheAccounting, CacheProbe, CacheSupport, assert_cache_conformance, assert_prefix_stable,
@@ -98,10 +99,10 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let bound = OpenAI::from_env_with(&DEEPSEEK)
-        .expect("DEEPSEEK_API_KEY")
-        .bound()
-        .expect("the bundled transport should build");
+    let bound = Endpoint::new(
+        OpenAI::from_env_with(&DEEPSEEK).expect("DEEPSEEK_API_KEY"),
+        rig::rig_reqwest::bundled().expect("the bundled transport should build"),
+    );
     let model = bound.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(

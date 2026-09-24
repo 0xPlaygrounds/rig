@@ -8,8 +8,6 @@
 //! `embedding_matrix.rs`, and the difference is why this suite states its
 //! model.
 
-use rig::embeddings::EmbeddingModel;
-
 use super::super::cassette_support::*;
 
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};

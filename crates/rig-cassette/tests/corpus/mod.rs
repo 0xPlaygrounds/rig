@@ -3802,8 +3802,8 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                     continue;
                                 };
                                 let partial = assembler.partial_turn(
-                                    stream.message_id.clone(),
-                                    stream.reasoning_issuer(),
+                                    stream.folded().message_id().map(str::to_owned),
+                                    stream.folded().reasoning_issuer(),
                                 );
                                 let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
                                     Some(retry_feedback(&invalid.tool_call.function.name))
@@ -3904,16 +3904,16 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             break None;
                         }
                         let terminal = stream
-                            .response
-                            .as_ref()
+                            .folded()
+                            .terminal()
                             .expect("a stream that reached its end carries its terminal record");
                         let usage = terminal.usage;
                         let raw = terminal.raw.clone();
-                        let snapshot = stream.snapshot();
+                        let snapshot = stream.folded().snapshot();
                         let streamed = assembler.finish(
-                            stream.message_id.clone(),
+                            stream.folded().message_id().map(str::to_owned),
                             &snapshot,
-                            stream.reasoning_issuer(),
+                            stream.folded().reasoning_issuer(),
                         );
                         ModelTurn::new(
                             streamed.message_id,

@@ -1,5 +1,6 @@
 //! Groq live coverage for batch multi-extract pipelines.
 
+use rig_test_support::endpoint::Endpoint;
 use std::future::IntoFuture;
 
 use anyhow::Result;
@@ -32,10 +33,10 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ)
-        .expect("GROQ_API_KEY should be set")
-        .bound()
-        .expect("transport should build");
+    let groq = Endpoint::new(
+        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let names_extractor = groq
         .extractor::<Names>(MULTI_EXTRACT_NAMES_MODEL)
         .append_preamble("Extract names from the given text.")

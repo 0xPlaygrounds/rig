@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig::tool::builtin::ThinkTool;

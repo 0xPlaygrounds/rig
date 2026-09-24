@@ -5,7 +5,6 @@
 //! `tests/common/ecs_matrix/extra.rs`; this file holds the scenario
 //! literals and the wire's models.
 
-use rig::completion::CompletionModel;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI, GPT_5_NANO};
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
@@ -14,7 +13,9 @@ use crate::ecs_matrix::{
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &OpenAiCassette,
+) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client.openai.chat(GPT_5_MINI),

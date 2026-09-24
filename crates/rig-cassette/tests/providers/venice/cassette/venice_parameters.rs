@@ -11,7 +11,6 @@
 //! per-request `cost` have no slot on the normalized response, which makes
 //! that the only route to them.
 
-use rig::completion::CompletionModel;
 use rig::providers::venice::{self, VeniceParameters, WebSearchMode};
 use serde::Deserialize as _;
 

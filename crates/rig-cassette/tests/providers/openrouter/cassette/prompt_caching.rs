@@ -21,6 +21,7 @@
 //! ```
 
 use rig::prelude::*;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -92,12 +93,13 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let model = rig::providers::openai::wire::OpenAI::from_env_with(
-        &rig::providers::openai::wire::OPENROUTER,
+    let model = Endpoint::new(
+        rig::providers::openai::wire::OpenAI::from_env_with(
+            &rig::providers::openai::wire::OPENROUTER,
+        )
+        .expect("OPENROUTER_API_KEY"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
     )
-    .expect("OPENROUTER_API_KEY")
-    .bound()
-    .expect("transport should build")
     .completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(

@@ -34,6 +34,7 @@
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::xai;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::cache_conformance::{
     CacheAccounting, CacheProbe, CacheSupport, assert_cache_conformance, assert_prefix_stable,
@@ -96,10 +97,10 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = OpenAI::from_env_with(&xai::DIALECT)
-        .expect("XAI_API_KEY")
-        .bound()
-        .expect("client should build");
+    let client = Endpoint::new(
+        OpenAI::from_env_with(&xai::DIALECT).expect("XAI_API_KEY"),
+        rig::rig_reqwest::bundled().expect("client should build"),
+    );
     let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(&observation, &XAI_CACHE_SUPPORT, "live_cache_economics");

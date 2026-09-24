@@ -78,7 +78,12 @@ fn ping_tool() -> ToolDefinition {
 
 /// The text-turn request, identical for both routes: `temperature: 0` keeps
 /// the two live turns of a cell as alike as the provider allows.
-fn text_request(model: &(impl rig::completion::CompletionModel + Clone)) -> CompletionRequest {
+fn text_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(TEXT_PROMPT)
         .temperature(0.0)
@@ -86,7 +91,12 @@ fn text_request(model: &(impl rig::completion::CompletionModel + Clone)) -> Comp
         .build()
 }
 
-fn tool_request(model: &(impl rig::completion::CompletionModel + Clone)) -> CompletionRequest {
+fn tool_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
         .tool(ping_tool())

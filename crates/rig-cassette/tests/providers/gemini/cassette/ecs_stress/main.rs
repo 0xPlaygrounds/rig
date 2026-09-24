@@ -6,7 +6,6 @@ pub(super) use super::ecs_stress_streaming_runtime::{patch, skip};
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
 use rig::{
-    completion::CompletionModel,
     effect::{EffectKind, Outcome},
     message::UserContent,
     streaming::{Delta, StreamEvent},
@@ -29,8 +28,11 @@ pub(super) struct Observation {
     pub(super) output: String,
     pub(super) trace: RunTrace,
 }
-pub(super) fn agent(
-    model: impl CompletionModel + 'static,
+pub(super) fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
     name: &str,
     temperature: Option<f64>,

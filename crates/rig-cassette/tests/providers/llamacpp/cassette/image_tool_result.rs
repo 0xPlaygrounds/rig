@@ -16,7 +16,6 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against a local llama.cpp server.
 
-use rig::completion::CompletionModel as _;
 use rig::message::{ImageMediaType, ProviderCallId, ToolCallId, ToolResult, ToolResultContent};
 
 use super::super::cassette_support::*;

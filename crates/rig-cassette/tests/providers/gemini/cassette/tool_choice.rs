@@ -1,6 +1,6 @@
 //! Gemini tool-choice cassette coverage.
 
-use rig::completion::{AssistantContent, CompletionModel, Message};
+use rig::completion::{AssistantContent, Message};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::gemini;

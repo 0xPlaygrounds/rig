@@ -5,7 +5,6 @@
 //! provider's raw response shape. A census cell that exposes a Rig defect is
 //! moved into a dedicated per-bug exhaustive matrix before merge.
 
-use rig::completion::CompletionModel;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 

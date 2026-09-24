@@ -22,7 +22,6 @@
 //! requested text. This matrix checks transport integrity, not instruction
 //! compliance; the finish-reason matrix tests termination semantics directly.
 
-use rig::completion::CompletionModel;
 use rig::providers::{doubleword, openai};
 use serde::Deserialize as _;
 

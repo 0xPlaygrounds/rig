@@ -3,7 +3,6 @@
 //! handshake, on both APIs where the class differs.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ProviderError;
 use rig::error::{ErrorKind, ErrorReport};
 use rig::prelude::*;
@@ -166,8 +165,6 @@ async fn embeddings_error_preserves_status_and_body() {
 /// context, not a transport-error fallback.
 #[tokio::test]
 async fn model_listing_auth_failure_keeps_api_error_context() {
-    use rig::model::ModelLister;
-
     with_openai_cassette_bogus_key(
         "error_identity_edge/model_listing_auth_failure_keeps_api_error_context",
         |client| async move {

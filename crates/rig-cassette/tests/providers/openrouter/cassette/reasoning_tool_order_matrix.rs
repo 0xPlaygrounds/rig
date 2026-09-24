@@ -41,7 +41,7 @@ use std::sync::{
 
 use anyhow::{Result, ensure};
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel};
+use rig::completion::AssistantContent;
 use rig::prelude::*;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -143,8 +143,11 @@ fn prompt(shape: Shape) -> &'static str {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model

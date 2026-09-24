@@ -28,8 +28,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
-use rig::completion::CompletionModel;
-use rig::model::ModelLister;
 use rig::providers::groq;
 
 use super::support::{BoundGroq, with_groq_cassette_result};

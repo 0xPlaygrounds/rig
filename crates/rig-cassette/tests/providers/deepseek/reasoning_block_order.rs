@@ -23,7 +23,7 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{CompletionModel, Message, ToolDefinition};
+use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::deepseek;

@@ -10,6 +10,7 @@ use rig::message::{
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::wire::{OpenAI, Route};
+use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
@@ -184,10 +185,8 @@ fn assert_page_label(response: &str, page_number: u8) {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
-        let client = OpenAI::from_env()
-            .expect("config should build from env")
-            .bound()
-            .expect("transport should build");
+        let client = Endpoint::new(OpenAI::from_env()
+            .expect("config should build from env"), rig::rig_reqwest::bundled().expect("transport should build"));
         let agent = client
             .agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
@@ -225,11 +224,9 @@ async fn responses_document_file_id_roundtrip_live() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
-        let client = OpenAI::from_env()
+        let client = Endpoint::new(OpenAI::from_env()
             .expect("config should build from env")
-            .with_route(Route::Chat)
-            .bound()
-            .expect("transport should build");
+            .with_route(Route::Chat), rig::rig_reqwest::bundled().expect("transport should build"));
         let agent = client.agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
             .build();

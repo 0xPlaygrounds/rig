@@ -12,6 +12,7 @@ use rig_ecs::{
     bus::{PendingEffect, Streamed},
     systems::RunCommands,
 };
+use rig_test_support::endpoint::Endpoint;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -87,7 +88,7 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_cell(
-    client: Bound<openai::wire::OpenAI>,
+    client: Endpoint<openai::wire::OpenAI>,
     cell: Cell,
     observed: SharedObservation,
 ) -> Result<()> {

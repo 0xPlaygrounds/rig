@@ -1,6 +1,6 @@
 //! Cassette-backed Cohere context-document coverage.
 
-use rig::completion::{CompletionModel, Document};
+use rig::completion::Document;
 use rig::prelude::*;
 use std::collections::HashMap;
 

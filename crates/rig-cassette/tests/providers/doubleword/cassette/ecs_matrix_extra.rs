@@ -5,7 +5,6 @@
 //! `tests/common/ecs_matrix/extra.rs`; this file holds the scenario
 //! literals and the wire's models.
 
-use rig::completion::CompletionModel;
 use rig::providers::doubleword::{QWEN3_5_9B, QWEN3_5_397B_A17B};
 
 use super::super::support::{BoundDoubleword, with_doubleword_cassette};
@@ -14,7 +13,9 @@ use crate::ecs_matrix::{
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
 
-fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &BoundDoubleword,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion(QWEN3_5_397B_A17B),

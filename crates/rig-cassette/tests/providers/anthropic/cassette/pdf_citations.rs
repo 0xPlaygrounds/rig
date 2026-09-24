@@ -9,7 +9,6 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
 use rig::message::{Document, DocumentSourceKind, Message, UserContent};
 use rig::providers::anthropic::completion::{
     self as anthropic_completion, CLAUDE_SONNET_4_6, Citation,
@@ -56,7 +55,7 @@ async fn pdf_document_citations_decode_as_page_locations() {
         |client| async move {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(Message::User {
                             content: vec![
@@ -70,6 +69,7 @@ async fn pdf_document_citations_decode_as_page_locations() {
                         .temperature(0.0)
                         .max_tokens(512)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("cited PDF completion should succeed");

@@ -76,7 +76,6 @@
 //! bytes instead, as an earlier version did, could not have detected an HTTP
 //! regression at all.
 
-use rig::completion::CompletionModel;
 use rig::error::ProviderError;
 use rig::prelude::DefaultWebSocketClient as _;
 

@@ -159,7 +159,7 @@ async fn run_streamed_turn(
 }
 
 async fn drain_stream_terminal(
-    stream: &mut rig::streaming::StreamingCompletionResponse,
+    stream: &mut rig::streaming::CompletionStream,
 ) -> Option<rig::streaming::StreamFinal> {
     while let Some(item) = stream.next().await {
         if let Ok(StreamEvent::Final(final_response)) = item {

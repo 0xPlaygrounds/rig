@@ -5,15 +5,17 @@
 
 use super::{Wire, cells::Cell};
 
-use rig_agent::completion::CompletionModel;
-
 use rig_cassette::effect_log::EffectLog;
 
-pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn run_world<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
-) -> EffectLog {
+) -> EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     let mut cell = *cell;
     if cell.resume_after == Some(usize::MAX) {
         cell.resume_after = Some(super::checkpoint::tool_turns(&cell));

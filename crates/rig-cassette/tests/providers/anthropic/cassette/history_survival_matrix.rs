@@ -6,8 +6,8 @@
 //! access restored 2026-10-01). The corpus check still covers the delivered
 //! signatures in the existing Anthropic recordings.
 
-use rig::completion::CompletionModel;
 use rig::providers::anthropic::completion::CLAUDE_HAIKU_4_5;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_anthropic_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
@@ -17,9 +17,9 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: rig::driver::Bound<rig::providers::anthropic::wire::Anthropic>,
+    client: Endpoint<rig::providers::anthropic::wire::Anthropic>,
     cell: Cell,
-) -> impl CompletionModel + 'static {
+) -> rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient> {
     client.completion(cell.model)
 }
 

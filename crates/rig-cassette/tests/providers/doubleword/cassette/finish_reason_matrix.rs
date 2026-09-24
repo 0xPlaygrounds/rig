@@ -15,7 +15,7 @@
 //! Doubleword rejects `chat_template_kwargs.enable_thinking` and directs
 //! callers to `reasoning_effort`; `"none"` disables reasoning on Qwen 3.5.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::doubleword;
 use serde_json::json;

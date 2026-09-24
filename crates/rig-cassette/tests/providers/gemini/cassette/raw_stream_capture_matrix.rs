@@ -42,7 +42,7 @@
 //! must keep the wire spelling and the terminal must report the upgrade.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
 use rig::streaming::{StreamEvent, StreamFinal};
@@ -64,15 +64,23 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: streame
 /// A prompt the forced-tool cell can only satisfy by calling `add`.
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded stream carries a `functionCall`.
-fn forced_tool_request(
-    model: &(impl CompletionModel + Clone),
+fn forced_tool_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
@@ -99,8 +107,11 @@ struct Drained {
 /// helper parks. The sole-terminal claim it makes is the same one
 /// [`capture_text_and_sole_terminal`](crate::raw_capture::capture_text_and_sole_terminal)
 /// makes for this file's text-only cells.
-async fn drain_stream(
-    model: &(impl CompletionModel + Clone),
+async fn drain_stream<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
     request: rig::completion::CompletionRequest,
 ) -> Drained {
     let mut stream = model.stream(request).await.expect("stream should open");

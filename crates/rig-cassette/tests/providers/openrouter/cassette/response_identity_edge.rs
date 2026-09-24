@@ -8,8 +8,6 @@
 //! `None` — together they are the evidence for the compat-default question
 //! raised in PR #2313.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::with_openrouter_cassette;
 
 const MODEL: &str = "openai/gpt-5.2";

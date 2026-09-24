@@ -2,6 +2,7 @@
 
 use rig::prelude::*;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
+use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
@@ -10,10 +11,10 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extractor_smoke() {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
+    let client = Endpoint::new(
+        OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("client should build"),
+    );
     let extractor = client.extractor::<SmokePerson>(DEFAULT_MODEL).build();
 
     let response = extractor

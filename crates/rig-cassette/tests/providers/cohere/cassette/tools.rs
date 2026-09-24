@@ -1,8 +1,6 @@
 //! Cassette-backed Cohere tool-calling coverage.
 
-use rig::completion::{
-    AssistantContent, CompletionModel, FinishReason, ToolDefinition, message::ToolChoice,
-};
+use rig::completion::{AssistantContent, FinishReason, ToolDefinition, message::ToolChoice};
 use rig::prelude::*;
 
 use super::super::{

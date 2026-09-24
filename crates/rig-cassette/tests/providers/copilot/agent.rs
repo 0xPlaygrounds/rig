@@ -1,6 +1,5 @@
 //! Copilot agent completion smoke test.
 
-use rig::model::ModelLister;
 use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, live_client, with_copilot_cassette};

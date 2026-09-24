@@ -67,7 +67,7 @@
 //! Every cell re-reads its own fixture and fails if the recorded turn stopped
 //! having the shape the cell is about.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::completion::{

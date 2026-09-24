@@ -1,5 +1,6 @@
 //! Mistral live coverage for batch multi-extract pipelines.
 
+use rig_test_support::endpoint::Endpoint;
 use std::future::IntoFuture;
 
 use anyhow::Result;
@@ -75,10 +76,10 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
+    let client = Endpoint::new(
+        OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("client should build"),
+    );
     let names_extractor = client
         .extractor::<Names>(DEFAULT_MODEL)
         .append_preamble("Extract names from the given text.")

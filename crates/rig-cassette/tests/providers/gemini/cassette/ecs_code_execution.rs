@@ -1,13 +1,19 @@
 //! Provider code execution and retained stream text through native agent runs.
 use super::{code_execution_matrix as code, stream_terminal_matrix as terminal};
 use crate::{ecs_agent::EcsAgent, ecs_lifecycle, ecs_observation};
-use rig::{completion::CompletionModel, message::Message, providers::gemini};
+use rig::{message::Message, providers::gemini};
 use rig_ecs::{
     agent::{AdditionalParams, MaxTokens, Temperature},
     systems::RunCommands,
 };
 
-fn agent(model: impl CompletionModel + 'static, params: serde_json::Value) -> EcsAgent {
+fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
+    params: serde_json::Value,
+) -> EcsAgent {
     let mut ecs = ecs_lifecycle::agent(model, "");
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         Temperature(Some(0.0)),

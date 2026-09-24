@@ -8,7 +8,6 @@
 //! the hook-level lifecycle claims. All assertions hold in both cassette
 //! modes: on replay the same code paths run against the replay server.
 
-use rig::prelude::*;
 use rig::providers::anthropic;
 
 use super::super::support::with_anthropic_lifecycle_cassette;

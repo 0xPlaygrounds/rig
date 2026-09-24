@@ -22,7 +22,6 @@
 //! ```
 
 use crate::copilot::with_copilot_cassette;
-use rig::model::ModelLister;
 
 #[tokio::test]
 async fn list_models_smoke() {

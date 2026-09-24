@@ -3,6 +3,7 @@
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig_core::test_utils::RecordingHttpClient;
+use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -57,9 +58,10 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         }]
     });
     let http_client = RecordingHttpClient::new(response.to_string());
-    let client = OpenAI::new("test-key")
-        .with_base_url("http://localhost:8000/v1")
-        .bind(http_client.clone());
+    let client = Endpoint::new(
+        OpenAI::new("test-key").with_base_url("http://localhost:8000/v1"),
+        http_client.clone(),
+    );
 
     let extracted = client
         .extractor::<KeywordPayload>("gpt-oss-120b")

@@ -13,7 +13,6 @@
 //! | GPT-OSS | reasoning block | reasoning deltas | `stop` / `stop` |
 //! | DeepSeek | reasoning block | reasoning deltas | `stop` / `stop` |
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::{doubleword, openai};
 use serde::Deserialize as _;

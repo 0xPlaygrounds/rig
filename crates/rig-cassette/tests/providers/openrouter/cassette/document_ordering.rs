@@ -1,5 +1,5 @@
 //! Focused OpenRouter cassette coverage for request document ordering.
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
 use serde::Deserialize;
 use serde_json::Value;
 

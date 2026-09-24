@@ -16,7 +16,7 @@
 //! daemon id and by structure — and assemble with uncorrupted arguments.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 
@@ -38,7 +38,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_blocks: Vec::new(),

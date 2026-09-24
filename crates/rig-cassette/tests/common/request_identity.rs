@@ -9,7 +9,7 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequestBuilder};
+use rig::completion::CompletionRequestBuilder;
 use rig::error::ProviderError;
 use rig::streaming::StreamEvent;
 use serde_json::Value;
@@ -74,15 +74,19 @@ pub fn take(slot: &Slot) -> Observed {
 /// `slot`. The provider must refuse `rejected` once `reject` shapes the
 /// request: an unknown model, or an argument out of range where the
 /// unknown-model error names the account.
-pub async fn run<M, R>(
+pub async fn run<W, T, Wm, Tr>(
     slot: Slot,
-    model: M,
-    rejected: R,
+    model: rig::driver::Model<W, T>,
+    rejected: rig::driver::Model<Wm, Tr>,
     params: Option<Value>,
-    reject: impl FnOnce(CompletionRequestBuilder<R>) -> CompletionRequestBuilder<R>,
+    reject: impl FnOnce(
+        CompletionRequestBuilder<rig::driver::Model<Wm, Tr>>,
+    ) -> CompletionRequestBuilder<rig::driver::Model<Wm, Tr>>,
 ) where
-    M: CompletionModel + Clone,
-    R: CompletionModel + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+    Wm: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    Tr: rig::driver::Transport<Wm>,
 {
     let recorded = Recorded::default();
     let subscriber = tracing_subscriber::registry().with(Capture(recorded.clone()));
@@ -100,7 +104,6 @@ pub async fn run<M, R>(
         .max_tokens(64)
         .additional_params(params.clone())
         .stream()
-        .await
         .expect("stream opens");
     let mut terminal = None;
     while let Some(item) = stream.next().await {

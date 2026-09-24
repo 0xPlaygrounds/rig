@@ -32,7 +32,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test mistralrs mistralrs::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_stream_capture_matrix/`.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use serde::Deserialize;
 use serde_json::Value;
@@ -55,7 +55,12 @@ const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 /// flattened extras.
 type MistralRsTerminal = StreamingCompletionResponse<ChatUsage>;
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 

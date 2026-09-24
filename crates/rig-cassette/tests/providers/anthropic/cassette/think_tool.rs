@@ -1,6 +1,5 @@
 //! Migrated from `examples/anthropic_think_tool.rs`.
 
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::builtin::ThinkTool;
 

@@ -5,14 +5,16 @@
 //! strict cassette match proves the restored request carries the signature
 //! byte for byte (`tests/common/ecs_matrix/world.rs`).
 
-use rig::completion::CompletionModel;
-use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn reasoning_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(
+    client: &Endpoint<Anthropic>,
+) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
+{
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
         model: client.completion("claude-haiku-4-5"),

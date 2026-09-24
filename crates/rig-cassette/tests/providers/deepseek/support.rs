@@ -1,9 +1,10 @@
 use rig::message::AssistantContent;
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
@@ -15,7 +16,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 /// DeepSeek is the [`DEEPSEEK`] dialect of the shared OpenAI chat wire, so
 /// the provider is that configuration bound to the bundled transport; the
 /// alias keeps every wrapper's `FnOnce` bound readable.
-pub(super) type BoundDeepSeek = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundDeepSeek = Endpoint<OpenAI, BoxedHttpClient>;
 
 async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDeepSeek) {
     let cassette = ProviderCassette::start(
@@ -25,10 +26,11 @@ async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, 
         "https://api.deepseek.com",
     )
     .await;
-    let bound = OpenAI::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("DeepSeek transport should build");
+    let bound = Endpoint::new(
+        OpenAI::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
+            .with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("DeepSeek transport should build"),
+    );
 
     (cassette, bound)
 }
@@ -95,10 +97,11 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = OpenAI::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("DeepSeek transport should build");
+    let bound = Endpoint::new(
+        OpenAI::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
+            .with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("DeepSeek transport should build"),
+    );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
@@ -281,7 +284,7 @@ impl RawStreamOutcome {
 }
 
 pub(super) async fn collect_raw_stream_outcome(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> RawStreamOutcome {
     use futures::StreamExt as _;
     use rig::streaming::{Delta, StreamEvent};

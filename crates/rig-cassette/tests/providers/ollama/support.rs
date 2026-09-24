@@ -1,8 +1,9 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -10,7 +11,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 /// The Ollama config bound to the bundled transport — what a cassette test
 /// builds its models from, now that a model is a bound wire.
-pub(super) type BoundOllama = Bound<Ollama, BoxedHttpClient>;
+pub(super) type BoundOllama = Endpoint<Ollama, BoxedHttpClient>;
 
 /// Start an Ollama cassette and bind a provider pointed at it.
 ///
@@ -24,10 +25,10 @@ async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
         "http://localhost:11434",
     )
     .await;
-    let ollama = Ollama::new()
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let ollama = Endpoint::new(
+        Ollama::new().with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
 
     (cassette, ollama)
 }

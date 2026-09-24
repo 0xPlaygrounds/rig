@@ -1,7 +1,5 @@
 //! llama.cpp model listing smoke test.
 
-use rig::model::ModelLister;
-
 use super::super::cassette_support::*;
 
 #[tokio::test]

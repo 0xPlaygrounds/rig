@@ -7,7 +7,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::agent::AgentBuilder;
-use rig::completion::{CompletionModel, FinishReason, Message};
+use rig::completion::{FinishReason, Message};
 use rig::message::AssistantContent;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::{CompletionResponse as ResponsesReply, ResponseStatus};

@@ -1,8 +1,9 @@
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, Route};
@@ -21,12 +22,12 @@ pub(super) const SYSTEM_PROMPT: &str =
 /// dialect of its own: it speaks the plain OpenAI format at a base URL the
 /// caller supplies. Both surfaces are therefore the `OPENAI` dialect with an
 /// explicit base URL.
-pub(super) type BoundResponses = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundResponses = Endpoint<OpenAI, BoxedHttpClient>;
 
 /// mistral.rs's chat-completions surface, bound to the bundled transport:
 /// the same dialect routed to `/chat/completions` once, so a cell's
 /// `client.agent(model)` lands there.
-pub(super) type BoundCompletions = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundCompletions = Endpoint<OpenAI, BoxedHttpClient>;
 
 pub(super) fn model_name() -> String {
     std::env::var("MISTRALRS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())
@@ -50,10 +51,10 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
         &real_base_url,
     )
     .await;
-    let responses = OpenAI::new(api_key)
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("mistral.rs Responses transport should build");
+    let responses = Endpoint::new(
+        OpenAI::new(api_key).with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("mistral.rs Responses transport should build"),
+    );
 
     (cassette, responses)
 }
@@ -69,11 +70,12 @@ async fn mistralrs_completions_cassette(
         &real_base_url,
     )
     .await;
-    let completions = OpenAI::new(api_key)
-        .with_base_url(cassette.base_url())
-        .with_route(Route::Chat)
-        .bound()
-        .expect("mistral.rs chat-completions transport should build");
+    let completions = Endpoint::new(
+        OpenAI::new(api_key)
+            .with_base_url(cassette.base_url())
+            .with_route(Route::Chat),
+        rig::rig_reqwest::bundled().expect("mistral.rs chat-completions transport should build"),
+    );
 
     (cassette, completions)
 }

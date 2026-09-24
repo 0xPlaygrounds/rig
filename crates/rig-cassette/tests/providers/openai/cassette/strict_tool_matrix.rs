@@ -31,7 +31,7 @@
 //! `crates/rig-core/src/providers/openai/responses_api/tests.rs`
 //! (`responses_function_tools_are_non_strict_by_default`).
 
-use rig::completion::{CompletionModel, ToolDefinition};
+use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;

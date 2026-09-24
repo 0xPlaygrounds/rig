@@ -35,7 +35,7 @@
 //! Mistral's decoder maps from [`mistral::CompletionResponse`] rather than
 //! the shared chat-completions type the format helper compares against.
 
-use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
+use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::providers::mistral;
 use serde::Deserialize;
@@ -61,7 +61,12 @@ const TOOL_PREAMBLE: &str =
 const TOOL_PROMPT: &str = "Call lookup_city exactly once with city Paris.";
 const TOOL_NAME: &str = "lookup_city";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -77,7 +82,12 @@ fn lookup_city_tool() -> ToolDefinition {
     }
 }
 
-fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn tool_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
         .preamble(TOOL_PREAMBLE.to_owned())

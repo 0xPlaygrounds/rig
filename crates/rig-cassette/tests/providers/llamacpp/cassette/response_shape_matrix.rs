@@ -33,7 +33,6 @@
 //! answer, while the blocking path answers the same request from candidate 0
 //! alone". This cell is that claim, measured.
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::llamacpp;
 use serde::Deserialize;

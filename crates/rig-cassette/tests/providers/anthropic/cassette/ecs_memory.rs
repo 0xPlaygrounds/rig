@@ -8,7 +8,6 @@ use crate::goldens::{FailingMemory, families};
 use crate::support::{
     AlphaSignal, BASIC_PREAMBLE, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT,
 };
-use rig::driver::Bound;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, MemoryOp};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
@@ -17,6 +16,7 @@ use rig_ecs::{
     bus::{EffectOutcome, Policy},
     systems::RunCommands,
 };
+use rig_test_support::endpoint::Endpoint;
 #[path = "ecs_memory/runtime.rs"]
 mod runtime;
 use runtime::*;
@@ -309,7 +309,7 @@ async fn serial_two_tools_effect_log() {
 /// An `Append` that fails: the record holds the error and the run ends
 /// in its answer regardless.
 async fn append_fails(
-    client: Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = agent(

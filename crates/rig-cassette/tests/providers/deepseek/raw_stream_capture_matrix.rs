@@ -38,7 +38,7 @@
 use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::ReasoningContent;
 use rig::providers::deepseek;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
@@ -59,7 +59,12 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 /// it answers, so the reasoning cell needs real headroom.
 const REASONING_BUDGET: u64 = 640;
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
@@ -68,7 +73,12 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
-fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn reasoning_request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model
         .completion_request(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))
@@ -89,7 +99,7 @@ struct ReasoningStreamObservation {
 /// the terminal record, and cell 3 is about a third thing the stream carried
 /// — the reasoning deltas, and the completed block that supersedes them.
 async fn collect_reasoning_text_and_terminal(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> ReasoningStreamObservation {
     let mut observation = ReasoningStreamObservation {
         reasoning: String::new(),

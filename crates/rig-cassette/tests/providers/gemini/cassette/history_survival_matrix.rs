@@ -1,8 +1,6 @@
 //! Gemini history survival: thought signatures and function-call ids across
 //! three prompts, plus an image tool result.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::{BoundGemini, with_gemini_cassette};
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
@@ -14,7 +12,10 @@ fn params() -> Option<serde_json::Value> {
     }))
 }
 
-fn model(client: BoundGemini, cell: Cell) -> impl CompletionModel + 'static {
+fn model(
+    client: BoundGemini,
+    cell: Cell,
+) -> rig::Model<rig::providers::gemini::completion::GenerateContent, BoxedHttpClient> {
     client.completion(cell.model)
 }
 

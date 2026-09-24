@@ -1,11 +1,12 @@
 //! OpenAI scenarios replayed through the erased transport.
 //!
 //! `BoxedHttpClient` must be byte-transparent: the same recorded exchanges a
-//! `Bound<W, ReqwestClient>` produced must match when the bound provider is
-//! `Bound<W, BoxedHttpClient>` over the same transport. The replay server
+//! `Model<W, ReqwestClient>` produced must match when the bound provider is
+//! `Model<W, BoxedHttpClient>` over the same transport. The replay server
 //! matches on method, path, allowlisted headers and body bytes, so a boxed
 //! request that differed in any of them would not find its interaction.
 
+use rig::Model;
 use rig::prelude::*;
 use rig::providers::openai;
 

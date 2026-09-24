@@ -65,7 +65,7 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_capture_matrix -- --test-threads=1`
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::{llamacpp, openai};
 use serde::Deserialize;
 use serde_json::Value;
@@ -81,7 +81,12 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 /// Qwen3 spends tokens on a reasoning trace before the one-word answer and the
 /// chat-completions route has no `think` switch, so the cap is generous
 /// enough that the turn stops on its own (`finish_reason: "stop"`).
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
+fn request<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &(rig_core::driver::Model<W, T>),
+) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
 }
 

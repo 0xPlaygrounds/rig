@@ -6,7 +6,6 @@
 //! its documented `None`/zero outcome, which is exactly what these cells
 //! assert rather than skip. Dimensions ride `output_dimensionality`.
 
-use rig::embeddings::EmbeddingModel as _;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_cassette;

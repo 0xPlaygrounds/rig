@@ -43,8 +43,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_completion_parity_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_completion_parity_matrix/`.
 
-use rig::completion::{CompletionModel as _, FinishReason};
-use rig::driver::Bound;
+use rig::completion::FinishReason;
+use rig::driver::Model;
 use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai;
@@ -64,7 +64,9 @@ const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
+fn request(
+    model: &Model<CopilotWire, rig::http_client::BoxedHttpClient>,
+) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 

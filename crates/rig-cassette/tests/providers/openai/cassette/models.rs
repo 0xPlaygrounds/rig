@@ -1,7 +1,6 @@
 //! OpenAI model listing smoke test.
 
 use rig::error::ProviderError;
-use rig::model::ModelLister;
 
 use super::super::support::{with_openai_cassette, with_openai_cassette_bogus_key};
 

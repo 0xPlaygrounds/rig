@@ -10,7 +10,7 @@
 //! cells check that too.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
 use serde_json::{Value, json};
@@ -67,11 +67,15 @@ fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     }
 }
 
-async fn turn<M: CompletionModel>(
-    model: &M,
+async fn turn<W, T>(
+    model: &rig::driver::Model<W, T>,
     cell: Cell,
     history: Vec<Message>,
-) -> Vec<AssistantContent> {
+) -> Vec<AssistantContent>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     let request = request(cell, history);
     if !cell.streamed {
         return model
@@ -98,7 +102,11 @@ fn answer(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
-async fn conversation<M: CompletionModel>(model: M, cell: Cell) {
+async fn conversation<W, T>(model: rig::driver::Model<W, T>, cell: Cell)
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     let first = turn(&model, cell, vec![Message::user(QUESTION)]).await;
     assert!(answer(&first).contains("289"), "{first:?}");
     let history = vec![

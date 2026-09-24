@@ -5,7 +5,6 @@
 //! document must map to a `"source": {"type": "url", ...}` content block.
 //! See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>.
 use rig::message::{Message, UserContent};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::with_anthropic_cassette;

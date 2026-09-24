@@ -5,7 +5,6 @@
 //! place the reason for the failure appears.
 
 use axum::http;
-use rig::completion::CompletionModel;
 use rig::error::ProviderError;
 
 use super::super::support::with_cohere_cassette;

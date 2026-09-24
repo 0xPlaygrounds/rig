@@ -6,7 +6,6 @@
 //! status survive to the caller, on both the unary and streaming paths.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ErrorReport;
 
 use super::super::support::with_venice_cassette;

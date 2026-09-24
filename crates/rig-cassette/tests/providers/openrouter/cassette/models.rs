@@ -1,7 +1,5 @@
 //! Cassette-backed OpenRouter model listing smoke test.
 
-use rig::model::ModelLister;
-
 use super::super::support::with_openrouter_cassette;
 
 #[tokio::test]

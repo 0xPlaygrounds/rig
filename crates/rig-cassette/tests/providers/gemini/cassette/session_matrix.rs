@@ -2,7 +2,6 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::{BoundGemini, with_gemini_cassette};
-use rig::completion::CompletionModel;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -22,9 +21,9 @@ const CELL: Cell = Cell {
 fn models(
     client: BoundGemini,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<rig::providers::gemini::completion::GenerateContent, BoxedHttpClient>,
+    rig::Model<rig::providers::gemini::completion::GenerateContent, BoxedHttpClient>,
+    rig::Model<rig::providers::gemini::completion::GenerateContent, BoxedHttpClient>,
 ) {
     (
         client.completion("gemini-2.5-flash"),

@@ -1,5 +1,4 @@
 //! Copilot streaming tools coverage, including the migrated example path.
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 

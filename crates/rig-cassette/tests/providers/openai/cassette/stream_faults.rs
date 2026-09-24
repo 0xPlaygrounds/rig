@@ -18,6 +18,7 @@ use rig::providers::openai::OpenAI;
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::agent::AgentReplayExt;
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_openai_cassette;
 use crate::{
@@ -70,8 +71,10 @@ pub(super) fn tool_call_prefix_frames() -> Vec<String> {
 
 /// A client over a transport that answers one streaming request with
 /// `chunks`, then EOF.
-pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<OpenAI, SequencedStreamingHttpClient> {
-    OpenAI::new(SCRIPTED_KEY).bind(scripted(chunks))
+pub(super) fn scripted_client(
+    chunks: Vec<Bytes>,
+) -> Endpoint<OpenAI, SequencedStreamingHttpClient> {
+    Endpoint::new(OpenAI::new(SCRIPTED_KEY), scripted(chunks))
 }
 
 /// The model refuses the request before any frame: the run fails with the

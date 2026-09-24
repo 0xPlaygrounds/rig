@@ -4,13 +4,14 @@
 //! have a producer here; a scripted row's oracle is the runner in the world
 //! cell's own test.
 
-use rig::completion::CompletionModel;
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 
 use super::super::support::{BoundVenice, with_venice_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &BoundVenice,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion(MISTRAL_SMALL_3_2_24B),
@@ -21,7 +22,9 @@ fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(
+    client: &BoundVenice,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion("venice-nonexistent-rig-test"),

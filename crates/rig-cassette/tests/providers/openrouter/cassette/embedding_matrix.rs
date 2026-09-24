@@ -8,7 +8,6 @@
 //! path preserving the body.
 
 use super::super::support::with_openrouter_cassette;
-use rig::embeddings::EmbeddingModel as _;
 use rig::providers::openai;
 
 use crate::support::{

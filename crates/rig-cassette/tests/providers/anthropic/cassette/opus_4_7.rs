@@ -4,7 +4,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::Message;
 use rig::completion::message::Image;
 use rig::message::{DocumentSourceKind, ImageMediaType};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
 use rig_agent::test_utils::validate_extraction_fields;
 

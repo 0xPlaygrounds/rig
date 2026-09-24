@@ -1,5 +1,4 @@
 //! xAI streaming tools smoke test.
-use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;

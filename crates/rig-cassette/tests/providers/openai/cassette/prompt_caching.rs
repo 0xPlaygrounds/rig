@@ -42,6 +42,7 @@
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
+use rig_test_support::endpoint::Endpoint;
 use serde_json::json;
 
 use crate::cache_conformance::{
@@ -335,10 +336,10 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = OpenAI::from_env()
-        .expect("OPENAI_API_KEY")
-        .bound()
-        .expect("the bundled transport should build");
+    let client = Endpoint::new(
+        OpenAI::from_env().expect("OPENAI_API_KEY"),
+        rig::rig_reqwest::bundled().expect("the bundled transport should build"),
+    );
     let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &keyed_probe()).await;
     report_and_assert_live(

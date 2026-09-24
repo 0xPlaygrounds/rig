@@ -27,7 +27,6 @@ use crate::support::{
     collect_raw_stream_observation, collect_stream_final_response, collect_stream_observation,
     zero_arg_tool_definition,
 };
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 
 #[tokio::test]

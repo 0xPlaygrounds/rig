@@ -5,12 +5,12 @@
 //! `tests/common/ecs_matrix/extra.rs`; this file holds the scenario
 //! literals and the wire's models.
 
-use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
 };
+use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{
@@ -20,7 +20,14 @@ use crate::ecs_matrix::{
     },
 };
 
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: Socket>(
+    client: &Endpoint<Gemini, H>,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion(GEMINI_3_FLASH_PREVIEW),
@@ -31,7 +38,14 @@ fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clo
 }
 
 /// The recording's own model, for the cell over a breadth recording.
-fn legacy<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn legacy<H: Socket>(
+    client: &Endpoint<Gemini, H>,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion(GEMINI_2_5_FLASH),

@@ -38,7 +38,6 @@
 //!     prompt_caching:: -- --test-threads=1
 //! ```
 
-use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use serde_json::{Value, json};
 

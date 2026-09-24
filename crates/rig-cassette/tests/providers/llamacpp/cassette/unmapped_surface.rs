@@ -28,7 +28,7 @@
 //! * **`POST /v1/messages`** — llama.cpp also speaks the *Anthropic* Messages
 //!   wire, converting it to chat completions internally. Rig has an Anthropic
 //!   wire, so this is reachable today with
-//!   `anthropic::wire::Anthropic::new(key).with_base_url(url).bound()?`. It is
+//!   `Endpoint::new(anthropic::wire::Anthropic::new(key).with_base_url(url), rig::rig_reqwest::bundled()?)`. It is
 //!   excluded from *this* provider because a
 //!   provider that spoke two wires would have to pick one for every capability,
 //!   and the OpenAI wire is the one llama.cpp's own documentation leads with.
@@ -48,7 +48,7 @@
 //!   `verify_path` for this dialect, and it reports the build tag and
 //!   modalities that say what produced a fixture.
 
-use rig::model::ModelLister;
+use rig_test_support::endpoint::Endpoint;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_request_paths, recorded_statuses_and_bodies};
@@ -206,8 +206,6 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
 /// cannot" is not the reason; "one provider, one wire" is.
 #[tokio::test]
 async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
-    use rig::completion::CompletionModel as _;
-
     with_llamacpp_bare_openai_cassette("unmapped_surface/responses_api", |client| async move {
         // The wrapper hands out the plain OpenAI configuration; the Responses
         // surface is a *different* wire over the same socket and the same

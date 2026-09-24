@@ -1,7 +1,6 @@
 //! AWS Bedrock embeddings replay smoke test.
 
 use rig::bedrock;
-use rig::embeddings::EmbeddingModel;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};

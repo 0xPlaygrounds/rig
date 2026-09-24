@@ -1,7 +1,8 @@
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OPENROUTER, OpenAI, Route};
+use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -15,13 +16,13 @@ const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 ///
 /// Named once here so every `FnOnce(..)` bound below and every suite that
 /// needs to spell the provider out agrees on one type.
-pub(super) type BoundOpenRouter = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundOpenRouter = Endpoint<OpenAI, BoxedHttpClient>;
 
 /// The same OpenRouter host on its `/responses` route, for the compatibility
 /// suite: OpenRouter serves `/responses` as well, and the point of those
 /// cells is that rig's Responses wire drives it once the configuration is
 /// routed there.
-pub(super) type BoundOpenRouterResponses = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundOpenRouterResponses = Endpoint<OpenAI, BoxedHttpClient>;
 
 async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundOpenRouter) {
     let cassette = ProviderCassette::start(
@@ -31,10 +32,11 @@ async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
         OPENROUTER_BASE_URL,
     )
     .await;
-    let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("OpenRouter cassette transport should build");
+    let bound = Endpoint::new(
+        OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
+            .with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("OpenRouter cassette transport should build"),
+    );
 
     (cassette, bound)
 }
@@ -49,11 +51,12 @@ async fn openrouter_openai_cassette(
         OPENROUTER_BASE_URL,
     )
     .await;
-    let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .with_route(Route::Responses)
-        .bound()
-        .expect("OpenRouter Responses cassette transport should build");
+    let bound = Endpoint::new(
+        OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
+            .with_base_url(cassette.base_url())
+            .with_route(Route::Responses),
+        rig::rig_reqwest::bundled().expect("OpenRouter Responses cassette transport should build"),
+    );
 
     (cassette, bound)
 }
@@ -115,10 +118,11 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = OpenAI::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("OpenRouter transport should build");
+    let bound = Endpoint::new(
+        OpenAI::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
+            .with_base_url(cassette.base_url()),
+        rig::rig_reqwest::bundled().expect("OpenRouter transport should build"),
+    );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }

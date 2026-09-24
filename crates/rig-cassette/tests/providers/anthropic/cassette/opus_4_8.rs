@@ -1,8 +1,8 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, Document,
-    Message, ProviderToolDefinition,
+    AssistantContent, CompletionResponse as RigCompletionResponse, Document, Message,
+    ProviderToolDefinition,
 };
 use rig::message::Text;
 use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse, Content};
@@ -55,7 +55,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
             // model returns, and `raw` carries Anthropic's own reply, so the
             // provider-text fallback below still costs a single interaction.
             let response: RigCompletionResponse = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
             let raw_text = provider_text(&response);
@@ -95,7 +95,7 @@ async fn messages_preserve_mid_conversation_system_role() {
                 .max_tokens(64)
                 .build();
             let response: RigCompletionResponse = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("Opus 4.8 system-role request should succeed");
             let raw_text = provider_text(&response);
@@ -146,7 +146,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                 ])
                 .max_tokens(64)
                 .build();
-            let response: RigCompletionResponse = model.completion(request).await.expect(
+            let response: RigCompletionResponse = model.call(request, None).await.expect(
                 "Opus 4.8 request with system role after server tool result should succeed",
             );
             let raw_text = provider_text(&response);
@@ -186,7 +186,7 @@ async fn documents_keep_leading_system_message_top_level() {
                 })
                 .max_tokens(64)
                 .build();
-            let response: RigCompletionResponse = model.completion(request).await.expect(
+            let response: RigCompletionResponse = model.call(request, None).await.expect(
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );
             let raw_text = provider_text(&response);

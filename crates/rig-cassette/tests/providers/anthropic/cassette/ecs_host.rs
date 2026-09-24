@@ -9,7 +9,6 @@ use crate::{
     support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE},
 };
 use bevy_ecs::{prelude::*, system::RunSystemOnce};
-use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::EffectFamily, providers::anthropic::completion::CLAUDE_SONNET_4_6, serve::ServingPolicy,
@@ -19,6 +18,7 @@ use rig_ecs::{
     bus::{EffectOutcome, Handlers, PendingEffect, Policy, RigSchedule},
     systems::{RigSet, RunCommands},
 };
+use rig_test_support::endpoint::Endpoint;
 use std::sync::Arc;
 #[path = "ecs_host/policies.rs"]
 mod policies;
@@ -55,8 +55,11 @@ const PLAIN: Host = Host {
     with_tool: false,
 };
 
-fn agent(
-    model: impl rig::completion::CompletionModel + 'static,
+fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     host: &Host,
     hooks: Hooks,
 ) -> EcsAgent {
@@ -169,7 +172,7 @@ async fn run_prompt(ecs: &mut EcsAgent, host: &Host) -> String {
     output
 }
 async fn over_host(
-    client: Bound<Anthropic>,
+    client: Endpoint<Anthropic>,
     host: Host,
     hooks: Hooks,
 ) -> rig::cassette::effect_log::EffectLog {

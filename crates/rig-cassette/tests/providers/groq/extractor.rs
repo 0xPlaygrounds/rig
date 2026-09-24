@@ -2,6 +2,7 @@
 
 use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
@@ -10,10 +11,10 @@ use super::EXTRACTOR_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extractor_smoke() {
-    let groq = OpenAI::from_env_with(&GROQ)
-        .expect("GROQ_API_KEY should be set")
-        .bound()
-        .expect("transport should build");
+    let groq = Endpoint::new(
+        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let extractor = groq.extractor::<SmokePerson>(EXTRACTOR_MODEL).build();
 
     let response = extractor

@@ -2,8 +2,6 @@
 //! OpenAI-encrypted and Gemini-signed reasoning beside a tool exchange,
 //! against a local daemon.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::{BoundOllama, with_ollama_cassette};
 use crate::history_survival::portability::{Cell, Source};
 
@@ -11,7 +9,10 @@ fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "think": false }))
 }
 
-fn model(client: BoundOllama, cell: Cell) -> impl CompletionModel + 'static {
+fn model(
+    client: BoundOllama,
+    cell: Cell,
+) -> rig::Model<rig::providers::ollama::wire::Chat, BoxedHttpClient> {
     client.completion(cell.model)
 }
 

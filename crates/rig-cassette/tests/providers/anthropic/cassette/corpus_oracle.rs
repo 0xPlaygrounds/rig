@@ -10,7 +10,6 @@ use rig::agent::AgentBuilder;
 use rig::bus::Bus;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -36,7 +35,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
         driver
             .register_erased(
                 model_key.clone(),
-                rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+                rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "default",
                     client.completion(CLAUDE_SONNET_4_6),
                 )),

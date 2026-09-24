@@ -7,7 +7,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -40,7 +40,7 @@ async fn required_maps_to_any_and_forces_tool_use() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -83,7 +83,7 @@ async fn none_suppresses_tool_use() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("none tool choice completion should succeed");
 
@@ -132,7 +132,7 @@ async fn specific_tool_targets_named_tool() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("specific tool choice completion should succeed");
 

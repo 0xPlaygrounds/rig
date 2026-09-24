@@ -4,7 +4,7 @@
 //! record, usage, and finish reason.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 
@@ -27,7 +27,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_delta: String::new(),

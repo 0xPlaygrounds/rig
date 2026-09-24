@@ -148,11 +148,49 @@ impl EcsAgent {
         Self::configured(model, preamble, 1, true, keep_events, setup)
     }
 
+    /// Create a native agent served by the handler `serve` builds for the
+    /// model label, with a preamble and turn budget.
+    pub fn serving<S: Serve + 'static>(
+        serve: impl FnOnce(&str) -> S,
+        preamble: &str,
+        turns: usize,
+    ) -> Self {
+        Self::served(serve, preamble, turns, false, true, |_| {})
+    }
+
+    /// Create a one-turn parity agent served by the handler `serve` builds
+    /// for the model label, optionally retaining recorded stream events.
+    pub fn for_golden_serving<S: Serve + 'static>(
+        serve: impl FnOnce(&str) -> S,
+        preamble: &str,
+        keep_events: bool,
+    ) -> Self {
+        Self::served(serve, preamble, 1, true, keep_events, |_| {})
+    }
+
     fn configured<
         W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
         T: rig_core::driver::Transport<W>,
     >(
         model: rig_core::driver::Model<W, T>,
+        preamble: &str,
+        turns: usize,
+        golden_identity: bool,
+        keep_events: bool,
+        setup: impl FnOnce(&mut World),
+    ) -> Self {
+        Self::served(
+            |label| ModelAdapter::new(label, model),
+            preamble,
+            turns,
+            golden_identity,
+            keep_events,
+            setup,
+        )
+    }
+
+    fn served<S: Serve + 'static>(
+        serve: impl FnOnce(&str) -> S,
         preamble: &str,
         turns: usize,
         golden_identity: bool,
@@ -179,10 +217,11 @@ impl EcsAgent {
                     "parity/model"
                 },
                 RuntimeHandler {
-                    inner: Arc::new(ModelAdapter::new(
-                        if golden_identity { "default" } else { "parity" },
-                        model,
-                    )),
+                    inner: Arc::new(serve(if golden_identity {
+                        "default"
+                    } else {
+                        "parity"
+                    })),
                     runtime: io_runtime(),
                 },
             )

@@ -71,7 +71,7 @@ fn host_bus(
     driver
         .register_erased(
             model_key.clone(),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 client.openai.completion(MODEL),
             )),
@@ -89,7 +89,7 @@ fn host_bus(
         driver
             .register_erased(
                 HandlerKey::from(EMBED_KEY),
-                rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
+                rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "host",
                     client
                         .openai

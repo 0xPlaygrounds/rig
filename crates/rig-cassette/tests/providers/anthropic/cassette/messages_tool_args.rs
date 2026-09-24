@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, Message, ToolDefinition};
+use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -167,8 +167,7 @@ async fn zero_argument_tool_use_streaming() {
                 .build();
 
             let stream = model
-                .stream(request)
-                .await
+                .stream(request, None)
                 .expect("zero-arg streaming request should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -191,7 +190,7 @@ async fn zero_argument_tool_use_nonstreaming() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("zero-arg completion should succeed");
 
@@ -276,8 +275,7 @@ async fn nested_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("nested-args streaming request should start"),
             )
             .await;
@@ -330,8 +328,7 @@ async fn unicode_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("unicode-args streaming request should start"),
             )
             .await;

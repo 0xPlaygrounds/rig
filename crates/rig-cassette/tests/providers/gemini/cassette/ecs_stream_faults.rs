@@ -6,7 +6,7 @@
 //! the fault without carrying the request or its credential.
 
 use bytes::Bytes;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent, AdapterUsage};
 use rig::providers::gemini::{
@@ -36,7 +36,7 @@ use crate::{
 /// A scripted-transport model: one streaming exchange, then EOF.
 fn scripted_model(
     chunks: Vec<Bytes>,
-) -> Bound<gemini::completion::GenerateContent, SequencedStreamingHttpClient> {
+) -> Model<gemini::completion::GenerateContent, SequencedStreamingHttpClient> {
     scripted_client(chunks).completion(GEMINI_2_5_FLASH)
 }
 

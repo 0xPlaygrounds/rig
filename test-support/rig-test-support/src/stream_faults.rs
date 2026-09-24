@@ -703,7 +703,25 @@ pub async fn native_run<
     witness: bool,
     configure: impl FnOnce(&mut EcsAgent),
 ) -> NativeRun {
-    let mut ecs = EcsAgent::new(model, preamble, 2);
+    native_run_serving(
+        |label| rig_core::serve::adapters::ModelAdapter::new(label, model),
+        preamble,
+        prompt,
+        witness,
+        configure,
+    )
+    .await
+}
+
+/// [`native_run`] over the model handler `serve` builds for the model label.
+pub async fn native_run_serving<S: rig_core::serve::Serve + 'static>(
+    serve: impl FnOnce(&str) -> S,
+    preamble: &str,
+    prompt: &str,
+    witness: bool,
+    configure: impl FnOnce(&mut EcsAgent),
+) -> NativeRun {
+    let mut ecs = EcsAgent::serving(serve, preamble, 2);
     configure(&mut ecs);
     let trace = witness.then(|| witnessed(&mut ecs.app));
     let run = ecs

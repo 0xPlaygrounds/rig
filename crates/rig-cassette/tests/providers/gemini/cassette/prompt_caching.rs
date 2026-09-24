@@ -53,6 +53,7 @@
 use rig::error::ProviderError;
 use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
+use rig_test_support::endpoint::Endpoint;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -168,10 +169,10 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = Gemini::from_env()
-        .expect("GEMINI_API_KEY")
-        .bound()
-        .expect("transport should build");
+    let client = Endpoint::new(
+        Gemini::from_env().expect("GEMINI_API_KEY"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let model = client.completion(CACHE_MODEL);
 
     // Two passes, asserting on the second — the same procedure the module docs
@@ -384,7 +385,8 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                         output_schema: None,
                         record_telemetry_content: false,
                     };
-                    let response = rig::completion::CompletionModel::completion(&model, request)
+                    let response = model
+                        .call(request, None)
                         .await
                         .expect("a cached-content request should succeed");
                     reads.push((
@@ -525,10 +527,12 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
                 )
             };
 
-            let first = rig::completion::CompletionModel::completion(&model, request())
+            let first = model
+                .call(request(), None)
                 .await
                 .expect("first small request should succeed");
-            let second = rig::completion::CompletionModel::completion(&model, request())
+            let second = model
+                .call(request(), None)
                 .await
                 .expect("second small request should succeed");
 
@@ -567,19 +571,21 @@ async fn changing_temperature_still_hits() {
             let preamble = probe().preamble;
             let history = vec![user("Reply with exactly: temp")];
 
-            let warm = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&preamble), vec![], history.clone(), 0.0),
-            )
-            .await
-            .expect("warming request should succeed");
+            let warm = model
+                .call(
+                    mutation_request(Some(&preamble), vec![], history.clone(), 0.0),
+                    None,
+                )
+                .await
+                .expect("warming request should succeed");
 
-            let hotter = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&preamble), vec![], history, 0.7),
-            )
-            .await
-            .expect("second request should succeed");
+            let hotter = model
+                .call(
+                    mutation_request(Some(&preamble), vec![], history, 0.7),
+                    None,
+                )
+                .await
+                .expect("second request should succeed");
 
             let cached = hotter.usage.cached_input_tokens.unwrap_or(0);
             let input = hotter.usage.input_tokens.unwrap_or(0);
@@ -613,12 +619,13 @@ async fn changing_the_system_instruction_misses() {
             let base = probe().preamble;
             let history = vec![user("Reply with exactly: sysinstr")];
 
-            let _warm = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&base), vec![], history.clone(), 0.0),
-            )
-            .await
-            .expect("warming request should succeed");
+            let _warm = model
+                .call(
+                    mutation_request(Some(&base), vec![], history.clone(), 0.0),
+                    None,
+                )
+                .await
+                .expect("warming request should succeed");
 
             // One word, at the very front of the prefix.
             let mutated = base.replacen("deterministic", "nondeterministic", 1);
@@ -627,12 +634,10 @@ async fn changing_the_system_instruction_misses() {
                 "the mutation should actually change the text"
             );
 
-            let after = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&mutated), vec![], history, 0.0),
-            )
-            .await
-            .expect("mutated request should succeed");
+            let after = model
+                .call(mutation_request(Some(&mutated), vec![], history, 0.0), None)
+                .await
+                .expect("mutated request should succeed");
 
             assert_eq!(
                 after.usage.cached_input_tokens.unwrap_or(0),

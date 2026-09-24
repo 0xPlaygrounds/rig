@@ -99,12 +99,12 @@
 //! replaces the filter.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
 use rig::transcription::TranscriptionRequestBuilder;
+use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -980,9 +980,7 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 .additional_params(completion_thinking(512, true))
                 .build();
 
-            let mut stream = CompletionModel::stream(&model, request)
-                .await
-                .expect("stream should open");
+            let mut stream = model.stream(request, None).expect("stream should open");
 
             let mut text = String::new();
             let mut reasoning = String::new();
@@ -1107,9 +1105,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
                 .max_tokens(1000)
                 .build();
 
-            let mut stream = CompletionModel::stream(&model, request)
-                .await
-                .expect("stream should open");
+            let mut stream = model.stream(request, None).expect("stream should open");
             while stream.next().await.is_some() {}
 
             // The stream sends the answer, then an empty part carrying the
@@ -1130,7 +1126,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 // --- unit cells: states a live turn cannot be made to produce -------------
 
 mod unit {
-    use rig::completion::{CompletionModel, CompletionResponse};
+    use rig::completion::CompletionResponse;
     use rig::message::{AssistantContent, ReasoningContent};
     use rig::prelude::*;
     use rig::providers::gemini::Gemini;
@@ -1175,11 +1171,11 @@ mod unit {
     /// here and carried by the real wire, driver and decoder — the same path
     /// every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>, role: &str) -> CompletionResponse {
-        let model = Gemini::new("unit-key")
-            .bind(RecordingHttpClient::new(
-                reply_with(parts, role).to_string(),
-            ))
-            .completion("gemini-2.5-flash");
+        let model = Endpoint::new(
+            Gemini::new("unit-key"),
+            RecordingHttpClient::new(reply_with(parts, role).to_string()),
+        )
+        .completion("gemini-2.5-flash");
         let request = model.completion_request("unit").build();
         model
             .completion(request)

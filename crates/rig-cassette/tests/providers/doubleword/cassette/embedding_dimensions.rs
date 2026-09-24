@@ -40,7 +40,7 @@
 //! sent — rather than against what the test expected to happen.
 
 use axum::http;
-use rig::embeddings::{EmbeddingModel, EmbeddingsBuilder};
+use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::doubleword;
 
 use super::super::support::{
@@ -136,7 +136,7 @@ async fn embed_one(client: &BoundDoubleword, width: Option<usize>, input: &str) 
     assert_eq!(embeddings.len(), 1);
     assert_eq!(
         embeddings[0].vec.len(),
-        model.ndims(),
+        model.capabilities().ndims,
         "the returned vector must be exactly as wide as `ndims()` reports"
     );
 }
@@ -152,7 +152,7 @@ async fn embed_batch(client: &BoundDoubleword, width: Option<usize>, inputs: &[&
     for embedding in &embeddings {
         assert_eq!(
             embedding.vec.len(),
-            model.ndims(),
+            model.capabilities().ndims,
             "every returned vector must be exactly as wide as `ndims()` reports"
         );
     }
@@ -353,7 +353,7 @@ async fn usage_survives_a_requested_width() {
                 .expect("embedding request should succeed");
 
             assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].vec.len(), model.ndims());
+            assert_eq!(response.embeddings[0].vec.len(), model.capabilities().ndims);
             assert!(
                 response.usage.input_tokens.is_some_and(|n| n > 0)
                     && response.usage.total_tokens.is_some_and(|n| n > 0),
@@ -381,7 +381,7 @@ async fn usage_at_the_default_width() {
                 .expect("embedding request should succeed");
 
             assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].vec.len(), model.ndims());
+            assert_eq!(response.embeddings[0].vec.len(), model.capabilities().ndims);
             assert!(
                 response.usage.input_tokens.is_some_and(|n| n > 0)
                     && response.usage.total_tokens.is_some_and(|n| n > 0),
@@ -412,7 +412,7 @@ async fn builder_documents_at_a_requested_width() {
             assert_eq!(documents.len(), 2);
             for (_, embeddings) in &documents {
                 for embedding in embeddings.iter() {
-                    assert_eq!(embedding.vec.len(), model.ndims());
+                    assert_eq!(embedding.vec.len(), model.capabilities().ndims);
                 }
             }
         },
@@ -441,7 +441,7 @@ async fn builder_documents_at_the_default_width() {
             assert_eq!(documents.len(), 2);
             for (_, embeddings) in &documents {
                 for embedding in embeddings.iter() {
-                    assert_eq!(embedding.vec.len(), model.ndims());
+                    assert_eq!(embedding.vec.len(), model.capabilities().ndims);
                 }
             }
         },
@@ -548,7 +548,7 @@ async fn an_unknown_model_still_puts_the_requested_width_on_the_wire() {
         "embedding_dimensions/an_unknown_model_still_puts_the_requested_width_on_the_wire",
         |client| async move {
             let model = client.embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192));
-            assert_eq!(model.ndims(), 8_192);
+            assert_eq!(model.capabilities().ndims, 8_192);
             let error = model
                 .embed_texts([PROBE.to_string()])
                 .await

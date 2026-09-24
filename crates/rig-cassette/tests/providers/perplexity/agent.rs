@@ -3,16 +3,17 @@
 use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, PERPLEXITY};
 use rig::providers::perplexity::SONAR;
+use rig_test_support::endpoint::Endpoint;
 
 use crate::support::assert_nonempty_response;
 
 #[tokio::test]
 #[ignore = "requires PERPLEXITY_API_KEY"]
 async fn completion_smoke() {
-    let perplexity = OpenAI::from_env_with(&PERPLEXITY)
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
+    let perplexity = Endpoint::new(
+        OpenAI::from_env_with(&PERPLEXITY).expect("config should build from env"),
+        rig::rig_reqwest::bundled().expect("transport should build"),
+    );
     let agent = perplexity
         .agent(SONAR)
         .preamble("Be precise and concise.")

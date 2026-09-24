@@ -11,7 +11,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{CompletionModel, FinishReason, Message};
+use rig::completion::{FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -278,7 +278,7 @@ async fn long_history_replay_nonstreaming() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
             let first_response = model
-                .completion(first_request)
+                .call(first_request, None)
                 .await
                 .expect("first turn should succeed");
             let tool_call = first_response
@@ -328,7 +328,7 @@ async fn long_history_replay_nonstreaming() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("long history replay should be accepted by the Messages API");
 

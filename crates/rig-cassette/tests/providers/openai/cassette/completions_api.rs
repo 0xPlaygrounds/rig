@@ -1,5 +1,4 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;

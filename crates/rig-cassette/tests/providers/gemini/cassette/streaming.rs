@@ -1,7 +1,6 @@
 //! Gemini streaming coverage, including the migrated example path.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::completion::FinishReason;
 use rig::prelude::*;
 use rig::providers::gemini;

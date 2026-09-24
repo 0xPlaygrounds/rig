@@ -5,12 +5,10 @@ use rig::providers::copilot::wire::CopilotWire;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
-};
-use rig::driver::Bound;
+use rig::completion::{CompletionRequest, CompletionResponse, ProviderCapabilities};
+use rig::driver::Model;
 use rig::providers::copilot;
-use rig::streaming::{StreamEvent, StreamingCompletionResponse};
+use rig::streaming::{CompletionStream, StreamEvent};
 
 use crate::copilot::{live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
@@ -22,12 +20,12 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 /// the terminal records, whose `raw` is Copilot's provider-native record.
 #[derive(Clone)]
 struct CapturingProviderFinals {
-    inner: Bound<CopilotWire>,
+    inner: Model<CopilotWire, rig::http_client::BoxedHttpClient>,
     finals: Arc<Mutex<Vec<rig::streaming::StreamFinal>>>,
 }
 
 impl CapturingProviderFinals {
-    fn new(inner: Bound<CopilotWire>) -> Self {
+    fn new(inner: Model<CopilotWire, rig::http_client::BoxedHttpClient>) -> Self {
         Self {
             inner,
             finals: Arc::new(Mutex::new(Vec::new())),
@@ -64,7 +62,7 @@ impl CompletionModel for CapturingProviderFinals {
             item
         });
 
-        Ok(StreamingCompletionResponse::from_events(
+        Ok(CompletionStream::relay(
             copilot::PROVIDER_NAME,
             Box::pin(captured),
         ))

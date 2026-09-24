@@ -9,8 +9,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionResponse};
-use rig::driver::Bound;
+use rig::completion::CompletionResponse;
+use rig::driver::Model;
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
@@ -63,7 +63,7 @@ struct StoredStreamingTurn {
 /// response read back out of [`CompletionResponse::raw`], which is the only
 /// carrier of the reasoning metadata these tests lock down.
 async fn prompt_with_reasoning(
-    model: &Bound<OpenAiWire>,
+    model: &Model<OpenAiWire, rig::http_client::BoxedHttpClient>,
     reasoning: serde_json::Value,
 ) -> (
     CompletionResponse,
