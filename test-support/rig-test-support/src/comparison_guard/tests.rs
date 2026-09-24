@@ -494,6 +494,15 @@ fn let_chains_bind_and_shadow_like_if_let() {
                 }
             }
         }
+        fn chained_twice() {
+            if let Ok(body) = recorded_json_result("x", "cell")
+                && let Some(object) = body.as_object()
+            {
+                for (key, value) in object {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
         fn chained_shadow() {
             let body = recorded_json_response("x", "cell");
             if ready && let Ok((body, _)) = live_pair() {
@@ -508,5 +517,5 @@ fn let_chains_bind_and_shadow_like_if_let() {
         .iter()
         .map(|finding| finding.split(':').next().unwrap_or_default())
         .collect();
-    assert_eq!(functions, ["chained"], "{found:?}");
+    assert_eq!(functions, ["chained", "chained_twice"], "{found:?}");
 }
