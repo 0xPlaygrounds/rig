@@ -1,9 +1,9 @@
 //! Provider model metadata and listing interfaces.
 //!
 //! ```
-//! use rig_core::model::{Model, ModelList};
+//! use rig_core::model::{ModelInfo, ModelList};
 //!
-//! let models = ModelList::new(vec![Model::new("example", "Example model")]);
+//! let models = ModelList::new(vec![ModelInfo::new("example", "Example model")]);
 //! assert_eq!(models.len(), 1);
 //! ```
 
@@ -14,7 +14,7 @@ use std::fmt;
 
 /// Provider-advertised model identifier and optional metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Model {
+pub struct ModelInfo {
     /// The unique identifier for the model (required)
     pub id: String,
 
@@ -49,7 +49,7 @@ pub struct Model {
     pub max_output_tokens: Option<u32>,
 }
 
-impl Model {
+impl ModelInfo {
     /// Creates a model with an ID and display name; other metadata is absent.
     pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
@@ -84,7 +84,7 @@ impl Model {
     }
 }
 
-impl fmt::Display for Model {
+impl fmt::Display for ModelInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.display_name())
     }
@@ -94,12 +94,12 @@ impl fmt::Display for Model {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelList {
     /// Model entries in returned order.
-    pub data: Vec<Model>,
+    pub data: Vec<ModelInfo>,
 }
 
 impl ModelList {
     /// Wraps model entries without sorting or deduplicating them.
-    pub fn new(data: Vec<Model>) -> Self {
+    pub fn new(data: Vec<ModelInfo>) -> Self {
         Self { data }
     }
 
@@ -114,7 +114,7 @@ impl ModelList {
     }
 
     /// Borrows entries in list order.
-    pub fn iter(&self) -> std::slice::Iter<'_, Model> {
+    pub fn iter(&self) -> std::slice::Iter<'_, ModelInfo> {
         self.data.iter()
     }
 }
@@ -124,21 +124,21 @@ impl ModelList {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ModelPage {
     /// Model entries in returned order.
-    pub models: Vec<Model>,
+    pub models: Vec<ModelInfo>,
     /// The cursor naming the next page. `None` ends the listing.
     pub next: Option<String>,
 }
 
 impl ModelPage {
     /// A page of `models` that names no next page.
-    pub fn last(models: Vec<Model>) -> Self {
+    pub fn last(models: Vec<ModelInfo>) -> Self {
         Self { models, next: None }
     }
 }
 
 impl IntoIterator for ModelList {
-    type Item = Model;
-    type IntoIter = std::vec::IntoIter<Model>;
+    type Item = ModelInfo;
+    type IntoIter = std::vec::IntoIter<ModelInfo>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.data.into_iter()
@@ -146,8 +146,8 @@ impl IntoIterator for ModelList {
 }
 
 impl<'a> IntoIterator for &'a ModelList {
-    type Item = &'a Model;
-    type IntoIter = std::slice::Iter<'a, Model>;
+    type Item = &'a ModelInfo;
+    type IntoIter = std::slice::Iter<'a, ModelInfo>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.data.iter()

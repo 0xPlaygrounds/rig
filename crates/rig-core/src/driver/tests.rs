@@ -15,7 +15,7 @@ use super::{Model, call, stream};
 use crate::completion::{CompletionModel, CompletionRequest};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
-use crate::model::{Model as ModelInfo, ModelLister, ModelPage};
+use crate::model::{ModelInfo, ModelLister, ModelPage};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };

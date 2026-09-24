@@ -22,11 +22,11 @@ fn simple_text_turn() -> MockTurn {
 }
 
 fn simple_text_model(turns: usize) -> MockCompletionModel {
-    MockCompletionModel::new((0..turns).map(|_| simple_text_turn()))
+    MockCompletionModel::from_turns((0..turns).map(|_| simple_text_turn()))
 }
 
 fn tool_then_text_model() -> MockCompletionModel {
-    MockCompletionModel::new([
+    MockCompletionModel::from_turns([
         MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3}))
             .with_usage(Usage {
                 input_tokens: Some(15),
@@ -265,7 +265,7 @@ async fn prompt_response_with_messages_builder() {
 async fn max_turns_error_still_contains_history() {
     use rig::completion::PromptError;
 
-    let agent = AgentBuilder::new(MockCompletionModel::new(
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns(
         (0..10).map(|_| always_tool_call_turn()),
     ))
     .tool(MockAddTool)

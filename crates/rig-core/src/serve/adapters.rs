@@ -38,30 +38,52 @@ fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
     )
 }
 
-/// A [`CompletionModel`] as a handler. Unary and streaming completions both
-/// route here; the descriptor carries the model's label and capability
-/// snapshot.
-pub struct CompletionAdapter<M> {
+/// Serves a model as the effect family it answers: [`family::Completion`],
+/// [`family::Embed`] or [`family::Rerank`]. Build one with the constructor
+/// of its family.
+pub struct ModelAdapter<M, F> {
     label: ModelRef,
     model: M,
+    family: std::marker::PhantomData<fn() -> F>,
 }
 
-impl<M> CompletionAdapter<M> {
-    /// Wrap `model` under `label`.
-    pub fn new(label: impl Into<ModelRef>, model: M) -> Self {
+impl<M, F> ModelAdapter<M, F> {
+    fn labelled(label: impl Into<ModelRef>, model: M) -> Self {
         Self {
             label: label.into(),
             model,
+            family: std::marker::PhantomData,
         }
     }
 
-    /// The wrapped model.
+    /// The served model.
     pub fn model(&self) -> &M {
         &self.model
     }
 }
 
-impl<M> Serve for CompletionAdapter<M>
+impl<M> ModelAdapter<M, family::Completion> {
+    /// Serve `model` as the completion handler labelled `label`.
+    pub fn completion(label: impl Into<ModelRef>, model: M) -> Self {
+        Self::labelled(label, model)
+    }
+}
+
+impl<M> ModelAdapter<M, family::Embed> {
+    /// Serve `model` as the text-embedding handler labelled `label`.
+    pub fn embedding(label: impl Into<ModelRef>, model: M) -> Self {
+        Self::labelled(label, model)
+    }
+}
+
+impl<M> ModelAdapter<M, family::Rerank> {
+    /// Serve `model` as the rerank handler labelled `label`.
+    pub fn rerank(label: impl Into<ModelRef>, model: M) -> Self {
+        Self::labelled(label, model)
+    }
+}
+
+impl<M> Serve for ModelAdapter<M, family::Completion>
 where
     M: CompletionModel + 'static,
 {
@@ -83,32 +105,28 @@ where
         match kind {
             EffectKind::Completion {
                 mut request,
-                stream: false,
+                stream,
             } => {
+                // The dispatch's observation context travels with the
+                // request, where the model's transport reads it.
                 if let Some(context) = context {
                     request.extensions.insert(context);
                 }
-                let outcome = self
-                    .model
-                    .complete(request)
-                    .await
-                    .map(Outcome::Completion)
-                    .map_err(ErrorReport::from);
-                Reply::Outcome(outcome)
-            }
-            EffectKind::Completion {
-                mut request,
-                stream: true,
-            } => {
-                if let Some(context) = context {
-                    request.extensions.insert(context);
-                }
-                match self.model.stream(request).await {
-                    Ok(stream) => Reply::Stream(Box::pin(stream)),
-                    Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+                if stream {
+                    match self.model.stream(request).await {
+                        Ok(stream) => Reply::Stream(Box::pin(stream)),
+                        Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+                    }
+                } else {
+                    let outcome = self
+                        .model
+                        .complete(request)
+                        .await
+                        .map(Outcome::Completion)
+                        .map_err(ErrorReport::from);
+                    Reply::Outcome(outcome)
                 }
             }
-
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
@@ -121,10 +139,96 @@ where
     }
 }
 
-/// The context a tool call runs with: the driver's inbound values from
-/// the dispatch's scope (`ToolContext`, as `for_dispatch`), else empty, with
-/// every scope of the dispatch attached so the tool reaches its runtime by
-/// type for the length of the call.
+impl<M> Serve for ModelAdapter<M, family::Embed>
+where
+    M: EmbeddingModel + 'static,
+{
+    type Family = family::Embed;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: crate::effect::embed_key(self.label.as_str()),
+            family: FamilyDescriptor::Embed {
+                model: self.label.to_string(),
+                dims: Some(self.model.ndims()),
+                max_documents: self.model.max_documents(),
+                modality: EmbedModality::Text,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        match kind {
+            EffectKind::Embed {
+                inputs: EmbedInputs::Texts(texts),
+            } => {
+                let outcome = self
+                    .model
+                    .embed_texts_response(texts)
+                    .await
+                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
+                    .map_err(ErrorReport::from);
+                Reply::Outcome(outcome)
+            }
+            EffectKind::Embed {
+                inputs: EmbedInputs::Images(_),
+            } => Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                "a text embedding handler cannot embed images",
+            ))),
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::ToolCall { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
+            | EffectKind::Custom { .. }) => {
+                Reply::Outcome(Err(wrong_family(EffectFamily::Embed, &other)))
+            }
+        }
+    }
+}
+
+impl<M> Serve for ModelAdapter<M, family::Rerank>
+where
+    M: RerankModel + 'static,
+{
+    type Family = family::Rerank;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: crate::effect::rerank_key(self.label.as_str()),
+            family: FamilyDescriptor::Rerank {
+                model: self.label.to_string(),
+                max_documents: self.model.max_documents(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        match kind {
+            EffectKind::Rerank { request } => {
+                let outcome = self
+                    .model
+                    .rerank(&request.query, request.documents)
+                    .await
+                    .map(Outcome::Reranked)
+                    .map_err(ErrorReport::from);
+                Reply::Outcome(outcome)
+            }
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::ToolCall { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                Reply::Outcome(Err(wrong_family(EffectFamily::Rerank, &other)))
+            }
+        }
+    }
+}
+
 fn dispatch_context(dispatch: &Dispatch) -> crate::tool::ToolContext {
     dispatch
         .scope::<crate::tool::ToolContext>()
@@ -317,138 +421,6 @@ where
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other)))
-            }
-        }
-    }
-}
-
-/// A text [`EmbeddingModel`] as a handler.
-pub struct EmbedAdapter<E> {
-    label: String,
-    model: E,
-}
-
-impl<E> EmbedAdapter<E> {
-    /// Wrap `model` under `label`.
-    pub fn new(label: impl Into<String>, model: E) -> Self {
-        Self {
-            label: label.into(),
-            model,
-        }
-    }
-
-    /// The wrapped model.
-    pub fn model(&self) -> &E {
-        &self.model
-    }
-}
-
-impl<E> Serve for EmbedAdapter<E>
-where
-    E: EmbeddingModel + 'static,
-{
-    type Family = family::Embed;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: crate::effect::embed_key(&self.label),
-            family: FamilyDescriptor::Embed {
-                model: self.label.clone(),
-                dims: Some(self.model.ndims()),
-                max_documents: self.model.max_documents(),
-                modality: EmbedModality::Text,
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        match kind {
-            EffectKind::Embed {
-                inputs: EmbedInputs::Texts(texts),
-            } => {
-                let outcome = self
-                    .model
-                    .embed_texts_response(texts)
-                    .await
-                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
-                    .map_err(ErrorReport::from);
-                Reply::Outcome(outcome)
-            }
-            EffectKind::Embed {
-                inputs: EmbedInputs::Images(_),
-            } => Reply::Outcome(Err(ErrorReport::new(
-                ErrorKind::HandlerUnavailable,
-                "a text embedding handler cannot embed images",
-            ))),
-            other @ (EffectKind::Completion { .. }
-            | EffectKind::ToolCall { .. }
-            | EffectKind::Memory { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Rerank { .. }
-            | EffectKind::Custom { .. }) => {
-                Reply::Outcome(Err(wrong_family(EffectFamily::Embed, &other)))
-            }
-        }
-    }
-}
-
-/// A [`RerankModel`] as a handler.
-pub struct RerankAdapter<M> {
-    label: String,
-    model: M,
-}
-
-impl<M> RerankAdapter<M> {
-    /// Wrap `model` under `label`.
-    pub fn new(label: impl Into<String>, model: M) -> Self {
-        Self {
-            label: label.into(),
-            model,
-        }
-    }
-
-    /// The wrapped model.
-    pub fn model(&self) -> &M {
-        &self.model
-    }
-}
-
-impl<M> Serve for RerankAdapter<M>
-where
-    M: RerankModel + 'static,
-{
-    type Family = family::Rerank;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: crate::effect::rerank_key(&self.label),
-            family: FamilyDescriptor::Rerank {
-                model: self.label.clone(),
-                max_documents: self.model.max_documents(),
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        match kind {
-            EffectKind::Rerank { request } => {
-                let outcome = self
-                    .model
-                    .rerank(&request.query, request.documents)
-                    .await
-                    .map(Outcome::Reranked)
-                    .map_err(ErrorReport::from);
-                Reply::Outcome(outcome)
-            }
-            other @ (EffectKind::Completion { .. }
-            | EffectKind::ToolCall { .. }
-            | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Custom { .. }) => {
-                Reply::Outcome(Err(wrong_family(EffectFamily::Rerank, &other)))
             }
         }
     }

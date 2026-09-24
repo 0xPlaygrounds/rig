@@ -18,7 +18,7 @@
 use crate::completion::Usage;
 use crate::error::EncodeError;
 use crate::message::DocumentSourceKind;
-use crate::model::Model;
+use crate::model::ModelInfo;
 use crate::operation::Completion;
 use crate::providers::internal;
 use crate::streaming::{StreamFinal, ToolCallEnd};
@@ -504,9 +504,9 @@ pub struct ListModelEntry {
     pub model: String,
 }
 
-impl From<ListModelEntry> for Model {
+impl From<ListModelEntry> for ModelInfo {
     fn from(value: ListModelEntry) -> Self {
-        Model::new(value.model, value.name)
+        ModelInfo::new(value.model, value.name)
     }
 }
 

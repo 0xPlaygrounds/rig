@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelPage};
+use crate::model::{ModelInfo, ModelPage};
 use crate::operation::{Completion, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
@@ -387,14 +387,14 @@ pub struct ModelsReply {
 
 impl ModelsReply {
     /// The catalogue as normalized models.
-    pub fn into_models(self) -> Vec<Model> {
-        self.data.into_iter().map(Model::from).collect()
+    pub fn into_models(self) -> Vec<ModelInfo> {
+        self.data.into_iter().map(ModelInfo::from).collect()
     }
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        let mut model = Model::from_id(entry.id);
+        let mut model = ModelInfo::from_id(entry.id);
         model.name = entry.name;
         model.owned_by = entry.vendor;
         if let Some(capabilities) = entry.capabilities {

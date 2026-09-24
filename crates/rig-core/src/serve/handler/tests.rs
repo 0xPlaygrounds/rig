@@ -471,7 +471,7 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
         crate::providers::gemini::Gemini::new("key").completion("gemini-test"),
         RecordingHttpClient::new(body),
     );
-    let handler = crate::serve::adapters::CompletionAdapter::new("gemini-test", model.clone());
+    let handler = crate::serve::adapters::ModelAdapter::completion("gemini-test", model.clone());
     let bus_log = Arc::new(ObservationLog::default());
     let direct_log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(bus_log.clone(), Subject::default(), "bus-operation");

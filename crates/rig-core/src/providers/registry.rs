@@ -24,7 +24,7 @@ use crate::http_client::BoxedHttpClient;
 use crate::operation::Completion;
 use crate::providers::{anthropic, gemini, openai};
 use crate::serve::ErasedHandler;
-use crate::serve::adapters::CompletionAdapter;
+use crate::serve::adapters::ModelAdapter;
 use crate::wire::{Secret, Wire};
 
 /// Every dialect this build knows, for
@@ -427,7 +427,7 @@ impl ProviderConfig {
     }
 
     /// The completion wire for `model`, bound to `http`, erased behind a
-    /// [`CompletionAdapter`] labelled `label`.
+    /// completion [`ModelAdapter`] labelled `label`.
     ///
     /// A handler built from data uses the provider's own completion wire,
     /// including Copilot's model-dependent routing and request envelope.
@@ -452,7 +452,7 @@ where
     W: Wire<Op = Completion>,
     Model<W>: CompletionModel + 'static,
 {
-    ErasedHandler::new(CompletionAdapter::new(label, Model::new(wire, http)))
+    ErasedHandler::new(ModelAdapter::completion(label, Model::new(wire, http)))
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a

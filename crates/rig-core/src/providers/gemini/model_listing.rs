@@ -1,7 +1,7 @@
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
-    model::{Model, ModelPage, listing},
+    model::{ModelInfo, ModelPage, listing},
     operation::{ModelListing, Verify},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
@@ -57,7 +57,7 @@ fn normalize_gemini_model_id(name: &str) -> Option<String> {
     }
 }
 
-impl TryFrom<ListModelEntry> for Model {
+impl TryFrom<ListModelEntry> for ModelInfo {
     type Error = MissingModelIdError;
 
     fn try_from(value: ListModelEntry) -> Result<Self, Self::Error> {
@@ -70,7 +70,7 @@ impl TryFrom<ListModelEntry> for Model {
             .or_else(|| normalize_gemini_model_id(&value.name))
             .ok_or(MissingModelIdError)?;
 
-        let mut model = Model::from_id(id);
+        let mut model = ModelInfo::from_id(id);
         model.name = value.display_name;
         model.description = value.description;
         model.context_length = value
@@ -95,7 +95,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
 /// A decoded model page with an optional nonempty next-page cursor.
 #[derive(Debug)]
 struct ListingPage {
-    models: Vec<Model>,
+    models: Vec<ModelInfo>,
     next_cursor: Option<String>,
 }
 
@@ -108,7 +108,7 @@ fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderErr
         .models
         .into_iter()
         .map(|entry| {
-            Model::try_from(entry)
+            ModelInfo::try_from(entry)
                 .map_err(|error| listing::parse_error("Gemini", path, error, body))
         })
         .collect::<Result<Vec<_>, _>>()?;

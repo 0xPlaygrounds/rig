@@ -45,7 +45,7 @@ fn definitions_single_text() -> Vec<MockTextDocument> {
 async fn test_build_multiple_text() {
     let fake_definitions = definitions_multiple_text();
 
-    let fake_model = MockEmbeddingModel;
+    let fake_model = MockEmbeddingModel::default();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -78,7 +78,7 @@ async fn test_build_multiple_text() {
 async fn test_build_single_text() {
     let fake_definitions = definitions_single_text();
 
-    let fake_model = MockEmbeddingModel;
+    let fake_model = MockEmbeddingModel::default();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -112,7 +112,7 @@ async fn test_build_multiple_and_single_text() {
     let fake_definitions = definitions_multiple_text();
     let fake_definitions_single = definitions_multiple_text_2();
 
-    let fake_model = MockEmbeddingModel;
+    let fake_model = MockEmbeddingModel::default();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -148,7 +148,7 @@ async fn test_build_string() {
     let bindings = definitions_multiple_text();
     let fake_definitions = bindings.iter().map(|def| def.texts.clone());
 
-    let fake_model = MockEmbeddingModel;
+    let fake_model = MockEmbeddingModel::default();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -182,7 +182,7 @@ async fn test_build_preserves_input_order_across_batches() {
     // sequence matches the input order exactly.
     let texts: Vec<String> = (0..12).map(|i| format!("text-{i:02}")).collect();
 
-    let fake_model = MockEmbeddingModel;
+    let fake_model = MockEmbeddingModel::default();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(texts.clone())
         .unwrap()
@@ -405,7 +405,7 @@ async fn test_build_preserves_text_order_across_many_straddling_documents() {
 /// behavior.
 #[tokio::test]
 async fn test_build_rejects_a_document_that_embeds_no_text() {
-    let error = EmbeddingsBuilder::new(MockEmbeddingModel)
+    let error = EmbeddingsBuilder::new(MockEmbeddingModel::default())
         .document(NTexts::new(0, 0))
         .unwrap()
         .build()
@@ -426,7 +426,7 @@ async fn test_build_rejects_a_document_that_embeds_no_text() {
 /// message has to be the document's own, not a constant.
 #[tokio::test]
 async fn test_build_names_the_document_that_embeds_no_text() {
-    let error = EmbeddingsBuilder::new(MockEmbeddingModel)
+    let error = EmbeddingsBuilder::new(MockEmbeddingModel::default())
         .documents(vec![
             NTexts::new(0, 2),
             NTexts::new(1, 2),

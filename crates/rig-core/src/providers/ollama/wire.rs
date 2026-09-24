@@ -10,7 +10,7 @@ use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
-use crate::model::{Model, ModelPage};
+use crate::model::{ModelInfo, ModelPage};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
@@ -319,7 +319,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<ModelListing>) {
         out.push(Ok(ModelPage::last(
-            reply.models.into_iter().map(Model::from).collect(),
+            reply.models.into_iter().map(ModelInfo::from).collect(),
         )));
     }
 }

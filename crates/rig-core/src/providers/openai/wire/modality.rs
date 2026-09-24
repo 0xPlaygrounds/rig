@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::embeddings;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
-use crate::model::{Model, ModelPage};
+use crate::model::{ModelInfo, ModelPage};
 use crate::operation::{
     Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
     Verify as VerifyOp,
@@ -996,9 +996,9 @@ pub struct TopProvider {
     pub max_completion_tokens: Option<u32>,
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        let mut model = Model::from_id(entry.id);
+        let mut model = ModelInfo::from_id(entry.id);
         model.name = entry.name;
         model.description = entry.description;
         model.r#type = entry.kind;
@@ -1036,7 +1036,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
-        let models = event.data.into_iter().map(Model::from).collect();
+        let models = event.data.into_iter().map(ModelInfo::from).collect();
         out.push(Ok(ModelPage::last(models)));
     }
 }

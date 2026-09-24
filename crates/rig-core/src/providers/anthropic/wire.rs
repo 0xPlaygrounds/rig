@@ -13,7 +13,7 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelPage};
+use crate::model::{ModelInfo, ModelPage};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
 use crate::providers::internal::named_dialect;
@@ -608,9 +608,9 @@ struct ModelEntry {
     display_name: String,
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        Model::new(entry.id, entry.display_name)
+        ModelInfo::new(entry.id, entry.display_name)
     }
 }
 
@@ -630,7 +630,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
             .last_id
             .filter(|cursor| page.has_more && !cursor.is_empty());
         out.push(Ok(ModelPage {
-            models: page.data.into_iter().map(Model::from).collect(),
+            models: page.data.into_iter().map(ModelInfo::from).collect(),
             next,
         }));
     }

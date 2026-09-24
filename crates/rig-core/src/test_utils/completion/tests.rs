@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    completion::CompletionModel,
     error::ErrorKind,
     message::Message,
     streaming::{Delta, StreamEvent, StreamFinal},
@@ -24,7 +25,7 @@ fn request(prompt: &str) -> CompletionRequest {
 
 #[tokio::test]
 async fn completion_consumes_scripted_turns_and_records_requests() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::text("first").with_message_id("msg_1"),
         MockTurn::tool_call("tool_1", "calculator", serde_json::json!({"x": 1}))
             .with_call_id("call_1"),
@@ -69,7 +70,7 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
     let expected_unscripted = unscripted_turn
         .raw()
         .expect("a scripted turn has a document");
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::text("first").with_raw(payload.clone()),
         unscripted_turn,
     ]);

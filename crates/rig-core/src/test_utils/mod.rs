@@ -12,8 +12,11 @@ pub mod streaming_conformance;
 mod streaming_conformance_suite;
 mod tracing_isolation;
 
-pub use completion::{MockCompletionModel, MockError, MockTurn};
-pub use embeddings::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
+pub use completion::{MockCompletionModel, MockDecoder, MockError, MockScript, MockTurn, MockWire};
+pub use embeddings::{
+    MockEmbeddingDecoder, MockEmbeddingModel, MockEmbeddingWire, MockEmbeddings,
+    MockMultiTextDocument, MockTextDocument,
+};
 pub use http::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
     NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,
