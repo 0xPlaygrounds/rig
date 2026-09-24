@@ -132,33 +132,34 @@ impl Transport<Embeddings> for BedrockRuntime {
         ProviderError,
     > {
         let runtime = self.clone();
+        // Every call completes inside the send, so the calls run under the
+        // attempt's span; sequential requests limit load against account
+        // quotas.
         Ok(async move {
             let client = runtime.inner().await.clone();
-            // Sequential requests limit concurrent load against account quotas.
-            let frames = async_stream::stream! {
-                for (document, body) in batch.texts {
-                    let sent = client
-                        .invoke_model()
-                        .model_id(batch.model.as_str())
-                        .content_type("application/json")
-                        .accept("application/json")
-                        .body(Blob::new(body))
-                        .send()
-                        .await;
-                    let reply = sent
-                        .map_err(|sdk_error| ProviderError::from(AwsSdkInvokeModelError(sdk_error)))
-                        .and_then(|response| {
-                            String::from_utf8(response.body.into_inner())
-                                .map_err(|error| ProviderError::Response(error.to_string()))
-                        })
-                        .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json));
-                    yield Ok(match reply {
-                        Ok(response) => EmbeddingFrame::Embedded { document, response },
-                        Err(error) => EmbeddingFrame::Failed(error),
-                    });
-                }
-            };
-            Opened::new(frames)
+            let mut frames = Vec::with_capacity(batch.texts.len());
+            for (document, body) in batch.texts {
+                let sent = client
+                    .invoke_model()
+                    .model_id(batch.model.as_str())
+                    .content_type("application/json")
+                    .accept("application/json")
+                    .body(Blob::new(body))
+                    .send()
+                    .await;
+                let reply = sent
+                    .map_err(|sdk_error| ProviderError::from(AwsSdkInvokeModelError(sdk_error)))
+                    .and_then(|response| {
+                        String::from_utf8(response.body.into_inner())
+                            .map_err(|error| ProviderError::Response(error.to_string()))
+                    })
+                    .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json));
+                frames.push(Ok(match reply {
+                    Ok(response) => EmbeddingFrame::Embedded { document, response },
+                    Err(error) => EmbeddingFrame::Failed(error),
+                }));
+            }
+            Opened::new(futures::stream::iter(frames))
         })
     }
 }

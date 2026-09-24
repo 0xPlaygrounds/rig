@@ -14,7 +14,6 @@
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 
-use futures::StreamExt;
 use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::embeddings;
 use rig_core::error::{EncodeError, ProviderError};
@@ -108,19 +107,21 @@ impl Transport<Embeddings> for GeminiGrpc {
         let mut client = self
             .grpc_client()
             .map_err(|error| ProviderError::Provider(error.to_string()))?;
-        // Sequential calls; the first RPC error ends the batch.
-        let frames = async_stream::stream! {
+        // Sequential calls, each completed inside the send so they run under
+        // the attempt's span; the first RPC error ends the batch.
+        Ok(async move {
+            let mut frames = Vec::with_capacity(requests.len());
             for (text, request) in requests {
                 match client.embed_content(request).await {
-                    Ok(response) => yield Ok((text, response.into_inner())),
+                    Ok(response) => frames.push(Ok((text, response.into_inner()))),
                     Err(status) => {
-                        yield Err(super::completion::rpc_error(&status));
+                        frames.push(Err(super::completion::rpc_error(&status)));
                         break;
                     }
                 }
             }
-        };
-        Ok(async move { Opened::new(frames.boxed()) })
+            Opened::new(futures::stream::iter(frames))
+        })
     }
 }
 

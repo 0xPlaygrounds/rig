@@ -50,9 +50,10 @@ where
         }
         let mut requests = requests.into_iter();
         let Some(mut request) = requests.next() else {
-            return Err(ProviderError::Request(
-                "an encoded payload carries no request".into(),
-            ));
+            // An empty batch sends nothing and folds to an empty answer.
+            return Ok(futures::future::Either::Left(std::future::ready(
+                Opened::new(futures::stream::empty()),
+            )));
         };
         let rest: Vec<_> = requests.collect();
         let rest = (!rest.is_empty()).then(|| Encoded {
@@ -89,11 +90,11 @@ where
                 })
             }
         };
-        Ok(async move {
+        Ok(futures::future::Either::Right(async move {
             let mut opened = sending.await;
             opened.rest = rest;
             opened
-        })
+        }))
     }
 }
 

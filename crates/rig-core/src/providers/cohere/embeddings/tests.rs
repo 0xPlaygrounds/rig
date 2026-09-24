@@ -132,6 +132,30 @@ async fn image_batches_are_fully_validated_before_any_request() {
     assert!(http_client.requests().is_empty());
 }
 
+/// No images encode to an empty batch: nothing is sent, and the fold finds
+/// no payload, the response failure it has always been.
+#[tokio::test]
+async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
+    use crate::test_utils::RecordingHttpClient;
+
+    let http_client = RecordingHttpClient::default();
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        http_client.clone(),
+    );
+
+    let error = model
+        .embed_images(Vec::<Vec<u8>>::new())
+        .await
+        .expect_err("an empty batch has no payload to fold");
+
+    assert!(
+        matches!(&error, ProviderError::Response(message) if message == "embedding reply carried no payload"),
+        "{error:?}"
+    );
+    assert!(http_client.requests().is_empty());
+}
+
 #[tokio::test]
 async fn image_embeddings_non_success_preserves_status_and_body() {
     use crate::test_utils::RecordingHttpClient;
