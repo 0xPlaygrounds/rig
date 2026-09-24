@@ -477,26 +477,24 @@ impl Transport<Batches> for OneAtATimeReversedLatency {
         impl Future<Output = Opened<Vec<String>, Vec<String>>> + Send + 'static + use<>,
         ProviderError,
     > {
-        let model = self.clone();
-        Ok(async move {
-            let _this = &model;
-            let documents: Vec<String> = documents.into_iter().collect();
-            // Earlier texts wait longer, so completion order is close to the
-            // reverse of submission order. Texts are named `d{doc}t{i}`, so the
-            // position is what follows the last `t`; if that ever stops
-            // parsing every batch waits 0ms, the completion order stops being
-            // inverted, and this test quietly stops proving anything — hence
-            // the assert rather than `unwrap_or(0)`.
-            let position = documents
-                .first()
-                .and_then(|text| text.rsplit_once('t'))
-                .and_then(|(_, n)| n.parse::<u64>().ok());
-            assert!(
-                position.is_some(),
+        // Earlier texts wait longer, so completion order is close to the
+        // reverse of submission order. Texts are named `d{doc}t{i}`, so the
+        // position is what follows the last `t`; if that ever stops parsing
+        // every batch would wait 0ms, the completion order would stop being
+        // inverted, and this test would quietly stop proving anything, hence
+        // the refusal rather than `unwrap_or(0)`.
+        let Some(position) = documents
+            .first()
+            .and_then(|text| text.rsplit_once('t'))
+            .and_then(|(_, n)| n.parse::<u64>().ok())
+        else {
+            return Err(ProviderError::Provider(format!(
                 "could not read a text position out of {documents:?}; \
                  this mock cannot invert completion order without it"
-            );
-            let delay = position.map_or(0, |n| 60u64.saturating_sub(n * 10));
+            )));
+        };
+        let delay = 60u64.saturating_sub(position * 10);
+        Ok(async move {
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             Opened::new(futures::stream::iter([Ok(documents)]))
         })

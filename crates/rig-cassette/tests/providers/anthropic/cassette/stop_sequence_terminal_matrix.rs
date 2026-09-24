@@ -69,7 +69,6 @@
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Messages;

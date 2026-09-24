@@ -64,8 +64,7 @@ fn create_text_response(text: &str) -> vertexai::model::GenerateContentResponse 
     let candidate = vertexai::model::Candidate::new()
         .set_content(content)
         .set_finish_reason(vertexai::model::candidate::FinishReason::Stop);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    response
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 fn create_parts_response(
@@ -75,8 +74,7 @@ fn create_parts_response(
         .set_role("model")
         .set_parts(parts);
     let candidate = vertexai::model::Candidate::new().set_content(content);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    response
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 fn inline_data_part(mime_type: &str, data: Vec<u8>) -> vertexai::model::Part {
@@ -104,8 +102,7 @@ fn create_tool_call_response(
     let candidate = vertexai::model::Candidate::new()
         .set_content(content)
         .set_finish_reason(vertexai::model::candidate::FinishReason::Stop);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    response
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 fn create_signed_tool_call_response(
@@ -122,8 +119,7 @@ fn create_signed_tool_call_response(
         .set_role("model")
         .set_parts([part]);
     let candidate = vertexai::model::Candidate::new().set_content(content);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    response
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 #[test]

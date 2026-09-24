@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use serde::Deserialize;

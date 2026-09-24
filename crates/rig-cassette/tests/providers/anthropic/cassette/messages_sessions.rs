@@ -13,7 +13,6 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::{FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 

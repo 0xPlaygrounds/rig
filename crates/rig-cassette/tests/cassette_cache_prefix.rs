@@ -617,7 +617,6 @@ fn an_unknown_conversational_endpoint_is_a_finding_not_a_skip() {
 
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{Message, UserContent};
-use rig::prelude::*;
 use rig_core::test_utils::RecordingHttpClient;
 
 /// How many times each provider's request is serialized before the bytes are

@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 use futures::StreamExt;
 use rig::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;

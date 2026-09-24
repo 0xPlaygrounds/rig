@@ -12,7 +12,6 @@ use rig::agent::{
 };
 use rig::completion::{CompletionResponse, Document, Message};
 use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::{
     CLAUDE_SONNET_4_6, CacheTtl, CompletionResponse as AnthropicResponse, Usage,
 };

@@ -61,7 +61,6 @@
 
 use rig::completion::{FinishReason, ToolDefinition};
 use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CompletionResponse;
 use rig::providers::anthropic::wire::Messages;

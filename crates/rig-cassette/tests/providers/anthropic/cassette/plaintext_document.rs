@@ -1,6 +1,5 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
 use serde::Deserialize;

@@ -10,7 +10,6 @@
 
 use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use serde::Deserialize;

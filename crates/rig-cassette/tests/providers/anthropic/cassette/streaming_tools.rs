@@ -6,7 +6,6 @@ use rig_cassette::agent::AgentReplayExt;
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::message::{Message, ToolCallId, UserContent};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;

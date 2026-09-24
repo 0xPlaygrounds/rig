@@ -48,7 +48,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_HAIKU_4_5;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;

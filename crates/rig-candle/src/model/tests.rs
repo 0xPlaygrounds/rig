@@ -310,7 +310,7 @@ async fn collect_stream(
     model: &CandleModel,
     request: CompletionRequest,
 ) -> Result<(String, CandleCompletionResponse), Box<dyn std::error::Error + Send + Sync>> {
-    let mut response = generation(&model).stream(request, None)?;
+    let mut response = generation(model).stream(request, None)?;
     let mut text = String::new();
     while let Some(item) = response.next().await {
         if let StreamEvent::BlockDelta {

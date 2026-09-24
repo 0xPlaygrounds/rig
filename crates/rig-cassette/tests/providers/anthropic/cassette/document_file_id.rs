@@ -4,7 +4,6 @@ use futures::FutureExt;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{
     ANTHROPIC_VERSION_2023_06_01, Message as AnthropicMessage,

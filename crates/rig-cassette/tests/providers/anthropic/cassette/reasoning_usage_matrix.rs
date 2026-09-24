@@ -101,7 +101,6 @@ use std::sync::{Arc, Mutex};
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, ToolDefinition, Usage};
 use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::StreamEvent;

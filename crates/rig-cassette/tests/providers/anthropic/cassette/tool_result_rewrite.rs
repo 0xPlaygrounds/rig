@@ -11,7 +11,6 @@
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, OutcomeAction, OutcomeEvent};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_result_redaction;

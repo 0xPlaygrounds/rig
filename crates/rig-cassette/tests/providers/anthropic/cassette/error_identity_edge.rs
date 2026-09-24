@@ -5,7 +5,6 @@
 
 use futures::StreamExt;
 use rig::error::ProviderError;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};

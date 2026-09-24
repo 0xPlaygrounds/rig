@@ -6,7 +6,6 @@ use rig::completion::{
 };
 use rig::driver::Model;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
 use rig::providers::anthropic::wire::Anthropic;
