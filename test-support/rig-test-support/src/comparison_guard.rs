@@ -424,10 +424,10 @@ impl GuardVisitor<'_> {
         match cond {
             Expr::Let(binding) => self.bind(&binding.pat, &binding.expr),
             Expr::Binary(binary) if matches!(binary.op, syn::BinOp::And(_)) => {
+                // Left first: a later `let` may read a name an earlier one bound.
                 self.bind_condition(&binary.left);
                 self.bind_condition(&binary.right);
             }
-            Expr::Paren(paren) => self.bind_condition(&paren.expr),
             _ => {}
         }
     }
