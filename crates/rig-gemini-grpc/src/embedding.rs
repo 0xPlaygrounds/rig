@@ -167,3 +167,6 @@ impl Decoder<Embedding, (String, proto::EmbedContentResponse)> for EmbeddingsDec
         });
     }
 }
+
+#[cfg(test)]
+mod tests;
