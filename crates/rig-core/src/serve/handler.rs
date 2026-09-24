@@ -224,9 +224,10 @@ pub(crate) fn events_from_response(
         .collect()
 }
 
-/// Write completion content into `out` as stream events followed by `Final`.
+/// Write completion content into `out` as stream events followed by `Final`,
+/// the way a test double's decoder answers with a whole response.
 #[cfg(any(test, feature = "test-utils"))]
-pub(crate) fn emit_response(
+pub fn emit_response(
     response: &CompletionResponse,
     out: &mut crate::operation::AdapterOutput,
 ) {

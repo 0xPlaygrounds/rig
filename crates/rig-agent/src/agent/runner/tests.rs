@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::{
     agent::{AgentBuilder, AgentHook, HookContext, OutcomeAction, OutcomeEvent},
-    completion::{CompletionModel, Document},
+    completion::Document,
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
 };

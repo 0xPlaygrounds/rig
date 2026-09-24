@@ -338,14 +338,9 @@ impl ModelHandle {
         }
     }
 
-    /// A unary completion.
-    pub fn complete(&self, request: CompletionRequest) -> Completion {
-        self.complete_with_context(request, None)
-    }
-
-    /// A unary completion with explicit per-invocation observation state.
-    /// The context overrides recorder context for this call only.
-    pub fn complete_with_context(
+    /// A unary completion. `context`, when given, is the per-invocation
+    /// observation state and overrides recorder context for this call only.
+    pub fn complete(
         &self,
         request: CompletionRequest,
         context: Option<rig_core::observe::AdapterContext>,
@@ -369,14 +364,9 @@ impl ModelHandle {
 
     /// Stream a completion through the canonical accumulator, surfacing bus errors
     /// as stream errors. Uses the model label initially and the terminal record's
-    /// provider name when available.
-    pub fn stream(&self, request: CompletionRequest) -> CompletionStream {
-        self.stream_with_context(request, None)
-    }
-
-    /// A streaming completion with explicit observation state retained by the
-    /// invocation, including lazy startup and partial consumption.
-    pub fn stream_with_context(
+    /// provider name when available. `context`, when given, is observation state
+    /// the invocation retains, including lazy startup and partial consumption.
+    pub fn stream(
         &self,
         request: CompletionRequest,
         context: Option<rig_core::observe::AdapterContext>,

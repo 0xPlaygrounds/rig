@@ -9,7 +9,6 @@ use crate::agent::AgentBuilder;
 use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
-use crate::client::AgentProviderExt;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::run::transcript::tool_result_output;
@@ -26,7 +25,6 @@ use rig_core::message::{
     ToolResultContent, UserContent,
 };
 use rig_core::providers::anthropic;
-use rig_reqwest::client::DefaultTransport;
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -5402,13 +5400,14 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 
     // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
     // (rig reuses current span if one exists, so we need to ensure there's no current span)
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-        .preamble("You are a helpful assistant.")
-        .temperature(0.1)
-        .max_tokens(100)
-        .build();
+    let agent = AgentBuilder::new(rig_core::Model::new(
+        anthropic::wire::Anthropic::from_env()?.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+        rig_reqwest::bundled()?,
+    ))
+    .preamble("You are a helpful assistant.")
+    .temperature(0.1)
+    .max_tokens(100)
+    .build();
 
     let mut stream = agent.prompt("Say 'hello world' and nothing else.").stream();
 
@@ -5459,13 +5458,14 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     use rig_core::message::Message;
 
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-        .preamble("You are a helpful assistant. Keep responses brief.")
-        .temperature(0.1)
-        .max_tokens(50)
-        .build();
+    let agent = AgentBuilder::new(rig_core::Model::new(
+        anthropic::wire::Anthropic::from_env()?.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+        rig_reqwest::bundled()?,
+    ))
+    .preamble("You are a helpful assistant. Keep responses brief.")
+    .temperature(0.1)
+    .max_tokens(50)
+    .build();
 
     // Send streaming request with history
     let empty_history: &[Message] = &[];
