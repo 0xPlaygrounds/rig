@@ -2068,8 +2068,8 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
-/// Return YAML in recorded form: credentials, AWS account numbers and
-/// home-directory paths scrubbed, everything the provider sent kept verbatim.
+/// Return YAML in recorded form: credentials, AWS account numbers, account
+/// team ids and home-directory paths scrubbed, everything the provider sent kept verbatim.
 /// Placeholders an older fixture already holds are left in place, so the
 /// function is the identity on every committed cassette.
 /// Panics if the cassette cannot be parsed.
@@ -2575,8 +2575,8 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 /// Credential material a token exchange can return in a body.
 const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"];
 
-/// Removes credentials, AWS account numbers and home-directory paths from a
-/// recording and normalizes its volatile fields. Everything else the provider
+/// Removes credentials, AWS account numbers, account team ids and
+/// home-directory paths from a recording and normalizes its volatile fields. Everything else the provider
 /// sent is kept verbatim, so a fixture can seed a live call and a replay
 /// decodes the provider's own bytes.
 struct CassetteScrubber {
@@ -2767,6 +2767,12 @@ impl CassetteScrubber {
                         *text = self.placeholder(text, "id_");
                         return;
                     }
+
+                    // An account's team, named by its key.
+                    if (key == "team_id" || key == "teamid") && is_uuid(text) {
+                        *text = self.placeholder(text, "team_");
+                        return;
+                    }
                 }
 
                 *text = self.scrub_text(text);
@@ -2791,7 +2797,57 @@ impl CassetteScrubber {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+        let scrubbed = self.scrub_team_ids(&scrubbed);
         scrub_local_filesystem_paths(&scrubbed)
+    }
+
+    /// Replace a UUID a provider names as the account's team (xAI error
+    /// messages quote "your team <uuid>") with a placeholder.
+    fn scrub_team_ids(&mut self, text: &str) -> String {
+        const UUID_LEN: usize = 36;
+        let lower = text.to_ascii_lowercase();
+        let mut output = String::with_capacity(text.len());
+        let mut copied = 0;
+        let mut search = 0;
+        while let Some(found) = lower[search..].find("team") {
+            let after = search + found + "team".len();
+            search = after;
+            // `team 1b2c…`, `team: 1b2c…`, `team_id":"1b2c…`: at most a few
+            // separator characters between the word and the id.
+            let Some(offset) = text[after..]
+                .char_indices()
+                .take(8)
+                .find(|(_, ch)| ch.is_ascii_hexdigit())
+                .map(|(offset, _)| offset)
+            else {
+                continue;
+            };
+            let separator = &text[after..after + offset];
+            if !separator.chars().all(|ch| {
+                matches!(
+                    ch,
+                    ' ' | ':' | '=' | '"' | '\'' | '_' | 'i' | 'd' | 'I' | 'D'
+                )
+            }) {
+                continue;
+            }
+            let start = after + offset;
+            let Some(candidate) = text.get(start..start + UUID_LEN) else {
+                continue;
+            };
+            let ends = text[start + UUID_LEN..]
+                .chars()
+                .next()
+                .is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '-');
+            if ends && is_uuid(candidate) {
+                output.push_str(&text[copied..start]);
+                output.push_str(&self.placeholder(candidate, "team_"));
+                copied = start + UUID_LEN;
+                search = copied;
+            }
+        }
+        output.push_str(&text[copied..]);
+        output
     }
 
     /// Replace 12-digit account-ID segments in ARNs, preserving partition,
@@ -3130,6 +3186,15 @@ fn find_query_param(input: &str, needle: &str) -> Option<usize> {
     }
 
     None
+}
+
+/// Whether `text` is a hyphenated UUID (8-4-4-4-12 hex digits).
+fn is_uuid(text: &str) -> bool {
+    let groups: Vec<&str> = text.split('-').collect();
+    groups.len() == 5
+        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
+            group.len() == len && group.chars().all(|ch| ch.is_ascii_hexdigit())
+        })
 }
 
 fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
