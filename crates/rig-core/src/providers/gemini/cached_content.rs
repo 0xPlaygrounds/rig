@@ -307,7 +307,7 @@ impl CachedContentReply {
 /// [`operation::ContextCache`].
 ///
 /// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents); the
-/// calls are the inherent methods of a [`Model`] over it.
+/// calls are the inherent methods of a [`Model`](crate::Model) over it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CachedContents {
     /// The provider this wire speaks to.
