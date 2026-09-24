@@ -3340,8 +3340,11 @@ impl HttpClientExt for DirectRecordingHttpClient {
             let Some(recorder) = recorder else {
                 return Ok(response);
             };
-            // A binary stream (audio) names nothing and passes through untouched.
-            if !StreamLedgerTap::taps(response.headers()) {
+            // An error reply creates nothing, and a binary stream (audio)
+            // names nothing: both pass through untouched.
+            if !(200..300).contains(&response.status().as_u16())
+                || !StreamLedgerTap::taps(response.headers())
+            {
                 return Ok(response);
             }
             let (parts, stream) = response.into_parts();
@@ -3409,7 +3412,17 @@ impl StreamLedgerTap {
     }
 
     fn feed(&mut self, bytes: &[u8]) {
+        // Only bytes that could complete an event are searched, so a long
+        // body with no event terminator costs linear, not quadratic, work.
+        // The three-byte overlap catches a `\r\n\r\n` split across chunks.
+        let from = self.pending.len().saturating_sub(3);
         self.pending.extend_from_slice(bytes);
+        let fresh = &self.pending[from..];
+        let terminated = fresh.windows(2).any(|pair| pair == b"\n\n")
+            || fresh.windows(4).any(|quad| quad == b"\r\n\r\n");
+        if !terminated {
+            return;
+        }
         let events = relay::complete_events(&self.pending);
         let consumed: usize = events.iter().map(Vec::len).sum();
         for event in events {
