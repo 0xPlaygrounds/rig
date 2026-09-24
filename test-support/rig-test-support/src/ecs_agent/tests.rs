@@ -39,10 +39,13 @@ async fn expected_budget_failure_retains_completed_effects_and_run_identity() {
 }
 use rig_core::{
     completion::Usage,
-    test_utils::{MockCompletionModel, MockError, MockStreamEvent, mock_final},
+    test_utils::{MockCompletionModel, MockError, MockStreamEvent, VerbatimModel, mock_final},
 };
 
-fn stream(late_error: bool) -> MockCompletionModel {
+/// The scripted answer, and a provider error after its terminal when
+/// `late_error`: a model that streams verbatim, since a driven provider
+/// stops at its terminal.
+fn stream(late_error: bool) -> VerbatimModel {
     let mut events = vec![
         MockStreamEvent::text("answer"),
         MockStreamEvent::FinalResponse(mock_final(Usage::default())),
@@ -50,7 +53,7 @@ fn stream(late_error: bool) -> MockCompletionModel {
     if late_error {
         events.push(MockStreamEvent::Error(MockError::provider("after final")));
     }
-    MockCompletionModel::from_stream_turns([events])
+    VerbatimModel::new(events)
 }
 
 #[tokio::test]

@@ -1080,7 +1080,7 @@ async fn message_id_is_promoted_into_history() {
 async fn streaming_completion_response_receives_canonical_fields() {
     let prompt = Message::user("canonical prompt");
     let hook = CanonicalResponseHook::default();
-    let mut stream = AgentBuilder::new(Verbatim::script([
+    let mut stream = AgentBuilder::new(crate::test_utils::VerbatimModel::new([
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-canonical"),
@@ -1127,7 +1127,7 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
 #[tokio::test]
 async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(Verbatim::script([
+    let mut stream = AgentBuilder::new(crate::test_utils::VerbatimModel::new([
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-after-final"),
@@ -1268,7 +1268,7 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
 #[tokio::test]
 async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(Verbatim::script([
+    let mut stream = AgentBuilder::new(crate::test_utils::VerbatimModel::new([
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::error("post-final failure"),
@@ -1322,7 +1322,7 @@ async fn visible_assistant_items_after_final_are_rejected() {
 
     for (case, visible_item) in cases {
         let hook = FinishLifecycleHook::default();
-        let mut stream = AgentBuilder::new(Verbatim::script(vec![
+        let mut stream = AgentBuilder::new(crate::test_utils::VerbatimModel::new(vec![
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
             visible_item,
@@ -1366,7 +1366,7 @@ async fn visible_assistant_items_after_final_are_rejected() {
 #[tokio::test]
 async fn visible_item_after_non_emittable_final_is_rejected() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(Verbatim::script([
+    let mut stream = AgentBuilder::new(crate::test_utils::VerbatimModel::new([
         MockStreamEvent::reasoning("think"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::text("late text"),
@@ -10166,39 +10166,5 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
             assert!(error.contains("terminal policy"), "{error}");
             assert_eq!(later.load(SeqCst), 0, "later hooks must not undo stop");
         }
-    }
-}
-
-/// A model that yields its script verbatim, after its terminal record too.
-/// No driven provider does that, so it is the misbehaving model the engine
-/// defends against.
-#[derive(Clone)]
-struct Verbatim(Vec<MockStreamEvent>);
-
-impl Verbatim {
-    fn script(events: impl IntoIterator<Item = MockStreamEvent>) -> Self {
-        Self(events.into_iter().collect())
-    }
-}
-
-impl CompletionModel for Verbatim {
-    async fn complete(
-        &self,
-        _request: crate::completion::CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, ProviderError> {
-        Err(ProviderError::Provider(
-            "a verbatim script only streams".to_owned(),
-        ))
-    }
-
-    async fn stream(
-        &self,
-        _request: crate::completion::CompletionRequest,
-    ) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
-        let events = crate::test_utils::verbatim_events(self.0.clone());
-        Ok(rig_core::streaming::CompletionStream::new(
-            crate::test_utils::MOCK_PROVIDER,
-            futures::stream::iter(events),
-        ))
     }
 }

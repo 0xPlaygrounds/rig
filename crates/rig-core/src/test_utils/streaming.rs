@@ -91,22 +91,48 @@ pub enum MockStreamEvent {
 
 use super::completion::MockError;
 
-/// A script's events verbatim, written through the same
-/// [`AdapterOutput`](crate::operation::AdapterOutput) helpers every adapter
-/// uses, with no driver in between. A model that yields them can misbehave
-/// in ways a driven provider cannot, such as an event after its terminal
-/// record: the input for tests of a runtime's defenses.
-pub fn verbatim_events(
-    script: impl IntoIterator<Item = MockStreamEvent>,
-) -> Vec<Result<crate::streaming::StreamEvent, ProviderError>> {
-    let mut out = crate::operation::AdapterOutput::new();
-    let mut tool_ids = crate::streaming::SyntheticIds::tool();
-    for event in script {
-        if let Err(error) = event.emit(&mut out, &mut tool_ids) {
-            out.error(error);
-        }
+/// A completion model that streams its script verbatim, written through
+/// the same [`AdapterOutput`](crate::operation::AdapterOutput) helpers every
+/// adapter uses but with no driver in between. It can misbehave in ways a
+/// driven provider cannot, such as yielding an event after its terminal
+/// record: the model a runtime's defenses are tested against. It only
+/// streams; a buffered call fails.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VerbatimModel(Vec<MockStreamEvent>);
+
+impl VerbatimModel {
+    /// A model streaming `script` verbatim on every call.
+    pub fn new(script: impl IntoIterator<Item = MockStreamEvent>) -> Self {
+        Self(script.into_iter().collect())
     }
-    out.into_items()
+}
+
+impl crate::completion::CompletionModel for VerbatimModel {
+    async fn complete(
+        &self,
+        _request: crate::completion::CompletionRequest,
+    ) -> Result<crate::completion::CompletionResponse, ProviderError> {
+        Err(ProviderError::Provider(
+            "a verbatim script only streams".to_owned(),
+        ))
+    }
+
+    async fn stream(
+        &self,
+        _request: crate::completion::CompletionRequest,
+    ) -> Result<crate::streaming::CompletionStream, ProviderError> {
+        let mut out = crate::operation::AdapterOutput::new();
+        let mut tool_ids = crate::streaming::SyntheticIds::tool();
+        for event in self.0.clone() {
+            if let Err(error) = event.emit(&mut out, &mut tool_ids) {
+                out.error(error);
+            }
+        }
+        Ok(crate::streaming::CompletionStream::new(
+            MOCK_PROVIDER,
+            futures::stream::iter(out.into_items()),
+        ))
+    }
 }
 
 /// Fixture-syntax decoding of a part identity.

@@ -12,7 +12,7 @@
 //!
 //! # fn example() -> anyhow::Result<()> {
 //! let openai = openai::wire::OpenAI::from_env()?.bound()?;
-//! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! let embedding_model = openai.endpoint(|openai| openai.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None));
 //!
 //! let vector_store = VectorizeVectorStore::new(
 //!     embedding_model,

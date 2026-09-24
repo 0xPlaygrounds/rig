@@ -25,7 +25,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
 //!     let openai = OpenAI::from_env()?.bound()?;
-//!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+//!     let model = openai.endpoint(|openai| openai.embeddings(openai::TEXT_EMBEDDING_ADA_002, None));
 //!
 //!     let client = Neo4jClient::from_config(
 //!         ConfigBuilder::default()

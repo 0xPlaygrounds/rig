@@ -1489,7 +1489,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///
 /// let conn = Connection::open("vector_store.db").await?;
 /// let openai = OpenAI::new("YOUR_API_KEY").bound()?;
-/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None);
+/// let model = openai.endpoint(|openai| openai.embeddings(TEXT_EMBEDDING_ADA_002, None));
 ///
 /// // Initialize vector store
 /// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(

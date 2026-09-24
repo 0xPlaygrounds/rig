@@ -23,7 +23,7 @@ pub use questions::{
 use rig_core::driver::{Model, Transport};
 use rig_core::error::ProviderError;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use rig_core::wire::{Encoded, WireFrame};
+use rig_core::wire::Wire;
 use serde::Serialize;
 pub use wire::{Evaluation, Jev};
 
@@ -65,7 +65,7 @@ pub trait Evaluate {
 }
 impl<T> Evaluate for Model<Jev, T>
 where
-    T: Transport<Payload = Encoded, Frame = WireFrame>,
+    T: Transport<Payload = <Jev as Wire>::Payload, Frame = <Jev as Wire>::Frame>,
 {
     async fn evaluate<S, Q>(
         &self,

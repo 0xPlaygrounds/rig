@@ -24,7 +24,7 @@ pub use http::{
 };
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use streaming::{
-    MOCK_PROVIDER, MockStreamEvent, mock_final, mock_final_with_total_tokens, verbatim_events,
+    MOCK_PROVIDER, MockStreamEvent, VerbatimModel, mock_final, mock_final_with_total_tokens,
 };
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,
