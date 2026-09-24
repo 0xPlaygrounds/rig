@@ -49,8 +49,7 @@ fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, Pro
 
 /// A stream over a scripted event sequence.
 fn scripted(build: impl FnOnce(&mut AdapterOutput)) -> CompletionStream {
-    opened(TEST_PROVIDER, (futures::stream::iter(script(build))),
-    )
+    opened(TEST_PROVIDER, (futures::stream::iter(script(build))))
 }
 
 /// A whole tool call under a wire key, the key doubling as the tool id.
@@ -152,7 +151,10 @@ async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
     );
     assert_eq!(stream.folded().usage().total_tokens, Some(1));
     // The last id recorded wins.
-    assert_eq!(stream.folded().message_id().map(str::to_owned).as_deref(), Some("msg_49999"));
+    assert_eq!(
+        stream.folded().message_id().map(str::to_owned).as_deref(),
+        Some("msg_49999")
+    );
 }
 
 /// A stream that never saw a message-id block takes all three identity
@@ -401,7 +403,9 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
 
     assert_eq!(
         stream
-            .folded().terminal().cloned()
+            .folded()
+            .terminal()
+            .cloned()
             .as_ref()
             .and_then(|final_record| final_record.finish_reason.clone()),
         Some(FinishReason::ToolCalls),
@@ -421,7 +425,9 @@ async fn a_stop_without_tool_calls_is_left_alone() {
 
     assert_eq!(
         stream
-            .folded().terminal().cloned()
+            .folded()
+            .terminal()
+            .cloned()
             .as_ref()
             .and_then(|final_record| final_record.finish_reason.clone()),
         Some(FinishReason::Stop),
@@ -1384,8 +1390,7 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
     use futures::FutureExt;
     for explicit_first in [false, true] {
         let (sender, receiver) = futures::channel::mpsc::unbounded();
-        let mut response =
-            opened(TEST_PROVIDER, (receiver));
+        let mut response = opened(TEST_PROVIDER, (receiver));
         let mut generated = SyntheticIds::tool();
         let key = generated.mint();
         for (position, explicit) in [explicit_first, !explicit_first].into_iter().enumerate() {
@@ -1457,7 +1462,8 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
             event.expect("remaining event");
         }
         let calls: Vec<_> = response
-            .folded().snapshot()
+            .folded()
+            .snapshot()
             .into_iter()
             .filter_map(|item| match item {
                 AssistantContent::ToolCall(call) => Some(call),

@@ -41,7 +41,6 @@ pub mod core {
 
 pub mod agent;
 pub mod bus;
-pub mod client;
 pub mod completion;
 pub mod extractor;
 /// Ready-made integrations: the CLI chatbot.

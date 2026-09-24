@@ -1171,9 +1171,6 @@ impl OpenAI {
     }
 }
 
-
-
-
 /// The issuer of reasoning a gateway relays from `model` (`vendor/name`):
 /// `anthropic` for Claude, whose thinking signatures Anthropic documents as
 /// valid across its platforms and which verified as valid between OpenRouter

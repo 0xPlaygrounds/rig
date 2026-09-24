@@ -97,7 +97,8 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let model = interactions_stream(&[
         r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#,
     ]);
-    let mut stream = model.stream(interactions_request(), None)
+    let mut stream = model
+        .stream(interactions_request(), None)
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -133,7 +134,8 @@ async fn drive_frames(
     use futures::StreamExt;
 
     let model = interactions_stream(frames);
-    let mut stream = model.stream(interactions_request(), None)
+    let mut stream = model
+        .stream(interactions_request(), None)
         .expect("stream should open");
 
     let mut items = Vec::new();
@@ -349,7 +351,8 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
     // The turn completed normally: the terminal record survives too.
     assert!(stream.folded().terminal().is_some());
     let aggregated_calls = stream
-        .folded().snapshot()
+        .folded()
+        .snapshot()
         .iter()
         .filter(|content| matches!(content, crate::message::AssistantContent::ToolCall(_)))
         .count();

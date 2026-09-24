@@ -22,7 +22,6 @@ use lancedb::{
     query::{QueryBase, VectorQuery},
 };
 use rig_core::{
-    embeddings::embedding::EmbeddingModel,
     vector_store::{
         VectorStoreError, VectorStoreIndex,
         request::{FilterError, SearchFilter, VectorSearchRequest},
@@ -48,12 +47,16 @@ pub struct LanceDbVectorIndex<M> {
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
+impl<W, Tr> LanceDbVectorIndex<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     /// Creates an index over an existing table whose ids live in `id_field`.
     /// The table is not inspected, so a wrong column surfaces at query time.
     pub async fn new(
         table: lancedb::Table,
-        model: M,
+        model: rig_core::driver::Model<W, Tr>,
         id_field: &str,
         search_params: SearchParams,
     ) -> Result<Self, lancedb::Error> {
@@ -351,7 +354,11 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
+impl<W, Tr> VectorStoreIndex for LanceDbVectorIndex<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     type Filter = LanceDBFilter;
 
     /// Returns matches as `(distance, id, row)` with embedding columns projected
@@ -367,7 +374,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     /// use rig_reqwest::prelude::*;
     ///
     /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
-    /// let openai_client = OpenAI::from_env()?.bound()?;
+    /// let openai_client = rig_core::Model::new(OpenAI::from_env()?, rig_reqwest::bundled()?);
     /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
     /// let vector_store_index =
     ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;

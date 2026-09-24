@@ -16,7 +16,7 @@ use qdrant_client::{
 };
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
     },
@@ -35,10 +35,18 @@ pub struct QdrantVectorStore<M> {
     query_params: QueryPoints,
 }
 
-impl<M: EmbeddingModel> QdrantVectorStore<M> {
+impl<W, Tr> QdrantVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     /// Creates a store over the collection named by `query_params`. Each search
     /// clones `query_params` and overrides its query, limit, threshold, and filter.
-    pub fn new(client: Qdrant, model: M, query_params: QueryPoints) -> Self {
+    pub fn new(
+        client: Qdrant,
+        model: rig_core::driver::Model<W, Tr>,
+        query_params: QueryPoints,
+    ) -> Self {
         Self {
             client,
             model,
@@ -104,7 +112,11 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> InsertDocuments for QdrantVectorStore<M> {
+impl<W, Tr> InsertDocuments for QdrantVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -156,7 +168,11 @@ fn missing_point_id() -> VectorStoreError {
     VectorStoreError::MissingIdError("Qdrant search result carries no point id".to_string())
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
+impl<W, Tr> VectorStoreIndex for QdrantVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     type Filter = QdrantFilter;
 
     /// Returns the nearest points as `(score, id, payload)`. Errors when a point

@@ -27,7 +27,13 @@ use futures::future::BoxFuture;
 
 use crate::error::ProviderError;
 use crate::streaming::BlockId;
-use crate::{completion::FinishReason, error::ErrorReport, http_client, message::AssistantContent, streaming::{Delta, StreamEvent, StreamFinal}};
+use crate::{
+    completion::FinishReason,
+    error::ErrorReport,
+    http_client,
+    message::AssistantContent,
+    streaming::{Delta, StreamEvent, StreamFinal},
+};
 
 /// Typed failure from a wire-conformance scenario.
 #[derive(Debug, thiserror::Error)]
@@ -1783,10 +1789,14 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("openai", |transport| {
-                crate::driver::Model::new(crate::providers::openai::wire::OpenAI::with_key(
+                crate::driver::Model::new(
+                    crate::providers::openai::wire::OpenAI::with_key(
                         &crate::providers::openai::wire::OPENAI,
                         "test-key",
-                    ).chat("gpt-4o"), transport)
+                    )
+                    .chat("gpt-4o"),
+                    transport,
+                )
             })
         }
 
@@ -1885,7 +1895,10 @@ pub mod fixtures {
         /// The driver alone, for the reasoning-specific scenarios.
         pub fn driver() -> WireDriver {
             byte_driver("openai", |transport| {
-                crate::driver::Model::new(crate::providers::openai::OpenAI::new("test-key").responses("gpt-5.4"), transport)
+                crate::driver::Model::new(
+                    crate::providers::openai::OpenAI::new("test-key").responses("gpt-5.4"),
+                    transport,
+                )
             })
         }
 
@@ -2133,11 +2146,15 @@ pub mod fixtures {
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
-                    let model = crate::driver::Model::new(crate::providers::openai::OpenAI::with_key(
+                    let model = crate::driver::Model::new(
+                        crate::providers::openai::OpenAI::with_key(
                             &crate::providers::chatgpt::DIALECT,
                             "test-token",
                         )
-                        .with_account_id("account-id").responses("gpt-5.4"), crate::test_utils::RecordingHttpClient::new(body));
+                        .with_account_id("account-id")
+                        .responses("gpt-5.4"),
+                        crate::test_utils::RecordingHttpClient::new(body),
+                    );
                     let request = model.completion_request("hello").build();
                     let response = model.call(request, None).await?;
                     Ok(response.choice)
@@ -2273,7 +2290,12 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("gemini", |transport| {
-                crate::driver::Model::new(crate::providers::gemini::Gemini::new("test-key").completion(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05), transport)
+                crate::driver::Model::new(
+                    crate::providers::gemini::Gemini::new("test-key").completion(
+                        crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
+                    ),
+                    transport,
+                )
             })
         }
 
@@ -2401,8 +2423,11 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("gemini", |transport| {
-                crate::driver::Model::new(crate::providers::gemini::Gemini::new("test-key")
-                        .interactions("gemini-2.5-pro"), transport)
+                crate::driver::Model::new(
+                    crate::providers::gemini::Gemini::new("test-key")
+                        .interactions("gemini-2.5-pro"),
+                    transport,
+                )
             })
         }
 
@@ -2522,7 +2547,11 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("anthropic", |transport| {
-                crate::driver::Model::new(crate::providers::anthropic::wire::Anthropic::new("test-key").completion(crate::providers::anthropic::completion::CLAUDE_SONNET_4_6), transport)
+                crate::driver::Model::new(
+                    crate::providers::anthropic::wire::Anthropic::new("test-key")
+                        .completion(crate::providers::anthropic::completion::CLAUDE_SONNET_4_6),
+                    transport,
+                )
             })
         }
 
@@ -2634,7 +2663,11 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("cohere", |transport| {
-                crate::driver::Model::new(crate::providers::cohere::wire::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_R_08_2024), transport)
+                crate::driver::Model::new(
+                    crate::providers::cohere::wire::Cohere::new("test-key")
+                        .completion(crate::providers::cohere::COMMAND_R_08_2024),
+                    transport,
+                )
             })
         }
 
@@ -2742,7 +2775,10 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("ollama", |transport| {
-                crate::driver::Model::new(crate::providers::ollama::wire::Ollama::new().completion("llama3.2"), transport)
+                crate::driver::Model::new(
+                    crate::providers::ollama::wire::Ollama::new().completion("llama3.2"),
+                    transport,
+                )
             })
         }
 

@@ -3405,7 +3405,8 @@ async fn completion_http_non_success_preserves_status_and_body() {
     let http = RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
     let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
 
-    let error = crate::driver::Model::new(wire.clone(), http.clone()).call(hello_request(), None)
+    let error = crate::driver::Model::new(wire.clone(), http.clone())
+        .call(hello_request(), None)
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -3441,7 +3442,8 @@ async fn completion_2xx_error_envelope_preserves_status_and_body() {
     let http = RecordingHttpClient::new(body); // 200 OK
     let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
 
-    let error = crate::driver::Model::new(wire.clone(), http.clone()).call(hello_request(), None)
+    let error = crate::driver::Model::new(wire.clone(), http.clone())
+        .call(hello_request(), None)
         .await
         .expect_err("completion should fail with provider error envelope");
 
@@ -3586,7 +3588,8 @@ mod raw_capture {
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
-        let response = crate::driver::Model::new(wire.clone(), http()).call(hello_request(), None)
+        let response = crate::driver::Model::new(wire.clone(), http())
+            .call(hello_request(), None)
             .await
             .expect("completion");
 

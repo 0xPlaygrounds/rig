@@ -1146,7 +1146,9 @@ fn a_tool_round_trip_is_top_level_steps() {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{adapter_requests, assert_adapter_pairs};
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
     for request in adapter_requests() {
         for stream in [false, true] {
             let wire =
@@ -1244,7 +1246,6 @@ fn shape(response: &crate::completion::CompletionResponse) -> (Vec<&'static str>
 
 #[tokio::test]
 async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
-
     let buffered = crate::driver::Model::new(
         interactions_wire(),
         RecordingHttpClient::new(UNARY_INTERACTION),
@@ -1418,7 +1419,6 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
 /// response's `raw` for a caller that wants the provider's own vocabulary.
 #[tokio::test]
 async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
-
     let response = crate::driver::Model::new(
         crate::providers::gemini::Gemini::new("test-key").interaction("v1_REDACTED_1"),
         RecordingHttpClient::new(UNARY_INTERACTION),

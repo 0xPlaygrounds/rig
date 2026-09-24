@@ -69,7 +69,9 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 }
 
 /// The request one `encode` produced, for the envelope assertions.
-fn encoded(wire: &impl Wire<Op = Completion, Payload = crate::wire::Encoded>) -> http::Request<Body> {
+fn encoded(
+    wire: &impl Wire<Op = Completion, Payload = crate::wire::Encoded>,
+) -> http::Request<Body> {
     let mut encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -495,7 +497,11 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None),
         RecordingHttpClient::new(Bytes::from(body)),
     );
-    assert_eq!(bound.capabilities().ndims, 1536, "the width defaults from the model");
+    assert_eq!(
+        bound.capabilities().ndims,
+        1536,
+        "the width defaults from the model"
+    );
     assert_eq!(bound.capabilities().max_documents, 1024);
 
     let response = bound

@@ -204,12 +204,6 @@ impl Gemini {
     }
 }
 
-
-
-
-
-
-
 #[cfg(test)]
 mod tests;
 

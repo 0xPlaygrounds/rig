@@ -33,7 +33,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::Message,
-    streaming::StreamingCompletionResponse,
+    streaming::CompletionStream,
     tool::ToolContext,
     vector_store::request::{Filter, VectorSearchRequest},
 };
@@ -370,7 +370,7 @@ impl ModelHandle {
     /// Stream a completion through the canonical accumulator, surfacing bus errors
     /// as stream errors. Uses the model label initially and the terminal record's
     /// provider name when available.
-    pub fn stream(&self, request: CompletionRequest) -> StreamingCompletionResponse {
+    pub fn stream(&self, request: CompletionRequest) -> CompletionStream {
         self.stream_with_context(request, None)
     }
 
@@ -380,7 +380,7 @@ impl ModelHandle {
         &self,
         request: CompletionRequest,
         context: Option<rig_core::observe::AdapterContext>,
-    ) -> StreamingCompletionResponse {
+    ) -> CompletionStream {
         let provider = self.model_ref().to_string();
         let options = DispatchOptions {
             adapter_context: context,
@@ -679,11 +679,8 @@ impl RerankHandle {
 }
 
 /// Wrap bus events in a canonical completion accumulator, preserving stream errors.
-pub(crate) fn wrap_stream(
-    provider: impl Into<String>,
-    stream: EffectStream,
-) -> StreamingCompletionResponse {
-    StreamingCompletionResponse::from_events(provider, Box::pin(stream))
+pub(crate) fn wrap_stream(provider: impl Into<String>, stream: EffectStream) -> CompletionStream {
+    CompletionStream::relay(provider, Box::pin(stream))
 }
 
 // Bus views must stay thread-safe even where handlers permit local WASM state.

@@ -151,7 +151,10 @@ fn a_configured_route_overrides_the_dialects_and_round_trips() {
         route_of(&on_chat.completion("gpt-5.2")),
         Some("/chat/completions")
     );
-    assert_eq!(route_of(&on_responses.completion("llama")), Some("/responses"));
+    assert_eq!(
+        route_of(&on_responses.completion("llama")),
+        Some("/responses")
+    );
 
     let restored: OpenAI =
         serde_json::from_str(&serde_json::to_string(&on_chat).expect("serializes"))
@@ -271,12 +274,7 @@ fn a_dialect_without_a_verify_endpoint_refuses_to_invent_one() {
             .encode((), Mode::Unary)
             .is_err()
     );
-    assert!(
-        OpenAI::new("k")
-            .verify()
-            .encode((), Mode::Unary)
-            .is_ok()
-    );
+    assert!(OpenAI::new("k").verify().encode((), Mode::Unary).is_ok());
 }
 
 /// Azure accepts an account key *or* an Entra bearer token, and they are not

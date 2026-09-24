@@ -1,14 +1,23 @@
-use super::{ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator, ResponsesDecoder, ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame, reasoning_from_done_item};
+use super::{
+    ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator, ResponsesDecoder,
+    ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
+    reasoning_from_done_item,
+};
 use crate::driver::{Model, WireDriver};
 use crate::error::ProviderError;
 use crate::error::{ErrorKind, ErrorReport};
 use crate::message::{AssistantContent, ReasoningContent};
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
-use crate::providers::internal::openai_chat_completions_compatible::test_support::{sse_bytes_from_data_lines, sse_bytes_from_json_events};
+use crate::providers::internal::openai_chat_completions_compatible::test_support::{
+    sse_bytes_from_data_lines, sse_bytes_from_json_events,
+};
 use crate::providers::internal::wire::WireEvent;
 use crate::providers::openai::OpenAI;
-use crate::providers::openai::responses_api::{AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails, ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage};
+use crate::providers::openai::responses_api::{
+    AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
+    ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
+};
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::wire::WireFrame;
@@ -242,9 +251,7 @@ where
 }
 
 /// The same, for a body scripted as JSON events.
-async fn responses_stream_of(
-    events: &[serde_json::Value],
-) -> crate::streaming::CompletionStream {
+async fn responses_stream_of(events: &[serde_json::Value]) -> crate::streaming::CompletionStream {
     responses_stream(MockStreamingClient {
         sse_bytes: sse_bytes_from_json_events(events),
     })

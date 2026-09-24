@@ -13,8 +13,7 @@ use crate::error::EncodeError;
 use crate::model::{ModelInfo, ModelList};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -319,9 +318,6 @@ impl Decoder<ModelListing> for ModelsDecoder {
         )));
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests;

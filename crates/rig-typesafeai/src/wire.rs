@@ -83,6 +83,8 @@ impl Jev {
 
 impl Wire for Jev {
     type Op = Evaluation;
+    type Payload = Encoded;
+    type Frame = rig_core::wire::WireFrame;
     type Decoder = JevDecoder;
 
     fn name(&self) -> &str {
@@ -91,10 +93,6 @@ impl Wire for Jev {
     fn model(&self) -> Option<&str> {
         Some(&self.model)
     }
-    fn route(&self) -> Option<&str> {
-        Some("/v1/systemone")
-    }
-
     fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, EncodeError> {
         if self.token.is_empty() || self.model.trim().is_empty() {
             return Err(EncodeError::request(
@@ -119,9 +117,9 @@ impl Wire for Jev {
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(http::header::AUTHORIZATION, authorization)
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
-        let mut encoded = Encoded::new(request, Framing::Whole);
-        encoded.request_id_header = Some("x-typesafe-request-id");
-        Ok(encoded)
+        Ok(Encoded::new(request, Framing::Whole)
+            .with_request_id_header(Some("x-typesafe-request-id"))
+            .with_route(Some("/v1/systemone")))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

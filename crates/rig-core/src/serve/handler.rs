@@ -221,7 +221,10 @@ pub(crate) fn events_from_response(
 }
 
 /// Write completion content into `out` as stream events followed by `Final`.
-pub(crate) fn emit_response(response: &CompletionResponse, out: &mut crate::operation::AdapterOutput) {
+pub(crate) fn emit_response(
+    response: &CompletionResponse,
+    out: &mut crate::operation::AdapterOutput,
+) {
     use crate::{
         message::AssistantContent,
         streaming::{BlockId, MintKind, ToolCallEnd},

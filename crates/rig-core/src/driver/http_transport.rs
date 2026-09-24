@@ -108,7 +108,9 @@ struct Exchange {
 
 impl Exchange {
     fn slot(&self) -> Option<&AdapterSlot> {
-        self.observation.as_ref().map(|observation| &observation.slot)
+        self.observation
+            .as_ref()
+            .map(|observation| &observation.slot)
     }
 
     fn project(&self, payload: &[u8]) {
@@ -125,7 +127,11 @@ impl Exchange {
         }
     }
 
-    fn failed(self, error: ProviderError, request_id: Option<String>) -> Opened<Encoded, WireFrame> {
+    fn failed(
+        self,
+        error: ProviderError,
+        request_id: Option<String>,
+    ) -> Opened<Encoded, WireFrame> {
         let mut opened = Opened::failed(error);
         opened.request_id = request_id;
         opened.route = Some(self.path);

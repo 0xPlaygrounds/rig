@@ -266,14 +266,15 @@ async fn extractor_runs_through_full_response_lifecycle() {
 async fn extractor_hook_receives_canonical_response_fields() {
     let capture = ExtractorResponseCapture::default();
     let expected_usage = usage(23);
-    let response = ExtractorBuilder::<Person>::new(MockCompletionModel::from_turns([submit_turn("John")
-        .with_usage(expected_usage)
-        .with_message_id("extractor-message")]))
-    .add_hook(capture.clone())
-    .build()
-    .extract("John")
-    .await
-    .expect("extraction should succeed");
+    let response =
+        ExtractorBuilder::<Person>::new(MockCompletionModel::from_turns([submit_turn("John")
+            .with_usage(expected_usage)
+            .with_message_id("extractor-message")]))
+        .add_hook(capture.clone())
+        .build()
+        .extract("John")
+        .await
+        .expect("extraction should succeed");
     assert_eq!(response.output.name, "John");
 
     let (prompt, content, observed_usage, message_id) = capture
@@ -439,7 +440,8 @@ async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
 
 #[tokio::test]
 async fn unexpected_tool_call_hook_can_stop_extraction() {
-    let model = MockCompletionModel::from_turns([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
+    let model =
+        MockCompletionModel::from_turns([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
 
     let error = ExtractorBuilder::<Person>::new(model)
         .add_hook(StopOnInvalidToolCall)
@@ -573,7 +575,8 @@ async fn single_successful_attempt_reports_its_own_usage() {
 
 #[tokio::test]
 async fn exhausted_retries_return_last_error() {
-    let model = MockCompletionModel::from_turns([MockTurn::text("no submit call").with_usage(usage(10))]);
+    let model =
+        MockCompletionModel::from_turns([MockTurn::text("no submit call").with_usage(usage(10))]);
 
     let err = extractor(model, 0)
         .extract("John")
@@ -585,7 +588,8 @@ async fn exhausted_retries_return_last_error() {
 
 #[tokio::test]
 async fn exhausted_retries_return_error_from_final_attempt() {
-    let model = MockCompletionModel::from_turns([MockTurn::error("first"), MockTurn::error("second")]);
+    let model =
+        MockCompletionModel::from_turns([MockTurn::error("first"), MockTurn::error("second")]);
 
     let err = extractor(model, 1)
         .extract("John")

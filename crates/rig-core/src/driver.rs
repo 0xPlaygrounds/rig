@@ -28,8 +28,8 @@ use crate::providers::internal::wire::WireEvent;
 use crate::streaming::{CompletionStream, StreamEvent};
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
-    Capabilities, Decoder, Event, Fold, Mode, ObservationSink, Operation, Reply, Request,
-    Response, Sink, Wire, WireFrame,
+    Capabilities, Decoder, Event, Fold, Mode, ObservationSink, Operation, Reply, Request, Response,
+    Sink, Wire, WireFrame,
 };
 
 mod http_transport;
@@ -249,7 +249,10 @@ where
         observation: Option<AdapterContext>,
         span: tracing::Span,
     ) -> Result<
-        impl futures::Stream<Item = Result<Step<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>,
+        impl futures::Stream<Item = Result<Step<W>, ProviderError>>
+        + WasmCompatSend
+        + 'static
+        + use<W, T>,
         ProviderError,
     > {
         let wire = self.wire.clone();

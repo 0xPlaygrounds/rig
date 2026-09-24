@@ -11,8 +11,8 @@
 //! ```
 
 use crate::completion::{CompletionRequest, CompletionResponse};
-use crate::error::ProviderError;
 use crate::error::ErrorReport;
+use crate::error::ProviderError;
 use crate::streaming::{
     BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
     SyntheticIds, ToolCallEnd, UnknownPayload,

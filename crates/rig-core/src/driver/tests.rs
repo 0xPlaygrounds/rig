@@ -41,7 +41,9 @@ where
     W: Wire + Clone,
     H: Transport<W>,
 {
-    Model::new(wire.clone(), http.clone()).call(request, context).await
+    Model::new(wire.clone(), http.clone())
+        .call(request, context)
+        .await
 }
 
 /// The driver's own events for one streamed reply of `wire` over `http`,
@@ -722,9 +724,8 @@ impl Wire for Catalogue {
     }
 
     fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
-        let request =
-            http::Request::get(format!("https://echo.invalid/v1/models?after={cursor}"))
-                .body(Body::empty())?;
+        let request = http::Request::get(format!("https://echo.invalid/v1/models?after={cursor}"))
+            .body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -772,7 +773,10 @@ async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
         MockHttpResponse::success(r#"{"data":["never"]}"#),
     ]);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound.call((), None).await.expect("the fetched pages decode");
+    let models = bound
+        .call((), None)
+        .await
+        .expect("the fetched pages decode");
     assert_eq!(
         models
             .iter()
@@ -794,7 +798,10 @@ async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
     });
     let http = SequencedHttpClient::new(pages);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound.call((), None).await.expect("the fetched pages decode");
+    let models = bound
+        .call((), None)
+        .await
+        .expect("the fetched pages decode");
     assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
     assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
 }

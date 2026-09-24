@@ -13,8 +13,8 @@
 //! # }
 //! ```
 
-use crate::error::ProviderError;
 use crate::completion::{ResponseIdentity, Usage};
+use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 
 impl<W, T> crate::driver::Model<W, T>
@@ -27,7 +27,10 @@ where
         &self,
         texts: impl IntoIterator<Item = String>,
     ) -> Result<Vec<Embedding>, ProviderError> {
-        Ok(self.call(texts.into_iter().collect(), None).await?.embeddings)
+        Ok(self
+            .call(texts.into_iter().collect(), None)
+            .await?
+            .embeddings)
     }
 
     /// Embed one text, returning the last vector or an error if none is returned.
@@ -172,7 +175,10 @@ where
         &self,
         images: impl IntoIterator<Item = Vec<u8>>,
     ) -> Result<Vec<Embedding>, ProviderError> {
-        Ok(self.call(images.into_iter().collect(), None).await?.embeddings)
+        Ok(self
+            .call(images.into_iter().collect(), None)
+            .await?
+            .embeddings)
     }
 
     /// Embed one encoded image, returning the last vector or an error if

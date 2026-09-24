@@ -11,7 +11,7 @@ pub use filter::{Filter, MilvusValue};
 use reqwest::StatusCode;
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
@@ -88,11 +88,20 @@ struct SearchResultDataOnlyId {
     distance: f64,
 }
 
-impl<M: EmbeddingModel> MilvusVectorStore<M> {
+impl<W, Tr> MilvusVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     /// Creates a store over a collection reached at `base_url`, which is the
     /// Milvus instance or Zilliz cluster endpoint. Requests are unauthenticated
     /// until [`MilvusVectorStore::auth`] supplies credentials.
-    pub fn new(model: M, base_url: String, database_name: String, collection_name: String) -> Self {
+    pub fn new(
+        model: rig_core::driver::Model<W, Tr>,
+        base_url: String,
+        database_name: String,
+        collection_name: String,
+    ) -> Self {
         Self {
             model,
             base_url,
@@ -194,7 +203,11 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> InsertDocuments for MilvusVectorStore<M> {
+impl<W, Tr> InsertDocuments for MilvusVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -235,7 +248,11 @@ impl<M: EmbeddingModel> InsertDocuments for MilvusVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
+impl<W, Tr> VectorStoreIndex for MilvusVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     type Filter = Filter;
 
     /// Returns matches as `(distance, id, document)` in the order Milvus reports.

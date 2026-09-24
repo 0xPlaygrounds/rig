@@ -22,9 +22,9 @@ mod tests;
 use crate::bus::{BusDriver, Dispatcher, Recording, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::CompletionAdapter;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::{
-    completion::{CompletionModel, ModelRef},
+    completion::ModelRef,
     effect::{HandlerKey, Key, family},
     error::ErrorReport,
 };
@@ -223,16 +223,21 @@ impl AgentBus {
 
     /// Register `model` under `label` (replacing any model under it) and
     /// return the key a run selects it by.
-    pub(crate) fn register_model<M>(&self, label: &ModelRef, model: M) -> Key<family::Completion>
+    pub(crate) fn register_model<W, T>(
+        &self,
+        label: &ModelRef,
+        model: rig_core::driver::Model<W, T>,
+    ) -> Key<family::Completion>
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         let key = self.model_key(label.as_str());
         register_generated(
             self.registrar
                 .register_typed::<family::Completion>(
                     key.raw().clone(),
-                    CompletionAdapter::new(label.clone(), model),
+                    ModelAdapter::new(label.clone(), model),
                 )
                 .map(|_| ()),
         );
@@ -242,9 +247,13 @@ impl AgentBus {
     /// Register `model` under a fresh generated label, scoped to the
     /// returned guard: the key leaves the bus when the last clone of the
     /// guard drops.
-    pub(crate) fn register_anonymous_model<M>(&self, model: M) -> Arc<AnonymousModel>
+    pub(crate) fn register_anonymous_model<W, T>(
+        &self,
+        model: rig_core::driver::Model<W, T>,
+    ) -> Arc<AnonymousModel>
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         let n = self.anonymous_models.fetch_add(1, Ordering::SeqCst);
         let key = self.register_model(&ModelRef::new(format!("anonymous#{n}")), model);

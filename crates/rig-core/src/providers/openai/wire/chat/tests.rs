@@ -799,9 +799,10 @@ async fn a_gateway_may_answer_with_a_bare_string() {
     // — so the reply delivered nothing and reported nothing, and that is
     // the shared empty-response rejection rather than a silent, empty
     // success.
-    let strict = crate::driver::Model::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
-        .call(prompt("ask"), None)
-        .await;
+    let strict =
+        crate::driver::Model::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
+            .call(prompt("ask"), None)
+            .await;
     let Err(ProviderError::Response(message)) = &strict else {
         panic!("openai does not answer with a bare string: {strict:?}");
     };
@@ -884,9 +885,10 @@ async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
         Some("bespoke_reason"),
         None,
     ] {
-        let folded = crate::driver::Model::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
-            .call(prompt("ask"), None)
-            .await;
+        let folded =
+            crate::driver::Model::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
+                .call(prompt("ask"), None)
+                .await;
 
         let Err(ProviderError::Response(message)) = &folded else {
             panic!("`{reason:?}` does not license an empty turn: {folded:?}");

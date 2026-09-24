@@ -63,11 +63,13 @@ fn repeated_cursor_pages() -> Vec<MockHttpResponse> {
 
 /// Drive one listing through a mock transport.
 async fn list(pages: Vec<MockHttpResponse>) {
-    Model::new(anthropic::wire::Anthropic::new("test-key")
-        .models(), SequencedHttpClient::new(pages))
-        .call((), None)
-        .await
-        .expect("listing should succeed");
+    Model::new(
+        anthropic::wire::Anthropic::new("test-key").models(),
+        SequencedHttpClient::new(pages),
+    )
+    .call((), None)
+    .await
+    .expect("listing should succeed");
 }
 
 /// Everything `pages` logs at WARN, captured against an anchor that exercises

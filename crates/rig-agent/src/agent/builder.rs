@@ -12,10 +12,10 @@ use std::sync::{Arc, OnceLock};
 
 use crate::bus::{Bus, Dispatcher, Recording, Registrar};
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
+use rig_core::serve::adapters::{MemoryAdapter, ModelAdapter, RetrieveAdapter};
 use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
-    completion::{CompletionModel, Document, ModelRef},
+    completion::{Document, ModelRef},
     effect::{HandlerKey, Key, family},
     memory::ConversationMemory,
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
@@ -316,15 +316,20 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Register another model the run can select by label
     /// (`ModelSelectionAction::select(label)`, `using_model(label)`).
-    pub fn model_route<M>(mut self, label: impl Into<ModelRef>, model: M) -> Self
+    pub fn model_route<W, T>(
+        mut self,
+        label: impl Into<ModelRef>,
+        model: rig_core::driver::Model<W, T>,
+    ) -> Self
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         let label = label.into();
         self.routes.push(label.as_str().to_owned());
         self.pending.push((
             rig_core::effect::model_key(label.as_str()).to_string(),
-            ErasedHandler::new(CompletionAdapter::new(label, model)),
+            ErasedHandler::new(ModelAdapter::new(label, model)),
         ));
         self
     }
@@ -524,21 +529,26 @@ impl<ToolState> AgentBuilder<ToolState> {
 impl AgentBuilder<NoToolConfig> {
     /// An agent over its own bus, with `model` registered as the default
     /// model (label `default`).
-    pub fn new<M>(model: M) -> Self
+    pub fn new<W, T>(model: rig_core::driver::Model<W, T>) -> Self
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         Self::named_model("default", model)
     }
 
     /// An agent over its own bus, with `model` registered under `label`.
     /// Size the bus with [`configure_bus`](Self::configure_bus).
-    pub fn named_model<M>(label: impl Into<ModelRef>, model: M) -> Self
+    pub fn named_model<W, T>(
+        label: impl Into<ModelRef>,
+        model: rig_core::driver::Model<W, T>,
+    ) -> Self
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         let label = label.into();
-        let handler = ErasedHandler::new(CompletionAdapter::new(label.clone(), model));
+        let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model));
         Self::start(
             BusSource::Owned(ServingPolicy::default()),
             None,

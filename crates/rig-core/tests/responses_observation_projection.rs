@@ -13,7 +13,9 @@ use rig_core::Model;
 use std::sync::Arc;
 
 use rig_core::completion::CompletionRequest;
-use rig_core::observe::{Action, AdapterContext, AdapterEvent, AdapterObservation, AdapterUsage, ObservationLog, Subject};
+use rig_core::observe::{
+    Action, AdapterContext, AdapterEvent, AdapterObservation, AdapterUsage, ObservationLog, Subject,
+};
 use rig_core::providers::openai::OpenAI;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 

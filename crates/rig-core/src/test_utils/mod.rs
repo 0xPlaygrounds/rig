@@ -15,9 +15,7 @@ mod tracing_isolation;
 pub use completion::{
     MockCompletionModel, MockDecoder, MockError, MockFrame, MockScript, MockTurn, MockWire,
 };
-pub use embeddings::{
-    MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument,
-};
+pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
 pub use http::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
     NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,

@@ -352,7 +352,6 @@ impl super::Gemini {
     }
 }
 
-
 /// Explicit context-cache operations. Requests targeting an existing handle
 /// map HTTP 403 and 404 to [`ProviderError::CacheExpired`].
 impl<T> Model<CachedContents, T>
@@ -448,7 +447,10 @@ impl Wire for CachedContents {
     }
 
     fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(self.list_request(Some(cursor))?, Framing::Whole))
+        Ok(Encoded::new(
+            self.list_request(Some(cursor))?,
+            Framing::Whole,
+        ))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

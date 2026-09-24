@@ -1,5 +1,9 @@
 use super::*;
-use crate::{error::ErrorKind, message::Message, streaming::{Delta, StreamEvent, StreamFinal}};
+use crate::{
+    error::ErrorKind,
+    message::Message,
+    streaming::{Delta, StreamEvent, StreamFinal},
+};
 use futures::StreamExt;
 
 fn request(prompt: &str) -> CompletionRequest {
@@ -109,7 +113,11 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
         .stream(request("hello"), None)
         .expect("stream should open");
     while stream.next().await.is_some() {}
-    let terminal = stream.folded().terminal().cloned().expect("terminal record");
+    let terminal = stream
+        .folded()
+        .terminal()
+        .cloned()
+        .expect("terminal record");
     let raw = &terminal.raw;
     let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
     assert_eq!(typed.usage.total_tokens, Some(3));
@@ -210,7 +218,10 @@ async fn stream_yields_scripted_events_and_records_requests() {
     assert!(saw_arguments_delta);
     assert!(saw_tool_call);
     assert!(saw_final);
-    assert_eq!(stream.folded().message_id().map(str::to_owned).as_deref(), Some("msg_stream"));
+    assert_eq!(
+        stream.folded().message_id().map(str::to_owned).as_deref(),
+        Some("msg_stream")
+    );
     assert_eq!(model.request_count(), 1);
 }
 

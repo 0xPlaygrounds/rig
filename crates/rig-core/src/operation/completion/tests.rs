@@ -75,7 +75,9 @@ where
     let own = wire.name().to_owned();
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     // The canned reply does not decode; only the request matters here.
-    let _ = crate::driver::Model::new(wire, http.clone()).call(history(&own), None).await;
+    let _ = crate::driver::Model::new(wire, http.clone())
+        .call(history(&own), None)
+        .await;
     let requests = http.requests();
     let request = requests.first().expect("the wire sent its request");
     String::from_utf8_lossy(&request.body).into_owned()
@@ -219,7 +221,7 @@ fn a_stream_stamps_its_reasoning_with_the_terminal_issuer() {
 
 #[tokio::test]
 async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
-    use crate::streaming::{StreamEvent, StreamFinal, CompletionStream};
+    use crate::streaming::{CompletionStream, StreamEvent, StreamFinal};
     use futures::StreamExt;
 
     type Items = Vec<Result<StreamEvent, crate::error::ProviderError>>;
@@ -229,9 +231,10 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
     let opened = |provider: &str, issuer: Option<&str>, items: Items| {
         CompletionStream::opened(
             super::CompletionFold::opened(provider, issuer.map(str::to_owned)),
-            Box::pin(futures::stream::iter(items).map(|item| {
-                item.map_err(|error| crate::error::ErrorReport::from(&error))
-            })),
+            Box::pin(
+                futures::stream::iter(items)
+                    .map(|item| item.map_err(|error| crate::error::ErrorReport::from(&error))),
+            ),
         )
     };
     let mut stream = opened(
@@ -247,7 +250,11 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
         "before the terminal"
     );
     while stream.next().await.is_some() {}
-    assert_eq!(stream.folded().reasoning_issuer(), Some("anthropic"), "after it");
+    assert_eq!(
+        stream.folded().reasoning_issuer(),
+        Some("anthropic"),
+        "after it"
+    );
 
     let plain = opened("openai", None, Items::new());
     assert_eq!(plain.folded().reasoning_issuer(), Some("openai"));
@@ -316,10 +323,7 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         .collect();
     // Through the chat wire itself and through the route wrapper
     // `completion` returns, which must delegate its issuers.
-    async fn send<W>(
-        wire: W,
-        content: Vec<AssistantContent>,
-    ) -> String
+    async fn send<W>(wire: W, content: Vec<AssistantContent>) -> String
     where
         W: Wire<Op = super::Completion> + Clone,
         RecordingHttpClient: crate::driver::Transport<W>,
@@ -327,7 +331,9 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         let mut request = history("unused");
         request.chat_history[1] = Message::Assistant { id: None, content };
         let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-        let _ = crate::driver::Model::new(wire, http.clone()).call(request, None).await;
+        let _ = crate::driver::Model::new(wire, http.clone())
+            .call(request, None)
+            .await;
         let requests = http.requests();
         String::from_utf8_lossy(&requests[0].body).into_owned()
     }
@@ -385,7 +391,6 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
 /// the way its chat route does.
 #[tokio::test]
 async fn openrouter_responses_route_scopes_reasoning_by_family() {
-
     let issuers = [
         "anthropic",
         "openrouter/openai",
@@ -414,7 +419,9 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
             request.chat_history[1] = Message::Assistant { id: None, content };
             let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
             let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
-            let _ = crate::driver::Model::new(wire, http.clone()).call(request, None).await;
+            let _ = crate::driver::Model::new(wire, http.clone())
+                .call(request, None)
+                .await;
             let body = String::from_utf8_lossy(&http.requests()[0].body).into_owned();
             issuers
                 .iter()
@@ -466,7 +473,6 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
 /// is what makes the thinking reach Claude again.
 #[tokio::test]
 async fn openrouter_responses_route_round_trips_a_claude_signature() {
-
     let model = "anthropic/claude-haiku-4.5";
     let reply = serde_json::json!({
         "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
@@ -500,7 +506,9 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
         content: response.choice.clone(),
     };
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-    let _ = crate::driver::Model::new(wire, http.clone()).call(request, None).await;
+    let _ = crate::driver::Model::new(wire, http.clone())
+        .call(request, None)
+        .await;
     let body: serde_json::Value =
         serde_json::from_slice(&http.requests()[0].body).expect("a JSON body");
     let item = body["input"]

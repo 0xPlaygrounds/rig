@@ -8,7 +8,7 @@
 //! use rig_core::providers::openai::{self, OpenAI};
 //! use rig_reqwest::prelude::*;
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = OpenAI::from_env()?.bound()?;
+//! let provider = rig_core::Model::new(OpenAI::from_env()?, rig_reqwest::bundled()?);
 //! let agent = provider.agent(openai::GPT_5_2).preamble("Be concise.").build();
 //! let response = agent.prompt("Explain ownership.").await?;
 //! # Ok(())

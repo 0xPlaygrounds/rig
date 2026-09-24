@@ -98,7 +98,9 @@ fn probe_request() -> CompletionRequest {
 }
 
 /// Every URI and header one encode produced, as one searchable string.
-pub(crate) fn request_envelope<W: Wire<Op = Completion, Payload = crate::wire::Encoded>>(wire: &W) -> String {
+pub(crate) fn request_envelope<W: Wire<Op = Completion, Payload = crate::wire::Encoded>>(
+    wire: &W,
+) -> String {
     let encoded = wire
         .encode(probe_request(), Mode::Unary)
         .expect("the request encodes");

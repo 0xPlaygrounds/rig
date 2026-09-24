@@ -200,10 +200,14 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
     });
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     tracing::subscriber::with_default(subscriber, || {
-        let model = crate::driver::Model::new(crate::providers::openai::wire::OpenAI::with_key(
-            &crate::providers::openai::wire::OPENAI,
-            "test-key",
-        ).embedding("text-embedding-3-small", Some(2)), crate::test_utils::RecordingHttpClient::new(BODY));
+        let model = crate::driver::Model::new(
+            crate::providers::openai::wire::OpenAI::with_key(
+                &crate::providers::openai::wire::OPENAI,
+                "test-key",
+            )
+            .embedding("text-embedding-3-small", Some(2)),
+            crate::test_utils::RecordingHttpClient::new(BODY),
+        );
 
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()

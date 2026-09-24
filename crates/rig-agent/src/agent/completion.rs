@@ -15,8 +15,7 @@ use super::typed::TypedRun;
 use crate::bus::{BusDriver, Dispatcher, ModelHandle};
 use crate::{
     completion::{
-        CompletionModel, CompletionRequest, CompletionRequestBuilder, Document, Message,
-        PromptError, ToolDefinition,
+        CompletionRequest, CompletionRequestBuilder, Document, Message, PromptError, ToolDefinition,
     },
     run::response::PromptResponse,
     tool::{
@@ -171,7 +170,7 @@ pub(crate) async fn build_prepared_completion_request(
 /// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = OpenAI::from_env()?.bound()?;
+/// let openai = rig_core::Model::new(OpenAI::from_env()?, rig_reqwest::bundled()?);
 ///
 /// let comedian_agent = openai
 ///     .agent(openai::GPT_5_2)
@@ -410,9 +409,14 @@ impl Agent {
 
     /// Register `model` on this agent's bus under `label` and return the
     /// label a run selects it by.
-    pub fn register_model<M>(&self, label: impl Into<ModelRef>, model: M) -> ModelRef
+    pub fn register_model<W, T>(
+        &self,
+        label: impl Into<ModelRef>,
+        model: rig_core::driver::Model<W, T>,
+    ) -> ModelRef
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         let label = label.into();
         self.config.bus.register_model(&label, model);
@@ -430,9 +434,10 @@ impl Agent {
     /// value's default. The registration is scoped to the values that
     /// select it (this agent, its clones, the runners it produces): it
     /// leaves the bus when the last of them drops or selects another model.
-    pub fn set_model<M>(&mut self, model: M)
+    pub fn set_model<W, T>(&mut self, model: rig_core::driver::Model<W, T>)
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();
@@ -454,9 +459,10 @@ impl Agent {
     }
 
     /// [`Agent::set_model`] by value.
-    pub fn with_model<M>(mut self, model: M) -> Self
+    pub fn with_model<W, T>(mut self, model: rig_core::driver::Model<W, T>) -> Self
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         self.set_model(model);
         self

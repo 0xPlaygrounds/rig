@@ -1,6 +1,8 @@
 use super::*;
 use crate::message::AssistantContent;
-use crate::test_utils::{MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient};
+use crate::test_utils::{
+    MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient,
+};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
 

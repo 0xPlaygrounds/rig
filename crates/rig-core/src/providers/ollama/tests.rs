@@ -1461,7 +1461,10 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
 /// correlate by `tool_name`.
 #[test]
 fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
-    use crate::message::{AssistantContent, Message as RigMessage, ProviderCallId, ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent, UserContent};
+    use crate::message::{
+        AssistantContent, Message as RigMessage, ProviderCallId, ToolCall, ToolCallId,
+        ToolFunction, ToolResult, ToolResultContent, UserContent,
+    };
 
     let call = |provider: Option<ProviderCallId>| RigMessage::Assistant {
         id: None,

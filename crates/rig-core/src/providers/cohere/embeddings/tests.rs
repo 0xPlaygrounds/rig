@@ -8,7 +8,11 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None), http_client);
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
+        http_client,
+    );
 
     let error = model
         .embed_texts(["hello".to_string()])
@@ -33,7 +37,11 @@ async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
 
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None), http_client);
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
+        http_client,
+    );
 
     let error = model
         .embed_texts(["hello".to_string()])
@@ -110,7 +118,10 @@ async fn image_batches_are_fully_validated_before_any_request() {
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::default();
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").image_embedding(), http_client.clone());
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        http_client.clone(),
+    );
 
     let error = model
         .embed_images([b"\x89PNG\r\n\x1a\n".to_vec(), b"not an image".to_vec()])
@@ -128,7 +139,10 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").image_embedding(), http_client);
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        http_client,
+    );
 
     let error = model
         .embed_image(b"\x89PNG\r\n\x1a\n")
@@ -151,7 +165,10 @@ async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
 
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").image_embedding(), http_client);
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        http_client,
+    );
 
     let error = model
         .embed_image(b"\x89PNG\r\n\x1a\n")

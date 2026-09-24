@@ -18,9 +18,7 @@ use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
 };
 use crate::telemetry::GenAiOperation;
-use crate::wire::{
-    Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame};
 
 use super::OpenAI;
 use super::chat::{Chat, ChatDecoder, ChatEvent};

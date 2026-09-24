@@ -16,7 +16,10 @@ use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 /// A `cachedContents` resource handle whose transport answers the next
 /// request with `response` and nothing after it.
 fn caches(response: MockHttpResponse) -> crate::driver::Model<CachedContents, SequencedHttpClient> {
-    crate::driver::Model::new(crate::providers::gemini::Gemini::new("test-key").cached_contents(), SequencedHttpClient::new(vec![response]))
+    crate::driver::Model::new(
+        crate::providers::gemini::Gemini::new("test-key").cached_contents(),
+        SequencedHttpClient::new(vec![response]),
+    )
 }
 
 const GONE: &str =
@@ -155,7 +158,10 @@ async fn a_server_error_reports_the_status_rather_than_an_expiry() {
 async fn a_status_error_with_no_body_still_carries_its_status() {
     // `SequencedHttpClient` answers 501 with an empty body once its scripted
     // responses run out.
-    let caches = crate::driver::Model::new(crate::providers::gemini::Gemini::new("test-key").cached_contents(), SequencedHttpClient::new(Vec::new()));
+    let caches = crate::driver::Model::new(
+        crate::providers::gemini::Gemini::new("test-key").cached_contents(),
+        SequencedHttpClient::new(Vec::new()),
+    );
 
     let error = caches
         .get("cachedContents/abc123")

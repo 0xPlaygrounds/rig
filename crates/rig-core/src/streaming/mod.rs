@@ -289,7 +289,8 @@ mod unknown_payload_tests;
 
 /// The one stream item type: what [`CompletionStream`] yields, what the
 /// accumulator applies, what the bus carries.
-pub type StreamEvents = crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
+pub type StreamEvents =
+    crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
 
 /// A completion reply's events after the fold step, and the fold itself.
 ///
@@ -359,7 +360,6 @@ impl Stream for CompletionStream {
 
 #[cfg(test)]
 mod tests;
-
 
 /// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

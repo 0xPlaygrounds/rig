@@ -6,7 +6,9 @@ use crate::error::{ErrorKind, ProviderError};
 use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
 use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
 use crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002;
-use crate::providers::openai::wire::{AZURE, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OpenAI, TOGETHER};
+use crate::providers::openai::wire::{
+    AZURE, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OpenAI, TOGETHER,
+};
 use crate::test_utils::RecordingHttpClient;
 
 /// The batch the embedding cassettes were recorded against.
@@ -482,7 +484,6 @@ fn azure_speech_carries_its_own_api_version() {
 /// it folds.
 #[tokio::test]
 async fn a_recorded_rerank_reply_folds_its_ranking() {
-
     let reply = r#"{"model":"bge-reranker-v2-m3","object":"list","usage":{"prompt_tokens":37,"total_tokens":37},"results":[{"index":2,"relevance_score":0.98},{"index":0,"relevance_score":0.41},{"index":1,"relevance_score":0.02}]}"#;
     let response = crate::driver::Model::new(
         OpenAI::with_key(&LLAMACPP, "").rerank("bge-reranker-v2-m3"),
@@ -524,7 +525,6 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
 /// document zero.
 #[tokio::test]
 async fn a_rerank_reply_accepts_either_score_key() {
-
     let reply = r#"{"results":[{"index":0,"score":0.75}]}"#;
     let response = crate::driver::Model::new(
         OpenAI::with_key(&LLAMACPP, "").rerank("r"),
@@ -676,12 +676,15 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
         OpenAI::with_key(&HUGGINGFACE, "hf").image_generation("black-forest-labs/FLUX.1-dev"),
         RecordingHttpClient::new(&png[..]),
     )
-    .call(crate::image_generation::ImageGenerationRequest {
-        prompt: "a cat".to_owned(),
-        width: 1024,
-        height: 768,
-        additional_params: None,
-    }, None)
+    .call(
+        crate::image_generation::ImageGenerationRequest {
+            prompt: "a cat".to_owned(),
+            width: 1024,
+            height: 768,
+            additional_params: None,
+        },
+        None,
+    )
     .await
     .expect("raw image bytes decode");
     assert_eq!(response.image, png);

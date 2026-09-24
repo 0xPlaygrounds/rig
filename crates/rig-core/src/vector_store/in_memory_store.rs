@@ -20,8 +20,8 @@ use crate::{
     driver::{Model, Transport},
     embeddings::{Embedding, distance::VectorDistance},
     operation::Embedding as EmbeddingOp,
-    wire::Wire,
     vector_store::request::Filter,
+    wire::Wire,
 };
 
 use super::lsh::LSHIndex;

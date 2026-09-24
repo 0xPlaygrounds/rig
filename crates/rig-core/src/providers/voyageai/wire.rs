@@ -408,7 +408,5 @@ impl Decoder<RerankOp> for RerankDecoder {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests;

@@ -1,4 +1,11 @@
-use crate::{message, providers::gemini::completion::gemini_api_types::{BlockReason, CitationMetadata, ContentCandidate, FinishReason, GenerateContentResponse, LogprobsResult, ModalityTokenCount, PromptFeedback, Schema, TopCandidate, UsageMetadata, flatten_schema, map_finish_reason, tool_parameters_to_schema}};
+use crate::{
+    message,
+    providers::gemini::completion::gemini_api_types::{
+        BlockReason, CitationMetadata, ContentCandidate, FinishReason, GenerateContentResponse,
+        LogprobsResult, ModalityTokenCount, PromptFeedback, Schema, TopCandidate, UsageMetadata,
+        flatten_schema, map_finish_reason, tool_parameters_to_schema,
+    },
+};
 
 use super::*;
 use serde_json::json;
@@ -1011,7 +1018,9 @@ fn test_txt_document_conversion_to_text_part() {
 #[test]
 fn test_tool_result_with_image_content() {
     // Test that a ToolResult with image content converts correctly to Gemini's Part format
-    use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent};
+    use crate::message::{
+        DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
+    };
 
     // Create a tool result with both text and image content
     let tool_result = ToolResult {
@@ -1497,7 +1506,9 @@ fn test_user_image_url_renders_as_file_data() {
 
 #[test]
 fn test_tool_result_with_url_image_is_rejected() {
-    use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent};
+    use crate::message::{
+        DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
+    };
 
     let tool_result = ToolResult {
         call: message::ToolCallId::minted(0),
@@ -1667,7 +1678,6 @@ fn test_create_request_body_without_documents() {
 /// path may narrow it by parsing before the caller sees it.
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-
     let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
     let error = crate::driver::Model::new(
         wire(super::GEMINI_3_FLASH_PREVIEW),

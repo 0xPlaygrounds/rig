@@ -17,8 +17,8 @@
 //! # }
 //! ```
 
-use crate::error::ProviderError;
 use crate::completion::{ResponseIdentity, Usage};
+use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 
 impl<W, T> crate::driver::Model<W, T>

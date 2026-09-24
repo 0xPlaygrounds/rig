@@ -461,9 +461,15 @@ impl Observe for ProviderObserver {
 
 #[tokio::test]
 async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins() {
-    use crate::{observe::{Action, AdapterContext, AdapterEnding, AdapterEvent, ObservationLog, Subject}, test_utils::RecordingHttpClient};
+    use crate::{
+        observe::{Action, AdapterContext, AdapterEnding, AdapterEvent, ObservationLog, Subject},
+        test_utils::RecordingHttpClient,
+    };
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
-    let model = crate::driver::Model::new(crate::providers::gemini::Gemini::new("key").completion("gemini-test"), RecordingHttpClient::new(body));
+    let model = crate::driver::Model::new(
+        crate::providers::gemini::Gemini::new("key").completion("gemini-test"),
+        RecordingHttpClient::new(body),
+    );
     let handler = crate::serve::adapters::ModelAdapter::new("gemini-test", model.clone());
     let bus_log = Arc::new(ObservationLog::default());
     let direct_log = Arc::new(ObservationLog::default());
@@ -542,7 +548,10 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
 /// the observer is told exactly one outcome.
 #[test]
 fn an_observer_never_changes_what_the_consumer_receives() {
-    use crate::{message::{AssistantContent, DocumentSourceKind, Image}, streaming::{BlockId, StreamFinal, UnknownPayload}};
+    use crate::{
+        message::{AssistantContent, DocumentSourceKind, Image},
+        streaming::{BlockId, StreamFinal, UnknownPayload},
+    };
 
     type Shape = fn() -> Reply;
     fn terminal() -> Result<StreamEvent, ErrorReport> {

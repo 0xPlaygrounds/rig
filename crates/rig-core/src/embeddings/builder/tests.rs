@@ -264,10 +264,10 @@ impl Transport<Batches> for SlowFirstBatchModel {
         let model = self.clone();
         Ok(async move {
             let this = &model;
-        let nth = this.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if nth == 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-        }
+            let nth = this.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if nth == 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
             Opened::new(futures::stream::iter([Ok(documents)]))
         })
     }
@@ -305,13 +305,13 @@ impl Transport<Batches> for DescendingLatencyModel {
         let model = self.clone();
         Ok(async move {
             let this = &model;
-        let nth = this
-            .batches
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u64;
-        tokio::time::sleep(std::time::Duration::from_millis(
-            120u64.saturating_sub(nth * 40),
-        ))
-        .await;
+            let nth = this
+                .batches
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u64;
+            tokio::time::sleep(std::time::Duration::from_millis(
+                120u64.saturating_sub(nth * 40),
+            ))
+            .await;
             Opened::new(futures::stream::iter([Ok(documents)]))
         })
     }
@@ -480,24 +480,24 @@ impl Transport<Batches> for OneAtATimeReversedLatency {
         let model = self.clone();
         Ok(async move {
             let this = &model;
-        let documents: Vec<String> = documents.into_iter().collect();
-        // Earlier texts wait longer, so completion order is close to the
-        // reverse of submission order. Texts are named `d{doc}t{i}`, so the
-        // position is what follows the last `t`; if that ever stops
-        // parsing every batch waits 0ms, the completion order stops being
-        // inverted, and this test quietly stops proving anything — hence
-        // the assert rather than `unwrap_or(0)`.
-        let position = documents
-            .first()
-            .and_then(|text| text.rsplit_once('t'))
-            .and_then(|(_, n)| n.parse::<u64>().ok());
-        assert!(
-            position.is_some(),
-            "could not read a text position out of {documents:?}; \
+            let documents: Vec<String> = documents.into_iter().collect();
+            // Earlier texts wait longer, so completion order is close to the
+            // reverse of submission order. Texts are named `d{doc}t{i}`, so the
+            // position is what follows the last `t`; if that ever stops
+            // parsing every batch waits 0ms, the completion order stops being
+            // inverted, and this test quietly stops proving anything — hence
+            // the assert rather than `unwrap_or(0)`.
+            let position = documents
+                .first()
+                .and_then(|text| text.rsplit_once('t'))
+                .and_then(|(_, n)| n.parse::<u64>().ok());
+            assert!(
+                position.is_some(),
+                "could not read a text position out of {documents:?}; \
                  this mock cannot invert completion order without it"
-        );
-        let delay = position.map_or(0, |n| 60u64.saturating_sub(n * 10));
-        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            );
+            let delay = position.map_or(0, |n| 60u64.saturating_sub(n * 10));
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             Opened::new(futures::stream::iter([Ok(documents)]))
         })
     }

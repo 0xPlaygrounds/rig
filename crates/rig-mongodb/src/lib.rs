@@ -10,7 +10,7 @@ use mongodb::bson::{self, Bson, Document, doc, to_bson};
 
 use rig_core::{
     Embed,
-    embeddings::embedding::{Embedding, EmbeddingModel},
+    embeddings::embedding::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -86,7 +86,7 @@ struct Field {
 /// }
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
-/// let openai = OpenAI::from_env()?.bound()?;
+/// let openai = rig_core::Model::new(OpenAI::from_env()?, rig_reqwest::bundled()?);
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
@@ -123,8 +123,10 @@ where
     search_params: SearchParams,
 }
 
-impl<C, M: EmbeddingModel> MongoDbVectorIndex<C, M>
+impl<C, W, Tr> MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: Send + Sync,
 {
     /// Builds the `$vectorSearch` stage. Any request threshold becomes a
@@ -232,8 +234,10 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> MongoDbVectorIndex<C, M>
+impl<C, W, Tr> MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: Send + Sync,
 {
     /// Creates an index handle after confirming the named search index exists and
@@ -243,7 +247,7 @@ where
     /// on creating vector indexes.
     pub async fn new(
         collection: mongodb::Collection<C>,
-        model: M,
+        model: rig_core::driver::Model<W, Tr>,
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
@@ -392,8 +396,10 @@ impl DynamicSearchFilter for MongoDbSearchFilter {
     }
 }
 
-impl<C, M: EmbeddingModel> VectorStoreIndex for MongoDbVectorIndex<C, M>
+impl<C, W, Tr> VectorStoreIndex for MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: Sync + Send,
 {
     type Filter = MongoDbSearchFilter;
@@ -441,8 +447,10 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> InsertDocuments for MongoDbVectorIndex<C, M>
+impl<C, W, Tr> InsertDocuments for MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: Send + Sync,
 {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(

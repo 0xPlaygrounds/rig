@@ -1,6 +1,6 @@
 //! Experimental typed Jev evaluations alongside Rig agents.
 //!
-//! Bind [`Jev`] to any Rig HTTP transport, then use [`Evaluate::evaluate`]
+//! Pair [`Jev`] with any Rig HTTP transport in a [`Model`], then use [`Evaluate::evaluate`]
 //! with serializable state and a named [`Query`]. Its associated output type
 //! fixes the answer structure at compile time. Decisions
 //! retain distributions; routing and threshold policy remain in application code.
@@ -19,12 +19,9 @@ pub use questions::{
     Choice, ChoiceAnswer, DynamicScore, DynamicScoreAnswer, JoinedQuery, MappedQuery, NamedQuery,
     Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
+use rig_core::driver::{Model, Transport};
 use rig_core::error::ProviderError;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use rig_core::{
-    driver::{Bound, call},
-    http_client::HttpClientExt,
-};
 use serde::Serialize;
 pub use wire::{Evaluation, Jev};
 
@@ -41,7 +38,7 @@ pub struct EvaluationResult<A> {
     pub provider_request_id: Option<String>,
 }
 
-/// Typed evaluation on Jev bound to a Rig transport.
+/// Typed evaluation on Jev over a Rig transport.
 pub trait Evaluate {
     /// Evaluate a shared state in one call and validate the typed answers.
     /// The input question type determines the successful response type:
@@ -64,7 +61,7 @@ pub trait Evaluate {
         S: Serialize + WasmCompatSync,
         Q: Query;
 }
-impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
+impl<T: Transport<Jev>> Evaluate for Model<Jev, T> {
     async fn evaluate<S, Q>(
         &self,
         state: &S,
@@ -76,16 +73,11 @@ impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
     {
         let encoded = serde_json::value::to_raw_value(&questions)?;
         let ids = validation::request_ids(&encoded)?;
-        let response = call(
-            &self.wire,
-            &self.http,
-            types::Request {
-                state: questions::state(state)?,
-                questions: encoded,
-            },
-            None,
-        )
-        .await?;
+        let request = types::Request {
+            state: questions::state(state)?,
+            questions: encoded,
+        };
+        let response = self.call(request, None).await?;
         if ids != validation::response_ids(&response.answers)? {
             return Err(ProviderError::Response(
                 "response question IDs differ from request".into(),

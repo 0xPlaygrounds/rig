@@ -30,8 +30,7 @@ use crate::providers::openai::wire::{
 };
 use crate::telemetry::GenAiOperation;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 
 use super::{CopilotIntent, PROVIDER_NAME};
@@ -450,9 +449,6 @@ impl Wire for Models {
         ModelsDecoder
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests;

@@ -14,8 +14,7 @@ use crate::error::ProviderError;
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -430,9 +429,6 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
         out.push(Ok(response));
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests;

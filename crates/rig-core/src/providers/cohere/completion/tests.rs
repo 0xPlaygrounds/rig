@@ -116,7 +116,11 @@ fn unknown_finish_reason_survives_verbatim() {
 /// Fold one `/v2/chat` reply body through the bound chat wire, the way a
 /// caller's `completion()` does.
 async fn unary(body: &'static str) -> completion::CompletionResponse {
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_A_03_2025), crate::test_utils::RecordingHttpClient::new(body));
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .completion(crate::providers::cohere::COMMAND_A_03_2025),
+        crate::test_utils::RecordingHttpClient::new(body),
+    );
     model
         .call(model.completion_request("hello").build(), None)
         .await
@@ -341,7 +345,11 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::new("{}");
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_A_03_2025), http_client.clone());
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .completion(crate::providers::cohere::COMMAND_A_03_2025),
+        http_client.clone(),
+    );
     let request = model
         .completion_request("hello")
         .tool_choice(ToolChoice::Required)
@@ -439,7 +447,11 @@ async fn completion_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Model::new(crate::providers::cohere::Cohere::new("test-key").completion(crate::providers::cohere::COMMAND_A_03_2025), http_client);
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .completion(crate::providers::cohere::COMMAND_A_03_2025),
+        http_client,
+    );
     let request = model.completion_request("hello").build();
 
     let error = model
@@ -458,7 +470,9 @@ async fn completion_non_success_preserves_status_and_body() {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{adapter_requests, assert_adapter_pairs};
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
     for request in adapter_requests() {
         let wire =
             CohereCompletionRequest::try_from(("command-a-03-2025", request.clone())).unwrap();

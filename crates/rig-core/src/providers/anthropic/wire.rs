@@ -18,8 +18,7 @@ pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
 use crate::providers::internal::named_dialect;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -562,7 +561,10 @@ impl Wire for Models {
     }
 
     fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(self.models_request(Some(cursor))?, Framing::Whole))
+        Ok(Encoded::new(
+            self.models_request(Some(cursor))?,
+            Framing::Whole,
+        ))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
@@ -672,9 +674,6 @@ impl Wire for Verify {
         VerifyDecoder
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests;

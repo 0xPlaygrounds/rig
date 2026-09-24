@@ -9,7 +9,7 @@ use std::{fmt::Display, fmt::Write as _, ops::RangeInclusive};
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, SqlCondition, VectorSearchRequest},
@@ -221,9 +221,13 @@ impl SearchResult {
     }
 }
 
-impl<M: EmbeddingModel> PostgresVectorStore<M> {
+impl<W, Tr> PostgresVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     pub fn new(
-        model: M,
+        model: rig_core::driver::Model<W, Tr>,
         pg_pool: PgPool,
         documents_table: Option<String>,
         distance_function: PgVectorDistanceFunction,
@@ -236,7 +240,7 @@ impl<M: EmbeddingModel> PostgresVectorStore<M> {
         }
     }
 
-    pub fn with_defaults(model: M, pg_pool: PgPool) -> Self {
+    pub fn with_defaults(model: rig_core::driver::Model<W, Tr>, pg_pool: PgPool) -> Self {
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)
     }
 
@@ -357,7 +361,11 @@ fn render_search_query(
     (query, params)
 }
 
-impl<M: EmbeddingModel> InsertDocuments for PostgresVectorStore<M> {
+impl<W, Tr> InsertDocuments for PostgresVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -388,7 +396,11 @@ impl<M: EmbeddingModel> InsertDocuments for PostgresVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<M> {
+impl<W, Tr> VectorStoreIndex for PostgresVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     type Filter = PgSearchFilter;
 
     /// Returns up to `samples` documents as `(distance, id, document)` ordered by

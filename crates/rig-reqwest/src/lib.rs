@@ -145,10 +145,7 @@ pub mod client;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
 
-/// Bring the construction traits into scope.
-pub mod prelude {
-    pub use crate::client::DefaultTransport;
-}
+pub use client::bundled;
 
 use bytes::Bytes;
 use rig_core::http_client::{

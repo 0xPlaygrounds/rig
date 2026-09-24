@@ -4,7 +4,7 @@
 use neo4rs::{Graph, Query};
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
@@ -115,8 +115,16 @@ const BASE_VECTOR_SEARCH_QUERY: &str = "
     YIELD node, score
 ";
 
-impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
-    pub fn new(graph: Graph, embedding_model: M, index_config: IndexConfig) -> Self {
+impl<W, Tr> Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
+    pub fn new(
+        graph: Graph,
+        embedding_model: rig_core::driver::Model<W, Tr>,
+        index_config: IndexConfig,
+    ) -> Self {
         Self {
             graph,
             embedding_model,
@@ -197,7 +205,11 @@ struct RowResult {
     element_id: i64,
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for Neo4jVectorIndex<M> {
+impl<W, Tr> VectorStoreIndex for Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     type Filter = Neo4jSearchFilter;
 
     /// Returns matches as `(score, node id, node)`. The node is deserialized as
@@ -237,7 +249,11 @@ fn insert_documents_query(node_label: &str) -> String {
     format!("UNWIND $items AS item CREATE (n:{node_label}) SET n = item")
 }
 
-impl<M: EmbeddingModel> InsertDocuments for Neo4jVectorIndex<M> {
+impl<W, Tr> InsertDocuments for Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     /// Inserts one node per embedding, flattening the document's JSON fields
     /// onto the node alongside the embedding (`embedding_property`) and its
     /// source text (`embedded_text`). Nodes are written under the index's
