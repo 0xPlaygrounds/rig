@@ -1,6 +1,5 @@
 //! Gemini image generation cassette tests.
 
-use rig::image_generation::ImageGenerationModel;
 use rig::providers::gemini;
 
 #[tokio::test]

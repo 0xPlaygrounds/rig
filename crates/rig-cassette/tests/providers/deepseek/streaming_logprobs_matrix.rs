@@ -129,7 +129,7 @@ async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             let choice = response.raw["choices"]
                 .as_array()
                 .and_then(|choices| choices.first())
@@ -140,7 +140,7 @@ async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request).await?;
+            let mut stream = model.stream(request, None)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

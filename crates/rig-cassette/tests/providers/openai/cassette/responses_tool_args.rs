@@ -10,7 +10,6 @@
 
 use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -166,8 +165,7 @@ async fn zero_argument_tool_call_streaming() {
                 .build();
 
             let stream = model
-                .stream(request)
-                .await
+                .stream(request, None)
                 .expect("zero-arg streaming request should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -189,7 +187,7 @@ async fn zero_argument_tool_call_nonstreaming() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("zero-arg completion should succeed");
 
@@ -273,8 +271,7 @@ async fn nested_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("nested-args streaming request should start"),
             )
             .await;
@@ -326,8 +323,7 @@ async fn unicode_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("unicode-args streaming request should start"),
             )
             .await;

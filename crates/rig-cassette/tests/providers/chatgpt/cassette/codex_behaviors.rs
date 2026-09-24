@@ -8,7 +8,6 @@
 
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::tool::Tool;
@@ -28,9 +27,10 @@ async fn strict_tools_opt_in_roundtrip() {
             // The recorded request body locks the strict-tools contract:
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the backend.
-            let model = client
-                .completion(chatgpt::GPT_5_4)
-                .map_wire(|wire| wire.with_strict_tools());
+            let model =
+                rig_test_support::endpoint::map_wire(client.completion(chatgpt::GPT_5_4), |wire| {
+                    wire.with_strict_tools()
+                });
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -38,7 +38,7 @@ async fn strict_tools_opt_in_roundtrip() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -94,11 +94,12 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
             // `codex_sessions`. The marker prompt is kept verbatim so the
             // request still matches the recorded cassette.
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
                         .preamble("Return only the requested marker.".to_string())
                         .build(),
+                    None,
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");

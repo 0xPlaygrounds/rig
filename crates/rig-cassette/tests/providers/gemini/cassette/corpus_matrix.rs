@@ -9,7 +9,6 @@
 //! the grid missing from this file reuses a recording the corpus already
 //! had, whose producer stays where it is.
 
-use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW};
 use rig_test_support::endpoint::Endpoint;
@@ -17,8 +16,8 @@ use rig_test_support::endpoint::Endpoint;
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -254,8 +253,8 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn reasoning_wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,

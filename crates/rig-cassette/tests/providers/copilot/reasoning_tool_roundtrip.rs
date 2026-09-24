@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
 
 use crate::copilot::{live_client, live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, WeatherTool};

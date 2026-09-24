@@ -56,7 +56,6 @@ use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, ToolResult,
     ToolResultContent, UserContent,
 };
-use rig::prelude::*;
 use rig::providers::openai::wire::{LLAMACPP, OpenAI};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -135,13 +134,14 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
     with_llamacpp_competent_cassette("tool_matrix/zero_argument_tool", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Ping the service."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("a required zero-argument tool call should succeed");
@@ -260,7 +260,7 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
     with_llamacpp_competent_cassette("tool_matrix/three_tools", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
@@ -268,6 +268,7 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
                     .tool(zero_arg_tool_definition("ping"))
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("a three-tool request should succeed");
@@ -307,7 +308,7 @@ async fn two_independent_calls_arrive_in_one_turn() {
     with_llamacpp_competent_cassette("tool_matrix/parallel_calls", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!(
                         "{NO_THINK}Compute 2 + 3 and 10 - 4. Call both tools in this one turn."
@@ -316,6 +317,7 @@ async fn two_independent_calls_arrive_in_one_turn() {
                     .tool(rig::tool::tool_definition(&Subtract))
                     .max_tokens(512)
                     .build(),
+                None,
             )
             .await
             .expect("a parallel tool request should succeed");
@@ -440,7 +442,7 @@ async fn tool_choice_auto_lets_the_model_decide() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_auto", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
@@ -448,6 +450,7 @@ async fn tool_choice_auto_lets_the_model_decide() {
                     .tool_choice(ToolChoice::Auto)
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("tool_choice auto should succeed");
@@ -481,7 +484,7 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_none", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
@@ -489,6 +492,7 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
                     .tool_choice(ToolChoice::None)
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("tool_choice none should succeed");
@@ -562,13 +566,14 @@ async fn tool_choice_required_forces_a_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_required", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Hello there."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("tool_choice required should succeed");
@@ -619,7 +624,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     .completion(CASSETTE_MODEL);
 
     let error = model
-        .completion(
+        .call(
             model
                 .completion_request(format!("{NO_THINK}Compute 2 + 3."))
                 .tool(rig::tool::tool_definition(&Adder))
@@ -629,6 +634,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
                 })
                 .max_tokens(256)
                 .build(),
+            None,
         )
         .await
         .expect_err("a specific tool choice must not be sent to llama.cpp");
@@ -682,8 +688,8 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
                 })
                 .max_tokens(256)
                 .build(),
+            None,
         )
-        .await
         .err()
         .expect("opening the stream must fail before anything is sent");
 
@@ -705,7 +711,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_text", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(Message::User {
                         content: vec![UserContent::ToolResult(ToolResult {
@@ -732,6 +738,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                     ])
                     .max_tokens(512)
                     .build(),
+                None,
             )
             .await
             .expect("a text tool result should be accepted");
@@ -767,7 +774,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_json", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(Message::User {
                         content: vec![UserContent::ToolResult(ToolResult {
@@ -792,6 +799,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                     ])
                     .max_tokens(512)
                     .build(),
+                None,
             )
             .await
             .expect("a JSON tool result should be accepted");

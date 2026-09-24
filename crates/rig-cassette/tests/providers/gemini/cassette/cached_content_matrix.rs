@@ -50,7 +50,6 @@
 //! ```
 
 use rig::error::ProviderError;
-use rig::prelude::*;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, Gemini};
 use rig_test_support::endpoint::Endpoint;
@@ -344,11 +343,10 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
         rig::rig_reqwest::bundled().expect("transport should build"),
     );
 
-    let agent = AgentBuilder::new(
-        client
-            .completion(CACHE_MODEL)
-            .map_wire(|wire| wire.with_cached_content("cachedContents/agent-guard")),
-    )
+    let agent = AgentBuilder::new(rig_test_support::endpoint::map_wire(
+        client.completion(CACHE_MODEL),
+        |wire| wire.with_cached_content("cachedContents/agent-guard"),
+    ))
     .tool(CountingPing::default())
     .build();
 
@@ -406,11 +404,10 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let agent = AgentBuilder::new(
-                    client
-                        .completion(CACHE_MODEL)
-                        .map_wire(|wire| wire.with_cached_content(cache.name.clone())),
-                )
+                let agent = AgentBuilder::new(rig_test_support::endpoint::map_wire(
+                    client.completion(CACHE_MODEL),
+                    |wire| wire.with_cached_content(cache.name.clone()),
+                ))
                 .build();
 
                 let answer = agent
@@ -483,11 +480,10 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let agent = AgentBuilder::new(
-                    client
-                        .completion(CACHE_MODEL)
-                        .map_wire(|wire| wire.with_cached_content(cache.name.clone())),
-                )
+                let agent = AgentBuilder::new(rig_test_support::endpoint::map_wire(
+                    client.completion(CACHE_MODEL),
+                    |wire| wire.with_cached_content(cache.name.clone()),
+                ))
                 .tool(CountingPing::default())
                 .build();
 
@@ -851,10 +847,12 @@ async fn list_follows_the_cursor_across_pages() {
                 // Page size 1 with three caches means three pages and a cursor
                 // followed twice — the loop runs for real instead of returning
                 // everything in one response as pageSize=1000 does.
-                let listed = caches
-                    .list_with_page_size(1)
-                    .await
-                    .expect("paginated list should succeed");
+                let listed = rig_test_support::endpoint::map_wire(caches.clone(), |wire| {
+                    wire.with_page_size(1)
+                })
+                .list()
+                .await
+                .expect("paginated list should succeed");
                 for name in &created {
                     assert!(
                         listed.iter().any(|entry| entry.name == *name),
@@ -966,9 +964,10 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let model = client
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
+                let model =
+                    rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
+                        wire.with_cached_content(cache.name.clone())
+                    });
 
                 let request = rig::completion::CompletionRequest {
                     chat_history: vec![rig::message::Message::User {

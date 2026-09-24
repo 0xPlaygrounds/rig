@@ -59,7 +59,7 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
             );
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("non-streaming completion should reconstruct streamed tool call");
 
@@ -95,7 +95,7 @@ async fn stream_tool_call_completed_response_without_output() {
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request, None).expect("stream should start");
             let mut saw_ping_tool_call = false;
             let mut final_usage = None;
 

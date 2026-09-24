@@ -1,7 +1,6 @@
 //! xAI streaming tools smoke test.
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::xai;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -70,7 +69,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .build();
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = model.stream(request, None).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -116,8 +115,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("raw xAI responses stream should start"),
             )
             .await;
@@ -153,8 +151,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request)
-                    .await
+                    .stream(followup_request, None)
                     .expect("raw xAI followup stream should start"),
             )
             .await;

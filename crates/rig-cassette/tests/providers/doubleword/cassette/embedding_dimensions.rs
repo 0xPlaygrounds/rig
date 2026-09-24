@@ -119,7 +119,10 @@ fn assert_single_input_width(calls: Vec<RecordedEmbeddingCall>, width: usize) {
     assert_recorded(&calls, &[Some(width)], width, &[1]);
 }
 
-fn embedding_model(client: &BoundDoubleword, width: Option<usize>) -> impl EmbeddingModel {
+fn embedding_model(
+    client: &BoundDoubleword,
+    width: Option<usize>,
+) -> rig::Model<rig::providers::openai::wire::Embeddings, rig::http_client::BoxedHttpClient> {
     client.embedding(MODEL, width)
 }
 
@@ -348,7 +351,7 @@ async fn usage_survives_a_requested_width() {
         |client| async move {
             let model = client.embedding(MODEL, Some(256));
             let response = model
-                .embed_texts_response([PROBE.to_string()])
+                .call(vec![PROBE.to_string()], None)
                 .await
                 .expect("embedding request should succeed");
 
@@ -376,7 +379,7 @@ async fn usage_at_the_default_width() {
         |client| async move {
             let model = client.embedding(MODEL, None);
             let response = model
-                .embed_texts_response([PROBE.to_string()])
+                .call(vec![PROBE.to_string()], None)
                 .await
                 .expect("embedding request should succeed");
 

@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -655,7 +654,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .additional_params(non_thinking_params())
                 .build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -714,7 +713,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .additional_params(non_thinking_params())
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -735,16 +734,14 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             let model = client.completion(SESSION_MODEL);
 
             let required = model
-                .completion(
-                    model
+                .call(model
                         .completion_request(
                             "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
                         .additional_params(non_thinking_params())
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -757,8 +754,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
-                    model
+                .call(model
                         .completion_request(
                             "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
                         )
@@ -768,8 +764,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
                         .additional_params(non_thinking_params())
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             let specific_calls = specific
                 .choice
@@ -785,16 +780,14 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
-                    model
+                .call(model
                         .completion_request(
                             "Do not call tools. Reply with exactly this phrase: no-tool-answer",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
                         .additional_params(non_thinking_params())
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -826,7 +819,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 .additional_params(thinking_params())
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
 
             anyhow::ensure!(
                 response
@@ -854,7 +847,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 .completion_request("Briefly solve 2 + 2, then answer with the number.")
                 .additional_params(thinking_params())
                 .build();
-            let observation = collect_raw_stream_observation(model.stream(stream_request).await?).await;
+            let observation = collect_raw_stream_observation(model.stream(stream_request, None)?).await;
             anyhow::ensure!(
                 observation.events.contains(&"reasoning_delta"),
                 "streaming DeepSeek reasoning should emit reasoning deltas, saw {:?}",
@@ -889,10 +882,11 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
         |client| async move {
             let chat_model = client.completion(CHAT_ALIAS_MODEL);
             let chat = chat_model
-                .completion(
+                .call(
                     chat_model
                         .completion_request("Reply with exactly: chat-mode-ok")
                         .build(),
+                    None,
                 )
                 .await?;
             let chat_text = assistant_text_response(&chat.choice)
@@ -907,10 +901,11 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
 
             let reasoner_model = client.completion(REASONER_ALIAS_MODEL);
             let reasoner = reasoner_model
-                .completion(
+                .call(
                     reasoner_model
                         .completion_request("Reply with exactly: reasoner-mode-ok")
                         .build(),
+                    None,
                 )
                 .await?;
             let reasoner_text = assistant_text_response(&reasoner.choice)
@@ -950,7 +945,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 })))
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;

@@ -1,6 +1,5 @@
 //! Gemini agent completion smoke test.
 
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_cassette;

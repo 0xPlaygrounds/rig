@@ -9,7 +9,6 @@
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
-use rig::prelude::*;
 use rig_test_support::endpoint::Endpoint;
 
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
@@ -33,7 +32,7 @@ fn thinking_disabled() -> serde_json::Value {
 
 fn wire(
     client: &BoundDeepSeek,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-chat"),
@@ -46,7 +45,7 @@ fn wire(
 /// The wire over the model it refuses: the setup cells' request.
 fn missing(
     client: &BoundDeepSeek,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-v9-nonexistent"),
@@ -110,7 +109,7 @@ fn scripted_stream(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     let client = Endpoint::new(
         OpenAI::with_key(&DEEPSEEK, SCRIPTED_KEY),
-        scripted(vec![sse_bytes(frames)]),
+        rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)])),
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,

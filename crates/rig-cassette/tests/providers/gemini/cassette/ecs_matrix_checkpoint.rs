@@ -3,12 +3,11 @@
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, checkpoint};
-use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig_test_support::endpoint::Endpoint;
 
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,

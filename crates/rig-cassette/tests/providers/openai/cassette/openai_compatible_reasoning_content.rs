@@ -16,8 +16,6 @@ use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::completion::Message;
-use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use serde::Deserialize;
 use serde_json::{Value, json};

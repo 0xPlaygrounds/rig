@@ -130,11 +130,12 @@ async fn context_overflow_preserves_the_token_counts() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(overflowing_prompt())
                         .max_tokens(8)
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("a prompt past the context window must fail");
@@ -194,7 +195,7 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
             // as its first in-band item; both are the same contract as far as
             // this matrix is concerned, so the cell accepts either and asserts
             // on the error it gets.
-            let error = match model.stream(request).await {
+            let error = match model.stream(request, None) {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
@@ -259,11 +260,12 @@ async fn an_unknown_model_is_ignored_rather_than_rejected() {
         |client| async move {
             let model = client.completion("rig/definitely-not-a-llamacpp-model");
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("Reply with the single word: ok")
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("llama.cpp ignores the model field rather than rejecting it");
@@ -306,7 +308,7 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .completion(model.completion_request("hi").max_tokens(8).build())
+                .call(model.completion_request("hi").max_tokens(8).build(), None)
                 .await
                 .expect_err("a server started with --api-key must reject an unkeyed request");
 
@@ -340,11 +342,12 @@ async fn the_api_key_the_provider_sends_is_accepted() {
     with_llamacpp_api_key_cassette("error_matrix/api_key_is_accepted", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request("Reply with the single word: ok")
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("the bearer token the provider sends must be accepted");
@@ -370,6 +373,7 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
         |client| async move {
             let error = client
                 .verify()
+                .verify()
                 .await
                 .expect_err("verification must fail without the key");
             assert!(
@@ -386,6 +390,7 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
 
     with_llamacpp_api_key_cassette("error_matrix/verify_accepts_the_key", |client| async move {
         client
+            .verify()
             .verify()
             .await
             .expect("verification must succeed with the key");
@@ -420,7 +425,7 @@ async fn the_model_listing_requires_the_key_on_a_keyed_server() {
         |client| async move {
             let error = client
                 .models()
-                .list_all()
+                .call((), None)
                 .await
                 .expect_err("`/v1/models` must refuse an unkeyed client");
             assert!(
@@ -579,12 +584,13 @@ async fn tools_without_jinja_are_a_500() {
     with_llamacpp_no_jinja_cassette("error_matrix/tools_without_jinja", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let error = model
-            .completion(
+            .call(
                 model
                     .completion_request("Add 2 and 3 using the tool.")
                     .tool(rig::tool::tool_definition(&crate::support::Adder))
                     .max_tokens(64)
                     .build(),
+                None,
             )
             .await
             .expect_err("a --no-jinja server cannot render a tool list");
@@ -625,7 +631,7 @@ async fn a_malformed_body_keeps_its_parse_error() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request("hi")
                         .max_tokens(8)
@@ -633,6 +639,7 @@ async fn a_malformed_body_keeps_its_parse_error() {
                         // type error the server reports before generating.
                         .additional_params(json!({ "temperature": "hot" }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("a mistyped parameter must fail");
@@ -673,12 +680,13 @@ async fn an_oversized_output_cap_is_clamped_not_rejected() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("Say ok.")
                         // Two orders of magnitude past the server's -c 512.
                         .max_tokens(100_000)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("llama.cpp clamps an oversized cap rather than refusing");

@@ -1,6 +1,4 @@
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::openai::wire::{OPENROUTER, OpenAI, Route};
 use rig_test_support::endpoint::Endpoint;
 use std::future::Future;

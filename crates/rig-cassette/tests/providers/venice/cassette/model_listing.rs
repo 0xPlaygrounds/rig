@@ -7,7 +7,7 @@ async fn list_models_smoke() {
     with_venice_cassette("model_listing/list_models_smoke", |client| async move {
         let models = client
             .models()
-            .list_all()
+            .call((), None)
             .await
             .expect("listing Venice models should succeed");
 

@@ -5,7 +5,6 @@
 use futures::StreamExt;
 use rig::error::ProviderError;
 use rig::error::{ErrorKind, ErrorReport};
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::{
@@ -108,7 +107,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
             let model = client
                 .openai
                 .completion("gpt-nonexistent-model-for-error-edge");
-            let result = model.completion_request("Never streamed").stream().await;
+            let result = model.completion_request("Never streamed").stream();
             let error = match result {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {
@@ -171,7 +170,7 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
             let error = client
                 .openai
                 .models()
-                .list_all()
+                .call((), None)
                 .await
                 .expect_err("a bogus key must fail the listing");
             assert!(
@@ -198,6 +197,7 @@ async fn verify_reports_invalid_authentication() {
         |client| async move {
             let error = client
                 .openai
+                .verify()
                 .verify()
                 .await
                 .expect_err("a bogus key must fail verification");

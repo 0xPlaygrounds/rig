@@ -1,7 +1,5 @@
 //! Cassette-backed OpenRouter extractor smoke test.
 
-use rig::prelude::*;
-
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};

@@ -4,7 +4,6 @@
 //! See `many_rigs/rig-regression-cassette-suite-proposal.md` for the catalogue.
 
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_completions_cassette;

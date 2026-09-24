@@ -1,7 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 use rig_test_support::endpoint::Endpoint;
 use std::future::Future;

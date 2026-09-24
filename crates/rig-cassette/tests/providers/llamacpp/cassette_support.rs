@@ -44,7 +44,6 @@
 //! with this name and these arguments) rather than on prose.
 
 use futures::FutureExt;
-use rig::driver::Model;
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::providers::openai::wire::{LLAMACPP, OpenAI, Route};
 use rig_test_support::endpoint::Endpoint;

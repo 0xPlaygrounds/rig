@@ -1,7 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice;
 use rig_test_support::endpoint::Endpoint;
@@ -68,7 +66,7 @@ where
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start_via(
-        rig_cassette::http::Transport::Direct,
+        rig_cassette::http::RecordVia::Direct,
         &crate::cassettes::cassette_root(),
         "venice",
         spec,

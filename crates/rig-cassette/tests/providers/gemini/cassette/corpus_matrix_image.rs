@@ -4,7 +4,6 @@
 //! the world cells (`ecs_matrix_image*.rs`) are compared to. This file holds
 //! the scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
-use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 use rig_test_support::endpoint::Endpoint;
@@ -12,8 +11,8 @@ use rig_test_support::endpoint::Endpoint;
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,

@@ -1,4 +1,4 @@
-use rig::{prelude::*, providers::gemini::Gemini};
+use rig::providers::gemini::Gemini;
 use rig_agent::test_utils::MockImageGeneratorTool;
 use rig_test_support::endpoint::Endpoint;
 

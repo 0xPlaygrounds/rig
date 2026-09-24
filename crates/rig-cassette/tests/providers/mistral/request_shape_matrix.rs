@@ -112,7 +112,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut params = json!({
@@ -155,7 +155,7 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
     let model = client.completion(model_name(cell.model));
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(&model, cell), None).await?;
             let calls = response
                 .choice
                 .iter()
@@ -173,7 +173,7 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell), None)?;
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item? {

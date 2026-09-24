@@ -14,7 +14,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::prelude::*;
 use rig::providers::doubleword;
 
 use crate::cache_conformance::{

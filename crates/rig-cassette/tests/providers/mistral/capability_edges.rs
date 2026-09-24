@@ -68,7 +68,7 @@ async fn list_models_keeps_description_and_context_length() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/list_models_keeps_description_and_context_length",
         |client| async move {
-            let models = client.models().list_all().await?;
+            let models = client.models().call((), None).await?;
             assert_listing_carries_mistrals_fields(&models.data);
             Ok::<_, anyhow::Error>(())
         },
@@ -96,7 +96,7 @@ fn assert_declared_matches_returned(declared: usize, returned: usize) {
     );
 }
 
-fn assert_listing_carries_mistrals_fields(models: &[rig::model::Model]) {
+fn assert_listing_carries_mistrals_fields(models: &[rig::model::ModelInfo]) {
     assert!(!models.is_empty(), "the listing must not be empty");
     assert!(
         models.iter().any(|model| model.description.is_some()),
@@ -128,8 +128,7 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
                 .temperature(1.0)
                 .max_tokens(8)
                 .additional_params(serde_json::json!({"n": 2}))
-                .stream()
-                .await?;
+                .stream()?;
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
@@ -231,7 +230,7 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
         |client| async move {
             let model = client.completion(mistral::MISTRAL_SMALL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("Add 2 and 3, then report the total.")
                         .preamble("Use the add tool, then report the total.".to_string())
@@ -242,6 +241,7 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
                         .temperature(0.0)
                         .max_tokens(64)
                         .build(),
+                    None,
                 )
                 .await?;
 

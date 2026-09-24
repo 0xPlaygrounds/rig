@@ -38,7 +38,6 @@
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
 use rig::completion::FinishReason;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus, Interactions};
 use serde::Deserialize;
@@ -59,7 +58,7 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: capture
 /// The Interactions wire bound to the bundled cassette transport. One Gemini
 /// config serves both surfaces, so the wrapper hands out the config and each
 /// cell names the surface it is about.
-type Model = Model<Interactions, BoxedHttpClient>;
+type Model = rig::driver::Model<Interactions, BoxedHttpClient>;
 
 fn request(model: &Model) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
@@ -98,9 +97,9 @@ async fn raw_roundtrips_interaction() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_roundtrips_interaction",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions(MODEL));
+            let model = client.model(|config| config.interactions(MODEL));
             let response = model
-                .completion(request(&model))
+                .call(request(&model), None)
                 .await
                 .expect("completion should succeed");
 
@@ -154,9 +153,9 @@ async fn raw_exposes_lifecycle_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions(MODEL));
+            let model = client.model(|config| config.interactions(MODEL));
             let response = model
-                .completion(request(&model))
+                .call(request(&model), None)
                 .await
                 .expect("completion should succeed");
 

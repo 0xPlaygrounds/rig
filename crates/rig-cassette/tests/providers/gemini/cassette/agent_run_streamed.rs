@@ -16,7 +16,6 @@ use rig::agent::{
 };
 use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent};
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
@@ -57,7 +56,6 @@ async fn run_streamed_turn(
     let mut stream = agent
         .request(prompt, history)
         .stream()
-        .await
         .expect("gemini stream should open");
     let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
     let mut recorded = false;
@@ -98,8 +96,10 @@ async fn run_streamed_turn(
                     }
                 }
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial = assembler
-                        .partial_turn(stream.message_id.clone(), stream.reasoning_issuer());
+                    let partial = assembler.partial_turn(
+                        stream.folded().message_id().map(str::to_owned),
+                        stream.folded().reasoning_issuer(),
+                    );
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -150,9 +150,9 @@ async fn run_streamed_turn(
         "a stream that reached its end delivered its terminal record, which recorded the call"
     );
     let streamed_turn = assembler.finish(
-        stream.message_id.clone(),
-        &stream.snapshot(),
-        stream.reasoning_issuer(),
+        stream.folded().message_id().map(str::to_owned),
+        &stream.folded().snapshot(),
+        stream.folded().reasoning_issuer(),
     );
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)

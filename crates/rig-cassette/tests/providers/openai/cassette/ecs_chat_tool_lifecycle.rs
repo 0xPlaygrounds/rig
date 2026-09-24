@@ -6,7 +6,7 @@ use super::chat_tool_lifecycle_matrix::{
 };
 use crate::ecs_agent::EcsAgent;
 use anyhow::Result;
-use rig::{prelude::*, providers::openai, tool::Tool};
+use rig::{providers::openai, tool::Tool};
 use rig_ecs::{
     agent::{AdditionalParams, Failure, MaxTokens, ToolCallSlot},
     bus::{PendingEffect, Streamed},

@@ -1,6 +1,5 @@
 //! DeepSeek tools smoke test.
 
-use rig::prelude::*;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;

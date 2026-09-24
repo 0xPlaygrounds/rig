@@ -92,12 +92,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         }
     }
 
-    run.choice = stream.snapshot();
+    run.choice = stream.folded().snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
-    run.message_id = stream.message_id.clone();
+    run.response = stream.folded().terminal().cloned();
+    run.message_id = stream.folded().message_id().map(str::to_owned);
     run
 }
 
@@ -179,7 +179,7 @@ async fn reasoning_summary_stream_aggregates_each_part_once() {
                     "reasoning": { "effort": "high", "summary": "detailed" }
                 }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_terminal(&run, FinishReason::Stop);
@@ -275,7 +275,7 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
                     "store": false
                 }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_terminal(&run, FinishReason::Stop);
@@ -355,7 +355,7 @@ async fn parallel_tool_calls_both_survive_aggregation() {
                     "parallel_tool_calls": true
                 }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
 
@@ -410,7 +410,7 @@ async fn tool_call_then_followup_text_across_turns() {
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
                 .build();
             let first =
-                drain_stream(model.stream(request).await.expect("stream should start")).await;
+                drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&first, FinishReason::ToolCalls);
             let tool_call = first
@@ -451,8 +451,7 @@ async fn tool_call_then_followup_text_across_turns() {
                 .build();
             let second = drain_stream(
                 model
-                    .stream(followup_request)
-                    .await
+                    .stream(followup_request, None)
                     .expect("follow-up stream should start"),
             )
             .await;
@@ -505,7 +504,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 .additional_params(params.clone())
                 .build();
             let first =
-                drain_stream(model.stream(request).await.expect("stream should start")).await;
+                drain_stream(model.stream(request, None).expect("stream should start")).await;
             assert_terminal(&first, FinishReason::ToolCalls);
 
             // The reasoning item the wire produced carries a real `rs_*` id;
@@ -570,8 +569,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 .build();
             let second = drain_stream(
                 model
-                    .stream(second_request)
-                    .await
+                    .stream(second_request, None)
                     .expect("second-turn stream should start"),
             )
             .await;
@@ -606,8 +604,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 .build();
             let third = drain_stream(
                 model
-                    .stream(third_request)
-                    .await
+                    .stream(third_request, None)
                     .expect("third-turn stream should start"),
             )
             .await;
@@ -653,7 +650,7 @@ async fn incomplete_mid_tool_call_normalizes_to_length() {
                 .max_tokens(16)
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
             // Whatever partial output survived must be well-formed part-wise:
@@ -712,7 +709,7 @@ async fn structured_output_stream_yields_schema_conformant_text() {
                     }
                 }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
             let parsed: serde_json::Value = serde_json::from_str(run.text.trim())
@@ -763,7 +760,7 @@ async fn previous_response_id_chains_server_side_state() {
                 }))
                 .build();
             let first =
-                drain_stream(model.stream(request).await.expect("stream should start")).await;
+                drain_stream(model.stream(request, None).expect("stream should start")).await;
             assert_terminal(&first, FinishReason::Stop);
             assert!(
                 first.text.to_ascii_lowercase().contains("quartz"),
@@ -788,8 +785,7 @@ async fn previous_response_id_chains_server_side_state() {
                 .build();
             let second = drain_stream(
                 model
-                    .stream(second_request)
-                    .await
+                    .stream(second_request, None)
                     .expect("chained stream should start"),
             )
             .await;
@@ -832,7 +828,7 @@ async fn incomplete_max_output_tokens_normalizes_to_length() {
                 .max_tokens(32)
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
             // Partial content is kept: whatever the stream surfaced before the
@@ -883,7 +879,7 @@ async fn reasoning_and_answer_text_aggregate_as_discrete_parts() {
                     "reasoning": { "effort": "high", "summary": "detailed" }
                 }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
             assert!(

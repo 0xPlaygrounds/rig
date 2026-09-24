@@ -1,6 +1,5 @@
 //! OpenAI image generation smoke test.
 
-use rig::prelude::*;
 use rig::providers::openai::{self, wire::OpenAI};
 use rig_test_support::endpoint::Endpoint;
 

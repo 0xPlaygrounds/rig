@@ -7,7 +7,6 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{Delta, StreamEvent};
 use rig_cassette::agent::AgentReplayExt;

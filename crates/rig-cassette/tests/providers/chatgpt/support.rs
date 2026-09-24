@@ -1,6 +1,4 @@
 use assert_fs::TempDir;
-use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
 use rig::rig_reqwest::client::bundled;

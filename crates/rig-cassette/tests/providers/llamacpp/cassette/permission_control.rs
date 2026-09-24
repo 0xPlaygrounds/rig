@@ -1,6 +1,5 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
-use rig::prelude::*;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

@@ -1,7 +1,5 @@
 //! Cassette-backed Cohere streaming tool-call coverage.
 
-use rig::prelude::*;
-
 use super::super::{
     CASSETTE_MODEL,
     support::{IntegerAdder, IntegerSubtract, with_cohere_cassette},

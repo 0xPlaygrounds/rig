@@ -3,7 +3,6 @@
 //! carry it identically.
 
 use futures::StreamExt;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
 
@@ -55,7 +54,6 @@ async fn responses_streaming_carries_identity() {
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
-                .await
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -110,7 +108,6 @@ async fn chat_completions_streaming_carries_identity() {
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
-                .await
                 .expect("stream should open");
 
             let mut terminal = None;

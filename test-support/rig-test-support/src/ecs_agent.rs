@@ -217,11 +217,7 @@ impl EcsAgent {
                     "parity/model"
                 },
                 RuntimeHandler {
-                    inner: Arc::new(serve(if golden_identity {
-                        "default"
-                    } else {
-                        "parity"
-                    })),
+                    inner: Arc::new(serve(if golden_identity { "default" } else { "parity" })),
                     runtime: io_runtime(),
                 },
             )

@@ -1,7 +1,5 @@
 //! Cassette-backed Venice structured output coverage.
 
-use rig::prelude::*;
-
 // Recorded against `TOOL_MODEL`: Venice's `qwen3-5-9b` capacity for
 // `response_format: json_schema` requests answered 429 ("model is currently
 // overloaded") while its plain completions path stayed healthy.

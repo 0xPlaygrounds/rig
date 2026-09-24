@@ -11,7 +11,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells, faults};
 
 fn wire(
     client: &BoundDoubleword,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion(QWEN3_5_397B_A17B),
@@ -24,7 +24,7 @@ fn wire(
 /// The wire over the model it refuses: the setup cells' request.
 fn missing(
     client: &BoundDoubleword,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion("rig/definitely-not-a-doubleword-model"),

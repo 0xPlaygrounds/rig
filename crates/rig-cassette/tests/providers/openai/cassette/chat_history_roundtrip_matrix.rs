@@ -218,14 +218,14 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // response rides serialized on `CompletionResponse::raw`, so this
             // cell reads the text off the provider's own fields where the
             // normalized cell below reads rig's.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(&model, cell), None).await?;
             Observation {
                 text: provider_text(&response.raw)?,
                 saw_terminal: true,
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(&model, cell), None).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,
@@ -235,7 +235,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // The raw surface is the same event stream; the native terminal
             // record rides on `StreamFinal::raw`, so the raw cell asserts the
             // terminal decodes back to the chat-completions native type.
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell), None)?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
@@ -258,7 +258,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             observation
         }
         (Transport::Streaming, Surface::Normalized) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell), None)?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,

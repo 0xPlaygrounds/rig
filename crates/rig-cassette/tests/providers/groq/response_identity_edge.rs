@@ -46,8 +46,7 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
             let model = client.completion(MODEL);
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
-                .stream()
-                .await?;
+                .stream()?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(final_record) = item? {

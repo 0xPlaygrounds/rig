@@ -19,7 +19,13 @@ async fn embeddings_smoke() {
             let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
 
             let response = model
-                .embed_texts_response(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
+                .call(
+                    EMBEDDING_INPUTS
+                        .iter()
+                        .map(|input| (*input).to_string())
+                        .collect(),
+                    None,
+                )
                 .await
                 .expect("embedding request should succeed");
 

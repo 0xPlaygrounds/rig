@@ -87,13 +87,13 @@ where
 {
     if !streamed {
         return model
-            .completion(request)
+            .call(request, None)
             .await
             .expect("the turn completes")
             .choice
             .to_vec();
     }
-    let mut stream = model.stream(request).await.expect("the stream opens");
+    let mut stream = model.stream(request, None).expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("a stream item");
     }

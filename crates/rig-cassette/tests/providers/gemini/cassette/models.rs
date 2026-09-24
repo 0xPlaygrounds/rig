@@ -9,7 +9,7 @@ async fn list_models_smoke() {
     with_gemini_cassette("models/list_models_smoke", |client| async move {
         let models = client
             .models()
-            .list_all()
+            .call((), None)
             .await
             .expect("listing Gemini models should succeed");
 
@@ -75,7 +75,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
         |client| async move {
             let error = client
                 .models()
-                .list_all()
+                .call((), None)
                 .await
                 .expect_err("a bogus key must not list models");
 

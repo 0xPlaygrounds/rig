@@ -11,7 +11,7 @@ fn params() -> Option<serde_json::Value> {
 fn model(
     client: BoundOllama,
     cell: Cell,
-) -> rig::Model<rig::providers::ollama::wire::Chat, BoxedHttpClient> {
+) -> rig::Model<rig::providers::ollama::wire::Chat, rig::http_client::BoxedHttpClient> {
     client.completion(cell.model)
 }
 

@@ -1,4 +1,3 @@
-use rig::driver::Model;
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::providers::openai::{OpenAI, Route};
 use rig_test_support::endpoint::Endpoint;
@@ -390,7 +389,7 @@ where
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start_via(
-        rig_cassette::http::Transport::Direct,
+        rig_cassette::http::RecordVia::Direct,
         &crate::cassettes::cassette_root(),
         "openai",
         spec,

@@ -19,9 +19,9 @@ const CELL: Cell = Cell {
 fn models(
     client: BoundOpenRouter,
 ) -> (
-    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
-    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
-    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
 ) {
     (
         client.completion("anthropic/claude-haiku-4.5"),

@@ -1,7 +1,6 @@
 //! xAI loaders smoke test.
 
 use rig::loaders::FileLoader;
-use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;

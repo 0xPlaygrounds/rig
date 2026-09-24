@@ -33,7 +33,7 @@ async fn basic_interaction_returns_id() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let params = AdditionalParameters {
                 store: Some(true),
                 ..Default::default()
@@ -44,7 +44,7 @@ async fn basic_interaction_returns_id() {
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
 
@@ -74,9 +74,9 @@ async fn followup_with_previous_interaction_id() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/followup_with_previous_interaction_id",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let initial = model
-                .completion(
+                .call(
                     model
                         .completion_request("Give me one short fact about hummingbirds.")
                         .additional_params(
@@ -87,6 +87,7 @@ async fn followup_with_previous_interaction_id() {
                             .expect("params should serialize"),
                         )
                         .build(),
+                    None,
                 )
                 .await
                 .expect("initial completion should succeed");
@@ -100,7 +101,7 @@ async fn followup_with_previous_interaction_id() {
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
-                .completion(
+                .call(
                     model
                         .completion_request("Now answer with a short analogy.")
                         .additional_params(
@@ -111,6 +112,7 @@ async fn followup_with_previous_interaction_id() {
                             .expect("params should serialize"),
                         )
                         .build(),
+                    None,
                 )
                 .await
                 .expect("followup completion should succeed");
@@ -126,13 +128,13 @@ async fn google_search_tool_interaction() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/google_search_tool_interaction",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             // The hosted-tool exchange log is provider-specific, so this
             // asserts against the interaction document `raw` carries and then
             // against the normalized view the decoder folded from the same
             // bytes — one request, exactly as the cassette recorded it.
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("Who won the Euro 2024 tournament?")
                         .additional_params(
@@ -143,6 +145,7 @@ async fn google_search_tool_interaction() {
                             .expect("params should serialize"),
                         )
                         .build(),
+                    None,
                 )
                 .await
                 .expect("search completion should succeed");
@@ -165,7 +168,7 @@ async fn tool_result_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/tool_result_roundtrip",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let tool = rig::completion::ToolDefinition {
                 name: "add".to_string(),
                 description: "Add two numbers together".to_string(),
@@ -180,7 +183,7 @@ async fn tool_result_roundtrip() {
             };
 
             let initial = model
-                .completion(
+                .call(
                     model
                         .completion_request("Use the add tool to sum 7 and 11.")
                         .tool(tool)
@@ -193,6 +196,7 @@ async fn tool_result_roundtrip() {
                             .expect("params should serialize"),
                         )
                         .build(),
+                    None,
                 )
                 .await
                 .expect("tool call completion should succeed");
@@ -209,7 +213,7 @@ async fn tool_result_roundtrip() {
             let tool_call = first_tool_call(&initial.choice).expect("expected a tool call");
 
             let followup = model
-                .completion(
+                .call(
                     model
                         .completion_request(Message::from(UserContent::tool_result_for(
                             tool_call.id.clone(),
@@ -225,6 +229,7 @@ async fn tool_result_roundtrip() {
                             .expect("params should serialize"),
                         )
                         .build(),
+                    None,
                 )
                 .await
                 .expect("tool result followup should succeed");
@@ -240,12 +245,12 @@ async fn streaming_interaction() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/streaming_interaction",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request("Write a 3-line poem about rust and rivers.")
                 .temperature(0.4)
                 .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request, None).expect("stream should start");
 
             let mut text = String::new();
             let mut saw_usage = false;
@@ -277,12 +282,12 @@ async fn streaming_final_metadata_exposes_model_version() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/streaming_final_metadata_exposes_model_version",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request("Reply with exactly: interaction metadata ok")
                 .temperature(0.0)
                 .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request, None).expect("stream should start");
 
             let mut text = String::new();
             let mut final_model_version = None;
@@ -339,7 +344,7 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let params = AdditionalParameters {
                 store: Some(true),
                 ..Default::default()

@@ -33,7 +33,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig_test_support::endpoint::Endpoint;

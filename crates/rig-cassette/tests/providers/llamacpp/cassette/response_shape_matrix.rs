@@ -74,11 +74,12 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a reasoning turn should succeed");
@@ -134,8 +135,8 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                         .completion_request(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
+                    None,
                 )
-                .await
                 .expect("stream should start");
 
             let mut reasoning = String::new();
@@ -236,12 +237,13 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
         move |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect("llama.cpp serves n > 1");
@@ -265,8 +267,8 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
+                    None,
                 )
-                .await
                 .expect("stream should start");
 
             let mut text = String::new();
@@ -361,12 +363,13 @@ async fn logprobs_survive_into_the_raw_response() {
     with_llamacpp_cassette("response_shape_matrix/logprobs", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request("/no_think Say ok.")
                     .max_tokens(16)
                     .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
                     .build(),
+                None,
             )
             .await
             .expect("a logprobs request should succeed");

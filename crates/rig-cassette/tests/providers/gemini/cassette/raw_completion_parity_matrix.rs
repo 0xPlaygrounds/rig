@@ -59,7 +59,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
 }
@@ -212,7 +212,7 @@ async fn interactions_raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/interactions_raw_try_into_matches_completion",
         |client| async move {
             capture_completion_pair(
-                client.map_wire(|config| config.interactions(INTERACTIONS_MODEL)),
+                client.model(|config| config.interactions(INTERACTIONS_MODEL)),
                 request,
                 sink,
             )

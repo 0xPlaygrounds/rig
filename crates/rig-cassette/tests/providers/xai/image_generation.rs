@@ -1,6 +1,5 @@
 //! xAI image generation smoke test covering provider-specific additional parameters.
 
-use rig::image_generation::ImageGenerationModel;
 use rig::providers::openai;
 use rig::providers::xai;
 use serde_json::json;

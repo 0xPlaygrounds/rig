@@ -59,7 +59,7 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
                 .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
                 .max_tokens(24)
                 .build();
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             assert_eq!(
                 response.finish_reason(),
                 Some(rig::completion::FinishReason::Stop)
@@ -97,7 +97,7 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
                 .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
                 .max_tokens(24)
                 .build();
-            let outcome = collect_raw_stream_outcome(model.stream(request).await?).await;
+            let outcome = collect_raw_stream_outcome(model.stream(request, None)?).await;
             assert!(
                 outcome.errors.is_empty(),
                 "stream errors: {:?}",
@@ -134,7 +134,7 @@ async fn low_reasoning_effort_produces_a_reasoning_turn() {
                 .additional_params(json!({ "reasoning_effort": "low" }))
                 .max_tokens(64)
                 .build();
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             assert!(
                 response
                     .choice
@@ -175,7 +175,7 @@ async fn policy_sensitive_response_content_shape_is_recorded() {
             // The hunt is about the raw 200 response shape: a documented
             // nullable `content` may fail Rig's current typed decoder. The
             // recorded body below is the premise either way.
-            let _ = model.completion(request).await;
+            let _ = model.call(request, None).await;
             Ok::<(), rig::error::ProviderError>(())
         },
     )

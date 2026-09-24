@@ -1,7 +1,5 @@
 //! llama.cpp context smoke test.
 
-use rig::prelude::*;
-
 use super::super::cassette_support::*;
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 

@@ -83,13 +83,14 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(NOTE_PROMPT)
                         .tool(record_tool())
                         .tool_choice(rig::message::ToolChoice::Required)
                         .max_tokens(CUTTING_CAP)
                         .build(),
+                    None,
                 )
                 .await
                 .expect(
@@ -155,8 +156,8 @@ async fn the_streaming_path_drops_the_same_cut_call() {
                         .tool_choice(rig::message::ToolChoice::Required)
                         .max_tokens(CUTTING_CAP)
                         .build(),
+                    None,
                 )
-                .await
                 .expect("stream should start");
 
             let mut completed_calls = 0usize;
@@ -222,13 +223,14 @@ async fn a_complete_call_under_the_same_cap_survives() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(NOTE_PROMPT)
                         .tool(record_tool())
                         .tool_choice(rig::message::ToolChoice::Required)
                         .max_tokens(COMPLETE_CAP)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a generous budget should succeed");

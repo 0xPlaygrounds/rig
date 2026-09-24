@@ -4,11 +4,9 @@
 //! # The feature
 //!
 //! Capture is always on. Every completion the seam returns carries `raw`: the
-//! value
-//! [`CompletionModel::raw_completion`](rig::bedrock::completion::CompletionModel::raw_completion)
-//! would have returned — [`AwsConverseOutput`], rig's serializable mirror of
-//! the SDK's `ConverseOutput` — serialized with `serde_json::to_value` before
-//! normalization. Nothing about it is sent to Bedrock. `raw == Value::Null`
+//! unary Converse frame, [`InternalConverseOutput`], rig's serializable
+//! mirror of the SDK's `ConverseOutput`, serialized with
+//! `serde_json::to_value` before normalization. Nothing about it is sent to Bedrock. `raw == Value::Null`
 //! means only that a `CompletionResponse` was built by hand without a provider
 //! response behind it, which no cell here can produce.
 //!
@@ -18,17 +16,15 @@
 //! Converse fields are deliberately *not* on `raw` even when the wire carried
 //! them: the guardrail `trace`, `performance_config` and `service_tier` keep
 //! the SDK's own (non-`Serialize`) types and are `#[serde(skip)]` on
-//! [`InternalConverseOutput`](rig::bedrock::types::converse_output::InternalConverseOutput)
-//! (#2311), so `raw` — being the serialized value — omits them; typed access
-//! to the trace stays on the `raw_completion` route
-//! (`raw_provider_data/guardrail_trace_survives_into_raw_completion`).
+//! [`InternalConverseOutput`], so `raw`, being the serialized value, omits
+//! them.
 //!
 //! Every cell runs its one recorded turn through the shared execution helper
 //! [`capture_completion`](crate::raw_capture::capture_completion) and asserts
 //! against the parked response after the wrapper returns. The shared *format*
 //! contracts (`raw_capture::chat`, `raw_capture::responses`) do not apply:
 //! Converse is neither dialect, `raw` mirrors an SDK type instead of the reply
-//! bytes, and the types that would name the claim ([`AwsConverseOutput`]) live
+//! bytes, and the types that would name the claim ([`InternalConverseOutput`]) live
 //! in `rig-bedrock`, which the shared support crate does not depend on. The
 //! mirror-type round trip, the `#[serde(skip)]` boundary and the fixture
 //! premises below are therefore local by necessity.
@@ -37,7 +33,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_provider_type` | typed access | `AwsConverseOutput::deserialize(&*raw)` re-serializes equal | unrecorded (no valid AWS credentials in this environment) |
+//! | 1 | `raw_round_trips_provider_type` | typed access | `InternalConverseOutput::deserialize(&*raw)` re-serializes equal | unrecorded (no valid AWS credentials in this environment) |
 //! | 2 | `raw_exposes_latency_metrics` | provider-only field | `raw.metrics.latency_ms` equals the fixture's `metrics.latencyMs` | unrecorded (no valid AWS credentials in this environment) |
 //! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized response equals `raw` re-normalized (`try_into`); choice text and usage equal the fixture body | unrecorded (no valid AWS credentials in this environment) |
 //!
@@ -57,9 +53,12 @@
 //! body is account state).
 
 use rig::bedrock;
-use rig::bedrock::types::assistant_content::AwsConverseOutput;
+use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
+use rig::bedrock::types::converse_output::InternalConverseOutput;
 use rig::completion::CompletionResponse as RigCompletionResponse;
-use rig::prelude::*;
+use rig::driver::{Model, Observation, Opened, Transport};
+use rig::error::ProviderError;
+use rig::wire::Mode;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -72,12 +71,42 @@ const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &bedrock::completion::CompletionModel) -> rig::completion::CompletionRequest {
+fn request<T: Transport<Converse>>(
+    model: &Model<Converse, T>,
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
+}
+
+/// Answers every Converse request with one stored reply.
+#[derive(Clone)]
+struct Reply(InternalConverseOutput);
+
+impl Transport<Converse> for Reply {
+    fn send(
+        &self,
+        payload: ConverseRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let output = self.0.clone();
+        let request_id = output.request_id().map(str::to_owned);
+        Ok(async move {
+            Opened::new(futures::stream::iter([
+                Ok(ConverseFrame::Opened {
+                    model: payload.model,
+                    request_id,
+                }),
+                Ok(ConverseFrame::Whole(Box::new(output))),
+            ]))
+        })
+    }
 }
 
 /// The premise every cell rests on: the recorded body is a completed Converse
@@ -122,12 +151,12 @@ async fn raw_round_trips_provider_type() {
 
     let response = captured.take();
     let raw = &response.raw;
-    let typed =
-        AwsConverseOutput::deserialize(raw).expect("raw must deserialize into AwsConverseOutput");
+    let typed = InternalConverseOutput::deserialize(raw)
+        .expect("raw must deserialize into InternalConverseOutput");
     assert_eq!(
         serde_json::to_value(&typed).expect("provider type should serialize"),
         *raw,
-        "AwsConverseOutput must round-trip through its own serde"
+        "InternalConverseOutput must round-trip through its own serde"
     );
     assert!(!response.choice.is_empty());
 
@@ -171,9 +200,9 @@ async fn raw_exposes_latency_metrics() {
         body.pointer("/metrics/latencyMs"),
         "raw.metrics.latency_ms must equal the recorded wire value"
     );
-    let typed = AwsConverseOutput::deserialize(&raw).expect("raw must deserialize");
+    let typed = InternalConverseOutput::deserialize(&raw).expect("raw must deserialize");
     assert_eq!(
-        typed.0.metrics.map(|metrics| metrics.latency_ms),
+        typed.metrics.map(|metrics| metrics.latency_ms),
         body.pointer("/metrics/latencyMs").and_then(Value::as_i64)
     );
     // The SDK-typed extras are `#[serde(skip)]`, so `raw` never carries them
@@ -214,9 +243,12 @@ async fn normalized_fields_equal_raw_renormalized() {
     // The AWS request id is the `x-amzn-requestid` header, not part of the
     // Converse body, so the raw-derived normalization is given the same one
     // before the field-for-field comparison.
-    let from_raw: RigCompletionResponse = AwsConverseOutput::deserialize(&response.raw)
-        .expect("raw must deserialize into AwsConverseOutput")
-        .try_into()
+    let stored = InternalConverseOutput::deserialize(&response.raw)
+        .expect("raw must deserialize into InternalConverseOutput");
+    let replay = Model::new(Converse::new(MODEL), Reply(stored));
+    let from_raw: RigCompletionResponse = replay
+        .call(request(&replay), None)
+        .await
         .expect("raw must normalize");
     let from_raw = from_raw.with_optional_provider_request_id(response.provider_request_id.clone());
 

@@ -1,6 +1,4 @@
 use futures::FutureExt;
-use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::xai;
 use rig_test_support::endpoint::Endpoint;

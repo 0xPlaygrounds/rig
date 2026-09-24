@@ -14,7 +14,6 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::error::ErrorReport;
-use rig::prelude::*;
 use rig::providers::mistral;
 
 use crate::support::collect_stream_final_response_and_provider_final;
@@ -96,6 +95,7 @@ async fn verify_succeeds_against_the_versioned_models_route() -> Result<()> {
         |client| async move {
             client
                 .verify()
+                .verify()
                 .await
                 .map_err(|error| anyhow::anyhow!("verification should succeed: {error:?}"))?;
             Ok::<_, anyhow::Error>(())
@@ -141,7 +141,6 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
                 .completion("definitely-not-a-model")
                 .completion_request("Reply with exactly: identity probe")
                 .stream()
-                .await
             {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {

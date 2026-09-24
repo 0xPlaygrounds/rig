@@ -12,8 +12,6 @@
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
 
-use rig::prelude::*;
-
 use super::super::cassette_support::*;
 
 use crate::support::{
@@ -89,7 +87,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .build();
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = model.stream(request, None).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -112,8 +110,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("raw stream should start"),
             )
             .await;
@@ -192,8 +189,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
 
         let first_turn = collect_raw_stream_observation(
             model
-                .stream(request)
-                .await
+                .stream(request, None)
                 .expect("raw stream should start"),
         )
         .await;
@@ -229,8 +225,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
 
         let second_turn = collect_raw_stream_observation(
             model
-                .stream(followup_request)
-                .await
+                .stream(followup_request, None)
                 .expect("raw followup stream should start"),
         )
         .await;

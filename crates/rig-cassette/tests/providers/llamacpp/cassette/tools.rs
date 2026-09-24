@@ -4,7 +4,6 @@
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
 use rig::completion::Message;
-use rig::prelude::*;
 
 use super::super::cassette_support::*;
 

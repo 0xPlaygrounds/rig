@@ -1,7 +1,6 @@
 //! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI
 //! Responses wire: the `OPENROUTER` dialect routed to `/responses` once.
 
-use rig::prelude::*;
 use rig::providers::openai::responses_api::CompletionResponse;
 use serde::Deserialize as _;
 
@@ -28,7 +27,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
             // so it is read off the provider's own reply document, which the
             // driver keeps verbatim on `raw`. One interaction either way.
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 

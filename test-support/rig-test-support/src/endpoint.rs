@@ -23,6 +23,19 @@ impl<P, H> Endpoint<P, H> {
     pub fn new(wire: P, http: H) -> Self {
         Self { wire, http }
     }
+
+    /// This endpoint with its provider configuration transformed by `map`.
+    pub fn map_wire<Q>(self, map: impl FnOnce(P) -> Q) -> Endpoint<Q, H> {
+        Endpoint::new(map(self.wire), self.http)
+    }
+
+    /// The model `wire` builds from this endpoint's provider configuration.
+    pub fn model<W>(&self, wire: impl FnOnce(&P) -> W) -> Model<W, H>
+    where
+        H: Clone,
+    {
+        Model::new(wire(&self.wire), self.http.clone())
+    }
 }
 
 /// Generates the constructors an [`Endpoint`] over one provider offers:

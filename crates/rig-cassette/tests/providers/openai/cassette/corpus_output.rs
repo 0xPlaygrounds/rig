@@ -4,7 +4,6 @@
 //! under `crates/rig-cassette/fixtures/cassettes/openai/corpus_output/`.
 
 use rig::effect::{EffectFamily, EffectKind};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;

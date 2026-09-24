@@ -25,7 +25,6 @@
 //! Recorded against the default server (`--jinja --seed 42 --temp 0 -c 4096`,
 //! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M, `llama-server` b10964-b29c606e2).
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{LLAMACPP, OpenAI};
 use rig_test_support::endpoint::Endpoint;
 
@@ -145,11 +144,12 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         |client| async move {
             let model = client.chat(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("Reply with the single word: ok")
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("an unauthenticated local server accepts any bearer token");
@@ -293,7 +293,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
             // what the decoder folded it into. The assistant text must be the
             // same text either way.
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completions api request should succeed");
             assert_eq!(

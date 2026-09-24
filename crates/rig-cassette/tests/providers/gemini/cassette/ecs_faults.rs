@@ -9,9 +9,7 @@
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
-use rig::driver::Model;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_2_5_FLASH, GEMINI_3_FLASH_PREVIEW};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -28,8 +26,8 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -46,8 +44,8 @@ fn wire<H: Socket>(
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn missing(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -65,8 +63,8 @@ fn missing<H: Socket>(
 
 /// The recording's own model, for a cell that reuses a recording the
 /// corpus already had.
-fn legacy<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn legacy(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -133,7 +131,10 @@ fn scripted_stream(
         rig::http_client::BoxedHttpClient,
     >,
 > {
-    let client = Endpoint::new(Gemini::new(SCRIPTED_KEY), scripted(vec![sse_bytes(frames)]));
+    let client = Endpoint::new(
+        Gemini::new(SCRIPTED_KEY),
+        rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)])),
+    );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion(GEMINI_3_FLASH_PREVIEW),

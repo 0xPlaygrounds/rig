@@ -79,13 +79,13 @@ where
     let request = request(cell, history);
     if !cell.streamed {
         return model
-            .completion(request)
+            .call(request, None)
             .await
             .expect("the turn completes")
             .choice
             .to_vec();
     }
-    let mut stream = model.stream(request).await.expect("the stream opens");
+    let mut stream = model.stream(request, None).expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("a stream item");
     }
@@ -221,11 +221,7 @@ async fn run(client: BoundGemini, cell: Cell) {
     match cell.api {
         Api::GenerateContent => conversation(client.completion(cell.model), cell).await,
         Api::Interactions => {
-            conversation(
-                client.map_wire(|config| config.interactions(cell.model)),
-                cell,
-            )
-            .await
+            conversation(client.model(|config| config.interactions(cell.model)), cell).await
         }
     }
 }

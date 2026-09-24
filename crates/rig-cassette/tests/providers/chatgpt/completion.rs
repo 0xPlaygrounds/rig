@@ -3,7 +3,6 @@
 use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::streaming::{Delta, StreamEvent};
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
@@ -52,8 +51,7 @@ async fn system_messages_are_lifted_into_instructions() {
         .message(Message::system("Always answer with the single word maple."))
         .build();
     let mut stream = model
-        .stream(request)
-        .await
+        .stream(request, None)
         .expect("system-message stream should succeed");
 
     let mut text = String::new();
@@ -67,7 +65,7 @@ async fn system_messages_are_lifted_into_instructions() {
         }
     }
     if text.trim().is_empty() {
-        text = aggregated_text(&stream.snapshot());
+        text = aggregated_text(&stream.folded().snapshot());
     }
     assert_nonempty_response(&text);
     assert_contains_any_case_insensitive(&text, &["maple"]);

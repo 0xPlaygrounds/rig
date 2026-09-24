@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::mistral;
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -458,13 +457,13 @@ async fn raw_and_normalized_completion<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     request: rig::completion::CompletionRequest,
 ) -> Result<(
     mistral::CompletionResponse,
     rig::completion::CompletionResponse,
 )> {
-    let normalized = model.completion(request).await?;
+    let normalized = model.call(request, None).await?;
     let raw = mistral::CompletionResponse::deserialize(&normalized.raw)?;
     Ok((raw, normalized))
 }
@@ -534,7 +533,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(&observation, &[InspectManifest::NAME]);
             let tool_call = observation
@@ -560,13 +559,11 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             let model = client.completion(SESSION_MODEL);
 
             let auto = model
-                .completion(
-                    model
+                .call(model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Auto)
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             anyhow::ensure!(
                 auto.choice.iter().any(|content| matches!(
@@ -579,13 +576,11 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let any = model
-                .completion(
-                    model
+                .call(model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             anyhow::ensure!(
                 any.choice.iter().any(|content| matches!(
@@ -598,16 +593,14 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
-                    model
+                .call(model
                         .completion_request("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             let specific_calls = specific
                 .choice
@@ -623,13 +616,11 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
-                    model
+                .call(model
                         .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;

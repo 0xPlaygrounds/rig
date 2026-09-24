@@ -8,8 +8,6 @@
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
-use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::endpoint::Endpoint;
@@ -19,8 +17,8 @@ const THINKING: cells::ThinkingWire = cells::ThinkingWire::Gemini;
 // gemini-2.5-flash, not flash-lite: at temperature 0 flash-lite answered the
 // `list_files` functionResponse with an empty candidate (no parts,
 // finishReason STOP) on both endpoints, 3 attempts, first recording round.
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -36,8 +34,8 @@ fn wire<H: Socket>(
     }
 }
 
-fn task_wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn task_wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,

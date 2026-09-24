@@ -31,7 +31,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::xai;
 use rig_test_support::endpoint::Endpoint;

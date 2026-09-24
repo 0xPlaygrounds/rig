@@ -1,6 +1,5 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
 use rig_test_support::endpoint::Endpoint;
@@ -50,7 +49,7 @@ async fn responses_api_accepts_null_metadata() {
             // `CompletionResponse::raw`. One request therefore yields both
             // views, which is what the single recorded interaction allows.
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("vLLM Responses API completion with null metadata should deserialize");
             let reply = ProviderResponse::deserialize(&response.raw)

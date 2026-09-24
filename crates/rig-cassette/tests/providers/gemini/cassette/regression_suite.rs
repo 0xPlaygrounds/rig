@@ -4,7 +4,6 @@
 //! See `many_rigs/rig-regression-cassette-suite-proposal.md` for the catalogue.
 
 use rig::agent::OutputMode;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,

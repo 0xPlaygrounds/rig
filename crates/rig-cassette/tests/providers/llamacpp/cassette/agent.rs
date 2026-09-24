@@ -1,7 +1,5 @@
 //! llama.cpp agent completion smoke test.
 
-use rig::prelude::*;
-
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 use super::super::cassette_support::*;

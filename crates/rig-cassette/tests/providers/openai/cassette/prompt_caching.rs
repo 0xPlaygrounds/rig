@@ -39,7 +39,6 @@
 //! records a miss fails immediately instead of committing a fixture that pins
 //! one.
 
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
 use rig_test_support::endpoint::Endpoint;

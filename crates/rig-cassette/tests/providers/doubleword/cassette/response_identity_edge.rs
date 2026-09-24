@@ -59,7 +59,6 @@ async fn streaming_identity_contract_vs_reality() {
                 .completion_request("Reply with exactly: stream identity probe")
                 .max_tokens(128)
                 .stream()
-                .await
                 .expect("stream should open");
             let mut terminal = None;
             while let Some(item) = stream.next().await {

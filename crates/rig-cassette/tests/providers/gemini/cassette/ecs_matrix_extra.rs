@@ -5,7 +5,6 @@
 //! `tests/common/ecs_matrix/extra.rs`; this file holds the scenario
 //! literals and the wire's models.
 
-use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
@@ -20,8 +19,8 @@ use crate::ecs_matrix::{
     },
 };
 
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -38,8 +37,8 @@ fn wire<H: Socket>(
 }
 
 /// The recording's own model, for the cell over a breadth recording.
-fn legacy<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn legacy(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,

@@ -8,7 +8,6 @@
 //! Gemini.
 
 use rig::agent::RequestPatch;
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::hook_stress_support::{

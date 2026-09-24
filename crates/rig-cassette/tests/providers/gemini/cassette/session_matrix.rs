@@ -21,9 +21,18 @@ const CELL: Cell = Cell {
 fn models(
     client: BoundGemini,
 ) -> (
-    rig::Model<rig::providers::gemini::completion::GenerateContent, BoxedHttpClient>,
-    rig::Model<rig::providers::gemini::completion::GenerateContent, BoxedHttpClient>,
-    rig::Model<rig::providers::gemini::completion::GenerateContent, BoxedHttpClient>,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
 ) {
     (
         client.completion("gemini-2.5-flash"),

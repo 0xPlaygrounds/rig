@@ -82,7 +82,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
 }
@@ -94,7 +94,7 @@ fn forced_tool_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
@@ -113,7 +113,7 @@ fn structured_output_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(STRUCTURED_OUTPUT_PROMPT)

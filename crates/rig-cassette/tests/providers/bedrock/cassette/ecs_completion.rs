@@ -7,7 +7,6 @@ use crate::support::{
 };
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use rig::bedrock;
-use rig::prelude::*;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
@@ -74,9 +73,10 @@ async fn prompt_caching_completion_smoke() {
             with_bedrock_cassette(
                 "agent/prompt_caching_completion_smoke",
                 |client| async move {
-                    let model = client
-                        .completion(bedrock::completion::AMAZON_NOVA_LITE)
-                        .with_prompt_caching();
+                    let model = rig_test_support::endpoint::map_wire(
+                        client.completion(bedrock::completion::AMAZON_NOVA_LITE),
+                        bedrock::completion::Converse::with_prompt_caching,
+                    );
                     let mut ecs = EcsAgent::new(model, BASIC_PREAMBLE, 1);
                     ecs.app
                         .world_mut()

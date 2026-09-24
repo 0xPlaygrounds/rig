@@ -6,7 +6,6 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig_cassette::agent::AgentReplayExt;
 

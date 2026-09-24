@@ -61,7 +61,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::{Value, json};

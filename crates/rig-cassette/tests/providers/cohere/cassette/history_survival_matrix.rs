@@ -10,7 +10,7 @@ fn params() -> Option<serde_json::Value> {
 fn model(
     client: BoundCohere,
     cell: Cell,
-) -> rig::Model<rig::providers::cohere::Chat, BoxedHttpClient> {
+) -> rig::Model<rig::providers::cohere::Chat, rig::http_client::BoxedHttpClient> {
     client.completion(cell.model)
 }
 

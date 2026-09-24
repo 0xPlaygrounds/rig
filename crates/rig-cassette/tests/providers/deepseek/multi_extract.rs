@@ -4,7 +4,6 @@ use std::future::IntoFuture;
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

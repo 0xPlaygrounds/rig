@@ -9,7 +9,6 @@ use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::bus::Bus;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;

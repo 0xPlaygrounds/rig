@@ -85,12 +85,13 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     with_llamacpp_cassette("sampling_matrix/temperature_zero", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Say ok."))
                     .temperature(0.0)
                     .max_tokens(32)
                     .build(),
+                None,
             )
             .await
             .expect("temperature 0 should be accepted");
@@ -100,12 +101,13 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     with_llamacpp_cassette("sampling_matrix/temperature_nonzero", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Say ok."))
                     .temperature(0.7)
                     .max_tokens(32)
                     .build(),
+                None,
             )
             .await
             .expect("a non-zero temperature should be accepted");
@@ -132,11 +134,12 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_one", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request("Count from one to ten.")
                     .max_tokens(1)
                     .build(),
+                None,
             )
             .await
             .expect("a one-token cap is a normal request");
@@ -170,11 +173,12 @@ async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_normal", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Reply with the single word: ok"))
                     .max_tokens(512)
                     .build(),
+                None,
             )
             .await
             .expect("a generous cap is a normal request");
@@ -217,7 +221,7 @@ async fn a_single_stop_sequence_truncates_the_answer() {
     with_llamacpp_cassette("sampling_matrix/stop_single", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!(
                         "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
@@ -225,6 +229,7 @@ async fn a_single_stop_sequence_truncates_the_answer() {
                     .max_tokens(64)
                     .additional_params(json!({ "stop": ["Charlie"] }))
                     .build(),
+                None,
             )
             .await
             .expect("a stop sequence is a normal request");
@@ -262,7 +267,7 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
     with_llamacpp_cassette("sampling_matrix/stop_multiple", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!(
                         "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
@@ -271,6 +276,7 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
                     // `Zulu` never appears; `Bravo` appears before `Charlie`.
                     .additional_params(json!({ "stop": ["Zulu", "Charlie", "Bravo"] }))
                     .build(),
+                None,
             )
             .await
             .expect("several stop sequences are a normal request");
@@ -300,7 +306,7 @@ async fn a_stop_sequence_that_never_matches_changes_nothing() {
     with_llamacpp_cassette("sampling_matrix/stop_never_fires", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!(
                         "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
@@ -308,6 +314,7 @@ async fn a_stop_sequence_that_never_matches_changes_nothing() {
                     .max_tokens(64)
                     .additional_params(json!({ "stop": ["QQZZXX-never-emitted"] }))
                     .build(),
+                None,
             )
             .await
             .expect("an unmatched stop sequence is a normal request");
@@ -335,7 +342,7 @@ async fn stop_matching_is_case_sensitive() {
     with_llamacpp_cassette("sampling_matrix/stop_case_sensitive", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!(
                         "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
@@ -343,6 +350,7 @@ async fn stop_matching_is_case_sensitive() {
                     .max_tokens(64)
                     .additional_params(json!({ "stop": ["charlie"] }))
                     .build(),
+                None,
             )
             .await
             .expect("a case-mismatched stop sequence is still a valid request");
@@ -380,12 +388,13 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     with_llamacpp_cassette("sampling_matrix/seed_fixed", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Say ok."))
                     .max_tokens(32)
                     .additional_params(json!({ "seed": 7 }))
                     .build(),
+                None,
             )
             .await
             .expect("an explicit seed should be accepted");
@@ -395,11 +404,12 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     with_llamacpp_cassette("sampling_matrix/seed_absent", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}Say ok."))
                     .max_tokens(32)
                     .build(),
+                None,
             )
             .await
             .expect("no seed should be accepted");

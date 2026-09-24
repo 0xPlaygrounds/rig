@@ -4,9 +4,7 @@
 //! # The feature
 //!
 //! Capture is always on. The terminal record of every stream the seam yields
-//! carries `raw`: the value
-//! [`CompletionModel::raw_stream`](rig::bedrock::completion::CompletionModel::raw_stream)
-//! would have yielded as its `FinalResponse` — [`BedrockStreamingResponse`]:
+//! carries `raw`: the stream's terminal record, [`BedrockStreamingResponse`]:
 //! the `metadata` event's usage, the `messageStop` event's `stopReason` in
 //! Bedrock's own vocabulary, and the operation's AWS request id — serialized
 //! with `serde_json::to_value`. It is the terminal record only, and nothing
@@ -49,7 +47,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::bedrock;
 use rig::bedrock::streaming::BedrockStreamingResponse;
 use rig::bedrock::types::converse_output::StopReason;
-use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -64,7 +61,9 @@ const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &bedrock::completion::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(
+    model: &rig::Model<bedrock::completion::Converse, bedrock::client::BedrockRuntime>,
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)

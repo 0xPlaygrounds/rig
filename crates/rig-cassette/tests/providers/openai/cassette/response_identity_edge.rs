@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
@@ -191,7 +190,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .completion_request("Reply with exactly: two views probe")
                 .build();
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
             assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");

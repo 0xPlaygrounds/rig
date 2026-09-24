@@ -4,7 +4,6 @@
 //! `openai_tool_call_turns` golden's; the cassette is the same.
 
 use rig::effect::EffectFamily;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
 

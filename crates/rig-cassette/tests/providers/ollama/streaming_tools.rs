@@ -1,6 +1,5 @@
 //! Migrated from `examples/ollama_streaming_with_tools.rs`.
 
-use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 use rig_test_support::endpoint::Endpoint;
 

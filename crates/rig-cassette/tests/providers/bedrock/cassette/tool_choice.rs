@@ -3,7 +3,6 @@
 use rig::bedrock;
 use rig::completion::{AssistantContent, Message};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::tool::Tool;
 
 use super::super::support::with_bedrock_cassette;
@@ -61,7 +60,7 @@ async fn required_forces_function_call() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -153,7 +152,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .build();
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = model.stream(request, None).expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 
             assert!(

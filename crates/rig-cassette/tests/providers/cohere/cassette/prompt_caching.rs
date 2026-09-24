@@ -42,7 +42,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::prelude::*;
 use rig::providers::cohere;
 
 use crate::cache_conformance::{

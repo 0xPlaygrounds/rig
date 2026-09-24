@@ -1,7 +1,5 @@
 //! Cassette-backed Venice streaming tool coverage.
 
-use rig::prelude::*;
-
 use super::super::{TOOL_MODEL, support::with_venice_cassette};
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,

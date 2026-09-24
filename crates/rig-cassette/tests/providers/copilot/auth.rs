@@ -2,7 +2,6 @@
 
 use assert_fs::TempDir;
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::prelude::*;
 use rig::providers::copilot::auth::AuthSource;
 use rig::providers::copilot::wire::Copilot;
 use rig_test_support::endpoint::Endpoint;

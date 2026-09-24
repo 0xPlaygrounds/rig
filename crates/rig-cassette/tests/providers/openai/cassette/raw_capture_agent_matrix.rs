@@ -57,7 +57,6 @@ use rig::agent::{
 };
 use rig::completion::ResponseIdentity;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::Value;

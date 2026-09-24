@@ -44,7 +44,6 @@
 //! behaviour cannot leave a cell green while covering nothing.
 
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_interaction_bodies, recorded_json_request};

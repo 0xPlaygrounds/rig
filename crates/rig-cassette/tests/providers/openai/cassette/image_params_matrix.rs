@@ -67,7 +67,6 @@
 //! is the one that reinstates it.
 
 use rig::error::ProviderError;
-use rig::image_generation::ImageGenerationModel;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};

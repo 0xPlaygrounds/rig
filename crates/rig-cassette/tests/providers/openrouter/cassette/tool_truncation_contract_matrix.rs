@@ -43,7 +43,6 @@ use std::sync::{
 use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::{AssistantContent, FinishReason};
-use rig::prelude::*;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -137,7 +136,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     model
@@ -202,7 +201,7 @@ impl Tool for FileReport {
 async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
     let model = client.completion(model_name(cell.model));
     match cell.transport {
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(&model, cell), None).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -214,7 +213,7 @@ async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(&model, cell)).await {
+            let raw = match model.stream(request(&model, cell), None) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {

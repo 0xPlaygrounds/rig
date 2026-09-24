@@ -11,7 +11,6 @@ use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::Message;
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::Output;
 use rig::providers::xai;
@@ -537,7 +536,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -596,7 +595,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);
@@ -625,15 +624,13 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             let model = client.completion(SESSION_MODEL);
 
             let required = model
-                .completion(
-                    model
+                .call(model
                         .completion_request(
                             "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -646,8 +643,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
-                    model
+                .call(model
                         .completion_request(
                             "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
                         )
@@ -656,8 +652,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             let specific_calls = specific
                 .choice
@@ -673,15 +668,13 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
-                    model
+                .call(model
                         .completion_request(
                             "Do not call tools. Reply with exactly this phrase: no-tool-answer",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -715,7 +708,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 }))
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
 
@@ -807,7 +800,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 }))
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);

@@ -26,9 +26,6 @@ use bevy_app::App;
 use bevy_ecs::prelude::*;
 use futures::StreamExt;
 
-
-
-
 use rig_core::effect::EffectFamily;
 
 use rig_core::effect::EffectKind;
@@ -54,7 +51,6 @@ use rig_core::streaming::Delta;
 use rig_core::streaming::StreamEvent;
 
 use rig_core::streaming::StreamEvents;
-
 
 use rig_core::tool::Tool;
 

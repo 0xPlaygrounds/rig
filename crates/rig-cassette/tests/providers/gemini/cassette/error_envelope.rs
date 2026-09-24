@@ -21,7 +21,7 @@ async fn nonexistent_model_error_preserves_status_and_body() {
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             let error = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect_err("a nonexistent model should be a provider error");
 
@@ -50,7 +50,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
 
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.
-            let error = match model.stream(request).await {
+            let error = match model.stream(request, None) {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,

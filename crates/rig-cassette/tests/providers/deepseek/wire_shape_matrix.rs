@@ -117,12 +117,13 @@ async fn blocking_image_base64_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(multimodal_prompt(red_png()))
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("DeepSeek rejects an image part rather than answering without it");
@@ -148,7 +149,7 @@ async fn blocking_image_url_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(multimodal_prompt(UserContent::image_url(
                             "https://example.invalid/red.png",
@@ -158,6 +159,7 @@ async fn blocking_image_url_part_reaches_the_wire() {
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("DeepSeek rejects an image part rather than answering without it");
@@ -182,7 +184,7 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(multimodal_prompt(UserContent::Document(
                             rig::message::Document {
@@ -194,6 +196,7 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("DeepSeek rejects a file part rather than answering without it");
@@ -218,7 +221,7 @@ async fn blocking_audio_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(multimodal_prompt(UserContent::audio(
                             "aGVsbG8=",
@@ -227,6 +230,7 @@ async fn blocking_audio_part_reaches_the_wire() {
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("DeepSeek rejects an audio part rather than answering without it");
@@ -251,7 +255,7 @@ async fn blocking_video_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(multimodal_prompt(UserContent::Video(
                             rig::message::Video {
@@ -265,6 +269,7 @@ async fn blocking_video_part_reaches_the_wire() {
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("DeepSeek rejects a video part rather than answering without it");
@@ -293,7 +298,7 @@ async fn blocking_image_only_message_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(Message::User {
                             content: vec![red_png()],
@@ -301,6 +306,7 @@ async fn blocking_image_only_message_reaches_the_wire() {
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("an image-only turn is rejected, not silently emptied");
@@ -329,16 +335,14 @@ async fn streaming_image_part_reaches_the_wire() {
             // as the stream's first item, depending on how the transport
             // reports a 400 on an event-stream request; both are the provider
             // rejecting the part rather than answering without it.
-            let rendered = match model
-                .stream(
-                    model
-                        .completion_request(multimodal_prompt(red_png()))
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
-                )
-                .await
-            {
+            let rendered = match model.stream(
+                model
+                    .completion_request(multimodal_prompt(red_png()))
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16)
+                    .build(),
+                None,
+            ) {
                 Err(error) => error.to_string(),
                 Ok(stream) => {
                     let outcome = collect_raw_stream_outcome(stream).await;
@@ -378,7 +382,7 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(Message::User {
                             content: vec![
@@ -389,6 +393,7 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -423,7 +428,7 @@ async fn blocking_text_document_still_flattens_to_a_string() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("What is the code word? Answer with just the word.")
                         .document(Document {
@@ -434,6 +439,7 @@ async fn blocking_text_document_still_flattens_to_a_string() {
                         .additional_params(non_thinking_params())
                         .max_tokens(24)
                         .build(),
+                    None,
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -460,7 +466,7 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("Now say: history-ok")
                         .message(Message::Assistant {
@@ -485,6 +491,7 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
                         .additional_params(non_thinking_params())
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -601,7 +608,7 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("ping")
                         .tool(crate::support::zero_arg_tool_definition("ping"))
@@ -609,6 +616,7 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
                         .additional_params(thinking_params())
                         .max_tokens(64)
                         .build(),
+                    None,
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -636,7 +644,7 @@ async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request("ping")
                         .tool(crate::support::zero_arg_tool_definition("ping"))
@@ -644,6 +652,7 @@ async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
                         .additional_params(non_thinking_params())
                         .max_tokens(32)
                         .build(),
+                    None,
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -673,13 +682,11 @@ async fn chat_completion_rejects_an_unknown_model_with_the_provider_body() {
         |client| async move {
             let model = client.completion("deepseek-v9-nonexistent");
             let error = model
-                .completion(
-                    model
+                .call(model
                         .completion_request("hi")
                         .additional_params(non_thinking_params())
                         .max_tokens(8)
-                        .build(),
-                )
+                        .build(), None)
                 .await
                 .expect_err("an unknown model is rejected");
             let rendered = error.to_string();
@@ -701,13 +708,11 @@ async fn chat_completion_rejects_a_bogus_key_with_the_provider_body() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
+                .call(model
                         .completion_request("hi")
                         .additional_params(non_thinking_params())
                         .max_tokens(8)
-                        .build(),
-                )
+                        .build(), None)
                 .await
                 .expect_err("a rejected key is an error");
             let rendered = error.to_string().to_lowercase();
@@ -750,7 +755,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
 
             // DeepSeek's own split is on the reply document; only the hit
             // half has a normalized slot.
-            let first = model.completion(build()).await?;
+            let first = model.call(build(), None).await?;
             let first_usage = first.raw["usage"].clone();
             let hit = first_usage["prompt_cache_hit_tokens"]
                 .as_u64()
@@ -766,7 +771,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
                 "hit + miss accounts for the whole prompt: {first_usage}"
             );
 
-            let second = model.completion(build()).await?;
+            let second = model.call(build(), None).await?;
             let second_usage = second.raw["usage"].clone();
             let second_hit = second_usage["prompt_cache_hit_tokens"]
                 .as_u64()
@@ -807,8 +812,8 @@ async fn streaming_repeated_prompt_reports_the_cache_split() {
                     .build()
             };
 
-            let _ = collect_raw_stream_outcome(model.stream(build()).await?).await;
-            let second = collect_raw_stream_outcome(model.stream(build()).await?).await;
+            let _ = collect_raw_stream_outcome(model.stream(build(), None)?).await;
+            let second = collect_raw_stream_outcome(model.stream(build(), None)?).await;
             let usage = second
                 .final_record
                 .as_ref()

@@ -21,7 +21,7 @@ async fn completion_error_preserves_status_and_body() {
             let request = model.completion_request(BASIC_PROMPT).build();
 
             let error = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect_err("an unknown model should fail");
 

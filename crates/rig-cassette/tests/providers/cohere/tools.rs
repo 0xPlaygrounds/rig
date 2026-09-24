@@ -1,6 +1,5 @@
 //! Cohere tools smoke test.
 
-use rig::prelude::*;
 use rig::providers::cohere::{self, wire::Cohere};
 use rig_test_support::endpoint::Endpoint;
 

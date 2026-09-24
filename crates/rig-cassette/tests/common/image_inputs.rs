@@ -56,9 +56,14 @@ fn request(
 }
 
 /// Generate the swatch, `side` pixels square when given, and return its bytes.
-pub async fn generate<G>(generator: &G, side: Option<u32>, params: Option<Value>) -> Vec<u8>
+pub async fn generate<W, T>(
+    generator: &rig::driver::Model<W, T>,
+    side: Option<u32>,
+    params: Option<Value>,
+) -> Vec<u8>
 where
-    G: ImageGenerationModel + Clone,
+    W: rig::wire::Wire<Op = rig::operation::ImageGeneration> + Clone,
+    T: rig::driver::Transport<W>,
 {
     let mut builder = generator.image_generation_request(PROMPT);
     if let Some(side) = side {
@@ -88,7 +93,7 @@ pub async fn as_user_content<W, T>(
         ],
     };
     let reply = vision
-        .completion(request(vec![message], vec![], params))
+        .call(request(vec![message], vec![], params), None)
         .await
         .expect("the vision model reads the generated image");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);
@@ -110,11 +115,10 @@ pub async fn as_tool_result<W, T>(
     };
     let prompt = Message::user(format!("Call render_swatch, then answer: {QUESTION}"));
     let first = model
-        .completion(request(
-            vec![prompt.clone()],
-            vec![tool.clone()],
-            params.clone(),
-        ))
+        .call(
+            request(vec![prompt.clone()], vec![tool.clone()], params.clone()),
+            None,
+        )
         .await
         .expect("turn one");
     let call = first
@@ -145,7 +149,7 @@ pub async fn as_tool_result<W, T>(
         },
     ];
     let reply = model
-        .completion(request(history, vec![tool], params))
+        .call(request(history, vec![tool], params), None)
         .await
         .expect("the model reads the image tool result");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);

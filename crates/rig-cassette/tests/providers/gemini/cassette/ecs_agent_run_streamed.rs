@@ -9,7 +9,6 @@ use super::super::{
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
 use rig::{
-    driver::Model,
     effect::EffectKind,
     message::{Message, ToolChoice},
     providers::gemini::{self, Gemini},
@@ -394,7 +393,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
 }, |log| rig_test_support::goldens::world_golden_effects("gemini_agent_run_streamed_streamed_hand_driven_multi_turn_run_completes", log)).await
 }
 
-fn setup<H: Socket>(client: &Endpoint<Gemini, H>) -> EcsAgent {
+fn setup(client: &Endpoint<Gemini>) -> EcsAgent {
     let mut ecs = EcsAgent::new(
         client.completion(gemini::completion::GEMINI_2_5_FLASH),
         FORCE_TOOLS_PREAMBLE,

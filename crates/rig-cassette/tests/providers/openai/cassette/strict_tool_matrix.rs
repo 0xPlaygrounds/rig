@@ -33,7 +33,6 @@
 
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use serde_json::{Value, json};
 
@@ -132,7 +131,7 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("non-strict tool request should succeed");
 
@@ -160,8 +159,7 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
                 .build();
 
             let stream = model
-                .stream(request)
-                .await
+                .stream(request, None)
                 .expect("non-strict streaming tool request should start");
             let observation = collect_raw_stream_observation(stream).await;
 
@@ -191,10 +189,10 @@ async fn strict_tools_opt_in_sends_strict_true() {
     with_openai_cassette(
         "strict_tool_matrix/strict_tools_opt_in_sends_strict_true",
         |client| async move {
-            let model = client
-                .openai
-                .completion(openai::GPT_4O_MINI)
-                .map_wire(|wire| wire.with_strict_tools());
+            let model = rig_test_support::endpoint::map_wire(
+                client.openai.completion(openai::GPT_4O_MINI),
+                |wire| wire.with_strict_tools(),
+            );
             let request = model
                 .completion_request(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -202,7 +200,7 @@ async fn strict_tools_opt_in_sends_strict_true() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("strict tool request should succeed");
 

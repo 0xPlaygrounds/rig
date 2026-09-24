@@ -65,7 +65,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
@@ -86,7 +86,7 @@ fn tool_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)

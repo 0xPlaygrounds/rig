@@ -203,9 +203,10 @@ async fn a_single_document_is_still_a_ranking() {
 #[tokio::test]
 async fn top_n_beyond_the_document_count_is_clamped() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_beyond_count", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .map_wire(|wire| wire.with_top_n(99))
+        let reranked =
+            rig_test_support::endpoint::map_wire(client.rerank(CASSETTE_RERANK_MODEL), |wire| {
+                wire.with_top_n(99)
+            })
             .rerank(QUERY, documents())
             .await
             .expect("an over-large top_n is clamped, not refused");
@@ -236,9 +237,10 @@ async fn top_n_beyond_the_document_count_is_clamped() {
 #[tokio::test]
 async fn top_n_below_the_document_count_truncates() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_truncates", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .map_wire(|wire| wire.with_top_n(1))
+        let reranked =
+            rig_test_support::endpoint::map_wire(client.rerank(CASSETTE_RERANK_MODEL), |wire| {
+                wire.with_top_n(1)
+            })
             .rerank(QUERY, documents())
             .await
             .expect("a truncating top_n should succeed");
@@ -270,9 +272,10 @@ async fn top_n_below_the_document_count_truncates() {
 #[tokio::test]
 async fn top_n_zero_returns_an_empty_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_zero", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .map_wire(|wire| wire.with_top_n(0))
+        let reranked =
+            rig_test_support::endpoint::map_wire(client.rerank(CASSETTE_RERANK_MODEL), |wire| {
+                wire.with_top_n(0)
+            })
             .rerank(QUERY, documents())
             .await
             .expect("top_n 0 is a valid request, not an error");

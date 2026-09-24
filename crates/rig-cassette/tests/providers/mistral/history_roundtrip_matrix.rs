@@ -106,7 +106,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model.completion_request(prompt(cell.shape)).max_tokens(24);
@@ -140,21 +140,21 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
             // The provider-native surface: the reply's verbatim JSON, which
             // the driver keeps on `CompletionResponse::raw`, read the way a
             // caller reaching past the normalized view reads it.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(&model, cell), None).await?;
             Observation {
                 text: content_text(&response.raw["choices"][0]["message"]["content"]),
                 saw_terminal: true,
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(&model, cell), None).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,
             }
         }
         (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell), None)?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
@@ -172,7 +172,7 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
             observation
         }
         (Transport::Streaming, Surface::Normalized) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell), None)?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,

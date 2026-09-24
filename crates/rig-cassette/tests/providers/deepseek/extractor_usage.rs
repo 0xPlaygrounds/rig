@@ -3,7 +3,6 @@
 use anyhow::{Result, anyhow};
 use rig::TypedPromptResponse;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::deepseek;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

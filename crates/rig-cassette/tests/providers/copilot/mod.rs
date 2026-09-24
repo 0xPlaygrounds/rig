@@ -26,7 +26,6 @@ mod structured_output;
 mod typed_prompt_tools;
 
 use assert_fs::TempDir;
-use rig::driver::Model;
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::providers::copilot;
 use rig::providers::copilot::auth::{AuthError, AuthSource, Authenticator, DeviceCodeHandler};

@@ -4,7 +4,6 @@
 //! have a producer here; a scripted row's oracle is the runner in the world
 //! cell's own test.
 
-use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 use rig_test_support::endpoint::Endpoint;
@@ -12,8 +11,8 @@ use rig_test_support::endpoint::Endpoint;
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -30,8 +29,8 @@ fn wire<H: Socket>(
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn missing(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,

@@ -45,7 +45,6 @@ async fn streaming_contract_and_gateway_both_report_none() {
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
-                .await
                 .expect("stream should open");
             let mut terminal = None;
             while let Some(item) = stream.next().await {

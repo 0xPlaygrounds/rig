@@ -1,7 +1,6 @@
 //! llama.cpp loaders smoke test.
 
 use rig::loaders::FileLoader;
-use rig::prelude::*;
 
 use super::super::cassette_support::*;
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};

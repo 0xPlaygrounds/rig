@@ -4,7 +4,6 @@ use anyhow::Result;
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
-use rig::prelude::*;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

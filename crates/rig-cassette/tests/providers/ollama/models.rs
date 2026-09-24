@@ -1,6 +1,5 @@
 //! Ollama model listing smoke test.
 
-use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 use rig_test_support::endpoint::Endpoint;
 
@@ -11,7 +10,7 @@ async fn list_models_smoke() {
         Ollama::new(),
         rig::rig_reqwest::bundled().expect("transport should build"),
     );
-    let models = match ollama.models().list_all().await {
+    let models = match ollama.models().call((), None).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Ollama models should succeed\nDisplay: {error}\nDebug: {error:#?}")

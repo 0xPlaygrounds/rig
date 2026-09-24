@@ -35,7 +35,6 @@
 use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::deepseek;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -101,7 +100,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     preamble: &str,
     tools: Vec<ToolDefinition>,
     params: Value,
@@ -114,7 +113,7 @@ fn request_for<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     prompt: &str,
     preamble: &str,
     tools: Vec<ToolDefinition>,
@@ -247,13 +246,16 @@ async fn assert_blocking_truncation_survives(
 ) -> Result<()> {
     let model = client.completion(MODEL);
     let response = model
-        .completion(request(
-            &model,
-            TOOL_PREAMBLE,
-            vec![file_report_tool()],
-            non_thinking_params(),
-            max_tokens,
-        ))
+        .call(
+            request(
+                &model,
+                TOOL_PREAMBLE,
+                vec![file_report_tool()],
+                non_thinking_params(),
+                max_tokens,
+            ),
+            None,
+        )
         .await?;
 
     // The premise, read off DeepSeek's own view of the very reply the
@@ -308,17 +310,16 @@ async fn assert_streaming_truncation_survives(
     max_tokens: u64,
 ) -> Result<()> {
     let model = client.completion(MODEL);
-    let outcome = collect_raw_stream_outcome(
-        model
-            .stream(request(
-                &model,
-                TOOL_PREAMBLE,
-                vec![file_report_tool()],
-                non_thinking_params(),
-                max_tokens,
-            ))
-            .await?,
-    )
+    let outcome = collect_raw_stream_outcome(model.stream(
+        request(
+            &model,
+            TOOL_PREAMBLE,
+            vec![file_report_tool()],
+            non_thinking_params(),
+            max_tokens,
+        ),
+        None,
+    )?)
     .await;
 
     assert!(
@@ -360,13 +361,16 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(request(
-                    &model,
-                    TOOL_PREAMBLE,
-                    vec![file_report_tool()],
-                    non_thinking_params(),
-                    12,
-                ))
+                .call(
+                    request(
+                        &model,
+                        TOOL_PREAMBLE,
+                        vec![file_report_tool()],
+                        non_thinking_params(),
+                        12,
+                    ),
+                    None,
+                )
                 .await?;
             assert_eq!(
                 normalized.finish_reason(),
@@ -399,13 +403,16 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(request(
-                    &model,
-                    TOOL_PREAMBLE,
-                    vec![file_report_tool()],
-                    non_thinking_params(),
-                    16,
-                ))
+                .call(
+                    request(
+                        &model,
+                        TOOL_PREAMBLE,
+                        vec![file_report_tool()],
+                        non_thinking_params(),
+                        16,
+                    ),
+                    None,
+                )
                 .await?;
             let calls = tool_calls(&normalized.choice);
             assert!(
@@ -438,13 +445,16 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(request(
-                    &model,
-                    TOOL_PREAMBLE,
-                    vec![file_report_tool()],
-                    non_thinking_params(),
-                    20,
-                ))
+                .call(
+                    request(
+                        &model,
+                        TOOL_PREAMBLE,
+                        vec![file_report_tool()],
+                        non_thinking_params(),
+                        20,
+                    ),
+                    None,
+                )
                 .await?;
             let calls = tool_calls(&normalized.choice);
             assert!(calls.is_empty());
@@ -525,13 +535,16 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(request(
-                    &model,
-                    TOOL_PREAMBLE,
-                    vec![file_report_tool()],
-                    non_thinking_params(),
-                    96,
-                ))
+                .call(
+                    request(
+                        &model,
+                        TOOL_PREAMBLE,
+                        vec![file_report_tool()],
+                        non_thinking_params(),
+                        96,
+                    ),
+                    None,
+                )
                 .await?;
             let calls = tool_calls(&normalized.choice);
             assert_eq!(calls.len(), 1, "the complete call still reaches the caller");
@@ -565,17 +578,16 @@ async fn streaming_budget_12_truncates_before_any_tool_call() {
         "truncation_matrix/streaming_budget_12_truncates_before_any_tool_call",
         |client| async move {
             let model = client.completion(MODEL);
-            let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(request(
-                        &model,
-                        TOOL_PREAMBLE,
-                        vec![file_report_tool()],
-                        non_thinking_params(),
-                        12,
-                    ))
-                    .await?,
-            )
+            let outcome = collect_raw_stream_outcome(model.stream(
+                request(
+                    &model,
+                    TOOL_PREAMBLE,
+                    vec![file_report_tool()],
+                    non_thinking_params(),
+                    12,
+                ),
+                None,
+            )?)
             .await;
             assert!(outcome.tool_calls.is_empty());
             assert_eq!(
@@ -600,17 +612,16 @@ async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
         "truncation_matrix/streaming_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
             let model = client.completion(MODEL);
-            let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(request(
-                        &model,
-                        TOOL_PREAMBLE,
-                        vec![file_report_tool()],
-                        non_thinking_params(),
-                        16,
-                    ))
-                    .await?,
-            )
+            let outcome = collect_raw_stream_outcome(model.stream(
+                request(
+                    &model,
+                    TOOL_PREAMBLE,
+                    vec![file_report_tool()],
+                    non_thinking_params(),
+                    16,
+                ),
+                None,
+            )?)
             .await;
             assert!(
                 outcome.tool_calls.is_empty(),
@@ -703,17 +714,16 @@ async fn streaming_budget_96_complete_arguments_are_untouched() {
         "truncation_matrix/streaming_budget_96_complete_arguments_are_untouched",
         |client| async move {
             let model = client.completion(MODEL);
-            let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(request(
-                        &model,
-                        TOOL_PREAMBLE,
-                        vec![file_report_tool()],
-                        non_thinking_params(),
-                        96,
-                    ))
-                    .await?,
-            )
+            let outcome = collect_raw_stream_outcome(model.stream(
+                request(
+                    &model,
+                    TOOL_PREAMBLE,
+                    vec![file_report_tool()],
+                    non_thinking_params(),
+                    96,
+                ),
+                None,
+            )?)
             .await;
             assert_eq!(outcome.tool_call_names(), vec!["file_report"]);
             assert!(outcome.tool_calls[0].function.arguments["summary"].is_string());
@@ -738,13 +748,16 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(request(
-                    &model,
-                    PARALLEL_PREAMBLE,
-                    vec![page_oncall_tool(), file_report_tool()],
-                    json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
-                    56,
-                ))
+                .call(
+                    request(
+                        &model,
+                        PARALLEL_PREAMBLE,
+                        vec![page_oncall_tool(), file_report_tool()],
+                        json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
+                        56,
+                    ),
+                    None,
+                )
                 .await?;
 
             let calls = tool_calls(&normalized.choice);
@@ -781,17 +794,16 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
         "truncation_matrix/streaming_parallel_calls_keep_the_complete_one",
         |client| async move {
             let model = client.completion(MODEL);
-            let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(request(
-                        &model,
-                        PARALLEL_PREAMBLE,
-                        vec![page_oncall_tool(), file_report_tool()],
-                        json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
-                        56,
-                    ))
-                    .await?,
-            )
+            let outcome = collect_raw_stream_outcome(model.stream(
+                request(
+                    &model,
+                    PARALLEL_PREAMBLE,
+                    vec![page_oncall_tool(), file_report_tool()],
+                    json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
+                    56,
+                ),
+                None,
+            )?)
             .await;
             assert_eq!(outcome.tool_call_names(), vec!["page_oncall"]);
             assert_eq!(
@@ -822,13 +834,16 @@ async fn blocking_text_before_a_truncated_call_survives() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(request(
-                    &model,
-                    TEXT_FIRST_PREAMBLE,
-                    vec![file_report_tool()],
-                    non_thinking_params(),
-                    40,
-                ))
+                .call(
+                    request(
+                        &model,
+                        TEXT_FIRST_PREAMBLE,
+                        vec![file_report_tool()],
+                        non_thinking_params(),
+                        40,
+                    ),
+                    None,
+                )
                 .await?;
 
             assert!(
@@ -866,17 +881,16 @@ async fn streaming_text_before_a_truncated_call_survives() {
         "truncation_matrix/streaming_text_before_a_truncated_call_survives",
         |client| async move {
             let model = client.completion(MODEL);
-            let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(request(
-                        &model,
-                        TEXT_FIRST_PREAMBLE,
-                        vec![file_report_tool()],
-                        non_thinking_params(),
-                        40,
-                    ))
-                    .await?,
-            )
+            let outcome = collect_raw_stream_outcome(model.stream(
+                request(
+                    &model,
+                    TEXT_FIRST_PREAMBLE,
+                    vec![file_report_tool()],
+                    non_thinking_params(),
+                    40,
+                ),
+                None,
+            )?)
             .await;
             assert!(!outcome.text.trim().is_empty(), "streamed text survives");
             assert!(outcome.tool_calls.is_empty());
@@ -906,14 +920,14 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(request_for(
+                .call(request_for(
                     &model,
                     REASONER_INCIDENT_PROMPT,
                     REASONER_TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     thinking_params(),
                     112,
-                ))
+                ), None)
                 .await?;
 
             assert!(
@@ -957,8 +971,8 @@ async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
                         vec![file_report_tool()],
                         thinking_params(),
                         112,
-                    ))
-                    .await?,
+                    ), None)
+                    ?,
             )
             .await;
             assert!(!outcome.reasoning.trim().is_empty());

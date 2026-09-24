@@ -79,11 +79,11 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         }
     }
 
-    run.choice = stream.snapshot();
+    run.choice = stream.folded().snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.folded().terminal().cloned();
     run
 }
 
@@ -123,7 +123,7 @@ async fn thinking_and_tool_call_in_one_stream() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(serde_json::json!({ "think": true }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
@@ -193,7 +193,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(serde_json::json!({ "think": false }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let aggregated: Vec<&ToolCall> = run
@@ -281,7 +281,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
             .tool(rig::tool::tool_definition(&Adder))
             .additional_params(serde_json::json!({ "think": false }))
             .build();
-        let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+        let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
         let add_calls: Vec<&ToolCall> = run
@@ -393,7 +393,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 .messages(history)
                 .additional_params(serde_json::json!({ "think": false }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),
                 "the model should answer from the replayed tool result, got {:?}",

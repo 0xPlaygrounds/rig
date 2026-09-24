@@ -34,7 +34,10 @@ const CAP: u64 = 96;
 async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
     let model = client.completion(model_name);
     let response = model
-        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+        .call(
+            model.completion_request(PROMPT).max_tokens(CAP).build(),
+            None,
+        )
         .await
         .expect("the advertised model should answer a blocking request");
 
@@ -182,8 +185,10 @@ async fn default_qwen_family_streaming() {
         |client| async move {
             let model = client.completion(doubleword::QWEN3_5_9B);
             let stream = model
-                .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
-                .await
+                .stream(
+                    model.completion_request(PROMPT).max_tokens(CAP).build(),
+                    None,
+                )
                 .expect("the default model stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("the stream should end with a terminal record");

@@ -44,7 +44,7 @@ async fn builder_tools_survive_additional_params_tools() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
 

@@ -9,8 +9,6 @@
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
-use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -27,8 +25,8 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire<H: Socket>(
-    client: &Endpoint<OpenAI, H>,
+fn wire(
+    client: &Endpoint<OpenAI>,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
@@ -40,8 +38,8 @@ fn wire<H: Socket>(
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing<H: Socket>(
-    client: &Endpoint<OpenAI, H>,
+fn missing(
+    client: &Endpoint<OpenAI>,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
@@ -100,7 +98,7 @@ fn scripted_stream(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     let client = Endpoint::new(
         OpenAI::with_key(&VENICE, SCRIPTED_KEY),
-        scripted(vec![sse_bytes(frames)]),
+        rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)])),
     );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,

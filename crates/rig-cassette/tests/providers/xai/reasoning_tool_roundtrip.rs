@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;

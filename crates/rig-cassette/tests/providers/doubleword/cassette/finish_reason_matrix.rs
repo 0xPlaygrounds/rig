@@ -51,12 +51,13 @@ fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
 async fn blocking_stop(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
-        .completion(
+        .call(
             model
                 .completion_request(STOP_PROMPT)
                 .additional_params(json!({ "reasoning_effort": "none" }))
                 .max_tokens(64)
                 .build(),
+            None,
         )
         .await
         .expect("blocking stop probe");
@@ -66,11 +67,12 @@ async fn blocking_stop(client: BoundDoubleword) {
 async fn blocking_length(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
-        .completion(
+        .call(
             model
                 .completion_request(LENGTH_PROMPT)
                 .max_tokens(1)
                 .build(),
+            None,
         )
         .await
         .expect("a contentless truncated turn is still a completion");
@@ -80,13 +82,14 @@ async fn blocking_length(client: BoundDoubleword) {
 async fn blocking_tool_calls_body(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_397B_A17B);
     let response = model
-        .completion(
+        .call(
             model
                 .completion_request(TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .max_tokens(256)
                 .build(),
+            None,
         )
         .await
         .expect("blocking tool-call probe");
@@ -110,7 +113,7 @@ async fn streaming_reason(
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
     }
-    let stream = model.stream(builder.build()).await.expect("stream probe");
+    let stream = model.stream(builder.build(), None).expect("stream probe");
     let (_, terminal) = collect_text_and_terminal(stream).await;
     terminal
         .expect("stream should carry a terminal record")
@@ -190,8 +193,8 @@ async fn streaming_tool_calls() {
                         .tool_choice(ToolChoice::Required)
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
-                .await
                 .expect("tool stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             assert_eq!(

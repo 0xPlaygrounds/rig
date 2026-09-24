@@ -34,7 +34,6 @@
 
 use futures::StreamExt;
 use rig::completion::FinishReason;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::interactions_api::Interactions;
 use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
@@ -52,7 +51,7 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: streame
 /// The Interactions wire bound to the bundled cassette transport. One Gemini
 /// config serves both surfaces, so the wrapper hands out the config and each
 /// cell names the surface it is about.
-type Model = Model<Interactions, BoxedHttpClient>;
+type Model = rig::driver::Model<Interactions, BoxedHttpClient>;
 
 fn request(model: &Model) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
@@ -63,7 +62,7 @@ async fn stream_to_terminal(
     model: &Model,
     request: rig::completion::CompletionRequest,
 ) -> StreamFinal {
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request, None).expect("stream should open");
     let mut terminal = None;
     let mut text = String::new();
     while let Some(item) = stream.next().await {
@@ -140,7 +139,7 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_gemini_interactions_cassette(
         "interactions_raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions(MODEL));
+            let model = client.model(|config| config.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;
@@ -197,7 +196,7 @@ async fn raw_exposes_terminal_only_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions(MODEL));
+            let model = client.model(|config| config.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;

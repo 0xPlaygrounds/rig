@@ -1,7 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
@@ -291,7 +289,7 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
 /// The Gemini config bound to the bundled transport — what a cassette test
 /// builds its models from, now that a model is a bound wire. One config
 /// serves both Gemini surfaces: `bound.completion(m)` is GenerateContent and
-/// `bound.map_wire(|gemini| gemini.interactions(m))` is the Interactions API,
+/// `bound.model(|gemini| gemini.interactions(m))` is the Interactions API,
 /// which is why the interactions wrapper hands out the same type.
 pub(super) type BoundGemini = Endpoint<Gemini, BoxedHttpClient>;
 

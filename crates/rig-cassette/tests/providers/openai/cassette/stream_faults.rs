@@ -12,7 +12,6 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::openai::GPT_4O;
 use rig::providers::openai::OpenAI;
 use rig::streaming::{Delta, StreamEvent};

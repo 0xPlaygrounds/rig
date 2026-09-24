@@ -1,6 +1,5 @@
 //! Migrated from `examples/transcription.rs`.
 
-use rig::prelude::*;
 use rig::providers::openai::{self, wire::OpenAI};
 use rig::transcription::TranscriptionRequestBuilder;
 use rig_test_support::endpoint::Endpoint;

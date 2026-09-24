@@ -19,9 +19,9 @@ const CELL: Cell = Cell {
 fn models(
     client: BoundDeepSeek,
 ) -> (
-    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
-    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
-    rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
 ) {
     (
         client.completion("deepseek-v4-flash"),

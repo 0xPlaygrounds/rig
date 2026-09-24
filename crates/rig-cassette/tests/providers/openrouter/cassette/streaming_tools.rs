@@ -5,7 +5,6 @@
 //! `reasoning.effort: high` + `include_reasoning: true`). Re-record them with:
 //! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig --all-features --test openrouter stream_encrypted_reasoning -- --test-threads=1`
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
-use rig::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -149,7 +148,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                 }))
                 .build();
 
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request, None).expect("stream should start");
             let observation = observe_stream(&mut stream).await;
             assert!(
                 observation.errors.is_empty(),
@@ -177,7 +176,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                 "the recorded turn carries encrypted reasoning_details; the stream must emit them as reasoning blocks"
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.snapshot());
+            let aggregated = encrypted_blocks_in_choice(&stream.folded().snapshot());
             assert_eq!(
                 aggregated, streamed,
                 "every streamed encrypted reasoning block must reach the aggregated choice"
@@ -222,7 +221,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 .additional_params(reasoning_params.clone())
                 .build();
 
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request, None).expect("stream should start");
             let first_turn = observe_stream(&mut stream).await;
             assert!(
                 first_turn.errors.is_empty(),
@@ -230,7 +229,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 first_turn.errors
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.snapshot());
+            let aggregated = encrypted_blocks_in_choice(&stream.folded().snapshot());
             assert!(
                 !aggregated.is_empty(),
                 "first turn should aggregate the encrypted reasoning block"
@@ -246,8 +245,8 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // The whole choice — reasoning block included — is what a caller
             // replays as history.
             let assistant_message = Message::Assistant {
-                id: stream.message_id.clone(),
-                content: stream.snapshot(),
+                id: stream.folded().message_id().map(str::to_owned),
+                content: stream.folded().snapshot(),
             };
             let tool_result_message = Message::User {
         content: vec![UserContent::tool_result_for(
@@ -269,8 +268,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 .build();
 
             let mut followup_stream = model
-                .stream(followup)
-                .await
+                .stream(followup, None)
                 .expect("follow-up stream should start");
             let second_turn = observe_stream(&mut followup_stream).await;
 
@@ -303,8 +301,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("raw stream should start"),
             )
             .await;
@@ -332,8 +329,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("raw stream should start"),
             )
             .await;
@@ -369,8 +365,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
 
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request)
-                    .await
+                    .stream(followup_request, None)
                     .expect("raw followup stream should start"),
             )
             .await;

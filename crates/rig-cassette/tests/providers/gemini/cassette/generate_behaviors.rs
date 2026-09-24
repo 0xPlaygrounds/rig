@@ -10,7 +10,6 @@
 
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -55,7 +54,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("a truncated response should still convert, not error");
 

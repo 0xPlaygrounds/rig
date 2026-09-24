@@ -38,7 +38,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::{AssistantContent, FinishReason};
-use rig::prelude::*;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -157,7 +156,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model
@@ -266,7 +265,7 @@ impl_matrix_tool!(Beta, "beta", ValueArgs);
 async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
     let model = client.completion(model_name(cell.model));
     match cell.transport {
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(&model, cell), None).await {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
@@ -283,7 +282,7 @@ async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(&model, cell)).await {
+            let raw = match model.stream(request(&model, cell), None) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {

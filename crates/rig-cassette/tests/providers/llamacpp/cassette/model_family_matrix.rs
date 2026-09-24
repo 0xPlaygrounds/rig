@@ -167,12 +167,13 @@ async fn llama_family_calls_a_tool() {
         |client| async move {
             let model = client.completion(CASSETTE_LLAMA_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(TOOL_PROMPT)
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(512)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("Llama 3.2's template supports tool calls");
@@ -217,8 +218,8 @@ async fn llama_family_streams_tool_call_arguments_as_deltas() {
                             .tool(rig::tool::tool_definition(&Subtract))
                             .max_tokens(512)
                             .build(),
+                        None,
                     )
-                    .await
                     .expect("raw stream should start"),
             )
             .await;
@@ -248,12 +249,13 @@ async fn mistral_family_calls_a_tool() {
         |client| async move {
             let model = client.completion(CASSETTE_MISTRAL_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(TOOL_PROMPT)
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(512)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("Mistral Small's template supports tool calls");
@@ -292,8 +294,8 @@ async fn mistral_family_streams_tool_call_arguments_as_deltas() {
                             .tool(rig::tool::tool_definition(&Subtract))
                             .max_tokens(512)
                             .build(),
+                        None,
                     )
-                    .await
                     .expect("raw stream should start"),
             )
             .await;
@@ -332,12 +334,13 @@ async fn gemma_family_has_no_tool_calling_in_its_template() {
         |client| async move {
             let model = client.completion(CASSETTE_GEMMA_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(TOOL_PROMPT)
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a tool request against a tool-less template is not an error");

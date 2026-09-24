@@ -5,7 +5,6 @@
 //! the rmcp migration unchanged.
 
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::server::ToolServer;
 

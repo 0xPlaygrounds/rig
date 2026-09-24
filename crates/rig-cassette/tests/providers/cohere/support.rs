@@ -1,7 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::cohere::wire::Cohere;
 use rig::tool::Tool;
 use rig_test_support::endpoint::Endpoint;

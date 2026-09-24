@@ -1,7 +1,5 @@
 //! Cassette-backed Cohere streaming completion coverage.
 
-use rig::prelude::*;
-
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response,

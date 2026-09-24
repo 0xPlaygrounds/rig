@@ -1,6 +1,5 @@
 //! Mistral streaming coverage, including the migrated example path.
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig_test_support::endpoint::Endpoint;
 

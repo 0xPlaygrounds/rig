@@ -34,7 +34,7 @@ async fn normalized_response_is_complete() {
         |client| async move {
             let model = client.embedding("openai/text-embedding-3-small", None);
             let response = model
-                .embed_texts_response(inputs())
+                .call(inputs(), None)
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -51,7 +51,7 @@ async fn raw_round_trips() {
     with_openrouter_cassette("embedding_matrix/raw_round_trips", |client| async move {
         let model = client.embedding("openai/text-embedding-3-small", None);
         let response = model
-            .embed_texts_response(inputs())
+            .call(inputs(), None)
             .await
             .expect("embedding request should succeed");
 
@@ -79,11 +79,11 @@ async fn raw_route_parity() {
     with_openrouter_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = client.embedding("openai/text-embedding-3-small", None);
         let first = model
-            .embed_texts_response(inputs())
+            .call(inputs(), None)
             .await
             .expect("the first call should succeed");
         let second = model
-            .embed_texts_response(inputs())
+            .call(inputs(), None)
             .await
             .expect("the same request should succeed again");
 
@@ -117,7 +117,7 @@ async fn single_text_convenience() {
         |client| async move {
             let model = client.embedding("openai/text-embedding-3-small", None);
             let response = model
-                .embed_text_response(EMBEDDING_INPUTS[0])
+                .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -141,7 +141,7 @@ async fn error_preserves_provider_body() {
         |client| async move {
             let model = client.embedding("no-such/embedding-model", None);
             let error = model
-                .embed_texts_response(inputs())
+                .call(inputs(), None)
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(

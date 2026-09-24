@@ -2,7 +2,6 @@
 
 use futures::StreamExt;
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
@@ -92,7 +91,7 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 .completion_request("Reply with exactly: final metadata ok")
                 .temperature(0.0)
                 .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request, None).expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;
@@ -146,7 +145,7 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 .completion_request("Reply with exactly: contentless final metadata ok")
                 .temperature(0.0)
                 .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request, None).expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;

@@ -8,7 +8,6 @@
 
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
-use rig::prelude::*;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::endpoint::Endpoint;
@@ -17,7 +16,7 @@ const THINKING: cells::ThinkingWire = cells::ThinkingWire::DeepSeek;
 
 fn wire(
     client: &BoundDeepSeek,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-flash"),

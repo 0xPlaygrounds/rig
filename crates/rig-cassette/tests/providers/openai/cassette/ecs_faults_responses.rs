@@ -9,7 +9,6 @@
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -113,7 +112,10 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 fn scripted_stream(
     frames: &[String],
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
-    let client = Endpoint::new(OpenAI::new(SCRIPTED_KEY), scripted(vec![sse_bytes(frames)]));
+    let client = Endpoint::new(
+        OpenAI::new(SCRIPTED_KEY),
+        rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)])),
+    );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion(GPT_5_MINI),

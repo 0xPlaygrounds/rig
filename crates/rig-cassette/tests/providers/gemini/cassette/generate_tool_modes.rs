@@ -29,7 +29,7 @@ async fn required_maps_to_any_and_forces_function_call() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("required tool choice completion should succeed");
 

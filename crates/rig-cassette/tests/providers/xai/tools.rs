@@ -1,6 +1,5 @@
 //! xAI tools smoke test.
 
-use rig::prelude::*;
 use rig::providers::xai;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

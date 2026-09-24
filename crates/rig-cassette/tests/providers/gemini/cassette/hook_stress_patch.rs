@@ -5,7 +5,6 @@
 
 use rig::agent::RequestPatch;
 use rig::message::{Message, ToolChoice};
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::hook_stress_support::{ApplyPatch, FirstTurnPatch, fact_doc};

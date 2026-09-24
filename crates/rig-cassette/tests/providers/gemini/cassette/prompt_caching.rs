@@ -51,7 +51,6 @@
 //! ```
 
 use rig::error::ProviderError;
-use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig_test_support::endpoint::Endpoint;
 
@@ -309,9 +308,10 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let model = client
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
+                let model =
+                    rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
+                        wire.with_cached_content(cache.name.clone())
+                    });
 
                 // `bare()`: the cache owns the system instruction and tools, and a
                 // request that also sends its own is rejected — by rig, before it
@@ -360,9 +360,10 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let model = client
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
+                let model =
+                    rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
+                        wire.with_cached_content(cache.name.clone())
+                    });
 
                 let mut reads = Vec::new();
                 for prompt in [

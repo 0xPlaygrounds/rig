@@ -1,6 +1,5 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
-use rig::prelude::*;
 use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
@@ -22,7 +21,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
             // document, captured by the driver on the very response the
             // completion path folded.
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("chat completion should succeed");
             let raw = &response.raw;

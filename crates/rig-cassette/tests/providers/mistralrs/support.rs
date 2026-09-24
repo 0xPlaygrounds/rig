@@ -3,9 +3,7 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, Route};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};

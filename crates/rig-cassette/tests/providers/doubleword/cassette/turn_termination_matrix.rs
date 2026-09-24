@@ -59,7 +59,6 @@
 //! the whole vocabulary can be enumerated without a live call.
 
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 

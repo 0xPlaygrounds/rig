@@ -38,8 +38,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::{AssistantContent, FinishReason};
-use rig::driver::Model;
-use rig::prelude::*;
 use rig::providers::openai::wire::Chat;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
@@ -157,7 +155,7 @@ pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
 }
 
 fn request(
-    model: &Model<Chat, rig::http_client::BoxedHttpClient>,
+    model: &rig::driver::Model<Chat, rig::http_client::BoxedHttpClient>,
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model
@@ -267,7 +265,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
         // normalization, keeping the native value on `CompletionResponse::raw`.
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(&model, cell), None).await {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
@@ -284,7 +282,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let mut stream = match model.stream(request(&model, cell)).await {
+            let mut stream = match model.stream(request(&model, cell), None) {
                 Ok(stream) => stream,
                 Err(error) => {
                     return Observation {

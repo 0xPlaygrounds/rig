@@ -1,7 +1,5 @@
 //! Cassette coverage for mistral.rs chat-completions streaming reasoning chunks.
 
-use rig::prelude::*;
-
 use crate::support::collect_stream_observation;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};

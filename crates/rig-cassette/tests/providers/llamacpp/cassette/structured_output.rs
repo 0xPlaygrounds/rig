@@ -1,6 +1,5 @@
 //! llama.cpp structured output coverage, including the migrated example path.
 
-use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

@@ -150,7 +150,10 @@ async fn handshake_rejection_matches_the_http_twin() {
                 .expect("an invalid key must fail the upgrade");
 
             let http_error = model
-                .completion(model.completion_request("Never authenticated").build())
+                .call(
+                    model.completion_request("Never authenticated").build(),
+                    None,
+                )
                 .await
                 .expect_err("the same key must fail the unary request");
 

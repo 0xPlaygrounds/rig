@@ -3,7 +3,6 @@
 use anyhow::Result;
 use rig::TypedPromptResponse;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;

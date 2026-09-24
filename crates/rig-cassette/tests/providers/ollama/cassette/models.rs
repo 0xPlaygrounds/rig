@@ -10,7 +10,7 @@ async fn list_models_smoke() {
     with_ollama_cassette("models/list_models_smoke", |client| async move {
         let models = client
             .models()
-            .list_all()
+            .call((), None)
             .await
             .expect("listing Ollama models should succeed");
 

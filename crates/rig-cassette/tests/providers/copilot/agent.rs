@@ -1,7 +1,5 @@
 //! Copilot agent completion smoke test.
 
-use rig::prelude::*;
-
 use crate::copilot::{LIVE_MODEL, live_client, with_copilot_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -29,7 +27,7 @@ async fn all_models_completion_smoke() {
 
     let models = client
         .models()
-        .list_all()
+        .call((), None)
         .await
         .expect("listing Copilot models should succeed");
 

@@ -15,7 +15,7 @@ use crate::ecs_matrix::{
 
 fn wire(
     client: &BoundDoubleword,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion(QWEN3_5_397B_A17B),

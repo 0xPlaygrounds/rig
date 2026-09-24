@@ -7,9 +7,7 @@
 //! after it.
 
 use bytes::Bytes;
-use rig::driver::Model;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
 use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::agent::AgentReplayExt;

@@ -10,7 +10,6 @@
 
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 
@@ -235,7 +234,7 @@ async fn long_history_replay_nonstreaming() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("long history replay should be accepted by generateContent");
 
@@ -294,7 +293,7 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("thinking-enabled completion should succeed");
 

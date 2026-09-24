@@ -1,6 +1,5 @@
 //! Perplexity streaming completion cassette coverage.
 
-use rig::prelude::*;
 use rig::providers::perplexity;
 
 use crate::support::{

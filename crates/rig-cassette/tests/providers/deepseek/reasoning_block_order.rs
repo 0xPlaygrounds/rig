@@ -25,7 +25,6 @@ use std::sync::atomic::AtomicUsize;
 
 use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
@@ -117,7 +116,7 @@ async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(
+                .call(
                     model
                         .completion_request(reasoning::TOOL_USER_PROMPT)
                         .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
@@ -125,6 +124,7 @@ async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
                         .additional_params(thinking_params())
                         .max_tokens(REASONER_BUDGET)
                         .build(),
+                    None,
                 )
                 .await?;
 
@@ -148,17 +148,16 @@ async fn streaming_reasoner_tool_turn_leads_with_reasoning() {
         |client| async move {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(
-                        model
-                            .completion_request(reasoning::TOOL_USER_PROMPT)
-                            .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
-                            .tool(weather_tool_definition())
-                            .additional_params(thinking_params())
-                            .max_tokens(REASONER_BUDGET)
-                            .build(),
-                    )
-                    .await?,
+                model.stream(
+                    model
+                        .completion_request(reasoning::TOOL_USER_PROMPT)
+                        .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
+                        .tool(weather_tool_definition())
+                        .additional_params(thinking_params())
+                        .max_tokens(REASONER_BUDGET)
+                        .build(),
+                    None,
+                )?,
             )
             .await;
 
@@ -186,8 +185,7 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(
-                    model
+                .call(model
                         .completion_request(
                             "What is the weather AND the air quality in Tokyo? Call both tools in one turn before answering.",
                         )
@@ -199,8 +197,7 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
                             "parallel_tool_calls": true,
                         }))
                         .max_tokens(REASONER_BUDGET)
-                        .build(),
-                )
+                        .build(), None)
                 .await?;
 
             let kinds = block_kinds(&normalized.choice);
@@ -247,8 +244,8 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
                             }))
                             .max_tokens(REASONER_BUDGET)
                             .build(),
-                    )
-                    .await?,
+                    None)
+                    ?,
             )
             .await;
 
@@ -276,12 +273,13 @@ async fn blocking_reasoner_text_turn_leads_with_reasoning() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(
+                .call(
                     model
                         .completion_request("Is 91 prime? Answer in one short sentence.")
                         .additional_params(thinking_params())
                         .max_tokens(REASONER_BUDGET)
                         .build(),
+                    None,
                 )
                 .await?;
 
@@ -305,15 +303,14 @@ async fn streaming_reasoner_text_turn_leads_with_reasoning() {
         |client| async move {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(
-                        model
-                            .completion_request("Is 91 prime? Answer in one short sentence.")
-                            .additional_params(thinking_params())
-                            .max_tokens(REASONER_BUDGET)
-                            .build(),
-                    )
-                    .await?,
+                model.stream(
+                    model
+                        .completion_request("Is 91 prime? Answer in one short sentence.")
+                        .additional_params(thinking_params())
+                        .max_tokens(REASONER_BUDGET)
+                        .build(),
+                    None,
+                )?,
             )
             .await;
 
@@ -341,7 +338,7 @@ async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .completion(
+                .call(
                     model
                         .completion_request(reasoning::TOOL_USER_PROMPT)
                         .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
@@ -349,6 +346,7 @@ async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
                         .additional_params(non_thinking_params())
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
                 .await?;
 
@@ -374,17 +372,16 @@ async fn streaming_non_thinking_tool_turn_has_no_reasoning_block() {
         |client| async move {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(
-                        model
-                            .completion_request(reasoning::TOOL_USER_PROMPT)
-                            .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
-                            .tool(weather_tool_definition())
-                            .additional_params(non_thinking_params())
-                            .max_tokens(256)
-                            .build(),
-                    )
-                    .await?,
+                model.stream(
+                    model
+                        .completion_request(reasoning::TOOL_USER_PROMPT)
+                        .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
+                        .tool(weather_tool_definition())
+                        .additional_params(non_thinking_params())
+                        .max_tokens(256)
+                        .build(),
+                    None,
+                )?,
             )
             .await;
 

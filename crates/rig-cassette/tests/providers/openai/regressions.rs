@@ -1,6 +1,5 @@
 //! OpenAI-compatible response regressions that use an in-memory HTTP backend.
 
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_test_support::endpoint::Endpoint;

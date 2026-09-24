@@ -104,7 +104,6 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
 use rig::transcription::TranscriptionRequestBuilder;
-use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -462,7 +461,7 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
     let request = request.build();
 
     let response = model
-        .completion(request)
+        .call(request, None)
         .await
         .expect("completion should succeed");
 
@@ -747,7 +746,7 @@ async fn text_response_on_a_tool_call_turn() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
 
@@ -843,7 +842,7 @@ async fn text_response_across_two_candidates() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
 
@@ -931,7 +930,7 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
 
@@ -1009,11 +1008,11 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 "streamed text must not contain the reasoning"
             );
             assert!(
-                has_reasoning(&stream.snapshot()),
+                has_reasoning(&stream.folded().snapshot()),
                 "the aggregated choice should keep reasoning as reasoning"
             );
             assert_eq!(
-                choice_text(&stream.snapshot()),
+                choice_text(&stream.folded().snapshot()),
                 text,
                 "the aggregated text must be exactly the streamed text deltas"
             );
@@ -1054,7 +1053,7 @@ async fn blocking_keeps_a_trailing_thought_signature() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
 
@@ -1110,13 +1109,13 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 
             // The stream sends the answer, then an empty part carrying the
             // signature: that empty part keeps it, on its own text.
-            let snapshot = stream.snapshot();
+            let snapshot = stream.folded().snapshot();
             assert_eq!(text_signatures(&snapshot).len(), 1, "{snapshot:?}");
             assert!(!has_reasoning(&snapshot));
             assert!(
-                choice_text(&stream.snapshot()).contains("289"),
+                choice_text(&stream.folded().snapshot()).contains("289"),
                 "the streamed answer must be there, got {:?}",
-                choice_text(&stream.snapshot())
+                choice_text(&stream.folded().snapshot())
             );
         },
     )
@@ -1128,7 +1127,6 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 mod unit {
     use rig::completion::CompletionResponse;
     use rig::message::{AssistantContent, ReasoningContent};
-    use rig::prelude::*;
     use rig::providers::gemini::Gemini;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::test_utils::RecordingHttpClient;
@@ -1171,14 +1169,14 @@ mod unit {
     /// here and carried by the real wire, driver and decoder — the same path
     /// every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>, role: &str) -> CompletionResponse {
-        let model = Endpoint::new(
+        let model = rig_test_support::endpoint::Endpoint::new(
             Gemini::new("unit-key"),
             RecordingHttpClient::new(reply_with(parts, role).to_string()),
         )
         .completion("gemini-2.5-flash");
         let request = model.completion_request("unit").build();
         model
-            .completion(request)
+            .call(request, None)
             .await
             .expect("the stubbed reply should convert")
     }

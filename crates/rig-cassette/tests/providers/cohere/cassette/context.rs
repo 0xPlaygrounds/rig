@@ -1,7 +1,6 @@
 //! Cassette-backed Cohere context-document coverage.
 
 use rig::completion::Document;
-use rig::prelude::*;
 use std::collections::HashMap;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
@@ -65,7 +64,7 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("documents with metadata should be accepted");
             let text = response

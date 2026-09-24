@@ -5,7 +5,6 @@
 //! are the recorded proof of that absence, on both surfaces.
 
 use futures::StreamExt;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::StreamEvent;
 
@@ -41,7 +40,6 @@ async fn streaming_request_id_is_none_by_design() {
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
-                .await
                 .expect("stream should open");
 
             let mut terminal = None;

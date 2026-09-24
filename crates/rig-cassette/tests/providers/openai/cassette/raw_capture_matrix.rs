@@ -89,7 +89,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(PROMPT)
@@ -106,7 +106,7 @@ fn reasoning_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(REASONING_PROMPT)
@@ -130,7 +130,7 @@ fn tool_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
@@ -152,7 +152,7 @@ fn structured_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(STRUCTURED_PROMPT)

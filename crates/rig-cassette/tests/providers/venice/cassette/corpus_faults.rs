@@ -11,7 +11,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
 fn wire(
     client: &BoundVenice,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion(MISTRAL_SMALL_3_2_24B),
@@ -24,7 +24,7 @@ fn wire(
 /// The wire over the model it refuses: the setup cells' request.
 fn missing(
     client: &BoundVenice,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion("venice-nonexistent-rig-test"),

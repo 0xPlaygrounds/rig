@@ -38,7 +38,6 @@
 //!     prompt_caching:: -- --test-threads=1
 //! ```
 
-use rig::prelude::*;
 use serde_json::{Value, json};
 
 use crate::cache_conformance::{
@@ -197,26 +196,28 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 
             // Warm the slot.
             let warm = model
-                .completion(
+                .call(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("the warming turn should succeed");
             let _ = warm;
 
             let second = model
-                .completion(
+                .call(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("the warm turn should succeed");
@@ -227,7 +228,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
             );
 
             let disabled = model
-                .completion(
+                .call(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
@@ -235,6 +236,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                         .max_tokens(16)
                         .additional_params(json!({ "cache_prompt": false }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect("cache_prompt: false should succeed");
@@ -246,13 +248,14 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
             );
 
             let after = model
-                .completion(
+                .call(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("the turn after the switch should succeed");

@@ -32,7 +32,6 @@ use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolResult, ToolResultContent,
     UserContent,
 };
-use rig::prelude::*;
 use serde_json::{Value, json};
 
 use crate::cassettes::{
@@ -65,7 +64,7 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request("Reply with exactly this and nothing else: STOPWORD")
                         .max_tokens(64)
@@ -76,6 +75,7 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
                         // would still leave the reasoning preamble behind.
                         .additional_params(json!({ "stop": ["<think>"] }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("rig rejects an empty converted choice");
@@ -137,7 +137,7 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(format!("{NO_THINK}What was the second word I said?"))
                         .messages(vec![
@@ -150,6 +150,7 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
                         ])
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("consecutive same-role messages are accepted");
@@ -269,7 +270,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
         move |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(Message::User {
                             content: vec![UserContent::ToolResult(ToolResult {
@@ -300,6 +301,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                         ])
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a long tool result should be accepted");
@@ -332,7 +334,7 @@ async fn a_system_message_plus_history_keeps_its_order() {
     with_llamacpp_cassette("content_matrix/system_plus_history", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request(format!("{NO_THINK}And what was the first one?"))
                     .preamble(
@@ -352,6 +354,7 @@ async fn a_system_message_plus_history_keeps_its_order() {
                     ])
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("a system message plus history should be accepted");

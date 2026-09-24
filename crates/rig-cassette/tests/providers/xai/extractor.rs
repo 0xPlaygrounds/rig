@@ -1,6 +1,5 @@
 //! xAI extractor smoke test.
 
-use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;

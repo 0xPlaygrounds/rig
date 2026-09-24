@@ -6,7 +6,7 @@ use crate::ecs_matrix::{Wire, cells, checkpoint};
 
 fn wire(
     client: &BoundDeepSeek,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-flash"),

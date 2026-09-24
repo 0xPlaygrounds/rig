@@ -7,7 +7,6 @@ use futures::FutureExt;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::wire::{OpenAI, Route};
 use rig_test_support::endpoint::Endpoint;

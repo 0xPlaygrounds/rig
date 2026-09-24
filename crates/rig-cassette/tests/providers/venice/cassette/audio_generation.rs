@@ -1,6 +1,5 @@
 //! Cassette-backed Venice text-to-speech smoke test.
 
-use rig::audio_generation::AudioGenerationModel;
 use rig::providers::venice;
 
 use super::super::support::with_venice_direct_cassette;

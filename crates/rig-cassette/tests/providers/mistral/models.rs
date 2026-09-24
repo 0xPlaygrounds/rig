@@ -16,7 +16,7 @@ use super::support::{with_mistral_cassette_bogus_key_result, with_mistral_casset
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
     with_mistral_cassette_result("models/list_models_smoke", |client| async move {
-        let models = client.models().list_all().await?;
+        let models = client.models().call((), None).await?;
 
         anyhow::ensure!(
             !models.is_empty(),
@@ -48,7 +48,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
         |client| async move {
             let error = client
                 .models()
-                .list_all()
+                .call((), None)
                 .await
                 .expect_err("a bogus key must not list models");
 

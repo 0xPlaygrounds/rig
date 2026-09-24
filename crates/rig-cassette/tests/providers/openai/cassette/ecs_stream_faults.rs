@@ -11,7 +11,6 @@ use bytes::Bytes;
 use rig::Model;
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
-use rig::prelude::*;
 use rig::providers::openai::{self, GPT_4O};
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;

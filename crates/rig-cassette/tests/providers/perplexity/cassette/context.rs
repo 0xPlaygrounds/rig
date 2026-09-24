@@ -1,6 +1,5 @@
 //! Perplexity context/document cassette coverage.
 
-use rig::prelude::*;
 use rig::providers::perplexity;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};

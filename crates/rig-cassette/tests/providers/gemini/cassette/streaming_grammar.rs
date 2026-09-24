@@ -84,11 +84,11 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         }
     }
 
-    run.choice = stream.snapshot();
+    run.choice = stream.folded().snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.folded().terminal().cloned();
     run
 }
 
@@ -177,7 +177,7 @@ async fn max_tokens_truncation_normalizes_to_length() {
                 .max_tokens(24)
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
             assert!(
@@ -207,7 +207,7 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let streamed = run
@@ -273,7 +273,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                     serde_json::to_value(params).expect("params should serialize"),
                 )
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_terminal(&run, FinishReason::Stop);
@@ -379,7 +379,7 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
@@ -455,7 +455,7 @@ async fn parallel_function_calls_stay_distinct() {
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let aggregated: Vec<&ToolCall> = run
@@ -531,7 +531,7 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
                 .completion_request("Reply with one short sentence about volcanoes.")
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -553,7 +553,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_thinking_stream",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request(
                     "How many positive integers n < 200 are divisible by 4 but not by 10? \
@@ -572,7 +572,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                     .expect("params should serialize"),
                 )
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_eq!(
@@ -701,11 +701,11 @@ async fn interactions_requires_action_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_requires_action",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let tool = rig::tool::tool_definition(&AlphaSignal);
 
             let raw = model
-                .completion(
+                .call(
                     model
                         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
@@ -719,6 +719,7 @@ async fn interactions_requires_action_roundtrip() {
                             .expect("params should serialize"),
                         )
                         .build(),
+                    None,
                 )
                 .await
                 .expect("tool-required interaction should succeed");
@@ -769,7 +770,7 @@ async fn interactions_requires_action_roundtrip() {
             );
 
             let followup = model
-                .completion(
+                .call(
                     model
                         .completion_request(Message::from(UserContent::tool_result_for(
                             tool_call.id.clone(),
@@ -785,6 +786,7 @@ async fn interactions_requires_action_roundtrip() {
                             .expect("params should serialize"),
                         )
                         .build(),
+                    None,
                 )
                 .await
                 .expect("tool-result follow-up should succeed");
@@ -818,7 +820,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_same_tool_twice",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request(
                     "Use the `add` tool twice in this single reply, before any text: first \
@@ -841,7 +843,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     .expect("params should serialize"),
                 )
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let add_calls: Vec<&ToolCall> = run
@@ -926,7 +928,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_signature_without_summaries",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
+            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request(
                     "How many positive integers n < 100 are divisible by 6 but not by 9? \
@@ -945,7 +947,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                     .expect("params should serialize"),
                 )
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             let signature_delivered = run.choice.iter().any(|content| {
@@ -1051,7 +1053,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 .tool(rig::tool::tool_definition(&crate::support::Adder))
                 .messages(history)
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),
                 "the model should answer from the replayed tool result, got {:?}",

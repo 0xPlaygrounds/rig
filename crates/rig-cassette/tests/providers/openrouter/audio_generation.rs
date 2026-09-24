@@ -1,6 +1,5 @@
 //! OpenRouter audio generation (TTS) smoke test.
 
-use rig::prelude::*;
 use rig_test_support::endpoint::Endpoint;
 
 use rig::providers::openai::wire::{OPENROUTER, OpenAI};

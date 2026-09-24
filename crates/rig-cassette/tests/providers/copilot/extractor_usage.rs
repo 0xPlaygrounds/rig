@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use rig::TypedPromptResponse;
-use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

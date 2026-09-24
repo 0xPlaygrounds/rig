@@ -16,7 +16,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(
     client: &BoundDoubleword,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion(QWEN3_5_397B_A17B),
@@ -219,7 +219,7 @@ crate::matrix::golden_matrix! {
 // Reasoning matrix: the named thinking model, with the shared knob.
 fn reasoning_wire(
     client: &BoundDoubleword,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::Doubleword,
         model: client.completion("Qwen/Qwen3.5-397B-A17B-FP8"),

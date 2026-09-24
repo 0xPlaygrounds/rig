@@ -1,7 +1,5 @@
 //! Cassette-backed Doubleword completion coverage.
 
-use rig::prelude::*;
-
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 

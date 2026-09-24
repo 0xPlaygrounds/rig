@@ -44,12 +44,13 @@ async fn temperature_from_the_typed_builder() {
         |client| async move {
             let model = client.completion(MODEL);
             model
-                .completion(
+                .call(
                     model
                         .completion_request(PROMPT)
                         .temperature(0.0)
                         .max_tokens(32)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("Doubleword should accept temperature");
@@ -67,7 +68,7 @@ async fn max_tokens_from_the_typed_builder() {
         |client| async move {
             let model = client.completion(MODEL);
             model
-                .completion(model.completion_request(PROMPT).max_tokens(7).build())
+                .call(model.completion_request(PROMPT).max_tokens(7).build(), None)
                 .await
                 .expect("Doubleword should accept max_tokens");
         },
@@ -84,12 +85,13 @@ async fn top_p_from_additional_params() {
         |client| async move {
             let model = client.completion(MODEL);
             model
-                .completion(
+                .call(
                     model
                         .completion_request(PROMPT)
                         .additional_params(json!({ "top_p": 0.25 }))
                         .max_tokens(32)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("Doubleword should accept top_p");
@@ -107,12 +109,13 @@ async fn seed_from_additional_params() {
         |client| async move {
             let model = client.completion(MODEL);
             model
-                .completion(
+                .call(
                     model
                         .completion_request(PROMPT)
                         .additional_params(json!({ "seed": 31_415 }))
                         .max_tokens(32)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("Doubleword should accept seed");
@@ -130,12 +133,13 @@ async fn stop_sequence_from_additional_params() {
         |client| async move {
             let model = client.completion(MODEL);
             model
-                .completion(
+                .call(
                     model
                         .completion_request("Write alpha BANANA omega.")
                         .additional_params(json!({ "stop": ["BANANA"] }))
                         .max_tokens(64)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("Doubleword should accept stop sequences");
@@ -154,7 +158,7 @@ async fn json_object_response_format_from_additional_params() {
         |client| async move {
             let model = client.completion(MODEL);
             model
-                .completion(
+                .call(
                     model
                         .completion_request("Return a JSON object with ok set to true.")
                         .additional_params(json!({
@@ -162,6 +166,7 @@ async fn json_object_response_format_from_additional_params() {
                         }))
                         .max_tokens(96)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("Doubleword should accept JSON-object response format");

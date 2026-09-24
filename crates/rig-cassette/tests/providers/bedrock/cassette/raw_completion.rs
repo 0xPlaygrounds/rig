@@ -1,8 +1,8 @@
 //! AWS Bedrock raw completion cassette coverage ported from OpenAI completions tests.
 
 use rig::bedrock;
-use rig::prelude::*;
-use rig::telemetry::ProviderResponseExt;
+use rig::bedrock::types::converse_output::{ContentBlock, InternalConverseOutput};
+use serde::Deserialize;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -22,19 +22,32 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .temperature(0.0)
                 .build();
 
-            // `completion` is `raw_completion` followed by exactly this
-            // conversion, so raw-vs-normalized parity is still checked against
-            // one recorded interaction.
-            let raw = model
-                .raw_completion(request)
+            // `raw` is the unary Converse frame the response was normalized
+            // from, so raw-vs-normalized parity is checked against one
+            // recorded interaction.
+            let response = model
+                .call(request, None)
                 .await
-                .expect("raw Bedrock request should succeed");
+                .expect("Bedrock request should succeed");
+            let raw = InternalConverseOutput::deserialize(&response.raw)
+                .expect("raw should deserialize into the Converse frame");
             let raw_text = raw
-                .text_response()
+                .output
+                .as_ref()
+                .and_then(|output| output.as_message().ok())
+                .map(|message| {
+                    message
+                        .content
+                        .iter()
+                        .filter_map(|block| match block {
+                            ContentBlock::Text(text) => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .filter(|text| !text.is_empty())
                 .expect("raw Bedrock response should contain assistant text");
-            let response: rig::completion::CompletionResponse = raw
-                .try_into()
-                .expect("raw Bedrock response should normalize");
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized Bedrock response should contain assistant text");
 

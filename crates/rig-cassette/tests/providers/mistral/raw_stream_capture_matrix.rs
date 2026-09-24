@@ -61,7 +61,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
@@ -82,7 +82,7 @@ fn tool_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
@@ -259,7 +259,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
             // No shared capture helper collects completed tool calls beside
             // the terminal record, so this cell drives the stream itself.
             let model = client.completion(DEFAULT_MODEL);
-            let stream = model.stream(tool_request(&model)).await?;
+            let stream = model.stream(tool_request(&model), None)?;
             sink.put(collect_tool_calls_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())
         },

@@ -63,11 +63,11 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         }
     }
 
-    run.choice = stream.snapshot();
+    run.choice = stream.folded().snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.folded().terminal().cloned();
     run
 }
 
@@ -130,7 +130,7 @@ async fn parallel_tool_calls_stay_distinct() {
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(json!({ "parallel_tool_calls": true }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let aggregated = aggregated_tool_calls(&run.choice);
@@ -191,7 +191,7 @@ async fn tool_call_and_content_in_same_turn() {
                 )
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
@@ -236,7 +236,7 @@ async fn logprobs_chunks_are_forward_compatible() {
                 .completion_request("Reply with one short sentence about tides.")
                 .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -265,7 +265,7 @@ async fn long_text_stream_preserves_order() {
                 )
                 .max_tokens(400)
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
             assert!(

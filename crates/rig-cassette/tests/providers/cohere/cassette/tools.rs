@@ -1,7 +1,6 @@
 //! Cassette-backed Cohere tool-calling coverage.
 
 use rig::completion::{AssistantContent, FinishReason, ToolDefinition, message::ToolChoice};
-use rig::prelude::*;
 
 use super::super::{
     CASSETTE_MODEL,
@@ -58,7 +57,7 @@ async fn required_tool_choice_is_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("required tool choice should be accepted");
 
@@ -101,7 +100,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("REQUIRED with multiple tools should succeed");
             let tool_calls = response
@@ -139,7 +138,7 @@ async fn none_tool_choice_with_tools_returns_text() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("NONE with tools should produce a direct response");
 
@@ -176,7 +175,7 @@ async fn none_tool_choice_without_tools_returns_text() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("Cohere permits NONE without a tools parameter");
 
@@ -208,7 +207,7 @@ async fn strict_required_tool_choice_is_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("strict_tools should compose with REQUIRED");
             let tool_call = response

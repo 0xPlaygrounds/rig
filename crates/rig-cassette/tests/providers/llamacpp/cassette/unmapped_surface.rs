@@ -48,7 +48,6 @@
 //!   `verify_path` for this dialect, and it reports the build tag and
 //!   modalities that say what produced a fixture.
 
-use rig_test_support::endpoint::Endpoint;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_request_paths, recorded_statuses_and_bodies};
@@ -71,7 +70,7 @@ async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
         let models = client
             .models()
-            .list_all()
+            .call((), None)
             .await
             .expect("listing llama.cpp models should succeed");
 
@@ -153,6 +152,7 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
         // operational routes.
         client
             .verify()
+            .verify()
             .await
             .expect("an unkeyed server verifies successfully");
     })
@@ -212,11 +212,12 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
         // base URL, which is the whole shape of the exclusion.
         let model = client.responses(CASSETTE_MODEL);
         let response = model
-            .completion(
+            .call(
                 model
                     .completion_request("/no_think Reply with the single word: ok")
                     .max_tokens(256)
                     .build(),
+                None,
             )
             .await
             .expect("llama.cpp serves the Responses API end to end");

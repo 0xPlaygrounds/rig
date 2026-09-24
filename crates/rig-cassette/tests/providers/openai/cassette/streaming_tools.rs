@@ -1,6 +1,5 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 
@@ -173,8 +172,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("raw responses stream should start"),
             )
             .await;
@@ -211,8 +209,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request)
-                    .await
+                    .stream(followup_request, None)
                     .expect("raw followup responses stream should start"),
             )
             .await;

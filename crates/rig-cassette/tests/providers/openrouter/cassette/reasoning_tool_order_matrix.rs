@@ -42,7 +42,6 @@ use std::sync::{
 use anyhow::{Result, ensure};
 use futures::StreamExt as _;
 use rig::completion::AssistantContent;
-use rig::prelude::*;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -147,7 +146,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model
@@ -168,14 +167,14 @@ fn request<
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedChoice) -> Result<()> {
     let model = client.completion(MODEL);
     let choice = match cell.transport {
-        Transport::Blocking => model.completion(request(&model, cell)).await?.choice,
+        Transport::Blocking => model.call(request(&model, cell), None).await?.choice,
         Transport::Streaming => {
-            let raw = model.stream(request(&model, cell)).await?;
+            let raw = model.stream(request(&model, cell), None)?;
             let mut stream = raw;
             while let Some(item) = stream.next().await {
                 item?;
             }
-            stream.snapshot()
+            stream.folded().snapshot()
         }
     };
 

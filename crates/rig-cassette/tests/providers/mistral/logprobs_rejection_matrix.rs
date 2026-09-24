@@ -71,11 +71,11 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Re
     // fails in-band with the `ErrorReport` it was mapped to. Both display the
     // preserved Mistral body, which is what the matrix asserts on.
     let error = match cell.transport {
-        Transport::Blocking => match model.completion(request).await {
+        Transport::Blocking => match model.call(request, None).await {
             Ok(_) => bail!("Mistral unexpectedly accepted blocking logprobs"),
             Err(error) => error.to_string(),
         },
-        Transport::Streaming => match model.stream(request).await {
+        Transport::Streaming => match model.stream(request, None) {
             Err(error) => error.to_string(),
             Ok(mut stream) => loop {
                 match stream.next().await {

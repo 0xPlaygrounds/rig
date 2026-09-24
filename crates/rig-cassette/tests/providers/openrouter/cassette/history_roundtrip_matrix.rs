@@ -169,7 +169,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     cell: Cell,
 ) -> rig::completion::CompletionRequest {
     let mut builder = model
@@ -211,7 +211,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // the same recorded bytes as the normalized surface, so the axis
             // is "provider document vs decoder's choice" rather than two
             // normalizers that could drift.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(&model, cell), None).await?;
             let wire = openrouter::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is OpenRouter's own completion response");
             Observation {
@@ -223,14 +223,14 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(&model, cell), None).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,
             }
         }
         (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell), None)?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
@@ -248,7 +248,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             observation
         }
         (Transport::Streaming, Surface::Normalized) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell), None)?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,

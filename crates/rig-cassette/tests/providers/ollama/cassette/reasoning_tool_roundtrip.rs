@@ -14,7 +14,6 @@ use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 
 use super::super::support::with_ollama_cassette;
 use crate::reasoning::{self, WeatherTool};

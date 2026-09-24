@@ -1,7 +1,5 @@
 //! Cassette-backed Doubleword streaming coverage.
 
-use rig::prelude::*;
-
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,

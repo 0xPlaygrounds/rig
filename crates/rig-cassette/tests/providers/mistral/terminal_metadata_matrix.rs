@@ -131,9 +131,9 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
     let request = builder.build();
 
     let raw = match cell.transport {
-        Transport::Blocking => model.completion(request).await?.raw,
+        Transport::Blocking => model.call(request, None).await?.raw,
         Transport::Streaming => {
-            let mut stream = model.stream(request).await?;
+            let mut stream = model.stream(request, None)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

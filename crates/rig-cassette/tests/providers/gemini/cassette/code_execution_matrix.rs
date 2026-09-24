@@ -65,11 +65,9 @@
 
 use futures::StreamExt;
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
-use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -170,7 +168,7 @@ async fn drain(
             _ => {}
         }
     }
-    (text, stream.snapshot(), saw_terminal)
+    (text, stream.folded().snapshot(), saw_terminal)
 }
 
 /// One blocking cell: run the prompt with code execution enabled and assert
@@ -389,7 +387,7 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("a turn carrying code-execution parts must still convert");
 
@@ -971,7 +969,6 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 mod unit {
     use rig::completion::CompletionResponse;
     use rig::error::ProviderError;
-    use rig::prelude::*;
     use rig::providers::gemini::Gemini;
     use rig::test_utils::RecordingHttpClient;
     use serde_json::{Value, json};
@@ -1016,13 +1013,13 @@ mod unit {
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
-        let model = Endpoint::new(
+        let model = rig_test_support::endpoint::Endpoint::new(
             Gemini::new("unit-key"),
             RecordingHttpClient::new(reply_with(parts)),
         )
         .completion("gemini-2.5-flash");
         let request = model.completion_request("unit").build();
-        model.completion(request).await
+        model.call(request, None).await
     }
 
     /// Not a recording: Gemini always narrates a code round, so a candidate

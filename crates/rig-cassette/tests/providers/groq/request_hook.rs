@@ -10,7 +10,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
 
 use crate::support::assert_nonempty_response;

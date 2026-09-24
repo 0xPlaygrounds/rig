@@ -1,6 +1,5 @@
 //! Migrated from `examples/ollama_structured_output.rs`.
 
-use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;

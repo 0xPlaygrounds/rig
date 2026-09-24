@@ -26,7 +26,6 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;

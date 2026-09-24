@@ -5,7 +5,6 @@
 //! request body is what pins that shape — a regression to OpenAI's
 //! `/images/generations` body would fail as a mock miss.
 
-use rig::image_generation::ImageGenerationModel;
 use rig::providers::venice;
 
 use super::super::support::with_venice_cassette;

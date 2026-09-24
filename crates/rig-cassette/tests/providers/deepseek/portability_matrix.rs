@@ -13,7 +13,7 @@ fn params() -> Option<serde_json::Value> {
 fn model(
     client: BoundDeepSeek,
     cell: Cell,
-) -> rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient> {
+) -> rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient> {
     client.completion(cell.model)
 }
 

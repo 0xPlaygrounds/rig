@@ -13,7 +13,6 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::{EffectFamily, EffectKind, Outcome, RetrieveQuery, RetrievedDocuments};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig_cassette::agent::AgentReplayExt;
 

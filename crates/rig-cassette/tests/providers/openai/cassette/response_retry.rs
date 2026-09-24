@@ -3,7 +3,6 @@
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;

@@ -80,10 +80,8 @@
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent};
-use rig_test_support::endpoint::Endpoint;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -183,9 +181,9 @@ async fn drain(mut stream: rig::streaming::CompletionStream) -> Drained {
     }
     Drained {
         text,
-        choice: stream.snapshot(),
+        choice: stream.folded().snapshot(),
         terminals,
-        terminal: stream.response.clone(),
+        terminal: stream.folded().terminal().cloned(),
         last_item_was_terminal,
     }
 }
@@ -689,7 +687,7 @@ mod unit {
     use futures::StreamExt;
     use rig::completion::FinishReason;
     use rig::message::AssistantContent;
-    use rig::prelude::*;
+
     use rig::providers::gemini::{self, Gemini};
     use rig::streaming::{Delta, StreamEvent};
     use rig_core::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
@@ -736,7 +734,8 @@ mod unit {
     where
         T: rig::http_client::HttpClientExt + Clone + std::fmt::Debug + Send + Sync + 'static,
     {
-        let client = Endpoint::new(Gemini::new("test-key"), http_client);
+        let client =
+            rig_test_support::endpoint::Endpoint::new(Gemini::new("test-key"), http_client);
         let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
         let request = model.completion_request("hello").build();
         let mut stream = model.stream(request, None).expect("stream should open");
@@ -783,7 +782,7 @@ mod unit {
                 }
             }
         }
-        run.response = stream.response.clone();
+        run.response = stream.folded().terminal().cloned();
         run
     }
 

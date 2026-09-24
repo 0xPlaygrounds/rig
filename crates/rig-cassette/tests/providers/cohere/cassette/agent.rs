@@ -1,7 +1,6 @@
 //! Cassette-backed Cohere non-streaming completion coverage.
 
 use rig::completion::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::cohere::completion::{
     CompletionResponse as CohereCompletionResponse, FinishReason,
 };
@@ -46,7 +45,7 @@ async fn usage_is_reported_from_token_counts() {
             // both views come out of the cassette's one recorded interaction
             // rather than a second request.
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
             let raw_response = CohereCompletionResponse::deserialize(&response.raw)
@@ -106,7 +105,7 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("capped completion should succeed");
             let raw = CohereCompletionResponse::deserialize(&response.raw)
@@ -134,7 +133,7 @@ async fn multiturn_history_is_accepted() {
             .build();
 
         let response = model
-            .completion(request)
+            .call(request, None)
             .await
             .expect("multi-turn history should be accepted");
         let text = response
@@ -166,7 +165,7 @@ async fn stop_sequences_are_forwarded() {
             .build();
 
         let response = model
-            .completion(request)
+            .call(request, None)
             .await
             .expect("stop sequence request should succeed");
         let raw = CohereCompletionResponse::deserialize(&response.raw)
@@ -197,7 +196,7 @@ async fn sampling_parameters_are_forwarded() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("documented sampling parameters should be accepted");
             let text = response

@@ -9,7 +9,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette_result;

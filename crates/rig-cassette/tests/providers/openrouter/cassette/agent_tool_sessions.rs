@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::openrouter;
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -559,7 +558,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -622,7 +621,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             // reasons — which the normalized response collapses into one — are
             // read off OpenRouter's own response type rather than from a
             // second call.
-            let response = model.completion(request).await?;
+            let response = model.call(request, None).await?;
             let wire = openrouter::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is OpenRouter's own completion response");
             let text = response

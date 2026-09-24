@@ -52,7 +52,6 @@
 //! covers the merge itself, including overriding each derived key and a
 //! non-object payload — shapes that need no network at all.
 
-use rig::audio_generation::AudioGenerationModel;
 use rig::providers::openai;
 use serde_json::json;
 

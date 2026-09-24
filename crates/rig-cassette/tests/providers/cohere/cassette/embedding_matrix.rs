@@ -44,11 +44,12 @@ async fn normalized_response_is_complete() {
     with_cohere_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client
-                .embedding(cohere::EMBED_V4, None)
-                .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
+            let model = rig_test_support::endpoint::map_wire(
+                client.embedding(cohere::EMBED_V4, None),
+                |wire| wire.with_input_type(INPUT_TYPE),
+            );
             let response = model
-                .embed_texts_response(inputs())
+                .call(inputs(), None)
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -65,11 +66,12 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_cohere_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client
-            .embedding(cohere::EMBED_V4, None)
-            .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
+        let model = rig_test_support::endpoint::map_wire(
+            client.embedding(cohere::EMBED_V4, None),
+            |wire| wire.with_input_type(INPUT_TYPE),
+        );
         let response = model
-            .embed_texts_response(inputs())
+            .call(inputs(), None)
             .await
             .expect("embedding request should succeed");
 
@@ -104,15 +106,16 @@ async fn raw_round_trips() {
 #[tokio::test]
 async fn raw_route_parity() {
     with_cohere_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client
-            .embedding(cohere::EMBED_V4, None)
-            .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
+        let model = rig_test_support::endpoint::map_wire(
+            client.embedding(cohere::EMBED_V4, None),
+            |wire| wire.with_input_type(INPUT_TYPE),
+        );
         let normalized = model
-            .embed_texts_response(inputs())
+            .call(inputs(), None)
             .await
             .expect("normalized call should succeed");
         let again = model
-            .embed_texts_response(inputs())
+            .call(inputs(), None)
             .await
             .expect("the same request should succeed again");
         let raw: cohere::embeddings::EmbeddingResponse =
@@ -128,11 +131,12 @@ async fn single_text_convenience() {
     with_cohere_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client
-                .embedding(cohere::EMBED_V4, None)
-                .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
+            let model = rig_test_support::endpoint::map_wire(
+                client.embedding(cohere::EMBED_V4, None),
+                |wire| wire.with_input_type(INPUT_TYPE),
+            );
             let response = model
-                .embed_text_response(EMBEDDING_INPUTS[0])
+                .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -148,11 +152,12 @@ async fn error_preserves_provider_body() {
     with_cohere_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client
-                .embedding("no-such-embedding-model", None)
-                .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
+            let model = rig_test_support::endpoint::map_wire(
+                client.embedding("no-such-embedding-model", None),
+                |wire| wire.with_input_type(INPUT_TYPE),
+            );
             let error = model
-                .embed_texts_response(inputs())
+                .call(inputs(), None)
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(
@@ -177,9 +182,9 @@ async fn image_normalized_and_raw_round_trip() {
     with_cohere_cassette(
         "embedding_matrix/image_normalized_and_raw_round_trip",
         |client| async move {
-            let model = client.map_wire(|cohere| cohere.image_embeddings());
+            let model = client.model(|cohere| cohere.image_embedding());
             let response = model
-                .embed_images_response(vec![decode_image(PNG_2X2)])
+                .call(vec![decode_image(PNG_2X2)], None)
                 .await
                 .expect("image embedding should succeed");
 
@@ -220,7 +225,7 @@ async fn image_normalized_and_raw_round_trip() {
             // the axis left to pin is that the capture is stable rather than
             // that a second route agrees with the first.
             let again = model
-                .embed_images_response(vec![decode_image(PNG_2X2)])
+                .call(vec![decode_image(PNG_2X2)], None)
                 .await
                 .expect("the same image embed should succeed again");
             // Not byte-equality: Cohere mints a fresh generation id per call,

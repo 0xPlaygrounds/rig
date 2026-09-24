@@ -18,7 +18,6 @@ use anyhow::Result;
 use base64::Engine as _;
 use rig::completion::Message;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, UserContent};
-use rig::prelude::*;
 use rig::providers::mistral;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response, collect_stream_final_response};
@@ -178,7 +177,7 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
         |client| async move {
             let model = client.completion(VISION_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(user_message(vec![
                             UserContent::text(COLOUR_PROMPT),
@@ -187,6 +186,7 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
                         .temperature(0.0)
                         .max_tokens(12)
                         .build(),
+                    None,
                 )
                 .await?;
 
@@ -498,7 +498,7 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
         |client| async move {
             let model = client.completion(VISION_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(user_message(vec![
                             UserContent::text(DOCUMENT_PROMPT),
@@ -507,6 +507,7 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
                         .temperature(0.0)
                         .max_tokens(24)
                         .build(),
+                    None,
                 )
                 .await?;
 
@@ -685,7 +686,7 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
         |client| async move {
             let model = client.completion(AUDIO_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(user_message(vec![
                             UserContent::text(AUDIO_PROMPT),
@@ -694,6 +695,7 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
                         .temperature(0.0)
                         .max_tokens(48)
                         .build(),
+                    None,
                 )
                 .await?;
 

@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::OutputMode;
-use rig::prelude::*;
 use serde_json::json;
 
 use super::super::support::with_ollama_cassette;

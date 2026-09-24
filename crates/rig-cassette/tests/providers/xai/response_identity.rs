@@ -2,7 +2,6 @@
 //! Responses-shaped API; blocking and streaming turns carry it identically.
 
 use futures::StreamExt;
-use rig::prelude::*;
 use rig::providers::openai::responses_api;
 use rig::providers::xai;
 use rig::streaming::StreamEvent;
@@ -53,7 +52,6 @@ async fn streaming_terminal_carries_identity() {
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
-                .await
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -124,7 +122,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .completion_request("Reply with exactly: two views probe")
                 .build();
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("completion should succeed");
             assert_request_id(response.provider_request_id.as_deref(), "normalized view");

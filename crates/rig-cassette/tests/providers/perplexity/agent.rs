@@ -1,6 +1,5 @@
 //! Migrated from `examples/perplexity_agent.rs`.
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, PERPLEXITY};
 use rig::providers::perplexity::SONAR;
 use rig_test_support::endpoint::Endpoint;

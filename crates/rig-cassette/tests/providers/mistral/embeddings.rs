@@ -2,7 +2,6 @@
 
 use rig::Embed;
 use rig::embeddings::EmbeddingsBuilder;
-use rig::prelude::*;
 use rig::providers::mistral;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig::vector_store::VectorStoreIndex;

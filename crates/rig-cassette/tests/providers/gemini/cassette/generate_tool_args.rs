@@ -10,7 +10,6 @@
 
 use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -211,8 +210,7 @@ async fn nested_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("nested-args streaming request should start"),
             )
             .await;
@@ -265,8 +263,7 @@ async fn unicode_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request)
-                    .await
+                    .stream(request, None)
                     .expect("unicode-args streaming request should start"),
             )
             .await;
@@ -334,7 +331,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("optional-arg completion should succeed");
 

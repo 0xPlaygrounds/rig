@@ -107,7 +107,7 @@ async fn assert_blocking_tool_call(client: OpenAiCassette) {
         .build();
 
     let response = model
-        .completion(request)
+        .call(request, None)
         .await
         .expect("echoed metadata must never fail a response that carries a tool call");
 
@@ -134,8 +134,7 @@ async fn assert_streaming_terminal_usage(client: OpenAiCassette) {
         .build();
 
     let stream = model
-        .stream(request)
-        .await
+        .stream(request, None)
         .expect("streaming request should start");
     let observation = collect_raw_stream_observation(stream).await;
 

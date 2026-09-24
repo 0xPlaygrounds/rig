@@ -6,7 +6,6 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
-use rig::prelude::*;
 use rig::providers::openai::wire::{OPENROUTER, OpenAI};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::Value;

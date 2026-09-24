@@ -3,7 +3,6 @@
 
 use rig::agent::AgentHook;
 use rig::completion::PromptError;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 

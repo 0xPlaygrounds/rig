@@ -1,6 +1,5 @@
 //! xAI audio generation smoke test covering provider-specific additional parameters.
 
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::xai;
 use rig_test_support::endpoint::Endpoint;

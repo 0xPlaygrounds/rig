@@ -68,7 +68,6 @@
 //! shape carried verbatim, an absent `usage`, and an explicit `null`.
 
 use rig::providers::openai::{self, TranscriptionUsage};
-use rig::transcription::TranscriptionModel;
 use serde_json::json;
 
 use super::super::support::with_openai_transcription_cassette;

@@ -8,9 +8,7 @@ use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::bus::Bus;
 use rig::completion::PromptError;
-use rig::driver::Model;
 use rig::effect::{EffectFamily, HandlerKey};
-use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
@@ -57,8 +55,8 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
 }
 
 /// A host's bus with the model, and the host's note taker or embedding model.
-fn host_bus<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn host_bus(
+    client: &Endpoint<Gemini>,
     notes: bool,
     embeds: bool,
 ) -> (

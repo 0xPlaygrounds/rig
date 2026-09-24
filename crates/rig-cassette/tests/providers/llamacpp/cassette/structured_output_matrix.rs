@@ -82,7 +82,7 @@ async fn json_object_response_format_is_enforced_as_an_object() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(format!(
                             "{NO_THINK}Reply with the single word hello and nothing else."
@@ -92,6 +92,7 @@ async fn json_object_response_format_is_enforced_as_an_object() {
                             "response_format": { "type": "json_object" }
                         }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a bare json_object response_format is accepted");
@@ -132,12 +133,13 @@ async fn json_schema_response_format_is_enforced_by_the_server() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(format!("{NO_THINK}Give a fact about Paris, France."))
                         .max_tokens(256)
                         .output_schema(schemars::schema_for!(CityFact))
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a json_schema response format should succeed");
@@ -184,7 +186,7 @@ async fn a_gbnf_grammar_through_additional_params_is_enforced() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(format!(
                             "{NO_THINK}Answer with one word: is the sky blue?"
@@ -192,6 +194,7 @@ async fn a_gbnf_grammar_through_additional_params_is_enforced() {
                         .max_tokens(16)
                         .additional_params(json!({ "grammar": "root ::= \"yes\" | \"no\"" }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a GBNF grammar should be accepted");
@@ -232,7 +235,7 @@ async fn a_schema_and_a_grammar_together_are_rejected() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .completion(
+                .call(
                     model
                         .completion_request(format!("{NO_THINK}Give a fact about Paris."))
                         .max_tokens(128)
@@ -245,6 +248,7 @@ async fn a_schema_and_a_grammar_together_are_rejected() {
                             "grammar": "root ::= \"yes\" | \"no\"",
                         }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect_err("a top-level schema and a grammar cannot both constrain one turn");
@@ -292,13 +296,14 @@ async fn response_format_and_a_grammar_silently_let_the_schema_win() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(format!("{NO_THINK}Give a fact about Paris, France."))
                         .max_tokens(256)
                         .output_schema(schemars::schema_for!(CityFact))
                         .additional_params(json!({ "grammar": "root ::= \"yes\" | \"no\"" }))
                         .build(),
+                    None,
                 )
                 .await
                 .expect("the response_format route does not trip the conflict guard");
@@ -348,7 +353,7 @@ async fn a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(
                             // Deliberately adversarial: the prompt asks for
@@ -362,6 +367,7 @@ async fn a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server() {
                         .max_tokens(256)
                         .output_schema(schemars::schema_for!(CityFact))
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a schema-constrained request should succeed");
@@ -404,7 +410,7 @@ async fn a_schema_alongside_tools_is_deferred_so_the_tool_stays_reachable() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
+                .call(
                     model
                         .completion_request(format!("{NO_THINK}Look up Paris."))
                         .tool(rig::completion::ToolDefinition {
@@ -419,6 +425,7 @@ async fn a_schema_alongside_tools_is_deferred_so_the_tool_stays_reachable() {
                         .output_schema(schemars::schema_for!(CityFact))
                         .max_tokens(256)
                         .build(),
+                    None,
                 )
                 .await
                 .expect("a schema alongside tools should succeed");

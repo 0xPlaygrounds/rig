@@ -26,7 +26,10 @@ const CAP: u64 = 128;
 async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
     let model = client.completion(model_name);
     let response = model
-        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+        .call(
+            model.completion_request(PROMPT).max_tokens(CAP).build(),
+            None,
+        )
         .await
         .expect("reasoning completion should decode");
 
@@ -58,8 +61,10 @@ async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
 async fn exercise_streaming(client: BoundDoubleword, model_name: &'static str) {
     let model = client.completion(model_name);
     let stream = model
-        .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
-        .await
+        .stream(
+            model.completion_request(PROMPT).max_tokens(CAP).build(),
+            None,
+        )
         .expect("reasoning stream should connect");
     let observation = collect_raw_stream_observation(stream).await;
 

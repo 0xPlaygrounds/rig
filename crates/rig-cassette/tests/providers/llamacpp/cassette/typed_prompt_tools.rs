@@ -10,7 +10,6 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
     OutcomeAction, OutcomeEvent,
 };
-use rig::prelude::*;
 use rig::tool::Tool;
 
 use super::super::cassette_support::*;

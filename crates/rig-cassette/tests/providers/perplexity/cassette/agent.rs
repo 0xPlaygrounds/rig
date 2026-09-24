@@ -1,6 +1,5 @@
 //! Perplexity non-streaming completion cassette coverage.
 
-use rig::prelude::*;
 use rig::providers::perplexity;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};

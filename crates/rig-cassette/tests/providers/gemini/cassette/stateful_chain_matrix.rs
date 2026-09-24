@@ -136,14 +136,15 @@ async fn cached_content_lifecycle_chain() {
                 if let Err(error) = &sibling {
                     panic!("creating the sibling cache: {error}");
                 }
-                let model = generator
-                    .clone()
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(name.clone()));
+                let model = rig_test_support::endpoint::map_wire(
+                    generator.clone().completion(CACHE_MODEL),
+                    |wire| wire.with_cached_content(name.clone()),
+                );
                 let reply = model
-                    .completion(ask(
-                        "What is the code of record alpha? Reply with the code only.",
-                    ))
+                    .call(
+                        ask("What is the code of record alpha? Reply with the code only."),
+                        None,
+                    )
                     .await
                     .expect("generation against the cache");
                 assert!(text(&reply.choice).contains(CODE), "{:?}", reply.choice);
@@ -152,7 +153,12 @@ async fn cached_content_lifecycle_chain() {
                     .update_expiry(&name, CacheExpiry::ttl(Duration::from_secs(240)))
                     .await
                     .expect("extend the TTL");
-                let listed = caches.list_with_page_size(1).await.expect("paged list");
+                let listed = rig_test_support::endpoint::map_wire(caches.clone(), |wire| {
+                    wire.with_page_size(1)
+                })
+                .list()
+                .await
+                .expect("paged list");
                 assert!(
                     listed.iter().any(|entry| entry.name == name),
                     "the cache is listed"
@@ -160,10 +166,11 @@ async fn cached_content_lifecycle_chain() {
             })
             .await;
 
-            let refused = client
-                .completion(CACHE_MODEL)
-                .map_wire(|wire| wire.with_cached_content(created.name.clone()))
-                .completion(ask("What is the code of record alpha?"))
+            let refused =
+                rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
+                    wire.with_cached_content(created.name.clone())
+                })
+                .call(ask("What is the code of record alpha?"), None)
                 .await;
             let refused = refused.expect_err("a deleted cache handle must be refused");
             let report = rig::error::ErrorReport::from(&refused);
@@ -336,7 +343,7 @@ async fn interactions_chain_with_tool_call() {
             deleting_interactions(&client, &stored, async {
                 let model = client
                     .clone()
-                    .map_wire(|config| config.interactions(INTERACTIONS_MODEL));
+                    .model(|config| config.interactions(INTERACTIONS_MODEL));
                 let params = |previous: Option<String>| {
                     serde_json::to_value(AdditionalParameters {
                         store: Some(true),
@@ -347,7 +354,7 @@ async fn interactions_chain_with_tool_call() {
                 };
 
                 let first = model
-                    .completion(
+                    .call(
                         model
                             .completion_request(
                                 "Use lookup_code to get the code of record alpha. Do not guess.",
@@ -355,6 +362,7 @@ async fn interactions_chain_with_tool_call() {
                             .tool(lookup_tool())
                             .additional_params(params(None))
                             .build(),
+                        None,
                     )
                     .await
                     .expect("turn one");
@@ -363,7 +371,7 @@ async fn interactions_chain_with_tool_call() {
                 let call = only_call(&first.choice);
 
                 let second = model
-                    .completion(
+                    .call(
                         model
                             .completion_request(Message::from(UserContent::tool_result_for(
                                 call.id.clone(),
@@ -375,6 +383,7 @@ async fn interactions_chain_with_tool_call() {
                             )))
                             .additional_params(params(Some(first_id)))
                             .build(),
+                        None,
                     )
                     .await
                     .expect("turn two answers the call");
@@ -382,13 +391,14 @@ async fn interactions_chain_with_tool_call() {
                 keep(&second_id);
 
                 let third = model
-                    .completion(
+                    .call(
                         model
                             .completion_request(
                                 "Repeat the code you reported, exactly, and nothing else.",
                             )
                             .additional_params(params(Some(second_id)))
                             .build(),
+                        None,
                     )
                     .await
                     .expect("turn three continues");
@@ -478,7 +488,7 @@ async fn file_uri_chain() {
                 };
                 let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
                 let first = model
-                    .completion(ask_with(vec![document.clone()]))
+                    .call(ask_with(vec![document.clone()]), None)
                     .await
                     .expect("turn one reads the file by uri");
                 assert!(
@@ -497,7 +507,7 @@ async fn file_uri_chain() {
                     ),
                 ];
                 let second = model
-                    .completion(ask_with(history))
+                    .call(ask_with(history), None)
                     .await
                     .expect("turn two still reads the file by uri");
                 assert!(

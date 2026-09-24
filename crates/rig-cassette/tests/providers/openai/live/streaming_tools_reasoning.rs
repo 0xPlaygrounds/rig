@@ -1,6 +1,6 @@
 use futures::StreamExt;
+use rig::completion::Message;
 use rig::providers::openai::OpenAI;
-use rig::{completion::Message, prelude::*};
 use rig_agent::test_utils::MockExampleTool;
 use rig_test_support::endpoint::Endpoint;
 

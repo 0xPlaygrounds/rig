@@ -8,7 +8,6 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::{EffectFamily, Outcome, RetrievedDocuments};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
 

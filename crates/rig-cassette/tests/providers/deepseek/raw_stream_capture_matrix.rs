@@ -63,7 +63,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(PROMPT)
@@ -77,7 +77,7 @@ fn reasoning_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> CompletionRequest {
     model
         .completion_request(REASONING_PROMPT)
@@ -245,7 +245,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
         |client| async move {
             let model = client.completion(MODEL);
-            let stream = model.stream(reasoning_request(&model)).await?;
+            let stream = model.stream(reasoning_request(&model), None)?;
             sink.put(collect_reasoning_text_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())
         },

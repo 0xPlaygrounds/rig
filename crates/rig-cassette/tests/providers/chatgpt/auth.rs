@@ -1,9 +1,7 @@
 //! ChatGPT OAuth device flow and refresh smoke tests.
 
 use assert_fs::TempDir;
-use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
 use rig::rig_reqwest::client::bundled;

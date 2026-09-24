@@ -6,7 +6,6 @@
 //! `tests/common/ecs_matrix/world.rs`). This file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
-use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
@@ -16,8 +15,8 @@ use rig_test_support::endpoint::Endpoint;
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -35,8 +34,8 @@ fn wire<H: Socket>(
 
 /// The recording's own model: a cell that reuses a recording the corpus
 /// already had runs under the model and settings that recorded it.
-fn legacy<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn legacy(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -308,8 +307,8 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire<H: Socket>(
-    client: &Endpoint<Gemini, H>,
+fn reasoning_wire(
+    client: &Endpoint<Gemini>,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,

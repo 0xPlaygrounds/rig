@@ -2,7 +2,6 @@
 
 use rig::completion::{AssistantContent, Message};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 
@@ -61,7 +60,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .build();
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = model.stream(request, None).expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 
             assert!(

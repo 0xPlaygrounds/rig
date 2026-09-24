@@ -68,7 +68,7 @@ fn request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
 }
@@ -80,7 +80,7 @@ fn forced_tool_request<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
 ) -> rig::completion::CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
@@ -111,10 +111,10 @@ async fn drain_stream<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 >(
-    model: &(rig_core::driver::Model<W, T>),
+    model: &rig_core::driver::Model<W, T>,
     request: rig::completion::CompletionRequest,
 ) -> Drained {
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request, None).expect("stream should open");
     let mut terminal = None;
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {

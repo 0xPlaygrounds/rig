@@ -8,7 +8,6 @@
 //! the hook-level lifecycle claims. All assertions hold in both cassette
 //! modes: on replay the same code paths run against the replay server.
 
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_lifecycle_cassette;

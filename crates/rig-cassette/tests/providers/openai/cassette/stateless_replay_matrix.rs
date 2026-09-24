@@ -39,7 +39,6 @@
 //! `crates/rig-core/src/providers/openai/responses_api/stateless_replay_tests.rs`.
 
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::{
@@ -98,7 +97,7 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 async fn two_turn_conversation(client: Endpoint<OpenAI>) -> (ProviderResponse, ProviderResponse) {
     let model = client.completion(openai::GPT_5_6_SOL);
     let first = model
-        .completion(model.completion_request(TURN_ONE).build())
+        .call(model.completion_request(TURN_ONE).build(), None)
         .await
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
@@ -106,11 +105,12 @@ async fn two_turn_conversation(client: Endpoint<OpenAI>) -> (ProviderResponse, P
         content: first.choice.clone(),
     };
     let second = model
-        .completion(
+        .call(
             model
                 .completion_request(TURN_TWO)
                 .messages([Message::user(TURN_ONE), assistant])
                 .build(),
+            None,
         )
         .await
         .expect("turn 2 should succeed");
@@ -170,7 +170,7 @@ async fn compaction_item_decodes_on_the_response() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
             let response = model
-                .completion(model.completion_request(TURN_ONE).build())
+                .call(model.completion_request(TURN_ONE).build(), None)
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);

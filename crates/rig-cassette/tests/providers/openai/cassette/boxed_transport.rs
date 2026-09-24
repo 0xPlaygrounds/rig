@@ -6,8 +6,6 @@
 //! matches on method, path, allowlisted headers and body bytes, so a boxed
 //! request that differed in any of them would not find its interaction.
 
-use rig::Model;
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_boxed_cassette;

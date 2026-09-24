@@ -8,7 +8,6 @@
 //! against a hand-written expectation.
 
 use rig::bedrock;
-use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::assert_nonempty_response;
@@ -25,7 +24,7 @@ async fn retired_model_id_preserves_provider_error() {
             let request = model.completion_request("Say hi.").max_tokens(8).build();
 
             let error = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect_err("a retired model id should be a provider error");
 
@@ -64,7 +63,7 @@ async fn bare_profile_only_model_id_is_rejected() {
             let request = model.completion_request("Say hi.").max_tokens(8).build();
 
             let error = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect_err("a bare profile-only model id should be a provider error");
 
@@ -108,7 +107,7 @@ async fn cross_region_profile_id_completes() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request, None)
                 .await
                 .expect("cross-region profile completion should succeed");
 

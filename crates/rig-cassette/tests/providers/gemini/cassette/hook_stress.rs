@@ -30,7 +30,6 @@ use rig::agent::{
     OutcomeEvent, RequestPatch, StreamingError,
 };
 use rig::completion::Document;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;

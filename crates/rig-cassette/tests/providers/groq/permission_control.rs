@@ -4,7 +4,6 @@ use anyhow::Result;
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
-use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
 use rig::tool::Tool;
 use rig_test_support::endpoint::Endpoint;

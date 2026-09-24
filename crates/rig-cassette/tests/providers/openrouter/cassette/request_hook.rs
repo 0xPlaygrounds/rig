@@ -9,7 +9,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 
 use crate::support::assert_nonempty_response;
 

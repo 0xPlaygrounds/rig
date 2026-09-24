@@ -1,6 +1,5 @@
 //! ChatGPT non-interactive OAuth cassette coverage.
 
-use rig::prelude::*;
 use rig::providers::chatgpt;
 
 use super::super::support::with_chatgpt_noninteractive_oauth_cassette;

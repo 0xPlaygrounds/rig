@@ -15,7 +15,7 @@ use crate::ecs_matrix::{
 
 fn wire(
     client: &BoundVenice,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion(MISTRAL_SMALL_3_2_24B),

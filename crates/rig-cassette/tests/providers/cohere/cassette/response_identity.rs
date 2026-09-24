@@ -43,7 +43,6 @@ async fn streaming_request_id_is_none_by_design() {
                 .completion_request("Reply with exactly: stream identity probe")
                 .max_tokens(32)
                 .stream()
-                .await
                 .expect("stream should open");
 
             let mut terminal = None;
