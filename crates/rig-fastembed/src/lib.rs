@@ -98,7 +98,10 @@ impl TextEmbeddings {
 }
 
 /// A loaded Fastembed model: the transport that embeds in the calling
-/// process. Clones share the loaded model.
+/// process. Clones share the loaded model. Pair it with the
+/// [`TextEmbeddings`] of the model it loaded: the wire names the model and
+/// width that spans and capabilities report, and the transport embeds with
+/// whatever it loaded.
 #[derive(Clone)]
 pub struct Fastembed {
     embedder: Arc<TextEmbedding>,
