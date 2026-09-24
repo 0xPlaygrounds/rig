@@ -454,6 +454,31 @@ fn a_streamed_event_split_across_chunks_is_logged_when_it_completes() {
 }
 
 #[test]
+fn a_stream_fed_a_byte_at_a_time_is_still_logged() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let mut tap = StreamLedgerTap {
+        recorder: openai_direct_recorder(&ledger_path),
+        method: "POST".to_owned(),
+        uri: "https://api.openai.com/v1/responses".to_owned(),
+        request_body: Bytes::from_static(b"{}"),
+        status: 200,
+        pending: Vec::new(),
+    };
+    // CRLF-delimited, so every terminator spans several one-byte chunks.
+    let crlf = CREATED_STREAM.replace('\n', "\r\n");
+    for byte in crlf.as_bytes() {
+        tap.feed(std::slice::from_ref(byte));
+    }
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_direct"]);
+    assert!(tap.pending.is_empty(), "every complete event was consumed");
+}
+
+#[test]
 fn every_stream_but_a_known_binary_one_is_tapped() {
     let headers = |content_type: &str| {
         let mut headers = http_client::HeaderMap::new();

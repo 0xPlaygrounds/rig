@@ -1058,6 +1058,7 @@ fn every_way_a_provider_quotes_a_team_id_is_scrubbed() {
         format!("team-{team}"),
         format!("team ({team})"),
         format!("team `{team}`"),
+        format!("team [{team}]"),
     ] {
         let yaml = format!(
             "when:\n  path: /v1/x\n  method: POST\n  body: ''\nthen:\n  status: 404\n  body: '{phrasing}'\n"
