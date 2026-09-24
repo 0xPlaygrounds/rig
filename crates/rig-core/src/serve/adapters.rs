@@ -82,24 +82,32 @@ where
         let context = dispatch.adapter_context();
         match kind {
             EffectKind::Completion {
-                request,
+                mut request,
                 stream: false,
             } => {
+                if let Some(context) = context {
+                    request.extensions.insert(context);
+                }
                 let outcome = self
                     .model
-                    .completion_with_context(request, context)
+                    .complete(request)
                     .await
                     .map(Outcome::Completion)
                     .map_err(ErrorReport::from);
                 Reply::Outcome(outcome)
             }
             EffectKind::Completion {
-                request,
+                mut request,
                 stream: true,
-            } => match self.model.stream_with_context(request, context).await {
-                Ok(stream) => Reply::Stream(Box::pin(stream)),
-                Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
-            },
+            } => {
+                if let Some(context) = context {
+                    request.extensions.insert(context);
+                }
+                match self.model.stream(request).await {
+                    Ok(stream) => Reply::Stream(Box::pin(stream)),
+                    Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+                }
+            }
 
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }

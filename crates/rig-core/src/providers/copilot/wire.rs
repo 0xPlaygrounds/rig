@@ -331,10 +331,6 @@ impl Wire for CopilotWire {
         self.wire.replay_issuers(model)
     }
 
-    fn route(&self) -> Option<&str> {
-        self.wire.route()
-    }
-
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         self.wire
             .encode_with_headers(request, mode, |provider, request, builder| {

@@ -114,6 +114,53 @@ where
     }
 }
 
+/// An [`AudioGenerationModel`] of any type, for tables of models or for naming a model without
+/// its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedAudioGenerationModel(std::sync::Arc<dyn DynAudioGenerationModel>);
+
+impl BoxedAudioGenerationModel {
+    /// Erase `model`.
+    pub fn new(model: impl AudioGenerationModel + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedAudioGenerationModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedAudioGenerationModel")
+            .finish_non_exhaustive()
+    }
+}
+
+impl AudioGenerationModel for BoxedAudioGenerationModel {
+    fn audio_generation(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend
+    {
+        self.0.audio_generation(request)
+    }
+}
+
+/// The object-safe form of [`AudioGenerationModel`] behind [`BoxedAudioGenerationModel`].
+trait DynAudioGenerationModel: WasmCompatSend + WasmCompatSync {
+    fn audio_generation(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<AudioGenerationResponse, ProviderError>>;
+}
+
+impl<M: AudioGenerationModel> DynAudioGenerationModel for M {
+    fn audio_generation(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<AudioGenerationResponse, ProviderError>>
+    {
+        Box::pin(AudioGenerationModel::audio_generation(self, request))
+    }
+}
+
 pub struct AudioGenerationRequest {
     pub text: String,
     pub voice: String,

@@ -114,6 +114,52 @@ where
     }
 }
 
+/// A [`TranscriptionModel`] of any type, for tables of models or for naming a model without
+/// its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedTranscriptionModel(std::sync::Arc<dyn DynTranscriptionModel>);
+
+impl BoxedTranscriptionModel {
+    /// Erase `model`.
+    pub fn new(model: impl TranscriptionModel + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedTranscriptionModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedTranscriptionModel")
+            .finish_non_exhaustive()
+    }
+}
+
+impl TranscriptionModel for BoxedTranscriptionModel {
+    fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend
+    {
+        self.0.transcription(request)
+    }
+}
+
+/// The object-safe form of [`TranscriptionModel`] behind [`BoxedTranscriptionModel`].
+trait DynTranscriptionModel: WasmCompatSend + WasmCompatSync {
+    fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<TranscriptionResponse, ProviderError>>;
+}
+
+impl<M: TranscriptionModel> DynTranscriptionModel for M {
+    fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<TranscriptionResponse, ProviderError>> {
+        Box::pin(TranscriptionModel::transcription(self, request))
+    }
+}
+
 /// Struct representing a general transcription request that can be sent to a transcription model provider.
 pub struct TranscriptionRequest {
     /// The file data to be sent to the transcription model provider

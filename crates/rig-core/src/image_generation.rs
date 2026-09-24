@@ -113,6 +113,53 @@ where
     }
 }
 
+/// An [`ImageGenerationModel`] of any type, for tables of models or for naming a model without
+/// its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedImageGenerationModel(std::sync::Arc<dyn DynImageGenerationModel>);
+
+impl BoxedImageGenerationModel {
+    /// Erase `model`.
+    pub fn new(model: impl ImageGenerationModel + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedImageGenerationModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedImageGenerationModel")
+            .finish_non_exhaustive()
+    }
+}
+
+impl ImageGenerationModel for BoxedImageGenerationModel {
+    fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend
+    {
+        self.0.image_generation(request)
+    }
+}
+
+/// The object-safe form of [`ImageGenerationModel`] behind [`BoxedImageGenerationModel`].
+trait DynImageGenerationModel: WasmCompatSend + WasmCompatSync {
+    fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<ImageGenerationResponse, ProviderError>>;
+}
+
+impl<M: ImageGenerationModel> DynImageGenerationModel for M {
+    fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<ImageGenerationResponse, ProviderError>>
+    {
+        Box::pin(ImageGenerationModel::image_generation(self, request))
+    }
+}
+
 pub struct ImageGenerationRequest {
     pub prompt: String,
     pub width: u32,

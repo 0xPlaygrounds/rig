@@ -190,10 +190,6 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.replay_issuers(model))
     }
 
-    fn route(&self) -> Option<&str> {
-        on_route!(self, wire => wire.route())
-    }
-
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         on_route!(self, wire => wire.encode(request, mode))
     }

@@ -11,10 +11,10 @@
 //! ```
 
 use crate::completion::{CompletionRequest, CompletionResponse};
-use crate::error::ProviderError;
+use crate::error::{ErrorReport, ProviderError};
 use crate::streaming::{
-    Absorbed, BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, FoldStep, MintKind,
-    StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd, UnknownPayload,
+    BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
+    SyntheticIds, ToolCallEnd, UnknownPayload,
 };
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply, Sink};
@@ -140,30 +140,203 @@ impl Sink<Completion> for AdapterOutput {
     }
 }
 
-/// The fold from a completion reply's events to its response.
+/// The fold from a completion reply's events to its response, and the one
+/// accumulator a completion stream keeps.
 ///
-/// The same step [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse)
-/// runs while it yields events, so a unary reply and a streamed one agree by
-/// construction.
+/// [`Self::step`] is the same step for a unary reply and a streamed one, so
+/// the two agree by construction.
 #[derive(Default)]
 pub struct CompletionFold {
     accumulator: BlockAccumulator,
     terminal: Option<StreamFinal>,
     message_id: Option<String>,
-    /// Only written by the fold step; the response's provider is the wire's.
+    /// The provider a streamed response names: the opener's, or the
+    /// terminal record's for a relayed stream. A unary response names the
+    /// reply's.
     provider: String,
+    /// Whether the terminal record names the provider: a stream relayed
+    /// over the bus is opened under the handler's label.
+    provider_from_terminal: bool,
+    /// The issuer of this reply's reasoning when it is named before the
+    /// terminal record.
+    reasoning_issuer: Option<String>,
+}
+
+/// What one fold step decided about an event.
+enum Absorbed {
+    /// Forward this event (possibly rewritten with the block it finalized).
+    Yield(StreamEvent),
+    /// The accumulator rejected it; the stream keeps consuming.
+    Failed(ErrorReport),
+    /// A duplicate terminal: the first one latched.
+    Skip,
+}
+
+impl CompletionFold {
+    /// The fold of a stream `provider` opened.
+    pub(crate) fn opened(provider: impl Into<String>) -> Self {
+        Self {
+            provider: provider.into(),
+            ..Self::default()
+        }
+    }
+
+    /// The fold of a stream relayed under `label`, whose terminal record
+    /// names the provider behind it.
+    pub(crate) fn relayed(label: impl Into<String>) -> Self {
+        Self {
+            provider: label.into(),
+            provider_from_terminal: true,
+            ..Self::default()
+        }
+    }
+
+    /// Name the issuer of the reply's reasoning before its terminal record.
+    pub(crate) fn name_reasoning_issuer(&mut self, issuer: String) {
+        self.reasoning_issuer = Some(issuer);
+    }
+
+    /// Fold one event and return it as a stream forwards it: rewritten
+    /// with the block it finalized, or an in-band report for a block the
+    /// accumulator rejected. `None` drops a duplicate terminal.
+    pub fn step(&mut self, event: StreamEvent) -> Option<Result<StreamEvent, ErrorReport>> {
+        match self.absorb_event(event) {
+            Absorbed::Yield(event) => Some(Ok(event)),
+            Absorbed::Failed(report) => Some(Err(report)),
+            Absorbed::Skip => None,
+        }
+    }
+
+    fn absorb_event(&mut self, event: StreamEvent) -> Absorbed {
+        match event {
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Message,
+            } => {
+                // The wire announced the assistant message's own id; it
+                // outranks the terminal record's.
+                if let Some(message_id) = id.wire_str() {
+                    self.message_id = Some(message_id.to_owned());
+                }
+                Absorbed::Yield(StreamEvent::BlockStart {
+                    id,
+                    kind: BlockKind::Message,
+                })
+            }
+            StreamEvent::Final(mut response) => {
+                // A second terminal is a provider defect; the first one latched.
+                if self.terminal.is_some() {
+                    return Absorbed::Skip;
+                }
+                // Reconcile against the accumulator's view of completed
+                // calls, so a `stop` that was really a tool call reads the
+                // same on both surfaces.
+                response.finish_reason = response
+                    .finish_reason
+                    .map(|reason| reason.reconcile_with_output(self.accumulator.saw_tool_call()));
+                // An explicit message-id block keeps precedence; the terminal
+                // record only fills a gap.
+                if self.message_id.is_none() {
+                    self.message_id.clone_from(&response.message_id);
+                }
+                if self.provider_from_terminal && !response.provider.is_empty() {
+                    self.provider.clone_from(&response.provider);
+                }
+                self.terminal = Some(response.clone());
+                Absorbed::Yield(StreamEvent::Final(response))
+            }
+            // Passed straight through; never folded into the aggregated choice.
+            StreamEvent::Unknown(value) => Absorbed::Yield(StreamEvent::Unknown(value)),
+            event => match self.accumulator.apply(&event) {
+                // A block end that finalized a block publishes it under the
+                // key its deltas carried.
+                Ok(Some((id, block))) => {
+                    let StreamEvent::BlockEnd { end, .. } = event else {
+                        // Only ends finalize; the accumulator upholds it.
+                        return Absorbed::Yield(event);
+                    };
+                    Absorbed::Yield(StreamEvent::BlockEnd {
+                        id,
+                        end,
+                        block: Some(block),
+                    })
+                }
+                Ok(None) => Absorbed::Yield(event),
+                // Malformed complete input surfaces in-band.
+                Err(error) => Absorbed::Failed(error),
+            },
+        }
+    }
+
+    pub(crate) fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    pub(crate) fn terminal(&self) -> Option<&StreamFinal> {
+        self.terminal.as_ref()
+    }
+
+    pub(crate) fn message_id(&self) -> Option<&str> {
+        self.message_id.as_deref()
+    }
+
+    pub(crate) fn snapshot(&self) -> Vec<crate::message::AssistantContent> {
+        self.accumulator.snapshot()
+    }
+
+    pub(crate) fn usage(&self) -> crate::completion::Usage {
+        self.terminal
+            .as_ref()
+            .map(|terminal| terminal.usage)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn identity(&self) -> crate::completion::ResponseIdentity {
+        crate::completion::ResponseIdentity {
+            message_id: self.message_id.clone(),
+            ..self
+                .terminal
+                .as_ref()
+                .map(StreamFinal::identity)
+                .unwrap_or_default()
+        }
+    }
+
+    pub(crate) fn reasoning_issuer(&self) -> Option<&str> {
+        match &self.terminal {
+            Some(terminal) => Some(terminal.issuer()),
+            None => self
+                .reasoning_issuer
+                .as_deref()
+                .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
+        }
+    }
+
+    /// The streamed turn: the aggregated choice with the terminal record's
+    /// usage, metadata and document as `raw`. A stream that produced no
+    /// terminal record is truncated and is refused.
+    pub(crate) fn finish_stream(self) -> Result<CompletionResponse, ProviderError> {
+        let Some(terminal) = self.terminal.as_ref() else {
+            return Err(ProviderError::Response(
+                "provider stream ended without a terminal record; treating the turn as truncated"
+                    .to_owned(),
+            ));
+        };
+        let issuer = terminal.issuer().to_owned();
+        Ok(crate::streaming::fold_finish(
+            self.accumulator,
+            Some(terminal),
+            self.message_id.clone(),
+            self.provider.clone(),
+            &issuer,
+            terminal.raw.clone(),
+        ))
+    }
 }
 
 impl Fold<Completion> for CompletionFold {
     fn absorb(&mut self, event: StreamEvent) -> Result<(), ProviderError> {
-        let step = FoldStep {
-            accumulator: &mut self.accumulator,
-            response: &mut self.terminal,
-            message_id: &mut self.message_id,
-            provider: &mut self.provider,
-            provider_from_terminal: false,
-        };
-        match crate::streaming::absorb(step, event) {
+        match self.absorb_event(event) {
             Absorbed::Yield(_) | Absorbed::Skip => Ok(()),
             // A buffered reply has no stream to carry an in-band defect, so
             // a block the wire promised and then malformed fails the call.
@@ -172,21 +345,26 @@ impl Fold<Completion> for CompletionFold {
     }
 
     fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
-        // The buffered reply's document is the response's `raw`, not the
-        // terminal record's: the wire decoded the whole body at once.
         let issuer = self
             .terminal
             .as_ref()
             .map_or(reply.provider.clone(), |terminal| {
                 terminal.issuer().to_owned()
             });
+        // The reply's body is the response's `raw` when it is one JSON
+        // document. A body delivered as an event stream is not, and the
+        // terminal record carries the document the wire reassembled.
+        let raw = match (reply.raw, &self.terminal) {
+            (serde_json::Value::Null, Some(terminal)) => terminal.raw.clone(),
+            (raw, _) => raw,
+        };
         let response = crate::streaming::fold_finish(
             self.accumulator,
             self.terminal.as_ref(),
             self.message_id,
             reply.provider,
             &issuer,
-            reply.raw,
+            raw,
         );
         // The terminal's own id wins; the reply headers only fill a gap.
         if response.provider_request_id.is_none() {

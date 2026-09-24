@@ -9,7 +9,7 @@ use crate::error::ProviderError;
 use crate::{
     completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionResponse, Usage},
     message::{ToolCall, ToolFunction},
-    streaming::StreamingCompletionResponse,
+    streaming::CompletionStream,
 };
 
 use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
@@ -394,25 +394,14 @@ impl MockCompletionModel {
 }
 
 impl CompletionModel for MockCompletionModel {
-    async fn completion(
+    async fn complete(
         &self,
         request: CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, ProviderError> {
-        self.completion_with_context(request, None).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, ProviderError> {
-        self.stream_with_context(request, None).await
-    }
-
-    async fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
     ) -> Result<CompletionResponse, ProviderError> {
+        let context = request
+            .extensions
+            .get::<crate::observe::AdapterContext>()
+            .cloned();
         self.record_request(request, context);
         let Some(turn) = self.next_turn() else {
             return Err(ProviderError::Provider(
@@ -423,11 +412,11 @@ impl CompletionModel for MockCompletionModel {
         turn.into_completion_response()
     }
 
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        let context = request
+            .extensions
+            .get::<crate::observe::AdapterContext>()
+            .cloned();
         self.record_request(request, context);
         let Some(events) = self.next_stream_turn() else {
             return Err(ProviderError::Provider(
@@ -436,9 +425,9 @@ impl CompletionModel for MockCompletionModel {
         };
 
         // Scripted events go through the same `AdapterOutput` helper every
-        // real adapter uses, so the mock speaks exactly the wire grammar —
+        // real adapter uses, so the mock speaks exactly the wire grammar,
         // and the same `Stop` -> `ToolCalls` reconciliation callers see in
-        // production runs in `StreamingCompletionResponse` for both.
+        // production runs in `CompletionStream` for both.
         let stream = async_stream::stream! {
             let mut out = crate::operation::AdapterOutput::new();
             // An id-less scripted tool call mints per stream, like a wire
@@ -453,10 +442,7 @@ impl CompletionModel for MockCompletionModel {
                 }
             }
         };
-        Ok(StreamingCompletionResponse::stream(
-            MOCK_PROVIDER,
-            Box::pin(stream),
-        ))
+        Ok(CompletionStream::new(MOCK_PROVIDER, stream))
     }
 }
 

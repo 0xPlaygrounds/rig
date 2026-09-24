@@ -156,6 +156,7 @@ pub(crate) fn create_request_body(
         mut additional_params,
         output_schema,
         record_telemetry_content: _,
+        extensions: _,
     } = completion_request;
 
     let mut full_history = Vec::new();

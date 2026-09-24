@@ -34,6 +34,80 @@ pub trait RerankModel: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<Output = Result<RerankResponse, ProviderError>> + WasmCompatSend;
 }
 
+/// Forwards reranking through shared ownership.
+impl<M: RerankModel + ?Sized> RerankModel for std::sync::Arc<M> {
+    fn max_documents(&self) -> usize {
+        (**self).max_documents()
+    }
+
+    fn rerank(
+        &self,
+        query: &str,
+        documents: Vec<String>,
+    ) -> impl std::future::Future<Output = Result<RerankResponse, ProviderError>> + WasmCompatSend
+    {
+        (**self).rerank(query, documents)
+    }
+}
+
+/// A [`RerankModel`] of any type, for tables of models or for naming a model without
+/// its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedRerankModel(std::sync::Arc<dyn DynRerankModel>);
+
+impl BoxedRerankModel {
+    /// Erase `model`.
+    pub fn new(model: impl RerankModel + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedRerankModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedRerankModel").finish_non_exhaustive()
+    }
+}
+
+impl RerankModel for BoxedRerankModel {
+    fn max_documents(&self) -> usize {
+        self.0.max_documents()
+    }
+
+    fn rerank(
+        &self,
+        query: &str,
+        documents: Vec<String>,
+    ) -> impl std::future::Future<Output = Result<RerankResponse, ProviderError>> + WasmCompatSend
+    {
+        self.0.rerank(query.to_owned(), documents)
+    }
+}
+
+/// The object-safe form of [`RerankModel`] behind [`BoxedRerankModel`].
+trait DynRerankModel: WasmCompatSend + WasmCompatSync {
+    fn max_documents(&self) -> usize;
+
+    fn rerank(
+        &self,
+        query: String,
+        documents: Vec<String>,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<RerankResponse, ProviderError>>;
+}
+
+impl<M: RerankModel> DynRerankModel for M {
+    fn max_documents(&self) -> usize {
+        RerankModel::max_documents(self)
+    }
+
+    fn rerank(
+        &self,
+        query: String,
+        documents: Vec<String>,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<RerankResponse, ProviderError>> {
+        Box::pin(async move { RerankModel::rerank(self, &query, documents).await })
+    }
+}
+
 /// A single reranked document result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankResult {

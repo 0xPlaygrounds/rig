@@ -29,6 +29,9 @@ use crate::wire::{
 
 mod bound;
 mod consumers;
+mod transport;
+
+pub use transport::{Opened, Transport};
 
 pub use bound::{Bind, Bound};
 #[cfg(feature = "audio")]
@@ -226,7 +229,13 @@ where
 /// Drives already-framed completion events through a decoder until termination.
 /// Transport errors flush delivered content before the error; EOF invokes the
 /// decoder's finish policy. HTTP framing and observation are not supplied here.
-pub fn run_wire_stream<D, F, S>(transport: S, decoder: D) -> crate::streaming::StreamingResult
+pub fn run_wire_stream<D, F, S>(
+    transport: S,
+    decoder: D,
+) -> crate::wasm_compat::WasmBoxedStream<
+    'static,
+    Result<crate::streaming::StreamEvent, ProviderError>,
+>
 where
     D: Decoder<crate::operation::Completion, F> + WasmCompatSend + 'static,
     F: WasmCompatSend + 'static,
@@ -358,6 +367,7 @@ where
         framing,
         request_id_header,
         relaxed_content_type,
+        route: declared_route,
     } = wire.encode(request, Mode::Unary)?;
 
     let mut reply = Reply {
@@ -376,7 +386,7 @@ where
         // Errors need the actual path; observations use the declared template
         // to group attempts independently of concrete URLs.
         let route = http_request.uri().path().to_owned();
-        let declared = wire.route().unwrap_or(&route);
+        let declared = declared_route.unwrap_or(&route);
         // What was sent, kept to recognize a continuation that would re-send
         // it. `Uri` and `Method` clones are refcount-cheap.
         let sent_target = (http_request.method().clone(), http_request.uri().clone());
@@ -560,6 +570,7 @@ where
         framing,
         request_id_header,
         relaxed_content_type,
+        route: declared_route,
     } = wire.encode(request, Mode::Streaming)?;
     // No streamed operation sends a batch: a batch exists for providers
     // that take one item per request, and those are all unary.
@@ -581,16 +592,13 @@ where
     let mut driver =
         WireDriver::<W::Op, _>::observed(wire.decoder(Mode::Streaming), observation.clone());
     let recording = span.clone();
-    // Read here rather than inside the stream: `wire` is borrowed, and the
-    // generated stream outlives this call.
-    let declared_route = wire.route().map(str::to_owned);
 
     let frames = async_stream::stream! {
         // Unpolled streams must not report transport attempts.
         if let Some(observation) = &observation {
             // Group attempts by declared route rather than concrete path.
             let path = http_request.uri().path().to_owned();
-            let declared = declared_route.as_deref().unwrap_or(&path);
+            let declared = declared_route.unwrap_or(&path);
             observation.install(
                 context
                     .as_ref()

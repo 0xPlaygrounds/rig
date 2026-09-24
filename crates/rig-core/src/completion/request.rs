@@ -13,8 +13,8 @@
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
-use crate::streaming::StreamingCompletionResponse;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::streaming::CompletionStream;
+use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -411,99 +411,136 @@ impl ProviderCapabilities {
 /// Generates buffered or streamed normalized completions. Provider-specific
 /// response data belongs in [`CompletionResponse::raw`]. Only
 /// [`Self::completion_request`] requires cloning; `Arc<M>` can share a model.
+///
+/// Implement this on any type to make it a model. Per-call context, such as
+/// a runtime's observation handle, travels in
+/// [`CompletionRequest::extensions`], never as a parameter.
 pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
-    /// Generates a completion response for the given completion request.
-    fn completion(
+    /// Generate one whole completion.
+    fn complete(
         &self,
         request: CompletionRequest,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend;
 
-    /// Streams a completion response for the given completion request.
+    /// Open a streamed completion. Failures after the stream opens arrive
+    /// in-band.
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<CompletionStream, ProviderError>> + WasmCompatSend;
 
-    /// Generates a completion with optional execution-local observation.
-    /// The default delegates without observations. Forwarding wrappers must
-    /// preserve the context to retain per-call identity across retries and tasks.
-    fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        self.completion(request)
+    /// Provider behavior a runtime should account for when preparing
+    /// requests. The default is conservative; see [`ProviderCapabilities`].
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities::default()
     }
 
-    /// Optionally observe a stream, retaining context through lazy startup and drop.
-    /// The default delegates to [`Self::stream`] without provider observations.
-    fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        self.stream(request)
-    }
-
-    /// Generates a completion request builder for the given `prompt`.
+    /// A request builder for `prompt` that sends through this model.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self>
     where
         Self: Sized + Clone,
     {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
-
-    /// Provider behavior a runtime should account for when preparing requests.
-    ///
-    /// The default is conservative; see [`ProviderCapabilities`]. Override
-    /// this to declare the capabilities a provider actually supports.
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities::default()
-    }
 }
 
 /// Forwards model operations through shared ownership. Request builders clone
 /// the `Arc`, not the underlying model.
 impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
-    fn completion(
+    fn complete(
         &self,
         request: CompletionRequest,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
     {
-        (**self).completion(request)
+        (**self).complete(request)
     }
 
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        (**self).stream(request)
-    }
-
-    fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<CompletionStream, ProviderError>> + WasmCompatSend
     {
-        (**self).completion_with_context(request, context)
-    }
-
-    fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        (**self).stream_with_context(request, context)
+        (**self).stream(request)
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
         (**self).capabilities()
+    }
+}
+
+/// A [`CompletionModel`] of any type, for tables of models or for naming a
+/// model without its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedCompletionModel(std::sync::Arc<dyn DynCompletionModel>);
+
+impl BoxedCompletionModel {
+    /// Erase `model`.
+    pub fn new(model: impl CompletionModel + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedCompletionModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedCompletionModel")
+            .finish_non_exhaustive()
+    }
+}
+
+impl CompletionModel for BoxedCompletionModel {
+    fn complete(
+        &self,
+        request: CompletionRequest,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
+    {
+        self.0.complete(request)
+    }
+
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl std::future::Future<Output = Result<CompletionStream, ProviderError>> + WasmCompatSend
+    {
+        self.0.stream(request)
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        self.0.capabilities()
+    }
+}
+
+/// The object-safe form of [`CompletionModel`] behind [`BoxedCompletionModel`].
+trait DynCompletionModel: WasmCompatSend + WasmCompatSync {
+    fn complete(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<CompletionResponse, ProviderError>>;
+
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<CompletionStream, ProviderError>>;
+
+    fn capabilities(&self) -> ProviderCapabilities;
+}
+
+impl<M: CompletionModel> DynCompletionModel for M {
+    fn complete(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<CompletionResponse, ProviderError>> {
+        Box::pin(CompletionModel::complete(self, request))
+    }
+
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<CompletionStream, ProviderError>> {
+        Box::pin(CompletionModel::stream(self, request))
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        CompletionModel::capabilities(self)
     }
 }
 
@@ -538,6 +575,11 @@ pub struct CompletionRequest {
     /// especially for streams consumed after the provider returns.
     #[serde(skip)]
     pub record_telemetry_content: bool,
+    /// Per-call context for runtimes and transports, such as an
+    /// [`AdapterContext`](crate::observe::AdapterContext) observing the
+    /// call's attempts. Wires never read it; it is not serialized.
+    #[serde(skip)]
+    pub extensions: http::Extensions,
 }
 
 impl CompletionRequest {
@@ -957,6 +999,7 @@ impl<M> CompletionRequestBuilder<M> {
             additional_params,
             output_schema: self.output_schema,
             record_telemetry_content: self.record_telemetry_content,
+            extensions: http::Extensions::new(),
         };
         (model, request)
     }
@@ -985,11 +1028,11 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     pub async fn send(self) -> Result<CompletionResponse, ProviderError> {
         let (model, request) = self.into_model_and_request();
         request.validate_message_content()?;
-        model.completion(request).await
+        model.complete(request).await
     }
 
     /// Stream the completion request
-    pub async fn stream(self) -> Result<StreamingCompletionResponse, ProviderError> {
+    pub async fn stream(self) -> Result<CompletionStream, ProviderError> {
         let (model, request) = self.into_model_and_request();
         request.validate_message_content()?;
         model.stream(request).await

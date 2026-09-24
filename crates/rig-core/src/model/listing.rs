@@ -144,6 +144,51 @@ pub trait ModelLister: WasmCompatSend + WasmCompatSync {
     fn list_all(&self) -> impl Future<Output = Result<ModelList, ProviderError>> + WasmCompatSend;
 }
 
+/// Forwards listing through shared ownership.
+impl<M: ModelLister + ?Sized> ModelLister for std::sync::Arc<M> {
+    fn list_all(&self) -> impl Future<Output = Result<ModelList, ProviderError>> + WasmCompatSend {
+        (**self).list_all()
+    }
+}
+
+/// A [`ModelLister`] of any type, for tables of models or for naming a model without
+/// its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedModelLister(std::sync::Arc<dyn DynModelLister>);
+
+impl BoxedModelLister {
+    /// Erase `model`.
+    pub fn new(model: impl ModelLister + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedModelLister {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedModelLister").finish_non_exhaustive()
+    }
+}
+
+impl ModelLister for BoxedModelLister {
+    fn list_all(&self) -> impl Future<Output = Result<ModelList, ProviderError>> + WasmCompatSend {
+        self.0.list_all()
+    }
+}
+
+/// The object-safe form of [`ModelLister`] behind [`BoxedModelLister`].
+trait DynModelLister: WasmCompatSend + WasmCompatSync {
+    fn list_all(&self)
+    -> crate::wasm_compat::WasmBoxedFuture<'_, Result<ModelList, ProviderError>>;
+}
+
+impl<M: ModelLister> DynModelLister for M {
+    fn list_all(
+        &self,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<ModelList, ProviderError>> {
+        Box::pin(ModelLister::list_all(self))
+    }
+}
+
 const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;
 
 fn format_response_body_preview(body: &[u8]) -> String {

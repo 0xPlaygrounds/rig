@@ -32,7 +32,7 @@ use crate::providers::gemini::cached_content::{
     CacheExpiry, CachedContent, CachedContentRequest, CachedContents, NewCachedContent, on_handle,
 };
 use crate::rerank::{RerankModel, RerankResponse};
-use crate::streaming::StreamingCompletionResponse;
+use crate::streaming::CompletionStream;
 use crate::transcription::{TranscriptionModel, TranscriptionRequest, TranscriptionResponse};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::Wire;
@@ -49,39 +49,19 @@ where
     W: Wire<Op = Completion>,
     H: Socket,
 {
-    async fn completion(
+    async fn complete(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        call(&self.wire, &self.http, request, None).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        self.stream_with_context(request, None).await
-    }
-
-    async fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<AdapterContext>,
-    ) -> Result<CompletionResponse, ProviderError> {
+        let context = request.extensions.get::<AdapterContext>().cloned();
         call(&self.wire, &self.http, request, context).await
     }
 
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<AdapterContext>,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        let context = request.extensions.get::<AdapterContext>().cloned();
         let provider = self.wire.name().to_owned();
         let frames = stream(&self.wire, &self.http, request, context)?;
-        Ok(StreamingCompletionResponse::stream(
-            provider,
-            Box::pin(frames),
-        ))
+        Ok(CompletionStream::new(provider, frames))
     }
 
     fn capabilities(&self) -> ProviderCapabilities {

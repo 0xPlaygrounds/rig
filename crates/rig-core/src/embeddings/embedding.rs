@@ -81,6 +81,91 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     }
 }
 
+/// Forwards embedding through shared ownership.
+impl<M: EmbeddingModel + ?Sized> EmbeddingModel for std::sync::Arc<M> {
+    fn max_documents(&self) -> usize {
+        (**self).max_documents()
+    }
+
+    fn ndims(&self) -> usize {
+        (**self).ndims()
+    }
+
+    fn embed_texts_response(
+        &self,
+        texts: impl IntoIterator<Item = String> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend
+    {
+        (**self).embed_texts_response(texts)
+    }
+}
+
+/// An [`EmbeddingModel`] of any type, for tables of models or for naming a model without
+/// its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedEmbeddingModel(std::sync::Arc<dyn DynEmbeddingModel>);
+
+impl BoxedEmbeddingModel {
+    /// Erase `model`.
+    pub fn new(model: impl EmbeddingModel + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedEmbeddingModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedEmbeddingModel")
+            .finish_non_exhaustive()
+    }
+}
+
+impl EmbeddingModel for BoxedEmbeddingModel {
+    fn max_documents(&self) -> usize {
+        self.0.max_documents()
+    }
+
+    fn ndims(&self) -> usize {
+        self.0.ndims()
+    }
+
+    fn embed_texts_response(
+        &self,
+        texts: impl IntoIterator<Item = String> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend
+    {
+        self.0.embed_texts_response(texts.into_iter().collect())
+    }
+}
+
+/// The object-safe form of [`EmbeddingModel`] behind [`BoxedEmbeddingModel`].
+trait DynEmbeddingModel: WasmCompatSend + WasmCompatSync {
+    fn max_documents(&self) -> usize;
+
+    fn ndims(&self) -> usize;
+
+    fn embed_texts_response(
+        &self,
+        texts: Vec<String>,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<EmbeddingResponse, ProviderError>>;
+}
+
+impl<M: EmbeddingModel> DynEmbeddingModel for M {
+    fn max_documents(&self) -> usize {
+        EmbeddingModel::max_documents(self)
+    }
+
+    fn ndims(&self) -> usize {
+        EmbeddingModel::ndims(self)
+    }
+
+    fn embed_texts_response(
+        &self,
+        texts: Vec<String>,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<EmbeddingResponse, ProviderError>> {
+        Box::pin(EmbeddingModel::embed_texts_response(self, texts))
+    }
+}
+
 /// Text embeddings and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
@@ -246,6 +331,92 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
                 )
             })
         }
+    }
+}
+
+/// Forwards image embedding through shared ownership.
+impl<M: ImageEmbeddingModel + ?Sized> ImageEmbeddingModel for std::sync::Arc<M> {
+    fn max_documents(&self) -> usize {
+        (**self).max_documents()
+    }
+
+    fn ndims(&self) -> usize {
+        (**self).ndims()
+    }
+
+    fn embed_images_response(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, ProviderError>> + WasmCompatSend
+    {
+        (**self).embed_images_response(images)
+    }
+}
+
+/// An [`ImageEmbeddingModel`] of any type, for tables of models or for naming a model without
+/// its type. Clones share the model.
+#[derive(Clone)]
+pub struct BoxedImageEmbeddingModel(std::sync::Arc<dyn DynImageEmbeddingModel>);
+
+impl BoxedImageEmbeddingModel {
+    /// Erase `model`.
+    pub fn new(model: impl ImageEmbeddingModel + 'static) -> Self {
+        Self(std::sync::Arc::new(model))
+    }
+}
+
+impl std::fmt::Debug for BoxedImageEmbeddingModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedImageEmbeddingModel")
+            .finish_non_exhaustive()
+    }
+}
+
+impl ImageEmbeddingModel for BoxedImageEmbeddingModel {
+    fn max_documents(&self) -> usize {
+        self.0.max_documents()
+    }
+
+    fn ndims(&self) -> usize {
+        self.0.ndims()
+    }
+
+    fn embed_images_response(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, ProviderError>> + WasmCompatSend
+    {
+        self.0.embed_images_response(images.into_iter().collect())
+    }
+}
+
+/// The object-safe form of [`ImageEmbeddingModel`] behind [`BoxedImageEmbeddingModel`].
+trait DynImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
+    fn max_documents(&self) -> usize;
+
+    fn ndims(&self) -> usize;
+
+    fn embed_images_response(
+        &self,
+        images: Vec<Vec<u8>>,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<ImageEmbeddingResponse, ProviderError>>;
+}
+
+impl<M: ImageEmbeddingModel> DynImageEmbeddingModel for M {
+    fn max_documents(&self) -> usize {
+        ImageEmbeddingModel::max_documents(self)
+    }
+
+    fn ndims(&self) -> usize {
+        ImageEmbeddingModel::ndims(self)
+    }
+
+    fn embed_images_response(
+        &self,
+        images: Vec<Vec<u8>>,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, Result<ImageEmbeddingResponse, ProviderError>>
+    {
+        Box::pin(ImageEmbeddingModel::embed_images_response(self, images))
     }
 }
 

@@ -78,7 +78,8 @@ impl Responses {
             Framing::Whole
         };
         let encoded = Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header);
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_route(quirks.path);
         Ok(if codex {
             encoded.with_relaxed_content_type()
         } else {
@@ -221,10 +222,6 @@ impl Wire for Responses {
             &self.provider.dialect,
             model.unwrap_or(&self.model),
         )
-    }
-
-    fn route(&self) -> Option<&str> {
-        Some(self.provider.dialect.quirks.responses.path)
     }
 
     fn encode(

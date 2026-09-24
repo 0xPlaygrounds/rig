@@ -108,5 +108,5 @@ const _: fn() = || {
     assert_send_sync_static::<http_client::BoxedHttpClient>();
     // A live stream is owned by one poller: `Send` so it can move to a worker,
     // not `Sync`.
-    assert_send_static::<streaming::StreamingCompletionResponse>();
+    assert_send_static::<streaming::CompletionStream>();
 };

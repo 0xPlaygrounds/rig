@@ -67,6 +67,9 @@ pub struct Encoded {
     /// replays Responses bodies without it). A *wrong* content type is
     /// still rejected.
     pub relaxed_content_type: bool,
+    /// Stable endpoint template for observation grouping, without base-URL
+    /// prefixes or interpolated values. `None` uses the concrete request path.
+    pub route: Option<&'static str>,
 }
 
 impl Encoded {
@@ -82,6 +85,7 @@ impl Encoded {
             framing,
             request_id_header: None,
             relaxed_content_type: false,
+            route: None,
         }
     }
 
@@ -94,6 +98,12 @@ impl Encoded {
     /// Accept a streamed reply that names no content type.
     pub fn with_relaxed_content_type(mut self) -> Self {
         self.relaxed_content_type = true;
+        self
+    }
+
+    /// Name the endpoint template observations group attempts under.
+    pub fn with_route(mut self, route: &'static str) -> Self {
+        self.route = Some(route);
         self
     }
 }
@@ -147,6 +157,7 @@ impl std::fmt::Debug for Encoded {
             .field("framing", &self.framing)
             .field("request_id_header", &self.request_id_header)
             .field("relaxed_content_type", &self.relaxed_content_type)
+            .field("route", &self.route)
             .finish()
     }
 }
@@ -416,12 +427,6 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// a gateway whose state depends on the upstream model narrows it.
     fn replay_issuers(&self, _model: Option<&str>) -> Vec<String> {
         vec![self.name().to_owned()]
-    }
-
-    /// Stable endpoint template for observation grouping, without base-URL
-    /// prefixes or interpolated values. `None` uses the concrete request path.
-    fn route(&self) -> Option<&str> {
-        None
     }
 
     /// The canonical telemetry operation this wire performs. Override when

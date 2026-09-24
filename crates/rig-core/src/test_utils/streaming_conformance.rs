@@ -1653,7 +1653,7 @@ pub mod fixtures {
     /// Drain a full normalized stream into everything the consumer observed.
     /// Public so provider-crate conformance suites (the typed-event wires)
     /// can reuse it in their drivers.
-    pub async fn drain(mut stream: crate::streaming::StreamingCompletionResponse) -> DrainedStream {
+    pub async fn drain(mut stream: crate::streaming::CompletionStream) -> DrainedStream {
         let mut items = Vec::new();
         while let Some(item) = stream.next().await {
             items.push(item);
@@ -1661,7 +1661,7 @@ pub mod fixtures {
         let drained = DrainedStream {
             items,
             choice: stream.snapshot(),
-            response: stream.response.clone(),
+            response: stream.terminal().cloned(),
         };
         // Every fixture and cassette that drains through this helper runs
         // the lifecycle validator — the prose invariants as one executable
@@ -1686,7 +1686,9 @@ pub mod fixtures {
         );
         // A stream that fails to open still sent (or failed to send) a
         // request: the facts are asserted before the error propagates.
-        let drained = match model.stream_with_context(request, Some(context)).await {
+        let mut request = request;
+        request.extensions.insert(context);
+        let drained = match model.stream(request).await {
             Ok(stream) => Ok(drain(stream).await),
             Err(error) => Err(error),
         };
@@ -2147,7 +2149,7 @@ pub mod fixtures {
                     )
                     .responses("gpt-5.4");
                     let request = model.completion_request("hello").build();
-                    let response = model.completion(request).await?;
+                    let response = model.complete(request).await?;
                     Ok(response.choice)
                 })
             })
