@@ -92,10 +92,23 @@ fn checkpoint_format<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
     if format == CHECKPOINT_FORMAT {
         Ok(format)
     } else {
-        Err(serde::de::Error::custom(format!(
+        Err(serde::de::Error::custom(format_refusal(format)))
+    }
+}
+
+/// Why a checkpoint in `format` is not loaded: an older one names the
+/// migration command, a newer one the rig that wrote it.
+fn format_refusal(format: u32) -> String {
+    if format < CHECKPOINT_FORMAT {
+        format!(
             "load refused: the checkpoint is format {format}, this rig reads format \
              {CHECKPOINT_FORMAT}; upgrade it with `rig-migrate` (rig-cassette, feature `migrate`)"
-        )))
+        )
+    } else {
+        format!(
+            "load refused: the checkpoint is format {format}, written by a newer rig; this rig \
+             reads format {CHECKPOINT_FORMAT}"
+        )
     }
 }
 
@@ -548,11 +561,7 @@ fn validated_state(
     world: &World,
 ) -> Result<(BinaryAssets, HashMap<usize, Entity>), ErrorReport> {
     if checkpoint.format != CHECKPOINT_FORMAT {
-        return Err(refused(format!(
-            "load refused: the checkpoint is format {}, this rig reads format \
-             {CHECKPOINT_FORMAT}; upgrade it with `rig-migrate` (rig-cassette, feature `migrate`)",
-            checkpoint.format
-        )));
+        return Err(refused(format_refusal(checkpoint.format)));
     }
     // These rejected wire identifiers must stay fixed across Rust module renames.
     for entity in &checkpoint.entities {

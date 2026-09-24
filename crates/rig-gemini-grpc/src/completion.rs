@@ -549,11 +549,11 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             .and_then(|candidate| map_finish_reason(candidate.finish_reason));
         let has_tool_call = choice
             .iter()
-            .any(|content| matches!(content, completion::AssistantContent::ToolCall(_)));
+            .any(completion::AssistantContent::is_tool_call);
         Ok(completion::CompletionResponse {
             finish_reason: finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call)),
-            response_id: rig_core::id::ResponseId::new(response.response_id.clone()).ok(),
-            model: rig_core::id::ModelName::new(response.model_version.clone()).ok(),
+            response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
+            model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
             ..completion::CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
         })
     }

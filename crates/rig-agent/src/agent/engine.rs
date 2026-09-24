@@ -1248,7 +1248,7 @@ impl TurnSource for StreamingTurnSource {
                 message_id: streamed_turn
                     .message_id
                     .clone()
-                    .and_then(|id| rig_core::id::MessageId::new(id).ok()),
+                    .and_then(rig_core::id::MessageId::non_empty),
                 ..stream.identity()
             };
             // The raw payload comes from the same terminal record as the identity
@@ -1467,7 +1467,7 @@ pub(crate) async fn settle_model_turn(
     let has_tool_call = turn
         .content
         .iter()
-        .any(|content| matches!(content, rig_core::message::AssistantContent::ToolCall(_)));
+        .any(rig_core::message::AssistantContent::is_tool_call);
     let mut folded = rig_core::completion::CompletionResponse::new(
         turn.content.clone(),
         turn.usage,

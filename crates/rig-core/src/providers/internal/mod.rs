@@ -179,7 +179,7 @@ pub(crate) fn request_id_from_headers(
         headers
             .get(header)
             .and_then(|value| value.to_str().ok())
-            .and_then(|value| crate::id::RequestId::new(value).ok())
+            .and_then(crate::id::RequestId::non_empty)
     })
 }
 

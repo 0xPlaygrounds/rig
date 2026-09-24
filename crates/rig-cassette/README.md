@@ -59,9 +59,8 @@ the minimal and independently enabled runtime adapters.
 
 `rig_cassette::effect_log` owns `EffectLog`, `EffectLogRecorder`,
 `EffectLogReplayer`, `Checkpoint`, `RequestCheck`, header validation and stable
-hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
-The recorder implements `rig_core::serve::Recorder`; the replayer implements
-the ordinary core handler interface.
+hashing. The recorder implements `rig_core::serve::Recorder`; the replayer
+implements the ordinary core handler interface.
 
 An effect record's `tool_output` is omitted when the tool published nothing
 and is an object of published values otherwise, including an empty map.
@@ -77,9 +76,9 @@ convert nested payloads.
 
 ## Migrating persisted logs and checkpoints
 
-`rig_cassette::migrate::migrate` rewrites an effect log or a rig-ecs checkpoint
-from an older format to the current one, offline and idempotently: a current
-document is returned untouched. Old formats exist only in that module. The
+`rig_cassette::migrate::migrate` rewrites an effect log, a rig-ecs checkpoint or
+a rig-agent run from an older format to the current one, offline and
+idempotently: a current document is returned untouched. Old formats exist only in that module. The
 `rig-migrate` command applies it to files in place:
 
 ```sh

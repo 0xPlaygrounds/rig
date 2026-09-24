@@ -44,10 +44,8 @@ impl NormalizeImageGenerationResponse for GenerateContentResponse {
             .unwrap_or_default();
 
         Ok(image_generation::ImageGenerationResponse {
-            model: self
-                .model_version
-                .and_then(|model| ModelName::new(model).ok()),
-            response_id: ResponseId::new(self.response_id).ok(),
+            model: self.model_version.and_then(ModelName::non_empty),
+            response_id: ResponseId::non_empty(self.response_id),
             usage,
             ..image_generation::ImageGenerationResponse::new(image, provider)
         })

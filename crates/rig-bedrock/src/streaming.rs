@@ -55,7 +55,7 @@ fn terminal_record(response: BedrockStreamingResponse) -> Result<StreamFinal, se
     Ok(StreamFinal {
         provider_request_id: response
             .provider_request_id
-            .and_then(|id| rig_core::id::RequestId::new(id).ok()),
+            .and_then(rig_core::id::RequestId::non_empty),
         finish_reason,
         ..StreamFinal::new(PROVIDER_NAME, usage, raw)
     })

@@ -344,7 +344,7 @@ fn stream_final(response: StreamingCompletionResponse, raw: serde_json::Value) -
     // normalized `message_id` stays unset.
     StreamFinal {
         finish_reason: response.done_reason.as_deref().map(map_done_reason),
-        model: crate::id::ModelName::new(response.model.clone()).ok(),
+        model: crate::id::ModelName::non_empty(response.model.clone()),
         ..StreamFinal::new(PROVIDER_NAME, Usage::from(&response), raw)
     }
 }

@@ -183,7 +183,7 @@ fn stamping_a_request_id_keeps_status_body_and_names_the_id() {
 fn an_absent_id_leaves_the_message_unchanged() {
     for id in [None, Some(String::new())] {
         let error = crate::error::ProviderError::from_http_response(StatusCode::BAD_REQUEST, "bad")
-            .with_provider_request_id(id.and_then(|id| crate::id::RequestId::new(id).ok()));
+            .with_provider_request_id(id.and_then(crate::id::RequestId::non_empty));
         assert_eq!(error.provider_request_id(), None);
         assert!(!error.to_string().contains("request id"));
     }

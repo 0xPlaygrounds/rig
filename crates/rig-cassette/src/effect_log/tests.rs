@@ -337,9 +337,9 @@ fn headers_name_their_format_and_refuse_an_unknown_key() {
 }
 
 #[test]
-fn a_log_in_another_format_is_refused_with_the_migration_command() {
+fn a_log_in_an_older_format_is_refused_with_the_migration_command() {
     let mut json = serde_json::to_value(two_records()).expect("serializes");
-    for format in [None, Some(0), Some(super::LOG_FORMAT + 1)] {
+    for format in [None, Some(0)] {
         match format {
             Some(format) => json["header"]["format"] = serde_json::json!(format),
             None => {
@@ -355,6 +355,10 @@ fn a_log_in_another_format_is_refused_with_the_migration_command() {
         );
         assert!(error.to_string().contains("rig-migrate"), "{error}");
     }
+    json["header"]["format"] = serde_json::json!(super::LOG_FORMAT + 1);
+    let error = serde_json::from_value::<EffectLog>(json).expect_err("a newer format is refused");
+    assert!(error.to_string().contains("newer rig"), "{error}");
+    assert!(!error.to_string().contains("rig-migrate"), "{error}");
 }
 
 #[test]

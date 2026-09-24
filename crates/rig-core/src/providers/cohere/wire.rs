@@ -314,7 +314,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
             .collect();
         // Cohere's `/v1/embed` reply names no model.
         out.push(Ok(crate::embeddings::EmbeddingResponse {
-            response_id: ResponseId::new(reply.id).ok(),
+            response_id: ResponseId::non_empty(reply.id),
             usage,
             raw,
             ..crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
@@ -417,7 +417,7 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
         // The driver captures all batch reply bodies; setting raw here would
         // let the fold retain only the first page's metadata.
         out.push(Ok(crate::embeddings::ImageEmbeddingResponse {
-            response_id: reply.id.and_then(|id| ResponseId::new(id).ok()),
+            response_id: reply.id.and_then(ResponseId::non_empty),
             usage,
             ..crate::embeddings::ImageEmbeddingResponse::new(vec![vector], PROVIDER_NAME)
         }));

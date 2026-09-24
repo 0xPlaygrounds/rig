@@ -132,3 +132,52 @@ fn an_empty_identifier_migrates_to_absent() {
         .remove("model");
     assert_eq!(migrated, expected);
 }
+
+#[test]
+fn a_format_zero_record_without_tool_output_is_refused() {
+    let mut log = parse(V0_LOG);
+    log["records"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("tool_output");
+    let error = migrate(log).unwrap_err();
+    assert!(
+        matches!(&error, MigrateError::Invalid { path, .. } if path == "/records/0/tool_output"),
+        "{error}"
+    );
+}
+
+/// A format-1 run as rig-agent wrote it: absent message fields spelled
+/// `null`, and a completion call with an empty identifier.
+fn v1_run() -> Value {
+    json!({
+        "format": 1,
+        "max_turns": 1,
+        "chat_history": null,
+        "new_messages": [
+            { "role": "assistant", "id": null, "content": [{ "type": "text", "text": "hi" }] }
+        ],
+        "completion_calls": [
+            { "call_index": 0, "usage": {}, "message_id": "", "response_id": "resp_1", "raw": null }
+        ],
+        "state": "PreparingRequest"
+    })
+}
+
+#[test]
+fn a_format_one_run_migrates_its_ids_and_messages() {
+    let (migrated, migration) = migrate(v1_run()).unwrap();
+    assert_eq!(migration, Migration::AgentRun { from: 1 });
+    assert_eq!(migrated["format"], json!(super::AGENT_RUN_FORMAT));
+    assert_eq!(
+        migrated["new_messages"],
+        json!([{ "role": "assistant", "content": [{ "type": "text", "text": "hi" }] }])
+    );
+    assert_eq!(
+        migrated["completion_calls"],
+        json!([{ "call_index": 0, "usage": {}, "response_id": "resp_1", "raw": null }])
+    );
+    let (again, migration) = migrate(migrated.clone()).unwrap();
+    assert_eq!(migration, Migration::Current);
+    assert_eq!(again, migrated);
+}

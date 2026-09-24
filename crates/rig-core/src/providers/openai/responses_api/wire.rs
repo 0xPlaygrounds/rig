@@ -282,7 +282,7 @@ pub(crate) fn fold_body(
         provider_request_id: response
             .provider_request_id
             .clone()
-            .and_then(|id| crate::id::RequestId::new(id).ok()),
+            .and_then(crate::id::RequestId::non_empty),
     };
     let mut decoder = ResponsesDecoder::new(provider, ResponsesStreamOptions::strict());
     let mut out = AdapterOutput::new();

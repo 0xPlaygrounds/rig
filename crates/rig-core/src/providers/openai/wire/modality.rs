@@ -262,7 +262,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
             event.model
         };
         out.push(Ok(embeddings::EmbeddingResponse {
-            model: crate::id::ModelName::new(model).ok(),
+            model: crate::id::ModelName::non_empty(model),
             usage,
             ..embeddings::EmbeddingResponse::new(embeddings, self.provider)
         }));
@@ -1149,9 +1149,7 @@ impl Decoder<RerankOp> for RerankDecoder {
             })
             .collect();
         out.push(Ok(crate::rerank::RerankResponse {
-            model: event
-                .model
-                .and_then(|model| crate::id::ModelName::new(model).ok()),
+            model: event.model.and_then(crate::id::ModelName::non_empty),
             usage,
             raw,
             ..crate::rerank::RerankResponse::new(results, self.provider)

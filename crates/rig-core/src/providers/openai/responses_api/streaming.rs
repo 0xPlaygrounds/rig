@@ -116,19 +116,19 @@ fn terminal_record(
         message_id: response
             .message_id
             .clone()
-            .and_then(|id| crate::id::MessageId::new(id).ok()),
+            .and_then(crate::id::MessageId::non_empty),
         response_id: response
             .response_id
             .clone()
-            .and_then(|id| crate::id::ResponseId::new(id).ok()),
+            .and_then(crate::id::ResponseId::non_empty),
         provider_request_id: response
             .provider_request_id
             .clone()
-            .and_then(|id| crate::id::RequestId::new(id).ok()),
+            .and_then(crate::id::RequestId::non_empty),
         model: response
             .model
             .clone()
-            .and_then(|model| crate::id::ModelName::new(model).ok()),
+            .and_then(crate::id::ModelName::non_empty),
         ..StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
     };
     Ok(match issuer {

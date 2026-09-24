@@ -220,7 +220,7 @@ impl From<AwsSdkConverseError> for ProviderError {
         let raw_body = raw_response_body(&value.0);
         let transport = Transport::of(&value.0);
         let request_id = aws_sdk_bedrockruntime::operation::RequestId::request_id(&value.0)
-            .and_then(|id| rig_core::id::RequestId::new(id).ok());
+            .and_then(rig_core::id::RequestId::non_empty);
         gated(
             with_raw_body(converse_message(value.0.into_service_error()), raw_body),
             transport,
@@ -241,7 +241,7 @@ impl From<AwsSdkConverseStreamError> for ProviderError {
         let raw_body = raw_response_body(&value.0);
         let transport = Transport::of(&value.0);
         let request_id = aws_sdk_bedrockruntime::operation::RequestId::request_id(&value.0)
-            .and_then(|id| rig_core::id::RequestId::new(id).ok());
+            .and_then(rig_core::id::RequestId::non_empty);
         gated(
             with_raw_body(
                 converse_stream_message(value.0.into_service_error()),

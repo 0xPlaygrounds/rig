@@ -20,8 +20,8 @@ pub const CHECKPOINT_FORMAT: u32 = 6;
 pub const LOG_FORMAT: u32 = 1;
 
 /// The format a log's header names. Serialized as a number; a header without
-/// one is format 0. Deserialization refuses every format but [`LOG_FORMAT`]
-/// and names the migration command that upgrades an older log.
+/// one is format 0. Deserialization refuses every format but [`LOG_FORMAT`],
+/// naming the migration command for an older log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct LogFormat(u32);
@@ -46,13 +46,16 @@ impl<'de> Deserialize<'de> for LogFormat {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         // A missing field reaches `deserialize_option` as `None`.
         let format = Option::<u32>::deserialize(deserializer)?.unwrap_or(0);
-        if format == LOG_FORMAT {
-            Ok(Self(format))
-        } else {
-            Err(serde::de::Error::custom(format!(
+        match format.cmp(&LOG_FORMAT) {
+            std::cmp::Ordering::Equal => Ok(Self(format)),
+            std::cmp::Ordering::Less => Err(serde::de::Error::custom(format!(
                 "load refused: the effect log is format {format}, this rig reads format \
                  {LOG_FORMAT}; upgrade it with `rig-migrate` (rig-cassette, feature `migrate`)"
-            )))
+            ))),
+            std::cmp::Ordering::Greater => Err(serde::de::Error::custom(format!(
+                "load refused: the effect log is format {format}, written by a newer rig; \
+                 this rig reads format {LOG_FORMAT}"
+            ))),
         }
     }
 }

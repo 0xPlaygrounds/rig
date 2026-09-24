@@ -324,9 +324,7 @@ fn pending_invalid_call(resolving: &ResolvingState) -> Option<&ToolCall> {
 }
 
 fn has_tool_calls(items: &[AssistantContent]) -> bool {
-    items
-        .iter()
-        .any(|item| matches!(item, AssistantContent::ToolCall(_)))
+    items.iter().any(AssistantContent::is_tool_call)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -421,19 +419,23 @@ pub struct AgentRun {
 }
 
 /// The [`AgentRun`] envelope format this crate writes and reads.
-pub const RUN_FORMAT: u32 = 1;
+pub const RUN_FORMAT: u32 = 2;
 
 /// Deserialize the envelope's `format`, refusing any other than
 /// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
-/// with defaults filled in.
+/// with defaults filled in. An older run names the migration command.
 fn run_format<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
     let format = u32::deserialize(deserializer)?;
-    if format == RUN_FORMAT {
-        Ok(format)
-    } else {
-        Err(serde::de::Error::custom(format!(
-            "resume refused: the run is format {format}, this rig reads format {RUN_FORMAT}"
-        )))
+    match format.cmp(&RUN_FORMAT) {
+        std::cmp::Ordering::Equal => Ok(format),
+        std::cmp::Ordering::Less => Err(serde::de::Error::custom(format!(
+            "resume refused: the run is format {format}, this rig reads format {RUN_FORMAT}; \
+             upgrade it with `rig-migrate` (rig-cassette, feature `migrate`)"
+        ))),
+        std::cmp::Ordering::Greater => Err(serde::de::Error::custom(format!(
+            "resume refused: the run is format {format}, written by a newer rig; this rig \
+             reads format {RUN_FORMAT}"
+        ))),
     }
 }
 
@@ -1115,10 +1117,7 @@ impl AgentRun {
             turn.usage,
             ResponseIdentity {
                 // The message id is also written into run history below.
-                message_id: turn
-                    .message_id
-                    .clone()
-                    .and_then(|id| MessageId::new(id).ok()),
+                message_id: turn.message_id.clone().and_then(MessageId::non_empty),
                 response_id: turn.response_id,
                 provider_request_id: turn.provider_request_id,
             },

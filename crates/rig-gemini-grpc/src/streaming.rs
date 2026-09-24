@@ -205,8 +205,8 @@ fn terminal_record(
 
     Ok(streaming::StreamFinal {
         finish_reason,
-        response_id: rig_core::id::ResponseId::new(response.response_id.clone()).ok(),
-        model: rig_core::id::ModelName::new(response.model_version.clone()).ok(),
+        response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
+        model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
         ..streaming::StreamFinal::new(
             super::completion::PROVIDER_NAME,
             usage,

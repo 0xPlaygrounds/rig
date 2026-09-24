@@ -288,7 +288,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                     .and_then(|interaction| interaction.status.as_ref())
                     .map(map_interaction_status);
                 let response_id = interaction.and_then(|interaction| {
-                    crate::id::ResponseId::new(interaction.id.as_str()).ok()
+                    crate::id::ResponseId::non_empty(interaction.id.as_str())
                 });
                 out.final_record(streaming::StreamFinal {
                     finish_reason,
@@ -296,7 +296,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                     model: native
                         .model_version
                         .as_deref()
-                        .and_then(|model| crate::id::ModelName::new(model).ok()),
+                        .and_then(crate::id::ModelName::non_empty),
                     ..streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
                 });
             }

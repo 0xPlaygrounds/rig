@@ -370,7 +370,7 @@ impl ChatDecoder {
         // the normalized `model` stays unset.
         out.final_record(StreamFinal {
             finish_reason: native.finish_reason.as_ref().map(map_finish_reason),
-            response_id: native.message_id.and_then(|id| ResponseId::new(id).ok()),
+            response_id: native.message_id.and_then(ResponseId::non_empty),
             ..StreamFinal::new(PROVIDER_NAME, recorded_usage, raw)
         });
     }

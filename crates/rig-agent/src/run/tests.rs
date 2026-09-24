@@ -1695,10 +1695,16 @@ fn a_run_of_another_format_or_with_an_unknown_key_is_refused() {
     assert_eq!(
         error.to_string(),
         format!(
-            "resume refused: the run is format {}, this rig reads format {RUN_FORMAT}",
+            "resume refused: the run is format {}, written by a newer rig; this rig reads format \
+             {RUN_FORMAT}",
             RUN_FORMAT + 1
         )
     );
+
+    value["format"] = serde_json::json!(RUN_FORMAT - 1);
+    let error =
+        serde_json::from_value::<AgentRun>(value.clone()).expect_err("an older format is refused");
+    assert!(error.to_string().contains("rig-migrate"), "{error}");
 
     value["format"] = serde_json::json!(RUN_FORMAT);
     value["retired_field"] = serde_json::json!(true);

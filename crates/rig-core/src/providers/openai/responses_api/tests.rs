@@ -2786,7 +2786,7 @@ mod raw_capture {
         assert_eq!(typed.provider_request_id, None);
 
         let refolded = crate::completion::CompletionResponse {
-            provider_request_id: crate::id::RequestId::new(REQUEST_ID).ok(),
+            provider_request_id: crate::id::RequestId::non_empty(REQUEST_ID),
             ..wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
                 .expect("re-fold the capture")
         };

@@ -335,7 +335,7 @@ impl StreamTap {
                     id,
                     kind: crate::streaming::BlockKind::Message,
                 } = event
-                    && let Some(wire) = id.wire_str().and_then(|id| MessageId::new(id).ok())
+                    && let Some(wire) = id.wire_str().and_then(MessageId::non_empty)
                 {
                     self.message_id = Some(wire);
                 }

@@ -149,10 +149,8 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
         let provider_request_id = value
             .0
             .request_id()
-            .and_then(|id| rig_core::id::RequestId::new(id).ok());
-        let has_tool_call = choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+            .and_then(rig_core::id::RequestId::non_empty);
+        let has_tool_call = choice.iter().any(AssistantContent::is_tool_call);
 
         Ok(completion::CompletionResponse {
             provider_request_id,

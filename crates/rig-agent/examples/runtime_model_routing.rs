@@ -34,11 +34,7 @@ fn response(
     total_tokens: u64,
 ) -> CompletionResponse {
     CompletionResponse {
-        message_id: Some(
-            format!("{provider}-message")
-                .try_into()
-                .expect("a non-empty id"),
-        ),
+        message_id: rig_core::id::MessageId::non_empty(format!("{provider}-message")),
         ..CompletionResponse::new(
             vec![choice],
             usage(total_tokens),

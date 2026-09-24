@@ -240,7 +240,7 @@ async fn normalized_fields_equal_raw_renormalized() {
                 responses_api::Output::Message(message) => Some(message.id.clone()),
                 _ => None,
             })
-            .and_then(|id| rig_core::id::MessageId::new(id).ok()),
+            .and_then(rig_core::id::MessageId::non_empty),
         "the normalized message id is the envelope's output-message id"
     );
     // ChatGPT reads no transport request-id header, so the whole identity

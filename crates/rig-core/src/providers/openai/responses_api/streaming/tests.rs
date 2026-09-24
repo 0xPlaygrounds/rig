@@ -310,7 +310,7 @@ fn folded_stream_events(
         provider_request_id: raw_response
             .provider_request_id
             .clone()
-            .and_then(|id| crate::id::RequestId::new(id).ok()),
+            .and_then(crate::id::RequestId::non_empty),
     };
     let mut fold = <Completion as Operation>::Fold::default();
     for event in events {

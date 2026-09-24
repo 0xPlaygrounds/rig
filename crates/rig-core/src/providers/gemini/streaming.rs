@@ -307,10 +307,10 @@ impl Decoder<Completion> for GenerateContentDecoder {
             finish_reason,
             response_id: native
                 .response_id
-                .and_then(|id| crate::id::ResponseId::new(id).ok()),
+                .and_then(crate::id::ResponseId::non_empty),
             model: native
                 .model_version
-                .and_then(|model| crate::id::ModelName::new(model).ok()),
+                .and_then(crate::id::ModelName::non_empty),
             ..streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
         });
     }

@@ -63,7 +63,7 @@ pub(crate) fn absorb(step: FoldStep<'_>, event: StreamEvent) -> Absorbed {
         } => {
             // The wire announced the assistant message's own id; it
             // outranks the terminal record's.
-            if let Some(message_id) = id.wire_str().and_then(|id| MessageId::new(id).ok()) {
+            if let Some(message_id) = id.wire_str().and_then(MessageId::non_empty) {
                 *step.message_id = Some(message_id);
             }
             Absorbed::Yield(StreamEvent::BlockStart {
@@ -142,9 +142,7 @@ pub(crate) fn fold_finish(
     raw: serde_json::Value,
 ) -> CompletionResponse {
     let choice = stamp_reasoning(accumulator.finish(), issuer);
-    let has_tool_call = choice
-        .iter()
-        .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+    let has_tool_call = choice.iter().any(AssistantContent::is_tool_call);
     let mut response = CompletionResponse::new(
         choice,
         terminal.map(|response| response.usage).unwrap_or_default(),

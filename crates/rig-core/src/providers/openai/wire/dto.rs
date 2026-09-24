@@ -370,15 +370,11 @@ where
     pub fn into_stream_final(self, provider: &str, raw: serde_json::Value) -> StreamFinal {
         StreamFinal {
             finish_reason: self.finish_reason,
-            response_id: self
-                .response_id
-                .and_then(|id| crate::id::ResponseId::new(id).ok()),
+            response_id: self.response_id.and_then(crate::id::ResponseId::non_empty),
             provider_request_id: self
                 .provider_request_id
-                .and_then(|id| crate::id::RequestId::new(id).ok()),
-            model: self
-                .model
-                .and_then(|model| crate::id::ModelName::new(model).ok()),
+                .and_then(crate::id::RequestId::non_empty),
+            model: self.model.and_then(crate::id::ModelName::non_empty),
             ..StreamFinal::new(
                 provider,
                 self.usage.map(Into::into).unwrap_or_default(),

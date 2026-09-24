@@ -17,9 +17,9 @@
 //! neither enables the native HTTP engine or changes JSON map/float semantics.
 //! The `http` feature enables the native provider cassette engine, including
 //! ordered JSON maps and round-trip float parsing. `bedrock` extends it with
-//! AWS event-stream support. [`migrate`] upgrades persisted effect logs and
-//! rig-ecs checkpoints offline; the `migrate` feature builds its `rig-migrate`
-//! command. No optional feature is enabled by default.
+//! AWS event-stream support. [`migrate`] upgrades persisted effect logs,
+//! rig-ecs checkpoints and rig-agent runs offline; the `migrate` feature builds
+//! its `rig-migrate` command. No optional feature is enabled by default.
 //!
 //! ```
 //! let recorder = rig_cassette::effect_log::EffectLogRecorder::new();

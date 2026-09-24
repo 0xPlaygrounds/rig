@@ -188,10 +188,8 @@ impl NormalizeTranscriptionResponse for GenerateContentResponse {
             .unwrap_or_default();
 
         Ok(transcription::TranscriptionResponse {
-            model: self
-                .model_version
-                .and_then(|model| crate::id::ModelName::new(model).ok()),
-            response_id: crate::id::ResponseId::new(self.response_id).ok(),
+            model: self.model_version.and_then(crate::id::ModelName::non_empty),
+            response_id: crate::id::ResponseId::non_empty(self.response_id),
             usage,
             ..transcription::TranscriptionResponse::new(text, provider)
         })

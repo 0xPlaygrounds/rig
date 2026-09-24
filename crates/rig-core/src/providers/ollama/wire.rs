@@ -260,7 +260,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
             })
             .collect();
         out.push(Ok(crate::embeddings::EmbeddingResponse {
-            model: crate::id::ModelName::new(reply.model).ok(),
+            model: crate::id::ModelName::non_empty(reply.model),
             usage,
             raw,
             ..crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)

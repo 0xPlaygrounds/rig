@@ -588,10 +588,7 @@ impl InferredCompletion {
         let usage = (&self.response).into();
         let finish_reason: rig_core::completion::FinishReason = self.response.finish_reason.into();
         let raw = serde_json::to_value(&self.response)?;
-        let has_tool_call = self
-            .choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+        let has_tool_call = self.choice.iter().any(AssistantContent::is_tool_call);
         Ok(CompletionResponse {
             finish_reason: Some(finish_reason.reconcile_with_output(has_tool_call)),
             ..CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME, raw)

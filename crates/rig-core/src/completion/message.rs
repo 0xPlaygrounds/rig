@@ -1513,6 +1513,11 @@ impl UserContent {
 }
 
 impl AssistantContent {
+    /// Whether this part is a tool call.
+    pub fn is_tool_call(&self) -> bool {
+        matches!(self, Self::ToolCall(_))
+    }
+
     /// Creates assistant text content.
     pub fn text(text: impl Into<String>) -> Self {
         AssistantContent::Text(text.into().into())

@@ -86,6 +86,12 @@ impl<K: kind::Kind> Id<K> {
         }
     }
 
+    /// The id, or `None` when `value` is empty: how a decoder reads an id
+    /// the provider may leave blank.
+    pub fn non_empty(value: impl Into<String>) -> Option<Self> {
+        Self::new(value).ok()
+    }
+
     /// The id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.value

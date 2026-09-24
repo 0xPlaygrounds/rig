@@ -1,6 +1,6 @@
-//! `rig-migrate FILE...`: rewrite effect logs and rig-ecs checkpoints in
-//! place to the format this rig reads. A file already current is left
-//! untouched.
+//! `rig-migrate FILE...`: rewrite effect logs, rig-ecs checkpoints and
+//! rig-agent runs in place to the format this rig reads. A file already
+//! current is left untouched.
 
 use std::process::ExitCode;
 
@@ -22,6 +22,9 @@ fn main() -> ExitCode {
             Ok(Migration::Checkpoint { from }) => {
                 println!("{path}: rig-ecs checkpoint migrated from format {from}");
             }
+            Ok(Migration::AgentRun { from }) => {
+                println!("{path}: rig-agent run migrated from format {from}");
+            }
             Err(error) => {
                 eprintln!("{path}: {error}");
                 failed = true;
@@ -39,10 +42,14 @@ fn migrate_file(path: &str) -> Result<Migration, Box<dyn std::error::Error>> {
     let text = std::fs::read_to_string(path)?;
     let (document, migration) = migrate(serde_json::from_str(&text)?)?;
     if migration != Migration::Current {
+        // Write beside the file and rename over it, so an interrupted run
+        // leaves the original intact.
+        let staged = format!("{path}.migrating");
         std::fs::write(
-            path,
+            &staged,
             format!("{}\n", serde_json::to_string_pretty(&document)?),
         )?;
+        std::fs::rename(&staged, path)?;
     }
     Ok(migration)
 }

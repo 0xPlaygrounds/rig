@@ -145,7 +145,7 @@ required-features = ["agent", "ecs"]
 
 [[test]]
 name = "migrate"
-required-features = ["migrate"]
+required-features = ["http"]
 
 [[test]]
 name = "world_replay"

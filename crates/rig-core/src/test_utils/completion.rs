@@ -117,7 +117,7 @@ impl MockTurn {
         Self {
             response: Err(MockError::ProviderResponse(
                 crate::provider_response::ProviderResponseError::new(status, body)
-                    .with_provider_request_id(crate::id::RequestId::new(request_id).ok()),
+                    .with_provider_request_id(crate::id::RequestId::non_empty(request_id)),
             )),
         }
     }
@@ -260,20 +260,17 @@ impl MockTurn {
     fn into_completion_response(self) -> Result<CompletionResponse, ProviderError> {
         let raw = self.raw()?;
         let response = self.response.map_err(MockError::into_completion_error)?;
-        let has_tool_call = response
-            .choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+        let has_tool_call = response.choice.iter().any(AssistantContent::is_tool_call);
         Ok(CompletionResponse {
             message_id: response
                 .message_id
-                .and_then(|id| crate::id::MessageId::new(id).ok()),
+                .and_then(crate::id::MessageId::non_empty),
             response_id: response
                 .response_id
-                .and_then(|id| crate::id::ResponseId::new(id).ok()),
+                .and_then(crate::id::ResponseId::non_empty),
             provider_request_id: response
                 .provider_request_id
-                .and_then(|id| crate::id::RequestId::new(id).ok()),
+                .and_then(crate::id::RequestId::non_empty),
             finish_reason: response
                 .finish_reason
                 .map(|reason| reason.reconcile_with_output(has_tool_call)),

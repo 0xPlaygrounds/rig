@@ -756,18 +756,12 @@ fn terminal_record(
 ) -> Result<StreamFinal, ProviderError> {
     Ok(StreamFinal {
         finish_reason: response.stop_reason.as_deref().map(map_finish_reason),
-        message_id: response
-            .message_id
-            .clone()
-            .and_then(|id| MessageId::new(id).ok()),
+        message_id: response.message_id.clone().and_then(MessageId::non_empty),
         provider_request_id: response
             .provider_request_id
             .clone()
-            .and_then(|id| RequestId::new(id).ok()),
-        model: response
-            .model
-            .clone()
-            .and_then(|model| ModelName::new(model).ok()),
+            .and_then(RequestId::non_empty),
+        model: response.model.clone().and_then(ModelName::non_empty),
         ..StreamFinal::new(
             provider,
             crate::completion::Usage::from(&response.usage),

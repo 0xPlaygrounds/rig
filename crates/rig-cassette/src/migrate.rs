@@ -1,9 +1,10 @@
 //! Offline migration of persisted effect logs and ECS checkpoints to the
 //! formats this rig reads.
 //!
-//! [`migrate`] recognizes an effect log (`{"header", "records"}`) or a rig-ecs
-//! checkpoint (`{"format", "entities", …}`) and rewrites an older format to
-//! the current one. A document already in the current format is returned
+//! [`migrate`] recognizes an effect log (`{"header", "records"}`), a rig-ecs
+//! checkpoint (`{"format", "entities", …}`) or a rig-agent run (`{"format",
+//! "max_turns", "state", …}`) and rewrites an older format to the current
+//! one. A document already in the current format is returned
 //! unchanged, so running a migration twice is a no-op. Older formats exist
 //! only here: the runtime types read the current format alone. The
 //! `rig-migrate` binary (feature `migrate`) applies this to files in place.
@@ -34,6 +35,9 @@ use crate::effect_log::{EffectLog, LOG_FORMAT};
 /// The rig-ecs checkpoint format this migration produces.
 pub const ECS_CHECKPOINT_FORMAT: u32 = 3;
 
+/// The rig-agent run format this migration produces.
+pub const AGENT_RUN_FORMAT: u32 = 2;
+
 /// What [`migrate`] did to a document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Migration {
@@ -48,6 +52,12 @@ pub enum Migration {
         /// The format the checkpoint was in.
         from: u32,
     },
+    /// A rig-agent run was rewritten from format `from` to
+    /// [`AGENT_RUN_FORMAT`].
+    AgentRun {
+        /// The format the run was in.
+        from: u32,
+    },
     /// The document was already current and was returned unchanged.
     Current,
 }
@@ -55,8 +65,9 @@ pub enum Migration {
 /// Why a document could not be migrated.
 #[derive(Debug, thiserror::Error)]
 pub enum MigrateError {
-    /// The document is neither an effect log nor a rig-ecs checkpoint.
-    #[error("not an effect log or a rig-ecs checkpoint")]
+    /// The document is not an effect log, a rig-ecs checkpoint or a rig-agent
+    /// run.
+    #[error("not an effect log, a rig-ecs checkpoint or a rig-agent run")]
     Unrecognized,
     /// The document names a format newer than this migration knows.
     #[error("{artifact} format {found} is newer than this rig reads ({current})")]
@@ -88,6 +99,11 @@ pub fn migrate(document: Value) -> Result<(Value, Migration), MigrateError> {
         effect_log(document)
     } else if document.get("entities").is_some() && document.get("format").is_some() {
         checkpoint(document)
+    } else if ["format", "max_turns", "state"]
+        .iter()
+        .all(|key| document.get(key).is_some())
+    {
+        agent_run(document)
     } else {
         Err(MigrateError::Unrecognized)
     }
@@ -128,7 +144,16 @@ fn effect_log(mut log: Value) -> Result<(Value, Migration), MigrateError> {
         }
     }
     if let Some(records) = log.get_mut("records").and_then(Value::as_array_mut) {
-        for record in records {
+        for (index, record) in records.iter_mut().enumerate() {
+            // Format 0 required the field: a record without it lost what the
+            // tool published, and reading it as "nothing published" would
+            // invent that answer.
+            if record.get("tool_output").is_none() {
+                return Err(MigrateError::Invalid {
+                    path: format!("/records/{index}/tool_output"),
+                    source: serde::de::Error::missing_field("tool_output"),
+                });
+            }
             if let Some(outcome) = record.get_mut("outcome") {
                 answer_to_current(outcome);
             }
@@ -178,6 +203,61 @@ fn checkpoint(mut checkpoint: Value) -> Result<(Value, Migration), MigrateError>
     }
     let from = u32::try_from(from).unwrap_or_default();
     Ok((checkpoint, Migration::Checkpoint { from }))
+}
+
+/// Rewrite a rig-agent run to [`AGENT_RUN_FORMAT`]: empty identifiers in its
+/// completion calls become absent and its messages take their current form.
+/// Every other value loads as written.
+fn agent_run(mut run: Value) -> Result<(Value, Migration), MigrateError> {
+    let from = run
+        .get("format")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| invalid_format("/format"))?;
+    match from {
+        from if from == u64::from(AGENT_RUN_FORMAT) => return Ok((run, Migration::Current)),
+        1 => {}
+        found => {
+            return Err(MigrateError::Newer {
+                artifact: "rig-agent run",
+                found,
+                current: AGENT_RUN_FORMAT,
+            });
+        }
+    }
+    if let Some(format) = run.get_mut("format") {
+        *format = Value::from(AGENT_RUN_FORMAT);
+    }
+    calls_to_current(&mut run);
+    retype_messages(&mut run, "chat_history", "")?;
+    retype_messages(&mut run, "new_messages", "")?;
+    if let Some(done) = run.pointer_mut("/state/Done") {
+        calls_to_current(done);
+        retype_messages(done, "messages", "/state/Done")?;
+    }
+    let from = u32::try_from(from).unwrap_or_default();
+    Ok((run, Migration::AgentRun { from }))
+}
+
+/// The completion calls a run or its final response records, with empty
+/// identifiers absent.
+fn calls_to_current(holder: &mut Value) {
+    if let Some(calls) = holder
+        .get_mut("completion_calls")
+        .and_then(Value::as_array_mut)
+    {
+        for call in calls {
+            drop_empty(call, &["message_id", "response_id", "provider_request_id"]);
+        }
+    }
+}
+
+/// Rewrite the message list `holder[field]`, when present, through
+/// [`Message`].
+fn retype_messages(holder: &mut Value, field: &str, path: &str) -> Result<(), MigrateError> {
+    if holder.get(field).is_some_and(Value::is_null) {
+        return Ok(());
+    }
+    retype_each::<Message>(holder, field, path)
 }
 
 /// Rewrite the rig-core values each checkpointed component holds, by the

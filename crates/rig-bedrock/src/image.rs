@@ -95,7 +95,7 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
                 let captured = serde_json::to_value(&response)?;
                 Ok(ImageGenerationResponse {
                     provider_request_id: provider_request_id
-                        .and_then(|id| rig_core::id::RequestId::new(id).ok()),
+                        .and_then(rig_core::id::RequestId::non_empty),
                     raw: captured,
                     ..response.normalize(PROVIDER_NAME)?
                 })

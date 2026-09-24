@@ -179,14 +179,12 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             .unwrap_or_default();
 
         let finish_reason = map_finish_reason(&candidate.finish_reason);
-        let has_tool_call = choice
-            .iter()
-            .any(|content| matches!(content, rig_core::message::AssistantContent::ToolCall(_)));
+        let has_tool_call = choice.iter().any(AssistantContent::is_tool_call);
 
         Ok(CompletionResponse {
             finish_reason: finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call)),
-            model: rig_core::id::ModelName::new(response.model_version.clone()).ok(),
-            response_id: rig_core::id::ResponseId::new(response.response_id.clone()).ok(),
+            model: rig_core::id::ModelName::non_empty(response.model_version.clone()),
+            response_id: rig_core::id::ResponseId::non_empty(response.response_id.clone()),
             ..CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
         })
     }

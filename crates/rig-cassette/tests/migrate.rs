@@ -7,9 +7,12 @@
 //! applies to a file.
 //!
 //! ```text
-//! RIG_MIGRATE_FROM=<rev> cargo test -p rig-cassette --features migrate \
+//! RIG_MIGRATE_FROM=<rev> cargo test -p rig-cassette --features http \
 //!     --test migrate regenerate_goldens_from_base -- --ignored
 //! ```
+//!
+//! The `http` feature keeps JSON key order and float spelling, as the
+//! `rig-migrate` command's `migrate` feature does.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
@@ -73,6 +76,14 @@ fn render(value: &Value) -> String {
 }
 
 #[test]
+fn the_migration_produces_the_checkpoint_format_rig_ecs_reads() {
+    assert_eq!(
+        rig_cassette::migrate::ECS_CHECKPOINT_FORMAT,
+        rig_ecs::checkpoint::CHECKPOINT_FORMAT
+    );
+}
+
+#[test]
 fn every_golden_is_current_and_canonical() {
     let files = goldens();
     assert!(files.len() > 3000, "the corpus is present");
@@ -131,4 +142,12 @@ fn regenerate_goldens_from_base() {
         };
         std::fs::write(&path, render(&current)).expect("the golden writes");
     }
+}
+
+#[test]
+fn the_migration_produces_the_run_format_rig_agent_reads() {
+    assert_eq!(
+        rig_cassette::migrate::AGENT_RUN_FORMAT,
+        rig_agent::run::RUN_FORMAT
+    );
 }
