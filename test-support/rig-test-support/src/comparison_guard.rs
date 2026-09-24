@@ -31,13 +31,14 @@ use crate::scenario_registry::ScenarioError;
 ///   `.get` (`observation.raw["extras"]`).
 ///
 /// A `CassetteMode::Replay` arm, a branch taken only in replay, and the
-/// `else` of a branch that rules replay out are exempt; a `matches!` or
-/// `if let` pattern selects replay only when it names `Replay` and every
-/// or-pattern in it, at any depth, has `Replay` in each alternative. A `for (key, value)` loop over a binding of a recorded
-/// document's `.as_object()` (through `let`, `let … else` or `if let`) is
-/// checked too, and any name a `let` pattern binds shadows an earlier
-/// recorded binding. Keys match in any
-/// ASCII case, and a comparison with `None` (a presence check) is exempt.
+/// `else` of a branch that rules replay out are exempt. A `matches!` or
+/// `if let` pattern selects replay only when it names `Replay` and not
+/// `Record`, and every or-pattern in it, at any depth, has `Replay` in each
+/// alternative. A `for (key, value)` loop over a binding of a recorded
+/// document's `.as_object()` (through `let`, `let … else`, `if let` or a
+/// let-chain) is checked too, and any name a `let` pattern binds shadows an
+/// earlier recorded binding. Keys match in any ASCII case, and a comparison
+/// with `None` (a presence check) is exempt.
 /// Each finding names its function or method.
 pub fn exact_volatile_comparisons(
     source: &str,
@@ -232,10 +233,12 @@ fn is_recorded_object(expr: &Expr, bindings: &[String]) -> bool {
     walk(expr, bindings, false)
 }
 
-/// Whether a pattern selects replay only: it names `Replay`, and every
-/// or-pattern in it, at any depth, has `Replay` in each alternative. A
-/// pattern can only match both modes through an or-pattern, so
-/// `Replay | Record` and `Some(Replay | _)` are not replay-only.
+/// Whether a pattern selects replay only: it names `Replay`, never `Record`,
+/// and every or-pattern in it, at any depth, has `Replay` in each
+/// alternative. A pattern over one mode value matches both modes only
+/// through an or-pattern (`Replay | Record`, `Some(Replay | _)`); one over
+/// several (`(Record, Replay)`) can name both without one, so a pattern
+/// naming `Record` is never replay-only.
 fn is_replay_pattern(pattern: &Pat) -> bool {
     struct EveryAlternative(bool);
     impl<'ast> Visit<'ast> for EveryAlternative {
@@ -253,7 +256,7 @@ fn is_replay_pattern(pattern: &Pat) -> bool {
     let tokens = quote::quote!(#pattern);
     let mut every = EveryAlternative(true);
     every.visit_pat(pattern);
-    every.0 && mentions(&tokens, "Replay")
+    every.0 && mentions(&tokens, "Replay") && !mentions(&tokens, "Record")
 }
 
 /// The one name a pattern binds when it binds exactly one, directly or
@@ -388,6 +391,47 @@ fn is_assert_eq(mac: &Macro) -> bool {
 }
 
 impl GuardVisitor<'_> {
+    /// Remove every name `pattern` binds from the recorded bindings.
+    fn shadow(&mut self, pattern: &Pat) {
+        let mut names = Vec::new();
+        bound_names(pattern, &mut names);
+        self.recorded_bindings
+            .retain(|bound| !names.contains(bound));
+        self.recorded_objects.retain(|bound| !names.contains(bound));
+    }
+
+    /// Bind `pattern` to `init`: judge `init` against the bindings as they
+    /// stand, shadow every name the pattern binds, then record its one name
+    /// when `init` is a recorded document or object. The order matters for
+    /// `let body = body.as_object()…`.
+    fn bind(&mut self, pattern: &Pat, init: &Expr) {
+        let recorded = is_recorded_document(init, &self.recorded_bindings);
+        let object = is_recorded_object(init, &self.recorded_bindings);
+        self.shadow(pattern);
+        if let Some(name) = single_binding(pattern) {
+            if recorded {
+                self.recorded_bindings.push(name.clone());
+            }
+            if object {
+                self.recorded_objects.push(name);
+            }
+        }
+    }
+
+    /// Apply every `let` of an `if` condition, in order: a bare `if let` or
+    /// each `let` of a let-chain (`if let Some(x) = … && ready`).
+    fn bind_condition(&mut self, cond: &Expr) {
+        match cond {
+            Expr::Let(binding) => self.bind(&binding.pat, &binding.expr),
+            Expr::Binary(binary) if matches!(binary.op, syn::BinOp::And(_)) => {
+                self.bind_condition(&binary.left);
+                self.bind_condition(&binary.right);
+            }
+            Expr::Paren(paren) => self.bind_condition(&paren.expr),
+            _ => {}
+        }
+    }
+
     /// Whether `expr` is a local bound to a recorded document's JSON object.
     fn names_recorded_object(&self, expr: &Expr) -> bool {
         matches!(root_of(expr), Expr::Path(path)
@@ -419,22 +463,10 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
     }
 
     fn visit_local(&mut self, node: &'ast syn::Local) {
-        // Every name the pattern binds shadows an earlier binding of it.
-        let mut names = Vec::new();
-        bound_names(&node.pat, &mut names);
-        let init = node.init.as_ref().map(|init| init.expr.as_ref());
-        let recorded = init.is_some_and(|init| is_recorded_document(init, &self.recorded_bindings));
-        let object = init.is_some_and(|init| is_recorded_object(init, &self.recorded_bindings));
-        self.recorded_bindings
-            .retain(|bound| !names.contains(bound));
-        self.recorded_objects.retain(|bound| !names.contains(bound));
-        if let Some(name) = single_binding(&node.pat) {
-            if recorded {
-                self.recorded_bindings.push(name.clone());
-            }
-            if object {
-                self.recorded_objects.push(name);
-            }
+        if let Some(init) = &node.init {
+            self.bind(&node.pat, &init.expr);
+        } else {
+            self.shadow(&node.pat);
         }
         visit::visit_local(self, node);
     }
@@ -464,26 +496,7 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
             self.recorded_bindings.clone(),
             self.recorded_objects.clone(),
         );
-        if let Expr::Let(binding) = node.cond.as_ref() {
-            // As in `visit_local`: judge the initializer before its names
-            // shadow anything, so `if let Some(body) = body.as_object()`
-            // is followed.
-            let recorded = is_recorded_document(&binding.expr, &self.recorded_bindings);
-            let object = is_recorded_object(&binding.expr, &self.recorded_bindings);
-            let mut names = Vec::new();
-            bound_names(&binding.pat, &mut names);
-            self.recorded_bindings
-                .retain(|bound| !names.contains(bound));
-            self.recorded_objects.retain(|bound| !names.contains(bound));
-            if let Some(name) = single_binding(&binding.pat) {
-                if recorded {
-                    self.recorded_bindings.push(name.clone());
-                }
-                if object {
-                    self.recorded_objects.push(name);
-                }
-            }
-        }
+        self.bind_condition(&node.cond);
         self.replay_depth += usize::from(replay);
         self.visit_block(&node.then_branch);
         self.replay_depth -= usize::from(replay);
