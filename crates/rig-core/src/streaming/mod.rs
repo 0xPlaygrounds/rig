@@ -516,9 +516,10 @@ impl StreamingCompletionResponse {
 
     /// Name the issuer of this stream's reasoning up front, for a transport
     /// or deployment of another provider's models, so a partial turn taken
-    /// before the terminal record records it too. The terminal record must
-    /// name the same issuer ([`StreamFinal::with_reasoning_issuer`]): once
-    /// it arrives, it is the one read.
+    /// before the terminal record records it too. The terminal record, once
+    /// it arrives, supersedes it ([`StreamFinal::with_reasoning_issuer`]):
+    /// a gateway request for a router model names the router up front and
+    /// the served family in its terminal.
     pub fn with_reasoning_issuer(mut self, issuer: impl Into<String>) -> Self {
         self.reasoning_issuer = Some(issuer.into());
         self

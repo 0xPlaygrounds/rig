@@ -3332,6 +3332,11 @@ impl HttpClientExt for DirectRecordingHttpClient {
             let Some(recorder) = recorder else {
                 return Ok(response);
             };
+            // Only a successful text reply can name what it created; binary
+            // streams (audio) pass through untouched.
+            if !StreamLedgerTap::taps(response.status().as_u16(), response.headers()) {
+                return Ok(response);
+            }
             let (parts, stream) = response.into_parts();
             let status = parts.status.as_u16();
             let tap = Arc::new(std::sync::Mutex::new(StreamLedgerTap {
@@ -3381,6 +3386,18 @@ struct StreamLedgerTap {
 }
 
 impl StreamLedgerTap {
+    /// Whether a streamed reply with `status` and `headers` is tapped: a
+    /// successful SSE or JSON body.
+    fn taps(status: u16, headers: &http_client::HeaderMap) -> bool {
+        let content_type = headers
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        (200..300).contains(&status)
+            && (content_type.starts_with("text/event-stream") || content_type.contains("json"))
+    }
+
     fn feed(&mut self, bytes: &[u8]) {
         self.pending.extend_from_slice(bytes);
         let events = relay::complete_events(&self.pending);
