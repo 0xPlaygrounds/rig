@@ -1,8 +1,23 @@
 //! Local embedding model integration backed by `fastembed`.
 //!
-//! This crate adapts `fastembed` text embedding models to Rig's
-//! [`rig_core::embeddings::EmbeddingModel`] trait. The default feature set
-//! enables Hugging Face model downloads and ONNX Runtime binary downloads.
+//! A loaded `fastembed` model is the [`Fastembed`] transport; the
+//! [`TextEmbeddings`] wire embeds through it in the calling process. The
+//! default feature set enables Hugging Face model downloads and ONNX Runtime
+//! binary downloads.
+//!
+//! ```no_run
+//! use rig_core::Model;
+//! use rig_fastembed::{Fastembed, FastembedModel, TextEmbeddings};
+//!
+//! # fn run() -> Result<(), rig_fastembed::FastembedError> {
+//! let model = Model::new(
+//!     TextEmbeddings::for_model(&FastembedModel::AllMiniLML6V2Q, None)?,
+//!     Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?,
+//! );
+//! # let _ = model;
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! `rig-fastembed` is native-only and does not target `wasm32-unknown-unknown`.
 //! The root `rig` facade re-exports this crate as `rig::fastembed` when one of
@@ -12,18 +27,15 @@ use std::sync::Arc;
 use std::{error::Error as StdError, fmt};
 
 pub use fastembed::EmbeddingModel as FastembedModel;
-use fastembed::{InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel};
-use rig_core::embeddings;
-use rig_core::error::ProviderError;
-
 #[cfg(feature = "hf-hub")]
 use fastembed::InitOptions;
-#[cfg(feature = "hf-hub")]
-use rig_core::{Embed, embeddings::EmbeddingsBuilder};
-
-/// Entry point for constructing local Fastembed embedding models.
-#[derive(Clone)]
-pub struct Client;
+use fastembed::{InitOptionsUserDefined, TextEmbedding, UserDefinedEmbeddingModel};
+use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::embeddings;
+use rig_core::error::{EncodeError, ProviderError};
+use rig_core::operation::{Embedding, EmbeddingCapabilities, One};
+use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::wire::{Decoder, Mode, Sink, Wire};
 
 /// Errors raised while resolving or initializing a Fastembed model.
 #[derive(Debug, Clone)]
@@ -32,8 +44,6 @@ pub enum FastembedError {
     UnknownModel(FastembedModel),
     /// The model failed to load, download, or initialize.
     Initialization(String),
-    /// Construction through the generic model factory is unavailable.
-    UnsupportedMake,
 }
 
 impl fmt::Display for FastembedError {
@@ -48,184 +58,149 @@ impl fmt::Display for FastembedError {
             FastembedError::Initialization(message) => {
                 write!(f, "Failed to initialize FastEmbed model: {message}")
             }
-            FastembedError::UnsupportedMake => write!(
-                f,
-                "`EmbeddingModel::make` is not supported for rig-fastembed; construct models via `Client::embedding` or `EmbeddingModel::new_from_user_defined`"
-            ),
         }
     }
 }
 
 impl StdError for FastembedError {}
 
-impl Default for Client {
-    fn default() -> Self {
-        Self::new()
-    }
+/// The text-embedding endpoint of one Fastembed model, at a width.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextEmbeddings {
+    pub model: FastembedModel,
+    pub ndims: usize,
+    /// The model's name as telemetry spells it.
+    label: String,
 }
 
-impl Client {
-    pub fn new() -> Self {
-        Self
+impl TextEmbeddings {
+    /// The endpoint for `model` at `ndims` dimensions.
+    pub fn new(model: FastembedModel, ndims: usize) -> Self {
+        Self {
+            label: format!("{model:?}"),
+            model,
+            ndims,
+        }
     }
 
-    /// Loads `model`, downloading it when necessary, and returns an embedding
-    /// model of width `ndims`. `None` takes the width from the model metadata,
-    /// which errors for models `fastembed` does not know.
-    ///
-    /// # Example
-    /// ```
-    /// use rig_fastembed::{Client, FastembedModel};
-    ///
-    /// let fastembed = Client::new();
-    ///
-    /// let model = fastembed.embedding(&FastembedModel::AllMiniLML6V2Q, None);
-    /// ```
-    #[cfg(feature = "hf-hub")]
-    pub fn embedding(
-        &self,
-        model: &FastembedModel,
-        ndims: Option<usize>,
-    ) -> Result<EmbeddingModel, FastembedError> {
+    /// The endpoint for `model` at width `ndims`. `None` takes the width
+    /// from the model metadata, which errors for models `fastembed` does not
+    /// know.
+    pub fn for_model(model: &FastembedModel, ndims: Option<usize>) -> Result<Self, FastembedError> {
         let ndims = match ndims {
             Some(ndims) => ndims,
             None => TextEmbedding::get_model_info(model)
                 .map(|info| info.dim)
                 .map_err(|_| FastembedError::UnknownModel(model.clone()))?,
         };
-
-        EmbeddingModel::new(model, ndims)
-    }
-
-    /// Loads `model` with its documented width and returns a builder over it.
-    ///
-    /// # Example
-    /// ```
-    /// use rig_fastembed::{Client, FastembedModel};
-    ///
-    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let fastembed = Client::new();
-    ///
-    /// let embeddings = fastembed
-    ///     .embeddings(&FastembedModel::AllMiniLML6V2Q)?
-    ///     .documents(vec![
-    ///         "Hello, world!".to_string(),
-    ///         "Goodbye, world!".to_string(),
-    ///     ])?
-    ///     .build()
-    ///     .await?;
-    /// # let _ = embeddings;
-    /// # Ok(())
-    /// # }
-    /// # let _ = run();
-    /// ```
-    #[cfg(feature = "hf-hub")]
-    pub fn embeddings<D: Embed>(
-        &self,
-        model: &FastembedModel,
-    ) -> Result<EmbeddingsBuilder<EmbeddingModel, D>, FastembedError> {
-        Ok(EmbeddingsBuilder::new(self.embedding(model, None)?))
+        Ok(Self::new(model.clone(), ndims))
     }
 }
 
-/// Local embedding model executing in the calling process.
+/// A loaded Fastembed model: the transport that embeds in the calling
+/// process. Clones share the loaded model.
 #[derive(Clone)]
-pub struct EmbeddingModel {
-    embedder: Option<Arc<TextEmbedding>>,
-    init_error: Option<FastembedError>,
-    pub model: FastembedModel,
-    ndims: usize,
+pub struct Fastembed {
+    embedder: Arc<TextEmbedding>,
 }
 
-impl EmbeddingModel {
-    /// Loads `model`, reporting download progress on standard output.
+impl Fastembed {
+    /// Loads `model`, downloading it when necessary and reporting download
+    /// progress on standard output.
     #[cfg(feature = "hf-hub")]
-    pub fn new(model: &fastembed::EmbeddingModel, ndims: usize) -> Result<Self, FastembedError> {
-        let embedder = Arc::new(
-            TextEmbedding::try_new(
-                InitOptions::new(model.to_owned()).with_show_download_progress(true),
-            )
-            .map_err(|err| FastembedError::Initialization(err.to_string()))?,
-        );
-
+    pub fn load(model: &FastembedModel) -> Result<Self, FastembedError> {
+        let embedder = TextEmbedding::try_new(
+            InitOptions::new(model.to_owned()).with_show_download_progress(true),
+        )
+        .map_err(|err| FastembedError::Initialization(err.to_string()))?;
         Ok(Self {
-            embedder: Some(embedder),
-            init_error: None,
-            model: model.to_owned(),
-            ndims,
+            embedder: Arc::new(embedder),
         })
     }
 
-    /// Loads a caller-supplied ONNX model, taking only its name from `model_info`.
-    pub fn new_from_user_defined(
+    /// Loads a caller-supplied ONNX model.
+    pub fn from_user_defined(
         user_defined_model: UserDefinedEmbeddingModel,
-        ndims: usize,
-        model_info: &ModelInfo<FastembedModel>,
     ) -> Result<Self, FastembedError> {
-        let fastembed_embedding_model = TextEmbedding::try_new_from_user_defined(
+        let embedder = TextEmbedding::try_new_from_user_defined(
             user_defined_model,
             InitOptionsUserDefined::default(),
         )
         .map_err(|err| FastembedError::Initialization(err.to_string()))?;
-
-        let embedder = Arc::new(fastembed_embedding_model);
-
         Ok(Self {
-            embedder: Some(embedder),
-            init_error: None,
-            model: model_info.model.clone(),
-            ndims,
+            embedder: Arc::new(embedder),
         })
     }
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
-    fn max_documents(&self) -> usize {
-        1024
+impl Wire for TextEmbeddings {
+    type Op = Embedding;
+    type Payload = Vec<String>;
+    type Frame = (Vec<String>, Vec<Vec<f32>>);
+    type Decoder = FastembedDecoder;
+
+    fn name(&self) -> &str {
+        "fastembed"
     }
 
-    fn ndims(&self) -> usize {
-        self.ndims
+    fn model(&self) -> Option<&str> {
+        Some(&self.label)
     }
 
-    async fn embed_texts_response(
+    fn capabilities(&self) -> EmbeddingCapabilities {
+        EmbeddingCapabilities::new(1024, self.ndims)
+    }
+
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Vec<String>, EncodeError> {
+        Ok(texts)
+    }
+
+    fn decoder(&self, _mode: Mode) -> FastembedDecoder {
+        FastembedDecoder
+    }
+}
+
+impl Transport<TextEmbeddings> for Fastembed {
+    fn send(
         &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
-            "fastembed",
-            &format!("{:?}", self.model),
-            async {
-                let Some(embedder) = &self.embedder else {
-                    let message = self.init_error.as_ref().map_or_else(
-                        || "FastEmbed model initialization failed".to_string(),
-                        ToString::to_string,
-                    );
-                    return Err(ProviderError::Provider(message));
-                };
+        texts: Vec<String>,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<Vec<String>, (Vec<String>, Vec<Vec<f32>>)>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let embedder = Arc::clone(&self.embedder);
+        Ok(async move {
+            let embedded = embedder
+                .embed(texts.iter().map(String::as_str).collect(), None)
+                .map(|vectors| (texts, vectors))
+                .map_err(|err| ProviderError::Provider(err.to_string()));
+            Opened::new(futures::stream::iter([embedded]))
+        })
+    }
+}
 
-                let documents_as_strings: Vec<String> = documents.into_iter().collect();
+/// Pairs each text with its vector. In-process execution reports no raw
+/// payload, usage, or request id.
+pub struct FastembedDecoder;
 
-                let documents_as_vec = embedder
-                    .embed(
-                        documents_as_strings.iter().map(String::as_str).collect(),
-                        None,
-                    )
-                    .map_err(|err| ProviderError::Provider(err.to_string()))?;
+impl Decoder<Embedding, (Vec<String>, Vec<Vec<f32>>)> for FastembedDecoder {
+    type Event = (Vec<String>, Vec<Vec<f32>>);
 
-                let docs = documents_as_strings
-                    .into_iter()
-                    .zip(documents_as_vec)
-                    .map(|(document, embedding)| embeddings::Embedding {
-                        document,
-                        vec: embedding.into_iter().map(|f| f as f64).collect(),
-                    })
-                    .collect::<Vec<embeddings::Embedding>>();
+    fn classify(&self, frame: Self::Event) -> WireEvent<Self::Event> {
+        wire::classify_typed_event(TypedEvent::Modeled(frame))
+    }
 
-                // In-process execution reports no raw payload, usage, or request id.
-                Ok(embeddings::EmbeddingResponse::new(docs, "fastembed"))
-            },
-        )
-        .await
+    fn interpret(&mut self, (texts, vectors): Self::Event, out: &mut One<Embedding>) {
+        let embeddings = texts
+            .into_iter()
+            .zip(vectors)
+            .map(|(document, vector)| embeddings::Embedding {
+                document,
+                vec: vector.into_iter().map(f64::from).collect(),
+            })
+            .collect();
+        out.push(Ok(embeddings::EmbeddingResponse::new(embeddings, "fastembed")));
     }
 }
