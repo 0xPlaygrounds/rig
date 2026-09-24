@@ -15,16 +15,25 @@ use syn::{Expr, ExprForLoop, ExprIf, ExprLit, ExprMatch, ItemFn, Lit, Macro, Pat
 use crate::scenario_registry::ScenarioError;
 
 /// Comparisons in `source` that treat a volatile key exactly outside replay:
-/// a loop over a document's `.keys()`, or over a literal key list naming a
-/// volatile key, comparing `get(key)` values without calling
-/// `is_volatile_json_key`; an `assert_eq!`/`assert_ne!` (or an `assert!`
-/// with `==`/`!=`) that indexes or `get`s a key in `volatile` outside a
-/// `CassetteMode::Replay` arm or branch; and one that compares a whole
-/// recorded document (a call to a `recorded_*` function, or a `let` bound to
-/// one, not narrowed to one key) exactly with a value read out of a live
-/// document by index or `.get` (`observation.raw["extras"]`) outside replay.
-/// Keys match in any ASCII case, and a comparison with `None` (a presence
-/// check) is exempt. Each finding names its function or method.
+///
+/// - a loop over a document's `.keys()`, or over a literal key list naming a
+///   volatile key, comparing `get(key)` values without calling
+///   `is_volatile_json_key`;
+/// - a `for (key, value)` loop over a recorded JSON object (`.as_object()` of a
+///   `recorded_*` document or a binding to one), or one that consults such a
+///   binding, comparing each value with another document's entry at `key` the
+///   same way;
+/// - an `assert_eq!`/`assert_ne!` (or an `assert!` with `==`/`!=`) that
+///   indexes or `get`s a key in `volatile`;
+/// - one that compares a whole recorded document (a call to a `recorded_*`
+///   function, or a `let` bound to one and not rebound since, not narrowed to
+///   one key) exactly with a value read out of a live document by index or
+///   `.get` (`observation.raw["extras"]`).
+///
+/// A `CassetteMode::Replay` arm, a branch taken only in replay, and the
+/// `else` of a branch that rules replay out are exempt. Keys match in any
+/// ASCII case, and a comparison with `None` (a presence check) is exempt.
+/// Each finding names its function or method.
 pub fn exact_volatile_comparisons(
     source: &str,
     volatile: &[&str],
@@ -179,6 +188,43 @@ fn checks_presence(mac: &Macro) -> bool {
         })
 }
 
+/// The document a method chain reads from: `recorded.as_object().unwrap()`
+/// is `recorded`.
+fn root_of(expr: &Expr) -> &Expr {
+    match expr {
+        Expr::MethodCall(call) => root_of(&call.receiver),
+        Expr::Reference(reference) => root_of(&reference.expr),
+        Expr::Paren(paren) => root_of(&paren.expr),
+        Expr::Try(attempt) => root_of(&attempt.expr),
+        expr => expr,
+    }
+}
+
+/// Whether an `if` condition rules replay out, so its `else` runs in replay:
+/// `!= …Replay`, `!matches!(…, …Replay)`, `!(… == …Replay)`, alone or in a
+/// disjunction.
+fn is_negated_replay_condition(expr: &Expr) -> bool {
+    match expr {
+        Expr::Binary(binary) => match binary.op {
+            syn::BinOp::Ne(_) => {
+                let (left, right) = (&binary.left, &binary.right);
+                mentions(&quote::quote!(#left), "Replay")
+                    || mentions(&quote::quote!(#right), "Replay")
+            }
+            syn::BinOp::Or(_) => {
+                is_negated_replay_condition(&binary.left)
+                    || is_negated_replay_condition(&binary.right)
+            }
+            _ => false,
+        },
+        Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Not(_)) => {
+            is_replay_condition(&unary.expr)
+        }
+        Expr::Paren(paren) => is_negated_replay_condition(&paren.expr),
+        _ => false,
+    }
+}
+
 /// Whether `expr` iterates a literal list of keys naming one of `volatile`:
 /// `["created", "id"]`, borrowed or through `.iter()`.
 fn iterates_volatile_literals(expr: &Expr, volatile: &[&str]) -> bool {
@@ -259,11 +305,21 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
     }
 
     fn visit_local(&mut self, node: &'ast syn::Local) {
-        if let Some(init) = &node.init
-            && is_recorded_document(&init.expr, &self.recorded_bindings)
-            && let Pat::Ident(pattern) = &node.pat
-        {
-            self.recorded_bindings.push(pattern.ident.to_string());
+        let pattern = match &node.pat {
+            Pat::Type(typed) => typed.pat.as_ref(),
+            pattern => pattern,
+        };
+        if let Pat::Ident(pattern) = pattern {
+            let name = pattern.ident.to_string();
+            let recorded = node
+                .init
+                .as_ref()
+                .is_some_and(|init| is_recorded_document(&init.expr, &self.recorded_bindings));
+            // A new binding of the name shadows the old one either way.
+            self.recorded_bindings.retain(|bound| *bound != name);
+            if recorded {
+                self.recorded_bindings.push(name);
+            }
         }
         visit::visit_local(self, node);
     }
@@ -291,7 +347,11 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
         self.visit_block(&node.then_branch);
         self.replay_depth -= usize::from(replay);
         if let Some((_, otherwise)) = &node.else_branch {
+            // The `else` of a condition that rules replay out runs in replay.
+            let replay = is_negated_replay_condition(&node.cond);
+            self.replay_depth += usize::from(replay);
             self.visit_expr(otherwise);
+            self.replay_depth -= usize::from(replay);
         }
     }
 
@@ -312,6 +372,33 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
                 self.findings.push(format!(
                     "{}: compares a document key by key without treating volatile keys; use \
                      assert_matches_recorded_document",
+                    self.function
+                ));
+            }
+        }
+        // `for (key, value) in recorded.as_object()…`: each recorded value
+        // compared with a live document's entry at `key`, or the reverse.
+        if self.replay_depth == 0
+            && let Pat::Tuple(tuple) = node.pat.as_ref()
+            && let [Pat::Ident(key), Pat::Ident(value)] = tuple.elems.iter().collect::<Vec<_>>()[..]
+            && mentions(&quote::quote!(#iterated), "as_object")
+        {
+            let block = &node.body;
+            let body = quote::quote!(#block);
+            let involves_recorded =
+                is_recorded_document(root_of(&node.expr), &self.recorded_bindings)
+                    || self
+                        .recorded_bindings
+                        .iter()
+                        .any(|name| mentions(&body, name));
+            let compares = involves_recorded
+                && accesses_ident(&body, &key.ident.to_string()) >= 1
+                && mentions(&body, &value.ident.to_string())
+                && (mentions(&body, "assert_eq") || mentions(&body, "assert_ne"));
+            if compares && !calls(&body, "is_volatile_json_key") {
+                self.findings.push(format!(
+                    "{}: compares a document entry by entry without treating volatile keys; \
+                     use assert_matches_recorded_document",
                     self.function
                 ));
             }
