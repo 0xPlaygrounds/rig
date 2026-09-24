@@ -157,7 +157,8 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let extensions = std::mem::take(&mut request.extensions);
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(
@@ -176,7 +177,8 @@ impl Wire for Chat {
                 Mode::Unary => Framing::Whole,
                 Mode::Streaming => Framing::Ndjson,
             },
-        ))
+        )
+        .with_extensions(extensions))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

@@ -57,7 +57,8 @@ impl WireFrame {
 /// The request a wire sends, and how its reply is framed.
 ///
 /// Data only: built by [`Wire::encode`] from the wire and the request, and
-/// read by the driver. A wire never touches a socket or a request extension.
+/// sent by the transport. A wire never touches a socket; a completion wire
+/// moves its request's extensions onto the requests it encodes.
 ///
 /// `Debug` shows request methods and URI paths, not schemes, authorities,
 /// queries, header values or bodies. Paths are not scrubbed: callers must
@@ -96,6 +97,16 @@ impl Encoded {
             relaxed_content_type: false,
             route: None,
         }
+    }
+
+    /// Carry the call's `extensions` on every request, where the transport
+    /// reads the context observing the attempt. A completion wire moves its
+    /// request's extensions here.
+    pub fn with_extensions(mut self, extensions: http::Extensions) -> Self {
+        for request in &mut self.requests {
+            request.extensions_mut().extend(extensions.clone());
+        }
+        self
     }
 
     /// Name the reply header carrying the provider's transport request id.

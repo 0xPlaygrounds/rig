@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Model, call, stream};
+use super::{Model, stream};
 use crate::completion::{CompletionModel, CompletionRequest};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
@@ -169,10 +169,12 @@ impl Wire for Echo {
         let body = serde_json::to_vec(&serde_json::json!({
             "messages": request.chat_history.len(),
         }))?;
+        let extensions = request.extensions;
         let request =
             http::Request::post("https://echo.invalid/v1/messages").body(Body::Bytes(body))?;
-        let encoded =
-            Encoded::new(request, self.framing).with_request_id_header(self.request_id_header);
+        let encoded = Encoded::new(request, self.framing)
+            .with_request_id_header(self.request_id_header)
+            .with_extensions(extensions);
         Ok(if self.relaxed_content_type {
             encoded.with_relaxed_content_type()
         } else {
@@ -183,6 +185,27 @@ impl Wire for Echo {
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EchoDecoder
     }
+}
+
+/// The unary path over `wire` and `http`, observed by `context`.
+async fn call<W, H>(
+    wire: &W,
+    http: &H,
+    mut request: CompletionRequest,
+    context: Option<crate::observe::AdapterContext>,
+) -> Result<crate::completion::CompletionResponse, ProviderError>
+where
+    W: crate::wire::Wire<
+            Op = crate::operation::Completion,
+            Payload = Encoded,
+            Frame = crate::wire::WireFrame,
+        > + Clone,
+    H: crate::http_client::HttpClientExt + Clone + Send + Sync + 'static,
+{
+    if let Some(context) = context {
+        request.extensions.insert(context);
+    }
+    Model::new(wire.clone(), http.clone()).call(request).await
 }
 
 fn prompt() -> CompletionRequest {
@@ -984,10 +1007,10 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
 }
 
 /// A stream opens one byte-body request. A wire that encodes a batch or a
-/// multipart body for a stream fails before anything is sent, as a request
-/// that could not be built.
-#[test]
-fn a_stream_the_driver_cannot_send_is_a_request_failure() {
+/// multipart body for a stream fails before anything is sent: the stream's
+/// only item is a request that could not be built.
+#[tokio::test]
+async fn a_stream_the_driver_cannot_send_is_a_request_failure() {
     #[derive(Clone)]
     struct Batch;
     impl Wire for Batch {
@@ -1030,17 +1053,21 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
     }
 
     let http = crate::test_utils::RecordingHttpClient::new("");
-    for (error, message) in [
+    let batch = stream(&Batch, &http, prompt(), None).expect("the batch encodes");
+    let multipart = stream(&Multipart, &http, prompt(), None).expect("the multipart encodes");
+    for (items, message) in [
         (
-            stream(&Batch, &http, prompt(), None).err(),
+            batch.collect::<Vec<_>>().await,
             "RequestError: a streamed reply takes exactly one request, not 2",
         ),
         (
-            stream(&Multipart, &http, prompt(), None).err(),
+            multipart.collect::<Vec<_>>().await,
             "RequestError: a multipart request cannot open a streamed reply",
         ),
     ] {
-        let error = error.expect("the stream must not open");
+        let [Err(error)] = items.as_slice() else {
+            panic!("the stream must yield only its refusal: {items:?}");
+        };
         assert_eq!(error.to_string(), message);
         assert_eq!(error.kind(), crate::error::ErrorKind::Request);
         assert_eq!(
@@ -1049,4 +1076,44 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         );
         assert!(!error.is_retryable());
     }
+    assert!(http.requests().is_empty(), "nothing was sent");
+}
+
+/// Every built-in completion wire moves its request's extensions onto the
+/// requests it encodes, where the HTTP transport reads the context
+/// observing the attempt.
+#[test]
+fn every_completion_wire_carries_the_request_extensions() {
+    #[derive(Clone, Debug, PartialEq)]
+    struct Marker;
+
+    fn carried<W: Wire<Op = Completion, Payload = Encoded>>(wire: W) {
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let mut request = prompt();
+            request.max_tokens = Some(64);
+            request.extensions.insert(Marker);
+            let encoded = wire.encode(request, mode).expect("the prompt encodes");
+            assert!(
+                encoded
+                    .requests
+                    .iter()
+                    .all(|request| request.extensions().get::<Marker>() == Some(&Marker)),
+                "{} {mode:?} drops the request's extensions",
+                wire.name()
+            );
+        }
+    }
+
+    use crate::providers::{anthropic, cohere, copilot, gemini, ollama, openai};
+    carried(openai::OpenAI::new("test-key").chat("gpt-4o"));
+    carried(openai::OpenAI::new("test-key").responses("gpt-4o"));
+    carried(openai::OpenAI::new("test-key").completion("gpt-4o"));
+    carried(anthropic::Anthropic::new("test-key").messages("claude-test"));
+    carried(gemini::Gemini::new("test-key").completion("gemini-2.5-flash"));
+    carried(gemini::Gemini::new("test-key").interactions("gemini-2.5-flash"));
+    carried(gemini::Gemini::new("test-key").interaction("interaction-id"));
+    carried(cohere::Cohere::new("test-key").chat("command-r"));
+    carried(ollama::Ollama::new().chat("llama3"));
+    carried(copilot::wire::Copilot::new("tid=test-token").completion("gpt-4o"));
+    carried(copilot::wire::Copilot::new("tid=test-token").completion("gpt-5-codex"));
 }

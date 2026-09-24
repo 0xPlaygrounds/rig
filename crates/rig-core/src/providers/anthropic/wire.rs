@@ -509,7 +509,8 @@ impl Wire for Messages {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let extensions = std::mem::take(&mut request.extensions);
         let body = self.body(request, mode)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -531,7 +532,8 @@ impl Wire for Messages {
                 Mode::Streaming => Framing::Sse,
             },
         )
-        .with_request_id_header(self.provider.dialect.request_id_header))
+        .with_request_id_header(self.provider.dialect.request_id_header)
+        .with_extensions(extensions))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

@@ -56,7 +56,7 @@ pub struct Chat {
 impl Chat {
     pub(crate) fn encode_with_headers(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
             &OpenAI,
@@ -64,6 +64,7 @@ impl Chat {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
+        let extensions = std::mem::take(&mut request.extensions);
         let quirks = &self.provider.dialect.quirks;
         // Azure's deployment URL remains pinned to the handle, not a request override.
         let uri = self.provider.uri(
@@ -135,7 +136,8 @@ impl Chat {
         };
         Ok(Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_route(quirks.completion_path))
+            .with_route(quirks.completion_path)
+            .with_extensions(extensions))
     }
 
     /// The wire for `model` on `provider`, with every option off.

@@ -1911,7 +1911,7 @@ mod terminal_emission {
     /// pins it — so stamping the transport's 200 over every streamed frame
     /// would overwrite that meaning and flip a refusal's retry verdict.
     /// The unary driver's fold-failure decoration is scoped to one reply
-    /// and is where [`crate::driver::call`] supplies it.
+    /// and is where [`crate::driver::Model::call`] supplies it.
     #[tokio::test]
     async fn streamed_error_envelope_preserves_the_verbatim_body() {
         const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
@@ -2204,7 +2204,12 @@ mod projection {
             r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
         );
         let log = Arc::new(ObservationLog::default());
-        let error = crate::driver::call(&wire(), &http, request(), context(&log))
+        let mut request = request();
+        if let Some(context) = context(&log) {
+            request.extensions.insert(context);
+        }
+        let error = crate::driver::Model::new(wire(), http.clone())
+            .call(request)
             .await
             .expect_err("the transport rejects the call");
         assert!(error.is_retryable());

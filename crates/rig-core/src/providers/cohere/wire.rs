@@ -132,7 +132,8 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let extensions = std::mem::take(&mut request.extensions);
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
             body.additional_params = Some(json_utils::merge(
@@ -160,7 +161,8 @@ impl Wire for Chat {
                 Mode::Unary => Framing::Whole,
                 Mode::Streaming => Framing::Sse,
             },
-        ))
+        )
+        .with_extensions(extensions))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

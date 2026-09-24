@@ -24,26 +24,21 @@ pub trait Transport: Clone + WasmCompatSend + WasmCompatSync + 'static {
     /// One unit of a reply, before decoding.
     type Frame: WasmCompatSend + 'static;
 
-    /// Prepare `payload` and return the future that sends it.
+    /// Send `payload` and open its reply.
     ///
-    /// A payload the transport cannot send in `mode` is refused here,
-    /// before anything is sent. Every later failure, including one to open
-    /// the reply, is the last item of [`Opened::frames`]. The future sends
-    /// nothing until it is polled.
+    /// An error is a payload the transport refused to send in `mode`, before
+    /// anything was sent. Every later failure, including one to open the
+    /// reply, is the last item of [`Opened::frames`].
     ///
-    /// `extensions` is the call's context. An HTTP transport copies it onto
-    /// the outgoing request and reads the
+    /// The HTTP transport reads the
     /// [`AdapterContext`](crate::observe::AdapterContext) observing the
-    /// attempt from it; a transport that observes nothing ignores it.
+    /// attempt from the outgoing request's extensions, where a completion
+    /// wire moves its request's extensions.
     fn send(
         &self,
         payload: Self::Payload,
         mode: Mode,
-        extensions: http::Extensions,
-    ) -> Result<
-        impl Future<Output = Opened<Self::Payload, Self::Frame>> + WasmCompatSend + 'static + use<Self>,
-        ProviderError,
-    >;
+    ) -> impl Future<Output = Result<Opened<Self::Payload, Self::Frame>, ProviderError>> + WasmCompatSend;
 }
 
 /// A reply the transport opened: its frames, and the facts the transport owns.
@@ -63,6 +58,9 @@ pub struct Opened<P, F> {
     /// What remains of a payload that carried several requests. The driver
     /// sends it next.
     pub rest: Option<P>,
+    /// The attempt's observation, when the payload carried a context. The
+    /// driver records the decoder's facts into the same attempt.
+    pub(crate) observation: Option<AdapterSlot>,
 }
 
 impl<P, F> Opened<P, F> {
@@ -78,6 +76,7 @@ impl<P, F> Opened<P, F> {
             route: None,
             body: None,
             rest: None,
+            observation: None,
         }
     }
 
@@ -97,15 +96,11 @@ where
     type Payload = Encoded;
     type Frame = WireFrame;
 
-    fn send(
+    async fn send(
         &self,
         payload: Encoded,
         mode: Mode,
-        extensions: http::Extensions,
-    ) -> Result<
-        impl Future<Output = Opened<Encoded, WireFrame>> + WasmCompatSend + 'static + use<H>,
-        ProviderError,
-    > {
+    ) -> Result<Opened<Encoded, WireFrame>, ProviderError> {
         let Encoded {
             requests,
             framing,
@@ -139,8 +134,10 @@ where
             route,
         });
         accept_header(&mut request, framing);
-        let observation = Observation::from(&extensions);
-        request.extensions_mut().extend(extensions);
+        let observation = Observation::from(request.extensions());
+        let slot = observation
+            .as_ref()
+            .map(|observation| observation.slot.clone());
         // Errors name the concrete path; observations group attempts by the
         // template the wire declared, when it declared one.
         let path = request.uri().path().to_owned();
@@ -152,31 +149,25 @@ where
             path,
             observation,
         };
-        let http = self.clone();
-        let sending = match mode {
-            Mode::Unary => futures::future::Either::Left(async move {
+        let mut opened = match mode {
+            Mode::Unary => {
                 exchange.install(&request);
-                exchange.unary(&http, request).await
-            }),
+                exchange.unary(self, request).await
+            }
             Mode::Streaming => {
                 let request = byte_request(request)?;
-                futures::future::Either::Right(async move {
-                    // Unpolled streams must not report transport attempts.
-                    exchange.install(&request);
-                    exchange.streaming(&http, request).await
-                })
+                exchange.install(&request);
+                exchange.streaming(self, request).await
             }
         };
-        Ok(async move {
-            let mut opened = sending.await;
-            opened.rest = rest;
-            opened
-        })
+        opened.rest = rest;
+        opened.observation = slot;
+        Ok(opened)
     }
 }
 
-/// What an observed exchange records into: the call's context and the
-/// attempt's slot, both read off the call's extensions.
+/// What an observed exchange records into: the context read off the
+/// outgoing request's extensions, and the attempt's slot.
 struct Observation {
     context: AdapterContext,
     slot: AdapterSlot,
@@ -186,7 +177,7 @@ impl Observation {
     fn from(extensions: &http::Extensions) -> Option<Self> {
         Some(Self {
             context: extensions.get::<AdapterContext>()?.clone(),
-            slot: extensions.get::<AdapterSlot>()?.clone(),
+            slot: AdapterSlot::default(),
         })
     }
 }

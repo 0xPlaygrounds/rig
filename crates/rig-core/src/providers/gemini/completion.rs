@@ -108,7 +108,8 @@ impl Wire for GenerateContent {
         })
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let extensions = std::mem::take(&mut request.extensions);
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
         let mut body = create_request_body(request)?;
@@ -134,7 +135,7 @@ impl Wire for GenerateContent {
             .header("Content-Type", "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // Gemini supplies no transport request-id response header.
-        Ok(Encoded::new(request, framing))
+        Ok(Encoded::new(request, framing).with_extensions(extensions))
     }
 
     fn decoder(&self, mode: Mode) -> Self::Decoder {

@@ -69,9 +69,10 @@ impl crate::wire::Wire for Interactions {
 
     fn encode(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         mode: crate::wire::Mode,
     ) -> Result<crate::wire::Encoded, EncodeError> {
+        let extensions = std::mem::take(&mut request.extensions);
         // `stream` is part of the request body on this wire, so the mode is
         // in the bytes as well as in the path.
         let streaming = matches!(mode, crate::wire::Mode::Streaming);
@@ -104,7 +105,7 @@ impl crate::wire::Wire for Interactions {
             )
             .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))?;
         // Gemini supplies no transport request-id response header.
-        Ok(crate::wire::Encoded::new(request, framing))
+        Ok(crate::wire::Encoded::new(request, framing).with_extensions(extensions))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
@@ -170,13 +171,14 @@ impl crate::wire::Wire for InteractionResume {
     }
 
     /// Reads an existing interaction, so the request carries no body and the
-    /// [`CompletionRequest`] contributes nothing: what to read is the wire's
-    /// own data.
+    /// [`CompletionRequest`] contributes only its extensions: what to read is
+    /// the wire's own data.
     fn encode(
         &self,
-        _request: CompletionRequest,
+        request: CompletionRequest,
         mode: crate::wire::Mode,
     ) -> Result<crate::wire::Encoded, EncodeError> {
+        let extensions = request.extensions;
         let (path, framing) = match mode {
             Mode::Unary => (
                 format!("/v1beta/interactions/{}", self.interaction_id),
@@ -199,7 +201,7 @@ impl crate::wire::Wire for InteractionResume {
                 self.provider.api_key.expose(),
             )
             .body(crate::wire::Body::empty())?;
-        Ok(crate::wire::Encoded::new(request, framing))
+        Ok(crate::wire::Encoded::new(request, framing).with_extensions(extensions))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

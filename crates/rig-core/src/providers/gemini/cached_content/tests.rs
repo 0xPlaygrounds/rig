@@ -427,14 +427,10 @@ async fn a_deletes_empty_object_is_the_acknowledgement() {
     let wire = crate::providers::gemini::Gemini::new("test-key").cached_contents();
     let http = SequencedHttpClient::new([MockHttpResponse::success("{}")]);
 
-    let reply = crate::driver::call(
-        &wire,
-        &http,
-        CachedContentRequest::Delete("leaky".to_owned()),
-        None,
-    )
-    .await
-    .expect("the empty object acknowledges the delete");
+    let reply = crate::driver::Model::new(wire, http)
+        .call(CachedContentRequest::Delete("leaky".to_owned()))
+        .await
+        .expect("the empty object acknowledges the delete");
 
     assert!(
         matches!(reply, CachedContentReply::Acknowledged),

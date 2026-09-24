@@ -12,7 +12,6 @@ use crate::streaming::{
     BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, SyntheticIds,
     ToolCallEnd,
 };
-use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{Decoder, Mode, Wire, WireEvent, WireFrame};
 use crate::{
     completion::{AssistantContent, CompletionRequest, Usage},
@@ -414,19 +413,15 @@ impl Transport for MockScript {
     type Payload = CompletionRequest;
     type Frame = WireFrame;
 
-    fn send(
+    async fn send(
         &self,
         request: CompletionRequest,
         mode: Mode,
-        extensions: http::Extensions,
-    ) -> Result<
-        impl std::future::Future<Output = Opened<CompletionRequest, WireFrame>>
-        + WasmCompatSend
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
-        let context = extensions.get::<crate::observe::AdapterContext>().cloned();
+    ) -> Result<Opened<CompletionRequest, WireFrame>, ProviderError> {
+        let context = request
+            .extensions
+            .get::<crate::observe::AdapterContext>()
+            .cloned();
         lock(&self.state.requests).push((request, context));
         let frames = match mode {
             Mode::Unary => {
@@ -462,11 +457,9 @@ impl Transport for MockScript {
             .map(|raw| serde_json::to_vec(&raw))
             .transpose()?
             .map(bytes::Bytes::from);
-        Ok(async move {
-            Opened {
-                body,
-                ..Opened::new(futures::stream::iter(frames))
-            }
+        Ok(Opened {
+            body,
+            ..Opened::new(futures::stream::iter(frames))
         })
     }
 }

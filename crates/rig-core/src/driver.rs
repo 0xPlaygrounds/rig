@@ -18,13 +18,12 @@
 //! ```
 
 use std::collections::VecDeque;
-use std::future::Future;
 
 use futures::StreamExt;
 
 use crate::error::ProviderError;
 use crate::http_client::{BoxedHttpClient, HttpClientExt};
-use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
+use crate::observe::{AdapterEnding, AdapterSlot};
 use crate::providers::internal::wire::WireEvent;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::{
@@ -114,31 +113,23 @@ where
     T: Transport<Payload = W::Payload, Frame = W::Frame>,
 {
     /// Send `request` and fold the whole reply into the operation's
-    /// response. The call observes nothing; a completion call observed by a
-    /// runtime goes through [`CompletionModel`](crate::completion::CompletionModel),
-    /// whose request carries its context.
+    /// response, without the telemetry span the model traits record.
     pub async fn call(&self, request: Request<W>) -> Result<Response<W>, ProviderError> {
-        self.unary(
-            request,
-            http::Extensions::new(),
-            tracing::Span::none(),
-            |error, _, _| error,
-        )
-        .await
+        self.unary(request, tracing::Span::none(), |error, _, _| error)
+            .await
     }
 
-    /// [`Self::call`] with the call's extensions and span, decorating a
-    /// failed page's error with its route. The span records the transport
-    /// request id; the caller records the response.
+    /// [`Self::call`] with the call's span, decorating a failed page's error
+    /// with its route. The span records the transport request id; the
+    /// caller records the response.
     async fn unary(
         &self,
         request: Request<W>,
-        extensions: http::Extensions,
         span: tracing::Span,
         route_error: RouteError,
     ) -> Result<Response<W>, ProviderError> {
         let result = async {
-            let steps = self.run(request, Mode::Unary, extensions, span.clone(), route_error)?;
+            let steps = self.run(request, Mode::Unary, span.clone(), route_error)?;
             futures::pin_mut!(steps);
             while let Some(step) = steps.next().await {
                 if let Step::Done(response) = step? {
@@ -159,13 +150,12 @@ where
 
     /// The driver: encode, send each request of the payload through the
     /// transport, decode its frames, and yield the events (streaming) or
-    /// the folded response (unary). Encoding and send refusals return
-    /// before any stream exists; nothing is sent until the stream is polled.
+    /// the folded response (unary). Encoding refusals return before any
+    /// stream exists; nothing is sent until the stream is polled.
     fn run(
         &self,
         request: Request<W>,
         mode: Mode,
-        extensions: http::Extensions,
         span: tracing::Span,
         route_error: RouteError,
     ) -> Result<
@@ -179,34 +169,35 @@ where
         let transport = self.transport.clone();
         let mut fold = <W::Op as Operation>::fold(&request);
         let payload = wire.encode(request, mode)?;
-        let first = open(&transport, payload, mode, &extensions)?;
 
         Ok(async_stream::stream! {
-            let mut next = Some(first);
-            let mut queue: VecDeque<W::Payload> = VecDeque::new();
+            let mut queue = VecDeque::from([payload]);
             // Every request's document, so batched replies keep earlier data.
             let mut documents: Vec<serde_json::Value> = Vec::new();
             let mut request_id = None;
-            loop {
-                let (sending, slot) = match next.take() {
-                    Some(opening) => opening,
-                    None => match queue.pop_front() {
-                        Some(payload) => match open(&transport, payload, mode, &extensions) {
-                            Ok(opening) => opening,
-                            Err(error) => {
-                                yield Err(error);
-                                return;
-                            }
-                        },
-                        None => break,
-                    },
-                };
+            while let Some(payload) = queue.pop_front() {
+                let sending = transport.send(payload, mode);
                 let opened = match mode {
                     Mode::Unary => tracing::Instrument::instrument(sending, span.clone()).await,
                     Mode::Streaming => sending.await,
                 };
-                let Opened { frames, request_id: page_request_id, status, headers, route, body, rest } =
-                    opened;
+                let opened = match opened {
+                    Ok(opened) => opened,
+                    Err(error) => {
+                        yield Err(error);
+                        return;
+                    }
+                };
+                let Opened {
+                    frames,
+                    request_id: page_request_id,
+                    status,
+                    headers,
+                    route,
+                    body,
+                    rest,
+                    observation: slot,
+                } = opened;
                 if let Some(rest) = rest {
                     queue.push_front(rest);
                 }
@@ -332,30 +323,6 @@ where
             }
         })
     }
-}
-
-/// Open the attempt for one payload: its observation slot, when the call's
-/// extensions carry a context, and the future that sends it.
-#[allow(clippy::type_complexity)]
-fn open<T: Transport>(
-    transport: &T,
-    payload: T::Payload,
-    mode: Mode,
-    extensions: &http::Extensions,
-) -> Result<
-    (
-        impl Future<Output = Opened<T::Payload, T::Frame>> + WasmCompatSend + 'static + use<T>,
-        Option<AdapterSlot>,
-    ),
-    ProviderError,
-> {
-    let mut extensions = extensions.clone();
-    let slot = extensions.get::<AdapterContext>().is_some().then(|| {
-        let slot = AdapterSlot::default();
-        extensions.insert(slot.clone());
-        slot
-    });
-    Ok((transport.send(payload, mode, extensions)?, slot))
 }
 
 /// Drives classified frames through an operation decoder. Known frames are
@@ -591,36 +558,13 @@ fn record_request_id(span: &tracing::Span, request_id: Option<&str>) {
 }
 
 #[cfg(test)]
-/// The driver's unary path over `wire` and `http`, observed by `context`.
-pub(crate) async fn call<W, H>(
-    wire: &W,
-    http: &H,
-    request: Request<W>,
-    context: Option<AdapterContext>,
-) -> Result<Response<W>, ProviderError>
-where
-    W: Wire<Payload = crate::wire::Encoded, Frame = WireFrame> + Clone,
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    let mut extensions = http::Extensions::new();
-    if let Some(context) = context {
-        extensions.insert(context);
-    }
-    Model::new(wire.clone(), http.clone())
-        .unary(request, extensions, tracing::Span::none(), |error, _, _| {
-            error
-        })
-        .await
-}
-
-#[cfg(test)]
 /// The completion stream over `wire` and `http`, observed by `context`: the
 /// events as the model stamps them, before the completion fold.
 pub(crate) fn stream<W, H>(
     wire: &W,
     http: &H,
     request: crate::completion::CompletionRequest,
-    context: Option<AdapterContext>,
+    context: Option<crate::observe::AdapterContext>,
 ) -> Result<
     impl futures::Stream<Item = Result<crate::streaming::StreamEvent, ProviderError>>
     + WasmCompatSend

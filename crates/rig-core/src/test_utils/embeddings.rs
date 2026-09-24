@@ -10,7 +10,6 @@ use crate::{
         Embedding, EmbeddingResponse,
         embed::{EmbedError, TextEmbedder},
     },
-    wasm_compat::WasmCompatSend,
 };
 
 /// The mock embedding endpoint: every text embeds as the same fixed
@@ -57,21 +56,14 @@ impl Transport for MockEmbeddings {
     type Payload = Vec<String>;
     type Frame = WireFrame;
 
-    fn send(
+    async fn send(
         &self,
         texts: Vec<String>,
         _mode: Mode,
-        _extensions: http::Extensions,
-    ) -> Result<
-        impl std::future::Future<Output = Opened<Vec<String>, WireFrame>>
-        + WasmCompatSend
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+    ) -> Result<Opened<Vec<String>, WireFrame>, ProviderError> {
         let vectors = vec![MOCK_VECTOR; texts.len()];
         let frame = WireFrame::Text(serde_json::to_string(&vectors)?);
-        Ok(async move { Opened::new(futures::stream::iter([Ok(frame)])) })
+        Ok(Opened::new(futures::stream::iter([Ok(frame)])))
     }
 }
 

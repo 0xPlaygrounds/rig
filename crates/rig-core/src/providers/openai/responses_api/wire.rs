@@ -40,7 +40,7 @@ pub struct Responses {
 impl Responses {
     pub(crate) fn encode_with_headers(
         &self,
-        request: completion::CompletionRequest,
+        mut request: completion::CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
             &OpenAI,
@@ -48,6 +48,7 @@ impl Responses {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
+        let extensions = std::mem::take(&mut request.extensions);
         let quirks = &self.provider.dialect.quirks.responses;
         // The codex gateway only ever answers with an event stream, and
         // names no content type on it. It is asked for one whatever the
@@ -79,7 +80,8 @@ impl Responses {
         };
         let encoded = Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_route(quirks.path);
+            .with_route(quirks.path)
+            .with_extensions(extensions);
         Ok(if codex {
             encoded.with_relaxed_content_type()
         } else {

@@ -40,11 +40,10 @@ where
         &self,
         mut request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        let extensions = std::mem::take(&mut request.extensions);
         self.scope(&mut request);
         let span = self.completion_span(&request, false);
         let response = self
-            .unary(request, extensions, span.clone(), |error, _, _| error)
+            .unary(request, span.clone(), |error, _, _| error)
             .await?;
         record_completion(
             &span,
@@ -102,16 +101,9 @@ where
         + use<W, T>,
         ProviderError,
     > {
-        let extensions = std::mem::take(&mut request.extensions);
         self.scope(&mut request);
         let span = self.completion_span(&request, true);
-        let steps = self.run(
-            request,
-            Mode::Streaming,
-            extensions,
-            span.clone(),
-            |error, _, _| error,
-        )?;
+        let steps = self.run(request, Mode::Streaming, span.clone(), |error, _, _| error)?;
         let recording = span.clone();
         let mut request_id = None;
         let events = steps.filter_map(move |step| {
@@ -160,12 +152,7 @@ where
         )
         .build();
         let response = self
-            .unary(
-                request,
-                http::Extensions::new(),
-                span.clone(),
-                |error, _, _| error,
-            )
+            .unary(request, span.clone(), |error, _, _| error)
             .await?;
         response.record(&span);
         Ok(response)
@@ -303,14 +290,9 @@ where
     async fn list_all(&self) -> Result<ModelList, ProviderError> {
         let pages = paginate(self.wire.name(), ModelListing::NAME, |cursor| async move {
             let page = self
-                .unary(
-                    cursor,
-                    http::Extensions::new(),
-                    tracing::Span::none(),
-                    |error, provider, path| {
-                        crate::model::listing::with_route(error, provider, path)
-                    },
-                )
+                .unary(cursor, tracing::Span::none(), |error, provider, path| {
+                    crate::model::listing::with_route(error, provider, path)
+                })
                 .await?;
             Ok((page.models, page.next))
         })

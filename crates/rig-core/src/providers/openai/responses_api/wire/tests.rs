@@ -101,7 +101,7 @@ fn prompt() -> CompletionRequest {
     }
 }
 
-/// Fold a recorded unary body through the wire, as [`crate::driver::call`]
+/// Fold a recorded unary body through the wire, as [`crate::driver::Model::call`]
 /// does.
 async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResponse {
     Model::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
