@@ -566,3 +566,110 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         assert_eq!(issuers(&streamed.choice), [expected], "streamed {model}");
     }
 }
+
+/// An OpenRouter chat stream cut short after Claude's reasoning: content
+/// deltas, then EOF, with no finish reason and no `[DONE]`.
+const TRUNCATED_OPENROUTER_CHAT: &str = concat!(
+    "data: {\"id\":\"gen-1\",\"model\":\"anthropic/claude-haiku-4.5\",\"object\":\"chat.completion.chunk\",",
+    "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"thinking\",",
+    "\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"thinking\",\"format\":\"anthropic-claude-v1\",\"index\":0}]},",
+    "\"finish_reason\":null}]}\n\n",
+);
+
+/// The issuer a stream opened for `model` records before any reply byte.
+async fn upfront_issuer<W>(wire: W, model: Option<&str>) -> Option<String>
+where
+    W: Wire<Op = super::Completion>,
+{
+    use crate::completion::CompletionModel as _;
+    let mut request = history("unused");
+    request.model = model.map(str::to_owned);
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(Vec::new());
+    let stream = crate::driver::Bound::new(wire, http)
+        .stream(request)
+        .await
+        .expect("the stream opens");
+    stream.reasoning_issuer().map(str::to_owned)
+}
+
+#[tokio::test]
+async fn a_gateway_stream_names_the_requested_family_before_its_terminal() {
+    let chat = |model: &str| OpenAI::with_key(&OPENROUTER, "test-key").chat(model);
+    let responses = |model: &str| OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
+    for (wire_model, requested, expected) in [
+        ("anthropic/claude-haiku-4.5", None, "anthropic"),
+        ("openai/gpt-5-mini", None, "openrouter/openai"),
+        // A per-request model decides, not the one the wire was built for.
+        (
+            "anthropic/claude-haiku-4.5",
+            Some("google/gemini-3-flash-preview"),
+            "openrouter/google",
+        ),
+        // A router or preset names no family: only router requests replay it.
+        ("openrouter/auto", None, "openrouter/openrouter"),
+        ("@preset/work", None, "openrouter/@preset"),
+    ] {
+        assert_eq!(
+            upfront_issuer(chat(wire_model), requested).await.as_deref(),
+            Some(expected),
+            "chat {wire_model} {requested:?}"
+        );
+        assert_eq!(
+            upfront_issuer(responses(wire_model), requested)
+                .await
+                .as_deref(),
+            Some(expected),
+            "responses {wire_model} {requested:?}"
+        );
+    }
+    // A wire that relays no upstream family keeps its own name.
+    assert_eq!(
+        upfront_issuer(
+            OpenAI::with_key(&DEEPSEEK, "test-key").chat("deepseek-chat"),
+            None
+        )
+        .await
+        .as_deref(),
+        Some("deepseek")
+    );
+}
+
+#[tokio::test]
+async fn a_truncated_openrouter_stream_keeps_its_reasoning_to_the_requested_family() {
+    use crate::completion::CompletionModel as _;
+    use futures::StreamExt;
+
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(vec![Ok(Bytes::from_static(
+        TRUNCATED_OPENROUTER_CHAT.as_bytes(),
+    ))]);
+    let mut stream = crate::driver::Bound::new(
+        OpenAI::with_key(&OPENROUTER, "test-key").chat("anthropic/claude-haiku-4.5"),
+        http,
+    )
+    .stream(history("unused"))
+    .await
+    .expect("the stream opens");
+    while stream.next().await.is_some() {}
+    assert!(
+        stream.response.is_none(),
+        "the stream never reached its terminal"
+    );
+
+    let issuer = stream.reasoning_issuer().expect("an issuer").to_owned();
+    assert_eq!(issuer, "anthropic");
+    let stamped = crate::streaming::stamp_reasoning(stream.snapshot(), &issuer);
+    let reasoning: Vec<&Reasoning> = stamped
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reasoning.len(), 1, "{stamped:?}");
+    // A request to another family over OpenRouter replays its own family and
+    // the bare gateway issuer: neither accepts this reasoning.
+    for other in crate::providers::openai::wire::replay_issuers(&OPENROUTER, "openai/gpt-5-mini") {
+        assert!(!reasoning[0].replayable_to(&other), "replayed to {other}");
+    }
+    assert!(reasoning[0].replayable_to("anthropic"));
+}

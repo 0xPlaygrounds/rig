@@ -34,6 +34,7 @@ mod cassette {
     mod request_hook;
     mod response_identity_edge;
     mod session_matrix;
+    mod stream_faults;
     mod streaming;
     mod streaming_logprobs_matrix;
     mod streaming_tools;
