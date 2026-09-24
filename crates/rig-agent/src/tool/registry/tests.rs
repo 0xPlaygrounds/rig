@@ -413,9 +413,7 @@ async fn dynamic_tool_preserves_concrete_error() {
         "dynamic",
         "fails",
         serde_json::json!({"type":"object"}),
-        |_context, _args| {
-            Box::pin(async { Err(ToolExecutionError::provider("upstream").with_source(Boom)) })
-        },
+        |_args| Box::pin(async { Err(ToolExecutionError::provider("upstream").with_source(Boom)) }),
     );
     let set = ToolSet::from_dynamic_tools(vec![tool]);
     let result = set.execute("dynamic", "{}", &mut ToolContext::new()).await;
@@ -523,7 +521,7 @@ async fn dynamic_failures_and_refusals_preserve_rich_model_output() {
             "dynamic_rich_error",
             "returns rich failure feedback",
             serde_json::json!({"type": "object"}),
-            move |_context, _args| {
+            move |_args| {
                 Box::pin(async move {
                     let error = if refuse {
                         ToolExecutionError::refused("dynamic refusal")

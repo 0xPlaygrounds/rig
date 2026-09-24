@@ -19,8 +19,8 @@ use rig_core::{
     embeddings::{embed::EmbedError, tool::ToolSchema},
     error::{ErrorKind, ErrorReport},
     tool::{
-        DynamicTool, LivenessFn, PortableDynamicTool, Tool, ToolContext, ToolEmbedding,
-        ToolExecutionError, ToolResult, tool_definition,
+        DynamicTool, LivenessFn, Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolResult,
+        tool_definition,
     },
 };
 
@@ -333,11 +333,6 @@ impl ToolSet {
     /// Register a runtime-defined tool; returns its name.
     pub fn add_dynamic_tool(&mut self, tool: DynamicTool) -> String {
         self.insert(RegisteredTool::from_dynamic(tool))
-    }
-
-    /// Register a portable tool; returns its name.
-    pub fn add_portable_dynamic_tool(&mut self, tool: PortableDynamicTool) -> String {
-        self.add_dynamic_tool(DynamicTool::from_portable(tool))
     }
 
     /// Register a retrievable tool; returns its name. A context that does

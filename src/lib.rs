@@ -197,9 +197,7 @@ pub mod tool {
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
     };
-    pub use rig_core::tool::{
-        PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
-    };
+    pub use rig_core::tool::{PortableTool, PortableToolEmbedding};
 
     /// MCP tool support from `rig-rmcp`, which supports native targets only.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]

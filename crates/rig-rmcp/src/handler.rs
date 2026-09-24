@@ -20,7 +20,7 @@ use rmcp::ServiceExt;
 use rmcp::model::{ClientRequest, ListToolsRequest, PaginatedRequestParams, ServerResult};
 use tokio::sync::{Mutex, RwLock};
 
-use rig_core::tool::{ManagedToolSink, ManagedToolToken, PortableDynamicTool};
+use rig_core::tool::{DynamicTool, ManagedToolSink, ManagedToolToken};
 
 use crate::{
     DEFAULT_MCP_REFRESH_TIMEOUT, DEFAULT_MCP_TOOL_TIMEOUT, McpClientError, McpTool,
@@ -100,12 +100,12 @@ where
         self
     }
 
-    /// Build the portable adapter with this handler's configured timeout.
+    /// Build the dynamic tool with this handler's configured timeout.
     pub(crate) fn build_tool(
         &self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> PortableDynamicTool {
+    ) -> DynamicTool {
         McpTool::from_mcp_server(tool, client)
             .with_timeout(self.timeout)
             .into()
@@ -118,7 +118,7 @@ where
     pub(crate) async fn fetch_tools(
         &self,
         peer: &rmcp::service::ServerSink,
-    ) -> Result<Vec<PortableDynamicTool>, McpClientError> {
+    ) -> Result<Vec<DynamicTool>, McpClientError> {
         let deadline = tokio::time::Instant::now() + self.refresh_timeout;
         let mut tools = Vec::new();
         let mut cursor = None;
@@ -182,7 +182,7 @@ where
         }
     }
 
-    pub(crate) async fn commit_initial(&self, refresh: u64, tools: Vec<PortableDynamicTool>) {
+    pub(crate) async fn commit_initial(&self, refresh: u64, tools: Vec<DynamicTool>) {
         let mut managed = self.managed_tools.write().await;
         if refresh <= managed.committed_refresh {
             tracing::debug!(refresh, "discarding stale initial MCP tool list");
@@ -192,11 +192,7 @@ where
         managed.committed_refresh = refresh;
     }
 
-    pub(crate) async fn commit_refresh(
-        &self,
-        refresh: u64,
-        tools: Vec<PortableDynamicTool>,
-    ) -> bool {
+    pub(crate) async fn commit_refresh(&self, refresh: u64, tools: Vec<DynamicTool>) -> bool {
         let mut managed = self.managed_tools.write().await;
         if refresh <= managed.committed_refresh {
             tracing::debug!(refresh, "discarding stale MCP tool-list response");

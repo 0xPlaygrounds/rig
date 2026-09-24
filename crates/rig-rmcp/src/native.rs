@@ -1,4 +1,4 @@
-//! Native MCP calls, metadata preservation, and portable tool conversion.
+//! Native MCP calls, metadata preservation, and dynamic tool conversion.
 //!
 //! ```
 //! use rig_rmcp::{McpMeta, Meta};
@@ -16,8 +16,7 @@ use rmcp::service::PeerRequestOptions;
 
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
 use rig_core::tool::{
-    ContextValue, PortableDynamicTool, ToolContext, ToolContextError, ToolExecutionError,
-    ToolOutput,
+    ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
 };
 use rig_core::wasm_compat::WasmBoxedFuture;
 
@@ -88,7 +87,7 @@ const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 /// One MCP server tool, callable through an rmcp [`ServerSink`](rmcp::service::ServerSink).
 ///
 /// Construct with [`Self::from_mcp_server`] or [`tools_from_server`]. Conversion
-/// to [`PortableDynamicTool`] forwards [`McpMeta`] from context, publishes raw
+/// to [`DynamicTool`] forwards [`McpMeta`] from context, publishes raw
 /// results, and binds a transport liveness probe.
 #[derive(Clone)]
 pub struct McpTool {
@@ -480,7 +479,7 @@ pub fn preserve_mcp_result(
 /// are published to the context's result map ([`preserve_mcp_result`]). A tool
 /// that reports `is_error` becomes a failed call whose error carries the tool's
 /// output.
-impl From<McpTool> for PortableDynamicTool {
+impl From<McpTool> for DynamicTool {
     fn from(tool: McpTool) -> Self {
         let name = tool.definition.name.to_string();
         let description = tool
@@ -492,7 +491,7 @@ impl From<McpTool> for PortableDynamicTool {
         let parameters = tool.definition.schema_as_json_value();
         let liveness_client = tool.client.clone();
         let tool = Arc::new(tool);
-        PortableDynamicTool::new_with_context(
+        DynamicTool::new_with_context(
             name,
             description,
             parameters,

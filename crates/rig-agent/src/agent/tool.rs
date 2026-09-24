@@ -52,7 +52,7 @@ impl Agent {
         let parameters = json!(schema_for!(AgentToolArgs));
         let agent = Arc::new(self);
 
-        DynamicTool::new(name, description, parameters, move |context, args| {
+        DynamicTool::new_with_context(name, description, parameters, move |context, args| {
             let agent = Arc::clone(&agent);
             let inherited_context = context.for_dispatch();
             Box::pin(async move {

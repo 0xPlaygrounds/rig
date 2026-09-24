@@ -1,4 +1,4 @@
-//! In-process rmcp suites for the handler, the portable adapter (including
+//! In-process rmcp suites for the handler, the `DynamicTool` adapter (including
 //! `_meta` passthrough and result preservation through the per-call
 //! `ToolContext`), and the result mapping. rig-agent is a dev-dependency only:
 //! its tool server is the reference `ManagedToolSink`/runtime these tests

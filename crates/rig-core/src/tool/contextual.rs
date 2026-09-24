@@ -5,24 +5,24 @@
 //! ```
 //! use rig_core::tool::{DynamicTool, ToolOutput};
 //!
-//! let tool = DynamicTool::new("echo", "Echo JSON", serde_json::json!({}),
+//! let tool = DynamicTool::new_with_context("echo", "Echo JSON", serde_json::json!({}),
 //!     |_context, args| Box::pin(async move { Ok(ToolOutput::json(args)) }));
 //! assert_eq!(tool.name(), "echo");
 //! ```
 
-use std::future::Future;
+use std::{future::Future, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::ToolDefinition,
+    effect::{EffectKind, Outcome},
     serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use super::{
-    IntoToolOutput, PortableDynamicTool, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
-    portable::LivenessFn,
+    IntoToolOutput, PublishedContext, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
 };
 
 /// A typed LLM tool.
@@ -243,9 +243,20 @@ where
     }
 }
 
+/// Reports whether a tool's owner still serves it. Registries check lazily on
+/// reads or reconciliation; calls before retirement may fail with a transport
+/// error rather than `HandlerUnavailable`.
+#[cfg(not(target_family = "wasm"))]
+pub type LivenessFn = Arc<dyn Fn() -> bool + Send + Sync>;
+/// A liveness probe (browser wasm: no `Send + Sync`, no threads).
+#[cfg(target_family = "wasm")]
+pub type LivenessFn = Arc<dyn Fn() -> bool>;
+
 /// A tool defined at runtime: a name, a schema and a callback. The callback
 /// is the handler ([`ToolFn`]); this struct is its definition plus the
-/// erased handler a registry stages until a bus takes it.
+/// erased handler a registry stages until a bus takes it. The optional
+/// liveness probe supports registry retirement; inline execution does not
+/// consult it.
 #[derive(Clone)]
 pub struct DynamicTool {
     definition: ToolDefinition,
@@ -254,8 +265,31 @@ pub struct DynamicTool {
 }
 
 impl DynamicTool {
-    /// Define a tool from a callback over the dispatch-scoped context.
+    /// Define a tool from a context-free callback over owned arguments.
     pub fn new<F>(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+        callback: F,
+    ) -> Self
+    where
+        F: Fn(
+                serde_json::Value,
+            ) -> WasmBoxedFuture<'static, Result<ToolOutput, ToolExecutionError>>
+            + WasmCompatSend
+            + WasmCompatSync
+            + 'static,
+    {
+        Self::new_with_context(
+            name,
+            description,
+            parameters,
+            move |_context: &mut ToolContext, arguments| callback(arguments),
+        )
+    }
+
+    /// Define a tool from a callback over the dispatch-scoped context.
+    pub fn new_with_context<F>(
         name: impl Into<String>,
         description: impl Into<String>,
         parameters: serde_json::Value,
@@ -283,14 +317,13 @@ impl DynamicTool {
         }
     }
 
-    /// Adopt a portable tool, keeping its liveness probe.
-    pub fn from_portable(tool: PortableDynamicTool) -> Self {
-        let (definition, handler, liveness) = tool.into_parts();
-        Self {
-            definition,
-            handler,
-            liveness,
-        }
+    /// Attach a liveness probe.
+    pub fn with_liveness<F>(mut self, is_live: F) -> Self
+    where
+        F: Fn() -> bool + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.liveness = Some(Arc::new(is_live));
+        self
     }
 
     /// The tool's name.
@@ -317,6 +350,50 @@ impl DynamicTool {
     pub fn is_live(&self) -> bool {
         self.liveness.as_ref().is_none_or(|probe| probe())
     }
+
+    /// Run the tool inline with an empty context.
+    pub async fn execute(
+        &self,
+        arguments: serde_json::Value,
+    ) -> Result<ToolOutput, ToolExecutionError> {
+        let mut context = ToolContext::new();
+        self.execute_with(&mut context, arguments).await
+    }
+
+    /// Run the tool inline with isolated inbound values. A completed call
+    /// replaces only `context`'s result metadata, including when the tool
+    /// returns an error. Dropping the execution future leaves the caller's
+    /// context unchanged; it does not publish partial mutations.
+    pub async fn execute_with(
+        &self,
+        context: &mut ToolContext,
+        arguments: serde_json::Value,
+    ) -> Result<ToolOutput, ToolExecutionError> {
+        let published = PublishedContext::new();
+        let outcome = crate::serve::serve_inline_with(
+            &self.handler,
+            EffectKind::ToolCall {
+                name: self.definition.name.clone(),
+                args: arguments.to_string(),
+            },
+            vec![
+                Arc::new(context.for_dispatch()),
+                published.clone() as Arc<dyn std::any::Any + Send + Sync>,
+            ],
+        )
+        .await;
+        match outcome {
+            Ok(Outcome::ToolResult { result }) => {
+                context.accept_dispatch_result(published.take().unwrap_or_default());
+                result.into_result()
+            }
+            Ok(other) => Err(ToolExecutionError::other(format!(
+                "tool handler answered with a {} outcome",
+                other.family()
+            ))),
+            Err(report) => Err(ToolExecutionError::other(report.message)),
+        }
+    }
 }
 
 impl std::fmt::Debug for DynamicTool {
@@ -324,12 +401,6 @@ impl std::fmt::Debug for DynamicTool {
         f.debug_struct("DynamicTool")
             .field("name", &self.definition.name)
             .finish_non_exhaustive()
-    }
-}
-
-impl From<PortableDynamicTool> for DynamicTool {
-    fn from(tool: PortableDynamicTool) -> Self {
-        Self::from_portable(tool)
     }
 }
 
@@ -341,3 +412,6 @@ pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
         parameters: tool.parameters(),
     }
 }
+
+#[cfg(test)]
+mod tests;

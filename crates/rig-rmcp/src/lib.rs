@@ -1,6 +1,7 @@
 //! Native MCP tool adapters and managed tool-list synchronization for Rig.
-//! [`McpTool`] converts to a context-aware portable tool; [`McpClientHandler`]
-//! refreshes registrations when the server reports tool-list changes.
+//! [`McpTool`] converts to a context-aware
+//! [`DynamicTool`](rig_core::tool::DynamicTool); [`McpClientHandler`] refreshes
+//! registrations when the server reports tool-list changes.
 //!
 //! [`McpMeta`] supplies request metadata outside model-visible arguments.
 //! Responses publish raw results, structured content, and response metadata

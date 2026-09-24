@@ -27,15 +27,12 @@ async fn execute_tool(
     execute_tool_with_context(handle, name, args, &mut ToolContext::new()).await
 }
 
-/// A portable tool whose liveness follows `live`, standing in for a remote
+/// A dynamic tool whose liveness follows `live`, standing in for a remote
 /// tool whose transport can disconnect.
-fn liveness_gated_tool(name: &str, live: Arc<AtomicBool>) -> crate::tool::PortableDynamicTool {
-    crate::tool::PortableDynamicTool::new(
-        name,
-        "gated",
-        serde_json::json!({"type": "object"}),
-        |_| Box::pin(async { Ok(crate::tool::ToolOutput::text("ok")) }),
-    )
+fn liveness_gated_tool(name: &str, live: Arc<AtomicBool>) -> crate::tool::DynamicTool {
+    crate::tool::DynamicTool::new(name, "gated", serde_json::json!({"type": "object"}), |_| {
+        Box::pin(async { Ok(crate::tool::ToolOutput::text("ok")) })
+    })
     .with_liveness(move || live.load(Ordering::SeqCst))
 }
 
@@ -70,7 +67,7 @@ async fn retired_tools_are_absent_from_every_read_path() {
     let live = Arc::new(AtomicBool::new(true));
     let handle = ToolServer::new()
         .tool(MockAddTool)
-        .portable_dynamic_tool(liveness_gated_tool("remote", live.clone()))
+        .dynamic_tool(liveness_gated_tool("remote", live.clone()))
         .run();
     assert_eq!(
         handle.snapshot().names().collect::<Vec<_>>(),

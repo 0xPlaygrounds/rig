@@ -27,7 +27,7 @@ use crate::{
     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
     completion::message::ToolChoice,
     tool::{
-        DynamicTool, PortableDynamicTool, Tool, ToolSet,
+        DynamicTool, Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
 };
@@ -624,14 +624,6 @@ impl AgentBuilder<NoToolConfig> {
         self.into_tool_builder().dynamic_tool(tool)
     }
 
-    /// Add a portable tool.
-    pub fn portable_dynamic_tool(
-        self,
-        tool: PortableDynamicTool,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.into_tool_builder().portable_dynamic_tool(tool)
-    }
-
     /// Add runtime-defined tools.
     pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<WithBuilderTools> {
         self.into_tool_builder().dynamic_tools(tools)
@@ -714,11 +706,6 @@ impl AgentBuilder<WithBuilderTools> {
     /// Add a runtime-defined tool.
     pub fn dynamic_tool(self, tool: DynamicTool) -> Self {
         self.map_server(|server| server.dynamic_tool(tool))
-    }
-
-    /// Add a portable tool.
-    pub fn portable_dynamic_tool(self, tool: PortableDynamicTool) -> Self {
-        self.map_server(|server| server.portable_dynamic_tool(tool))
     }
 
     /// Add runtime-defined tools.

@@ -4,7 +4,7 @@ version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
-description = "MCP (Model Context Protocol) tool support for Rig via the rmcp SDK: MCP tools as portable rig-core tools, plus a client handler that keeps any ManagedToolSink (rig-agent's tool server, for example) in sync with the server's tool list."
+description = "MCP (Model Context Protocol) tool support for Rig via the rmcp SDK: MCP tools as rig-core dynamic tools, plus a client handler that keeps any ManagedToolSink (rig-agent's tool server, for example) in sync with the server's tool list."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [package.metadata.docs.rs]

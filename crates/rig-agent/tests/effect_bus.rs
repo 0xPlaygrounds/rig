@@ -1551,17 +1551,13 @@ async fn retiring_an_older_name_cannot_remove_the_latest_explicit_key_binding() 
         rig_agent::tool::RegisteredTool::from_tool(Slow::default())
             .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
     );
-    let replacement = rig_core::tool::PortableDynamicTool::new(
-        "other",
-        "replacement",
-        json!({"type": "object"}),
-        |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("latest")) }),
-    );
+    let replacement =
+        rig_core::tool::DynamicTool::new("other", "replacement", json!({"type": "object"}), |_| {
+            Box::pin(async { Ok(rig_core::tool::ToolOutput::text("latest")) })
+        });
     server.add_registered_tool(
-        rig_agent::tool::RegisteredTool::from_dynamic(rig_agent::tool::DynamicTool::from_portable(
-            replacement,
-        ))
-        .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
+        rig_agent::tool::RegisteredTool::from_dynamic(replacement)
+            .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
     );
     server.remove_tool("slow");
     assert!(
@@ -1594,17 +1590,15 @@ fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
     let server = rig_agent::tool::server::ToolServer::new().run();
     let key = HandlerKey::from("host/tool:shared");
     for name in ["first", "second", "first"] {
-        let tool = rig_core::tool::PortableDynamicTool::new(
+        let tool = rig_core::tool::DynamicTool::new(
             name,
             "test binding",
             json!({"type": "object"}),
             |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("answer")) }),
         );
         server.add_registered_tool(
-            rig_agent::tool::RegisteredTool::from_dynamic(
-                rig_agent::tool::DynamicTool::from_portable(tool),
-            )
-            .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
+            rig_agent::tool::RegisteredTool::from_dynamic(tool)
+                .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
         );
     }
     server.attach(&registrar);
