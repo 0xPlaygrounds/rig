@@ -363,7 +363,7 @@ fn a_loop_over_a_let_bound_recorded_object_is_flagged() {
         }
         fn rebound_by_a_tuple() {
             let body = recorded_json_response("x", "cell");
-            let (body, _) = (live_document(), 0);
+            let (body, other) = (live_document(), 0);
             assert_eq!(raw["extras"], body);
         }
         fn a_live_object() {
@@ -379,4 +379,66 @@ fn a_loop_over_a_let_bound_recorded_object_is_flagged() {
         .map(|finding| finding.split(':').next().unwrap_or_default())
         .collect();
     assert_eq!(functions, ["bound_object"], "{found:?}");
+}
+
+#[test]
+fn a_nested_or_pattern_with_another_mode_is_not_replay() {
+    let source = r#"
+        fn nested() {
+            if matches!(mode, Some(CassetteMode::Replay | CassetteMode::Record)) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if let (CassetteMode::Replay | _, true) = (mode, strict) {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+        fn nested_replay_only() {
+            if matches!(mode, Some(CassetteMode::Replay)) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["nested", "nested"], "{found:?}");
+}
+
+#[test]
+fn recorded_objects_bound_by_let_else_and_if_let_are_followed() {
+    let source = r#"
+        fn let_else() {
+            let body = recorded_json_response("x", "cell");
+            let Some(object) = body.as_object() else { return };
+            for (key, value) in object {
+                assert_eq!(raw.get(key), Some(value));
+            }
+        }
+        fn if_let() {
+            let body = recorded_json_response("x", "cell");
+            if let Some(object) = body.as_object() {
+                for (key, value) in object {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        fn if_let_scope_ends() {
+            let body = recorded_json_response("x", "cell");
+            if let Some(object) = body.as_object() {
+                let _ = object;
+            }
+            let object = raw.as_object().expect("live");
+            for (key, value) in object {
+                assert_eq!(copy.get(key), Some(value));
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["let_else", "if_let"], "{found:?}");
 }
