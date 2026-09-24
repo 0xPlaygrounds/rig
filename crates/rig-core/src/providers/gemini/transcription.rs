@@ -104,6 +104,8 @@ impl Transcriptions {
 
 impl Wire for Transcriptions {
     type Op = Transcription;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = TranscriptionsDecoder;
 
     fn name(&self) -> &str {

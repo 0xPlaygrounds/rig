@@ -13,12 +13,12 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{ModelInfo, ModelList};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
 use crate::providers::internal::named_dialect;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent,
     WireFrame,
 };
 use serde::{Deserialize, Serialize};
@@ -261,7 +261,7 @@ impl Anthropic {
     }
 
     /// The Messages wire for `model`.
-    pub fn messages(&self, model: impl Into<String>) -> Messages {
+    pub fn completion(&self, model: impl Into<String>) -> Messages {
         let model = model.into();
         Messages {
             default_max_tokens: self.dialect.default_max_tokens(&model),
@@ -493,6 +493,8 @@ impl Messages {
 
 impl Wire for Messages {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = MessagesDecoder;
 
     fn name(&self) -> &str {
@@ -547,6 +549,8 @@ pub struct Models {
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -557,11 +561,12 @@ impl Wire for Models {
         Ok(Encoded::new(self.models_request(None)?, Framing::Whole))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(self.models_request(Some(cursor))?, Framing::Whole))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder {
-            provider: self.provider.clone(),
-            next: None,
-        }
+        ModelsDecoder { next: None }
     }
 }
 
@@ -600,15 +605,14 @@ struct ModelEntry {
     display_name: String,
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        Model::new(entry.id, entry.display_name)
+        ModelInfo::new(entry.id, entry.display_name)
     }
 }
 
 /// Decodes `GET /v1/models`, following the cursor Anthropic names.
 pub struct ModelsDecoder {
-    provider: Anthropic,
     /// The cursor the last page named, when it claimed more pages.
     next: Option<String>,
 }
@@ -626,17 +630,12 @@ impl Decoder<ModelListing> for ModelsDecoder {
             .last_id
             .filter(|cursor| page.has_more && !cursor.is_empty());
         out.push(Ok(ModelList::new(
-            page.data.into_iter().map(Model::from).collect(),
+            page.data.into_iter().map(ModelInfo::from).collect(),
         )));
     }
 
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        let cursor = self.next.as_deref()?;
-        Models {
-            provider: self.provider.clone(),
-        }
-        .models_request(Some(cursor))
-        .ok()
+    fn cursor(&self) -> Option<String> {
+        self.next.clone()
     }
 }
 
@@ -650,6 +649,8 @@ pub struct Verify {
 
 impl Wire for Verify {
     type Op = VerifyOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = VerifyDecoder;
 
     fn name(&self) -> &str {
@@ -672,29 +673,8 @@ impl Wire for Verify {
     }
 }
 
-impl HasCompletion for Anthropic {
-    type Wire = Messages;
 
-    fn completion(&self, model: impl Into<String>) -> Messages {
-        self.messages(model)
-    }
-}
 
-impl crate::driver::HasModelListing for Anthropic {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
-    }
-}
-
-impl crate::driver::HasVerify for Anthropic {
-    type Wire = Verify;
-
-    fn verify(&self) -> Verify {
-        Anthropic::verify(self)
-    }
-}
 
 #[cfg(test)]
 mod tests;

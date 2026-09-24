@@ -13,8 +13,7 @@
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
-use crate::streaming::StreamingCompletionResponse;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::streaming::CompletionStream;
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -408,102 +407,14 @@ impl ProviderCapabilities {
     }
 }
 
-/// Generates buffered or streamed normalized completions. Provider-specific
-/// response data belongs in [`CompletionResponse::raw`]. Only
-/// [`Self::completion_request`] requires cloning; `Arc<M>` can share a model.
-pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
-    /// Generates a completion response for the given completion request.
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend;
-
-    /// Streams a completion response for the given completion request.
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend;
-
-    /// Generates a completion with optional execution-local observation.
-    /// The default delegates without observations. Forwarding wrappers must
-    /// preserve the context to retain per-call identity across retries and tasks.
-    fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        self.completion(request)
-    }
-
-    /// Optionally observe a stream, retaining context through lazy startup and drop.
-    /// The default delegates to [`Self::stream`] without provider observations.
-    fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        self.stream(request)
-    }
-
-    /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self>
-    where
-        Self: Sized + Clone,
-    {
+impl<W, T> crate::driver::Model<W, T>
+where
+    W: crate::wire::Wire<Op = crate::operation::Completion> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// A request builder for `prompt` that sends through this model.
+    pub fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
-    }
-
-    /// Provider behavior a runtime should account for when preparing requests.
-    ///
-    /// The default is conservative; see [`ProviderCapabilities`]. Override
-    /// this to declare the capabilities a provider actually supports.
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities::default()
-    }
-}
-
-/// Forwards model operations through shared ownership. Request builders clone
-/// the `Arc`, not the underlying model.
-impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        (**self).completion(request)
-    }
-
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        (**self).stream(request)
-    }
-
-    fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        (**self).completion_with_context(request, context)
-    }
-
-    fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        (**self).stream_with_context(request, context)
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        (**self).capabilities()
     }
 }
 
@@ -980,19 +891,23 @@ pub(crate) fn shadowed_typed_fields<'a>(
         .collect()
 }
 
-impl<M: CompletionModel> CompletionRequestBuilder<M> {
-    /// Sends the completion request to the completion model provider and returns the completion response.
+impl<W, T> CompletionRequestBuilder<crate::driver::Model<W, T>>
+where
+    W: crate::wire::Wire<Op = crate::operation::Completion> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// Sends the completion request and folds the whole reply.
     pub async fn send(self) -> Result<CompletionResponse, ProviderError> {
         let (model, request) = self.into_model_and_request();
         request.validate_message_content()?;
-        model.completion(request).await
+        model.call(request, None).await
     }
 
-    /// Stream the completion request
-    pub async fn stream(self) -> Result<StreamingCompletionResponse, ProviderError> {
+    /// Opens the completion request as a stream.
+    pub fn stream(self) -> Result<CompletionStream, ProviderError> {
         let (model, request) = self.into_model_and_request();
         request.validate_message_content()?;
-        model.stream(request).await
+        model.stream(request, None)
     }
 }
 

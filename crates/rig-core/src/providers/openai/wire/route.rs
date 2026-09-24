@@ -19,7 +19,7 @@ use crate::providers::openai::responses_api::{
 };
 use crate::telemetry::GenAiOperation;
 use crate::wire::{
-    Body, Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
+    Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
 };
 
 use super::OpenAI;
@@ -176,6 +176,8 @@ impl From<Responses> for OpenAiWire {
 
 impl Wire for OpenAiWire {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
@@ -188,10 +190,6 @@ impl Wire for OpenAiWire {
 
     fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
         on_route!(self, wire => wire.replay_issuers(model))
-    }
-
-    fn route(&self) -> Option<&str> {
-        on_route!(self, wire => wire.route())
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
@@ -266,10 +264,6 @@ impl Decoder<Completion> for OpenAiDecoder {
 
     fn document(&self) -> Option<serde_json::Value> {
         on_route!(self, decoder => decoder.document())
-    }
-
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        on_route!(self, decoder => decoder.continuation())
     }
 
     fn is_analysis_only(&self, frame: &WireFrame) -> bool {

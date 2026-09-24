@@ -8,7 +8,7 @@
 
 use super::One;
 use crate::error::ProviderError;
-use crate::model::{Model, ModelList};
+use crate::model::{ModelInfo, ModelList};
 use crate::wire::{Fold, Operation, Reply};
 
 /// Lists provider models, concatenating pages requested through
@@ -41,7 +41,7 @@ impl Operation for ModelListing {
 /// Concatenates the pages of a model listing, in arrival order.
 #[derive(Default)]
 pub struct ModelListingFold {
-    models: Vec<Model>,
+    models: Vec<ModelInfo>,
 }
 
 impl Fold<ModelListing> for ModelListingFold {

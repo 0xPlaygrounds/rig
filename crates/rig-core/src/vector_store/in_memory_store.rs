@@ -17,7 +17,10 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
-    embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
+    driver::{Model, Transport},
+    embeddings::{Embedding, distance::VectorDistance},
+    operation::Embedding as EmbeddingOp,
+    wire::Wire,
     vector_store::request::Filter,
 };
 
@@ -361,7 +364,11 @@ impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
 type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
 
 impl<D: Serialize> InMemoryVectorStore<D> {
-    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<D, M> {
+    pub fn index<W, T>(self, model: Model<W, T>) -> InMemoryVectorIndex<D, Model<W, T>>
+    where
+        W: Wire<Op = EmbeddingOp> + Clone,
+        T: Transport<W>,
+    {
         InMemoryVectorIndex::new(model, self)
     }
 
@@ -409,8 +416,11 @@ impl<D: Serialize, M> InMemoryVectorIndex<D, M> {
     }
 }
 
-impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq, M: EmbeddingModel> VectorStoreIndex
-    for InMemoryVectorIndex<D, M>
+impl<D, W, Tr> VectorStoreIndex for InMemoryVectorIndex<D, Model<W, Tr>>
+where
+    D: Serialize + WasmCompatSend + WasmCompatSync + Eq,
+    W: Wire<Op = EmbeddingOp> + Clone,
+    Tr: Transport<W>,
 {
     type Filter = Filter<serde_json::Value>;
 

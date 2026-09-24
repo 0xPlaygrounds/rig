@@ -18,14 +18,13 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::completion::CompletionModel;
-use crate::driver::{Bind, Bound};
+use crate::driver::{Model, Transport};
 use crate::http_client::BoxedHttpClient;
 use crate::operation::Completion;
 use crate::providers::{anthropic, gemini, openai};
 use crate::serve::ErasedHandler;
-use crate::serve::adapters::CompletionAdapter;
-use crate::wire::{HasCompletion, Secret, Wire};
+use crate::serve::adapters::ModelAdapter;
+use crate::wire::{Secret, Wire};
 
 /// Every dialect this build knows, for
 /// [`openai::wire::Dialect`]'s [`Deserialize`](serde::Deserialize) lookup.
@@ -427,7 +426,7 @@ impl ProviderConfig {
     }
 
     /// The completion wire for `model`, bound to `http`, erased behind a
-    /// [`CompletionAdapter`] labelled `label`.
+    /// [`ModelAdapter`] labelled `label`.
     ///
     /// A handler built from data uses the provider's own completion wire,
     /// including Copilot's model-dependent routing and request envelope.
@@ -449,10 +448,10 @@ impl ProviderConfig {
 /// Bind the provider's completion wire to `http` and erase it under `label`.
 fn erase<W>(wire: W, label: &str, http: BoxedHttpClient) -> ErasedHandler
 where
-    W: Wire<Op = Completion>,
-    Bound<W, BoxedHttpClient>: CompletionModel + 'static,
+    W: Wire<Op = Completion> + Clone,
+    BoxedHttpClient: Transport<W>,
 {
-    ErasedHandler::new(CompletionAdapter::new(label, wire.bind(http)))
+    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http)))
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a

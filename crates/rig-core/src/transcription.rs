@@ -1,9 +1,13 @@
 //! Audio transcription requests, normalized responses, and model interfaces.
 //!
 //! ```no_run
-//! use rig_core::transcription::{TranscriptionModel, TranscriptionRequestBuilder};
+//! use rig_core::driver::{Model, Transport};
+//! use rig_core::operation::Transcription;
+//! use rig_core::transcription::TranscriptionRequestBuilder;
+//! use rig_core::wire::Wire;
 //!
-//! # async fn example(model: impl TranscriptionModel) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
+//! # where W: Wire<Op = Transcription> + Clone, T: Transport<W> {
 //! let response = TranscriptionRequestBuilder::from_file(model, "audio.wav")?
 //!     .send().await?;
 //! # let _ = response;
@@ -13,10 +17,8 @@
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
 use crate::json_utils;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use std::io;
-use std::sync::Arc;
 use std::{fs, path::Path};
 
 /// Transcript and normalized provider metadata, with provider-specific data
@@ -83,34 +85,14 @@ pub trait NormalizeTranscriptionResponse {
     fn normalize(self, provider: &str) -> Result<TranscriptionResponse, ProviderError>;
 }
 
-/// Transcribes audio into normalized responses. Only
-/// [`Self::transcription_request`] requires cloning; `Arc<M>` forwards operations.
-pub trait TranscriptionModel: WasmCompatSend + WasmCompatSync {
-    /// Transcribes the supplied audio request or returns a provider or transport error.
-    fn transcription(
-        &self,
-        request: TranscriptionRequest,
-    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend;
-
-    /// Creates a request builder over `data`.
-    fn transcription_request(&self, data: Vec<u8>) -> TranscriptionRequestBuilder<Self>
-    where
-        Self: Sized + Clone,
-    {
-        TranscriptionRequestBuilder::new(self.clone(), data)
-    }
-}
-
-impl<M> TranscriptionModel for Arc<M>
+impl<W, T> crate::driver::Model<W, T>
 where
-    M: TranscriptionModel,
+    W: crate::wire::Wire<Op = crate::operation::Transcription> + Clone,
+    T: crate::driver::Transport<W>,
 {
-    fn transcription(
-        &self,
-        request: TranscriptionRequest,
-    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend
-    {
-        (**self).transcription(request)
+    /// A request builder over `data` that sends through this model.
+    pub fn transcription_request(&self, data: Vec<u8>) -> TranscriptionRequestBuilder<Self> {
+        TranscriptionRequestBuilder::new(self.clone(), data)
     }
 }
 
@@ -207,10 +189,14 @@ impl<M> TranscriptionRequestBuilder<M> {
     }
 }
 
-impl<M: TranscriptionModel> TranscriptionRequestBuilder<M> {
+impl<W, T> TranscriptionRequestBuilder<crate::driver::Model<W, T>>
+where
+    W: crate::wire::Wire<Op = crate::operation::Transcription> + Clone,
+    T: crate::driver::Transport<W>,
+{
     /// Sends the request to the model and returns its transcription.
     pub async fn send(self) -> Result<TranscriptionResponse, ProviderError> {
-        self.model.transcription(self.request).await
+        self.model.call(self.request, None).await
     }
 }
 

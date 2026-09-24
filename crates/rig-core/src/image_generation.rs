@@ -1,9 +1,13 @@
 //! Image-generation requests, normalized responses, and model interfaces.
 //!
 //! ```no_run
-//! use rig_core::image_generation::{ImageGenerationModel, ImageGenerationRequestBuilder};
+//! use rig_core::driver::{Model, Transport};
+//! use rig_core::image_generation::ImageGenerationRequestBuilder;
+//! use rig_core::operation::ImageGeneration;
+//! use rig_core::wire::Wire;
 //!
-//! # async fn example(model: impl ImageGenerationModel) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
+//! # where W: Wire<Op = ImageGeneration> + Clone, T: Transport<W> {
 //! let response = ImageGenerationRequestBuilder::new(model, "A mountain lake")
 //!     .width(1024).height(1024).send().await?;
 //! # let _ = response;
@@ -12,10 +16,8 @@
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Generated image bytes and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,36 +82,17 @@ pub trait NormalizeImageGenerationResponse {
     fn normalize(self, provider: &str) -> Result<ImageGenerationResponse, ProviderError>;
 }
 
-/// Generates images from prompts. Only [`Self::image_generation_request`]
-/// requires cloning; `Arc<M>` forwards generation calls.
-pub trait ImageGenerationModel: WasmCompatSend + WasmCompatSync {
-    fn image_generation(
-        &self,
-        request: ImageGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend;
-
-    /// Creates a request builder for `prompt`.
-    fn image_generation_request(
+impl<W, T> crate::driver::Model<W, T>
+where
+    W: crate::wire::Wire<Op = crate::operation::ImageGeneration> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// A request builder for `prompt` that sends through this model.
+    pub fn image_generation_request(
         &self,
         prompt: impl Into<String>,
-    ) -> ImageGenerationRequestBuilder<Self>
-    where
-        Self: Sized + Clone,
-    {
+    ) -> ImageGenerationRequestBuilder<Self> {
         ImageGenerationRequestBuilder::new(self.clone(), prompt)
-    }
-}
-
-impl<M> ImageGenerationModel for Arc<M>
-where
-    M: ImageGenerationModel,
-{
-    fn image_generation(
-        &self,
-        request: ImageGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend
-    {
-        (**self).image_generation(request)
     }
 }
 
@@ -167,10 +150,14 @@ impl<M> ImageGenerationRequestBuilder<M> {
     }
 }
 
-impl<M: ImageGenerationModel> ImageGenerationRequestBuilder<M> {
-    /// Sends the request to the model and returns the generated image.
+impl<W, T> ImageGenerationRequestBuilder<crate::driver::Model<W, T>>
+where
+    W: crate::wire::Wire<Op = crate::operation::ImageGeneration> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// Sends the request through the model.
     pub async fn send(self) -> Result<ImageGenerationResponse, ProviderError> {
-        self.model.image_generation(self.request).await
+        self.model.call(self.request, None).await
     }
 }
 

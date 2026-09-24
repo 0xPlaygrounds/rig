@@ -1,5 +1,6 @@
 //! Environment configuration helpers and provider construction errors.
-//! Bind provider configuration to a transport through [`Bound`](crate::driver::Bound).
+//! A provider configuration builds wires; a [`Model`](crate::driver::Model)
+//! binds one to a transport.
 //!
 //! ```no_run
 //! use rig_core::client::required_env_var;

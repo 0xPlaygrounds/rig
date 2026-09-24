@@ -1,9 +1,13 @@
 //! Batched embedding generation for documents implementing [`Embed`].
 //!
 //! ```no_run
-//! use rig_core::embeddings::{EmbeddingModel, EmbeddingsBuilder};
+//! use rig_core::driver::{Model, Transport};
+//! use rig_core::embeddings::EmbeddingsBuilder;
+//! use rig_core::operation::Embedding;
+//! use rig_core::wire::Wire;
 //!
-//! # async fn example(model: impl EmbeddingModel) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
+//! # where W: Wire<Op = Embedding> + Clone, T: Transport<W> {
 //! let documents = EmbeddingsBuilder::new(model)
 //!     .documents(["first document", "second document"])?
 //!     .build().await?;
@@ -16,12 +20,12 @@ use std::{cmp::max, ops::Range};
 
 use futures::{StreamExt, stream};
 
+use crate::driver::{Model, Transport};
 use crate::error::ProviderError;
+use crate::wire::Wire;
 use crate::{
     completion::Usage,
-    embeddings::{
-        Embed, EmbedError, Embedding, EmbeddingModel, EmbeddingResponse, embed::TextEmbedder,
-    },
+    embeddings::{Embed, EmbedError, Embedding, EmbeddingResponse, embed::TextEmbedder},
 };
 
 /// Accumulates documents and embeds their extracted texts in provider-sized batches.
@@ -32,13 +36,14 @@ pub struct EmbeddingsBuilder<M, T> {
     documents: Vec<(T, Vec<String>)>,
 }
 
-impl<M, T> EmbeddingsBuilder<M, T>
+impl<W, Tr, T> EmbeddingsBuilder<Model<W, Tr>, T>
 where
-    M: EmbeddingModel,
+    W: Wire<Op = crate::operation::Embedding> + Clone,
+    Tr: Transport<W>,
     T: Embed,
 {
     /// Create a new embedding builder with the given embedding model
-    pub fn new(model: M) -> Self {
+    pub fn new(model: Model<W, Tr>) -> Self {
         Self {
             model,
             documents: vec![],
@@ -66,9 +71,10 @@ where
     }
 }
 
-impl<M, T> EmbeddingsBuilder<M, T>
+impl<W, Tr, T> EmbeddingsBuilder<Model<W, Tr>, T>
 where
-    M: EmbeddingModel,
+    W: Wire<Op = crate::operation::Embedding> + Clone,
+    Tr: Transport<W>,
     T: Embed + crate::wasm_compat::WasmCompatSend,
 {
     /// Generate embeddings for all documents in the builder.
@@ -115,14 +121,14 @@ where
         }
 
         let total_texts = texts.len();
-        let max_documents = max(1, self.model.max_documents());
+        let max_documents = max(1, self.model.capabilities().max_documents);
 
         let (slots, usage) = stream::iter(texts.into_iter().enumerate())
             .chunks(max_documents)
             .map(|chunk| async {
                 let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
 
-                let response: EmbeddingResponse = self.model.embed_texts_response(batch).await?;
+                let response: EmbeddingResponse = self.model.call(batch, None).await?;
                 Ok::<_, ProviderError>((
                     slots
                         .into_iter()

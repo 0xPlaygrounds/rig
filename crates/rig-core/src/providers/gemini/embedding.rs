@@ -65,6 +65,8 @@ impl Embeddings {
 
 impl Wire for Embeddings {
     type Op = crate::operation::Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {

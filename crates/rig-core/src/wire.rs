@@ -67,6 +67,9 @@ pub struct Encoded {
     /// replays Responses bodies without it). A *wrong* content type is
     /// still rejected.
     pub relaxed_content_type: bool,
+    /// Stable endpoint template for observation grouping, without base-URL
+    /// prefixes or interpolated values. `None` uses the concrete request path.
+    pub route: Option<&'static str>,
 }
 
 impl Encoded {
@@ -82,6 +85,7 @@ impl Encoded {
             framing,
             request_id_header: None,
             relaxed_content_type: false,
+            route: None,
         }
     }
 
@@ -94,6 +98,12 @@ impl Encoded {
     /// Accept a streamed reply that names no content type.
     pub fn with_relaxed_content_type(mut self) -> Self {
         self.relaxed_content_type = true;
+        self
+    }
+
+    /// Name the endpoint template observation groups attempts under.
+    pub fn with_route(mut self, route: Option<&'static str>) -> Self {
+        self.route = route;
         self
     }
 }
@@ -147,6 +157,7 @@ impl std::fmt::Debug for Encoded {
             .field("framing", &self.framing)
             .field("request_id_header", &self.request_id_header)
             .field("relaxed_content_type", &self.relaxed_content_type)
+            .field("route", &self.route)
             .finish()
     }
 }
@@ -154,9 +165,9 @@ impl std::fmt::Debug for Encoded {
 /// Reply mode used by the wire to select request encoding, framing, and decoder state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// One whole reply ([`crate::driver::call`]).
+    /// One whole reply ([`Model::call`](crate::driver::Model::call)).
     Unary,
-    /// A streamed reply ([`crate::driver::stream`]).
+    /// A streamed reply ([`Model::stream`](crate::driver::Model::stream)).
     Streaming,
 }
 
@@ -172,14 +183,14 @@ pub trait Operation: Sized + 'static {
     /// One decoded step of a reply.
     type Event: WasmCompatSend + 'static;
     /// The normalized response the events fold into.
-    type Response;
+    type Response: WasmCompatSend + 'static;
     /// What a runtime accounts for. `()` for operations with nothing to
     /// declare.
     type Capabilities: Default;
     /// Where a decoder writes the events of one `interpret` step.
     type Output: Sink<Self> + WasmCompatSend;
     /// The fold from events to the response.
-    type Fold: Fold<Self>;
+    type Fold: Fold<Self> + WasmCompatSend;
     /// The canonical telemetry operation a wire performs. `()` for
     /// operations that open no span.
     type Telemetry: Copy;
@@ -248,6 +259,16 @@ pub trait Operation: Sized + 'static {
     fn with_route(error: ProviderError, _provider: &str, _path: &str) -> ProviderError {
         error
     }
+
+    /// Refuse a folded response that contradicts what the wire declared,
+    /// such as an embedding width the caller asked for. The default accepts.
+    fn accept(
+        _capabilities: &Self::Capabilities,
+        _provider: &str,
+        _response: &Self::Response,
+    ) -> Result<(), ProviderError> {
+        Ok(())
+    }
 }
 
 /// What the driver learned about a unary reply beyond its events: the
@@ -314,9 +335,8 @@ pub trait ObservationSink {
 pub type Output<Op> = <Op as Operation>::Output;
 
 /// Synchronous state machine for one reply. Classifies frames and interprets
-/// known events without transport access. HTTP uses [`WireFrame`]; typed
-/// transports can provide their own frame type to
-/// [`run_wire_stream`](crate::driver::run_wire_stream).
+/// known events without transport access. HTTP wires read [`WireFrame`]s;
+/// other transports name their own frame type.
 pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// The wire's typed event, produced by this decoder's classifier.
     type Event;
@@ -350,8 +370,9 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
         None
     }
 
-    /// A paged operation's next request, if the reply named one.
-    fn continuation(&self) -> Option<http::Request<Body>> {
+    /// The cursor of a paged operation's next page, if the reply named one.
+    /// [`Wire::page`] builds its payload.
+    fn cursor(&self) -> Option<String> {
         None
     }
 
@@ -377,8 +398,12 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
 pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// The operation this wire performs.
     type Op: Operation;
+    /// What [`Self::encode`] produces for the transport to send.
+    type Payload: WasmCompatSend + 'static;
+    /// One unit of a reply, as the transport delivers it.
+    type Frame: WasmCompatSend + 'static;
     /// The decoder for one of its replies.
-    type Decoder: Decoder<Self::Op> + WasmCompatSend + 'static;
+    type Decoder: Decoder<Self::Op, Self::Frame> + WasmCompatSend + 'static;
 
     /// The provider descriptor name (`"anthropic"`), as records and
     /// telemetry name it.
@@ -387,7 +412,18 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// The request to send. Pure: it may read `self`, `request` and `mode`,
     /// and nothing else. A request that cannot be built is an
     /// [`EncodeError`], which always reports as a request failure.
-    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, EncodeError>;
+    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Self::Payload, EncodeError>;
+
+    /// The payload of the page at `cursor`, for a paged operation whose
+    /// decoder named one ([`Decoder::cursor`]). The default refuses: an
+    /// operation that does not page never names a cursor.
+    fn page(&self, cursor: &str) -> Result<Self::Payload, EncodeError> {
+        let _ = cursor;
+        Err(EncodeError::request(format!(
+            "{} does not page its replies",
+            self.name()
+        )))
+    }
 
     /// A fresh decoder for one reply, in the mode [`Self::encode`] was
     /// given.
@@ -405,6 +441,13 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
         Capabilities::<Self>::default()
     }
 
+    /// The issuer of this wire's reasoning when a deployment serves another
+    /// provider's models, known before a reply's terminal record names it.
+    /// `None` is the wire itself.
+    fn reasoning_issuer(&self) -> Option<&str> {
+        None
+    }
+
     /// The model this wire addresses, for telemetry. `None` for operations
     /// that address no model.
     fn model(&self) -> Option<&str> {
@@ -416,12 +459,6 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// a gateway whose state depends on the upstream model narrows it.
     fn replay_issuers(&self, _model: Option<&str>) -> Vec<String> {
         vec![self.name().to_owned()]
-    }
-
-    /// Stable endpoint template for observation grouping, without base-URL
-    /// prefixes or interpolated values. `None` uses the concrete request path.
-    fn route(&self) -> Option<&str> {
-        None
     }
 
     /// The canonical telemetry operation this wire performs. Override when
@@ -441,16 +478,3 @@ pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
 pub type Capabilities<W> = <<W as Wire>::Op as Operation>::Capabilities;
 /// A wire's telemetry operation type.
 pub type Telemetry<W> = <<W as Wire>::Op as Operation>::Telemetry;
-
-/// A provider config that has a completion wire.
-///
-/// One small trait, implemented by provider config structs, so
-/// `Bound<P, H>` can build the provider's completion wire and rig-agent can
-/// offer `agent(model)` / `extractor(model)` on it without naming a provider.
-pub trait HasCompletion: WasmCompatSend + WasmCompatSync {
-    /// The provider's completion wire.
-    type Wire: Wire<Op = crate::operation::Completion>;
-
-    /// Build the completion wire for `model`.
-    fn completion(&self, model: impl Into<String>) -> Self::Wire;
-}

@@ -87,6 +87,8 @@ impl GenerateContent {
 
 impl Wire for GenerateContent {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = super::streaming::GenerateContentDecoder;
 
     fn name(&self) -> &str {

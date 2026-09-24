@@ -1,9 +1,12 @@
 //! Text and image embedding models, responses, and input identifiers.
 //!
 //! ```no_run
-//! use rig_core::embeddings::EmbeddingModel;
+//! use rig_core::driver::{Model, Transport};
+//! use rig_core::operation::Embedding;
+//! use rig_core::wire::Wire;
 //!
-//! # async fn example(model: impl EmbeddingModel) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
+//! # where W: Wire<Op = Embedding> + Clone, T: Transport<W> {
 //! let embedding = model.embed_text("A document").await?;
 //! # let _ = embedding;
 //! # Ok(())
@@ -11,73 +14,30 @@
 //! ```
 
 use crate::error::ProviderError;
-use crate::{
-    completion::{ResponseIdentity, Usage},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::completion::{ResponseIdentity, Usage};
 use serde::{Deserialize, Serialize};
 
-/// Trait for embedding models that can generate embeddings for documents.
-pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
-    /// The maximum number of documents accepted in a single request.
-    fn max_documents(&self) -> usize;
-
-    /// The number of dimensions in the embedding vector.
-    fn ndims(&self) -> usize;
-
-    /// Embed multiple text documents in a single request and return the full
-    /// normalized response: embeddings, usage, provider, and identity.
-    ///
-    /// Implementations must preserve input order in the returned embeddings.
-    fn embed_texts_response(
+impl<W, T> crate::driver::Model<W, T>
+where
+    W: crate::wire::Wire<Op = crate::operation::Embedding> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// Embed text documents in one request, in input order.
+    pub async fn embed_texts(
         &self,
-        texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend;
-
-    /// Embed multiple text documents in a single request.
-    ///
-    /// The convenience form of [`EmbeddingModel::embed_texts_response`] for
-    /// callers who want only the vectors.
-    fn embed_texts(
-        &self,
-        texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
-    {
-        async { Ok(self.embed_texts_response(texts).await?.embeddings) }
+        texts: impl IntoIterator<Item = String>,
+    ) -> Result<Vec<Embedding>, ProviderError> {
+        Ok(self.call(texts.into_iter().collect(), None).await?.embeddings)
     }
 
-    /// Embeds one text, returning the last vector or an error if none is returned.
-    fn embed_text(
-        &self,
-        text: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + WasmCompatSend {
-        async {
-            let mut embeddings = self.embed_texts(vec![text.to_string()]).await?;
-            embeddings.pop().ok_or_else(|| {
-                ProviderError::Response(
-                    "embedding provider returned an empty response for embed_text".to_string(),
-                )
-            })
-        }
-    }
-
-    /// Embeds one text and returns the normalized response, rejecting an empty
-    /// embedding list.
-    fn embed_text_response(
-        &self,
-        text: &str,
-    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend
-    {
-        async {
-            let response = self.embed_texts_response(vec![text.to_string()]).await?;
-            if response.embeddings.is_empty() {
-                return Err(ProviderError::Response(
-                    "embedding provider returned an empty response for embed_text_response"
-                        .to_string(),
-                ));
-            }
-            Ok(response)
-        }
+    /// Embed one text, returning the last vector or an error if none is returned.
+    pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
+        let mut embeddings = self.embed_texts([text.to_owned()]).await?;
+        embeddings.pop().ok_or_else(|| {
+            ProviderError::Response(
+                "embedding provider returned an empty response for embed_text".to_string(),
+            )
+        })
     }
 }
 
@@ -202,50 +162,28 @@ impl ImageEmbeddingResponse {
 
 crate::provider_response::modality_response_metadata_setters!(ImageEmbeddingResponse);
 
-/// Trait for embedding models that can generate embeddings for images.
-pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
-    /// The maximum number of images the provider accepts in one request.
-    fn max_documents(&self) -> usize;
-
-    /// The number of dimensions in the embedding vector.
-    fn ndims(&self) -> usize;
-
-    /// Embed a batch of images from their encoded file bytes and return the
-    /// full normalized response. This is the method a provider implements;
-    /// [`ImageEmbeddingModel::embed_images`] and
-    /// [`ImageEmbeddingModel::embed_image`] derive from it.
-    ///
-    /// Implementations must preserve input order in the returned embeddings.
-    /// The returned [`Embedding::document`] should identify the input without
-    /// retaining the raw image or a reversible encoding of it.
-    fn embed_images_response(
+impl<W, T> crate::driver::Model<W, T>
+where
+    W: crate::wire::Wire<Op = crate::operation::ImageEmbedding> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// Embed images from their encoded file bytes in one request, in input order.
+    pub async fn embed_images(
         &self,
-        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, ProviderError>> + WasmCompatSend;
-
-    /// Embed a batch of images from their encoded file bytes.
-    fn embed_images(
-        &self,
-        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
-    {
-        async { Ok(self.embed_images_response(images).await?.embeddings) }
+        images: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Result<Vec<Embedding>, ProviderError> {
+        Ok(self.call(images.into_iter().collect(), None).await?.embeddings)
     }
 
-    /// Embeds one encoded image, returning the last vector or an error if none
-    /// is returned.
-    fn embed_image(
-        &self,
-        bytes: &[u8],
-    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + WasmCompatSend {
-        async move {
-            let mut embeddings = self.embed_images(vec![bytes.to_owned()]).await?;
-            embeddings.pop().ok_or_else(|| {
-                ProviderError::Response(
-                    "embedding provider returned an empty response for embed_image".to_string(),
-                )
-            })
-        }
+    /// Embed one encoded image, returning the last vector or an error if
+    /// none is returned.
+    pub async fn embed_image(&self, bytes: &[u8]) -> Result<Embedding, ProviderError> {
+        let mut embeddings = self.embed_images([bytes.to_owned()]).await?;
+        embeddings.pop().ok_or_else(|| {
+            ProviderError::Response(
+                "embedding provider returned an empty response for embed_image".to_string(),
+            )
+        })
     }
 }
 

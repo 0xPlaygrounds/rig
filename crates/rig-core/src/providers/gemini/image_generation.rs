@@ -171,6 +171,8 @@ impl Images {
 
 impl Wire for Images {
     type Op = ImageGeneration;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ImagesDecoder;
 
     fn name(&self) -> &str {

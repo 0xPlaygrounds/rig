@@ -21,6 +21,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
+use crate::driver::{Model, Transport};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation;
@@ -306,9 +307,8 @@ impl CachedContentReply {
 /// Gemini's `cachedContents` resource: the wire for
 /// [`operation::ContextCache`].
 ///
-/// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents), or
-/// on a socket by `Bound<Gemini, H>::cached_contents()`; the calls are the
-/// inherent methods of `Bound<CachedContents, H>`.
+/// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents); the
+/// calls are the inherent methods of a [`Model`] over it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CachedContents {
     /// The provider this wire speaks to.
@@ -352,15 +352,67 @@ impl super::Gemini {
     }
 }
 
-impl<H: Clone> crate::driver::Bound<super::Gemini, H> {
-    /// The provider's `cached_contents` wire, on this socket.
-    pub fn cached_contents(&self) -> crate::driver::Bound<CachedContents, H> {
-        crate::driver::Bound::new(self.wire.cached_contents(), self.http.clone())
+
+/// Explicit context-cache operations. Requests targeting an existing handle
+/// map HTTP 403 and 404 to [`ProviderError::CacheExpired`].
+impl<T> Model<CachedContents, T>
+where
+    T: Transport<CachedContents>,
+{
+    /// Creates cached content and returns its handle and storage usage metadata.
+    pub async fn create(&self, request: NewCachedContent) -> Result<CachedContent, ProviderError> {
+        self.call(CachedContentRequest::Create(request), None)
+            .await?
+            .resource()
+    }
+
+    /// Fetch one cached content by handle.
+    pub async fn get(&self, name: &str) -> Result<CachedContent, ProviderError> {
+        self.call(CachedContentRequest::Get(name.to_owned()), None)
+            .await
+            .map_err(|error| on_handle(error, name))?
+            .resource()
+    }
+
+    /// Every cached content this API key can see, following pagination at
+    /// the wire's page size.
+    pub async fn list(&self) -> Result<Vec<CachedContent>, ProviderError> {
+        self.call(CachedContentRequest::List, None).await?.entries()
+    }
+
+    /// Changes cache expiry without modifying its immutable content.
+    /// Returns the updated resource or an error, including `Expired` for HTTP 403/404.
+    pub async fn update_expiry(
+        &self,
+        name: &str,
+        expiry: CacheExpiry,
+    ) -> Result<CachedContent, ProviderError> {
+        let request = CachedContentRequest::UpdateExpiry {
+            name: name.to_owned(),
+            expiry,
+        };
+        self.call(request, None)
+            .await
+            .map_err(|error| on_handle(error, name))?
+            .resource()
+    }
+
+    /// Deletes cached content before its expiry. Callers should also clean up
+    /// task-scoped caches on failure to avoid continued storage charges.
+    /// Handles other than `cachedContents/<id>` or bare `<id>` return
+    /// [`ProviderError::Request`] before dispatch.
+    pub async fn delete(&self, name: &str) -> Result<(), ProviderError> {
+        self.call(CachedContentRequest::Delete(name.to_owned()), None)
+            .await
+            .map_err(|error| on_handle(error, name))?;
+        Ok(())
     }
 }
 
 impl Wire for CachedContents {
     type Op = operation::ContextCache;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = CachedContentsDecoder;
 
     fn name(&self) -> &str {
@@ -395,17 +447,17 @@ impl Wire for CachedContents {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(self.list_request(Some(cursor))?, Framing::Whole))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        CachedContentsDecoder {
-            wire: self.clone(),
-            next: None,
-        }
+        CachedContentsDecoder { next: None }
     }
 }
 
 /// Decodes one `cachedContents` reply and follows a listing's cursor.
 pub struct CachedContentsDecoder {
-    wire: CachedContents,
     /// The cursor the page just interpreted named, when it named a usable one.
     next: Option<String>,
 }
@@ -434,8 +486,8 @@ impl Decoder<operation::ContextCache> for CachedContentsDecoder {
         out.push(Ok(reply));
     }
 
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        self.wire.list_request(Some(self.next.as_deref()?)).ok()
+    fn cursor(&self) -> Option<String> {
+        self.next.clone()
     }
 }
 

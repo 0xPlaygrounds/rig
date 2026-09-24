@@ -10,17 +10,25 @@
     )
 )]
 //! Provider-agnostic model, message, tool, memory, and vector-store contracts.
-//! Provider configurations and endpoint wires bind to transports through
-//! [`driver::Bound`]. Companion crates supply transports, agent runtimes,
-//! and external storage integrations.
+//! Provider configurations build endpoint wires, and a [`Model`] binds a
+//! wire to a [`driver::Transport`]. Companion crates supply transports,
+//! agent runtimes, and external storage integrations.
 //!
 //! ```no_run
-//! use rig_core::completion::{CompletionModel, CompletionResponse};
+//! use rig_core::completion::CompletionResponse;
+//! use rig_core::driver::Transport;
 //! use rig_core::error::ProviderError;
+//! use rig_core::operation::Completion;
+//! use rig_core::wire::Wire;
+//! use rig_core::Model;
 //!
-//! async fn ask<M: CompletionModel + Clone>(model: &M) -> Result<CompletionResponse, ProviderError> {
+//! async fn ask<W, T>(model: &Model<W, T>) -> Result<CompletionResponse, ProviderError>
+//! where
+//!     W: Wire<Op = Completion> + Clone,
+//!     T: Transport<W>,
+//! {
 //!     let request = model.completion_request("Who are you?").build();
-//!     model.completion(request).await
+//!     model.call(request, None).await
 //! }
 //! ```
 
@@ -71,6 +79,7 @@ pub mod wire;
 pub mod ws_client;
 
 pub use completion::message;
+pub use driver::Model;
 pub use embeddings::Embed;
 pub use error::{ErrorKind, ErrorReport, ProviderError};
 pub use provider_response::ProviderResponseError;
@@ -108,5 +117,5 @@ const _: fn() = || {
     assert_send_sync_static::<http_client::BoxedHttpClient>();
     // A live stream is owned by one poller: `Send` so it can move to a worker,
     // not `Sync`.
-    assert_send_static::<streaming::StreamingCompletionResponse>();
+    assert_send_static::<streaming::CompletionStream>();
 };

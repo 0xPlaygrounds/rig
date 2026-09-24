@@ -1,9 +1,13 @@
 //! Text-to-speech requests and normalized audio responses.
 //!
 //! ```no_run
-//! use rig_core::audio_generation::{AudioGenerationModel, AudioGenerationRequestBuilder};
+//! use rig_core::audio_generation::AudioGenerationRequestBuilder;
+//! use rig_core::driver::{Model, Transport};
+//! use rig_core::operation::AudioGeneration;
+//! use rig_core::wire::Wire;
 //!
-//! # async fn example(model: impl AudioGenerationModel, voice: &str) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example<W, T>(model: Model<W, T>, voice: &str) -> Result<(), Box<dyn std::error::Error>>
+//! # where W: Wire<Op = AudioGeneration> + Clone, T: Transport<W> {
 //! let response = AudioGenerationRequestBuilder::new(model, "Hello", voice)
 //!     .send().await?;
 //! # let _ = response;
@@ -12,10 +16,8 @@
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Generated audio and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,37 +82,18 @@ pub trait NormalizeAudioGenerationResponse {
     fn normalize(self, provider: &str) -> Result<AudioGenerationResponse, ProviderError>;
 }
 
-/// Generates speech from text. Only [`Self::audio_generation_request`] requires
-/// cloning; `Arc<M>` forwards generation calls.
-pub trait AudioGenerationModel: WasmCompatSend + WasmCompatSync {
-    fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend;
-
-    /// Creates a request builder to speak `text` in `voice`.
-    fn audio_generation_request(
+impl<W, T> crate::driver::Model<W, T>
+where
+    W: crate::wire::Wire<Op = crate::operation::AudioGeneration> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// A request builder to speak `text` in `voice` through this model.
+    pub fn audio_generation_request(
         &self,
         text: impl Into<String>,
         voice: impl Into<String>,
-    ) -> AudioGenerationRequestBuilder<Self>
-    where
-        Self: Sized + Clone,
-    {
+    ) -> AudioGenerationRequestBuilder<Self> {
         AudioGenerationRequestBuilder::new(self.clone(), text, voice)
-    }
-}
-
-impl<M> AudioGenerationModel for Arc<M>
-where
-    M: AudioGenerationModel,
-{
-    fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend
-    {
-        (**self).audio_generation(request)
     }
 }
 
@@ -161,10 +144,14 @@ impl<M> AudioGenerationRequestBuilder<M> {
     }
 }
 
-impl<M: AudioGenerationModel> AudioGenerationRequestBuilder<M> {
-    /// Sends the request to the model and returns the generated audio.
+impl<W, T> AudioGenerationRequestBuilder<crate::driver::Model<W, T>>
+where
+    W: crate::wire::Wire<Op = crate::operation::AudioGeneration> + Clone,
+    T: crate::driver::Transport<W>,
+{
+    /// Sends the request through the model.
     pub async fn send(self) -> Result<AudioGenerationResponse, ProviderError> {
-        self.model.audio_generation(self.request).await
+        self.model.call(self.request, None).await
     }
 }
 
