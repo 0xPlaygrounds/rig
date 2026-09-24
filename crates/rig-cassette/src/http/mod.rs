@@ -2802,10 +2802,12 @@ impl CassetteScrubber {
     }
 
     /// Replace a UUID a provider names as the account's team with a
-    /// placeholder: the word `team` (not inside a longer word), then any run
-    /// of separators (whitespace, `_ / : = " ' \\`) and the word `id` in any
-    /// case, then a hyphenated UUID. This covers xAI's "your team <uuid>",
-    /// "team ID <uuid>", `team_id: <uuid>` and `/team/<uuid>`.
+    /// placeholder: the word `team` or `teams` (not inside a longer word),
+    /// then any run of ASCII separators (whitespace and `_ / : = - ( [ " ' \\`
+    /// and a backtick) and the word `id` in any case, then a hyphenated UUID.
+    /// This covers xAI's "your team <uuid>", "team ID <uuid>",
+    /// `team_id: <uuid>`, `/teams/<uuid>` and `team (<uuid>)`.
+    /// Percent-encoded separators and non-ASCII spaces are not matched.
     fn scrub_team_ids(&mut self, text: &str) -> String {
         const UUID_LEN: usize = 36;
         let bytes = text.as_bytes();
@@ -2820,9 +2822,15 @@ impl CassetteScrubber {
                 continue;
             }
             let mut cursor = index + 4;
+            if bytes
+                .get(cursor)
+                .is_some_and(|byte| byte.eq_ignore_ascii_case(&b's'))
+            {
+                cursor += 1;
+            }
             loop {
                 match bytes.get(cursor) {
-                    Some(byte) if byte.is_ascii_whitespace() || b"_/:=\"'\\".contains(byte) => {
+                    Some(byte) if byte.is_ascii_whitespace() || b"_/:=-([`\"'\\".contains(byte) => {
                         cursor += 1;
                     }
                     Some(_)
@@ -3332,9 +3340,8 @@ impl HttpClientExt for DirectRecordingHttpClient {
             let Some(recorder) = recorder else {
                 return Ok(response);
             };
-            // Only a successful text reply can name what it created; binary
-            // streams (audio) pass through untouched.
-            if !StreamLedgerTap::taps(response.status().as_u16(), response.headers()) {
+            // A binary stream (audio) names nothing and passes through untouched.
+            if !StreamLedgerTap::taps(response.headers()) {
                 return Ok(response);
             }
             let (parts, stream) = response.into_parts();
@@ -3386,16 +3393,19 @@ struct StreamLedgerTap {
 }
 
 impl StreamLedgerTap {
-    /// Whether a streamed reply with `status` and `headers` is tapped: a
-    /// successful SSE or JSON body.
-    fn taps(status: u16, headers: &http_client::HeaderMap) -> bool {
+    /// Whether a streamed reply with `headers` is tapped: every body except
+    /// a known binary one (audio, image, video, octet stream), which names
+    /// nothing and would only accumulate. `log_created` ignores error
+    /// statuses itself.
+    fn taps(headers: &http_client::HeaderMap) -> bool {
         let content_type = headers
             .get(axum::http::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default()
             .to_ascii_lowercase();
-        (200..300).contains(&status)
-            && (content_type.starts_with("text/event-stream") || content_type.contains("json"))
+        !["audio/", "image/", "video/", "application/octet-stream"]
+            .iter()
+            .any(|binary| content_type.starts_with(binary))
     }
 
     fn feed(&mut self, bytes: &[u8]) {
