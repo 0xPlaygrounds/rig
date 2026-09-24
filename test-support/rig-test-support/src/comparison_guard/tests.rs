@@ -424,14 +424,31 @@ fn recorded_objects_bound_by_let_else_and_if_let_are_followed() {
                 }
             }
         }
+        fn same_name_if_let() {
+            let body = recorded_json_response("x", "cell");
+            if let Some(body) = body.as_object() {
+                for (key, value) in body {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
         fn if_let_scope_ends() {
             let body = recorded_json_response("x", "cell");
+            let object = raw.as_object().expect("live");
             if let Some(object) = body.as_object() {
                 let _ = object;
             }
-            let object = raw.as_object().expect("live");
+            // The outer, live `object` again: no longer the recorded one.
             for (key, value) in object {
                 assert_eq!(copy.get(key), Some(value));
+            }
+        }
+        fn if_let_binding_several_names_shadows() {
+            let body = recorded_json_response("x", "cell");
+            if let Ok((body, _)) = live_pair() {
+                for (key, value) in body.as_object().unwrap() {
+                    assert_eq!(copy.get(key), Some(value));
+                }
             }
         }
     "#;
@@ -440,5 +457,9 @@ fn recorded_objects_bound_by_let_else_and_if_let_are_followed() {
         .iter()
         .map(|finding| finding.split(':').next().unwrap_or_default())
         .collect();
-    assert_eq!(functions, ["let_else", "if_let"], "{found:?}");
+    assert_eq!(
+        functions,
+        ["let_else", "if_let", "same_name_if_let"],
+        "{found:?}"
+    );
 }
