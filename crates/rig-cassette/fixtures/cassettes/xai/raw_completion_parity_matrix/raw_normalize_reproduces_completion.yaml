@@ -7,15 +7,15 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"Reply with the single word: pong","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-3-mini"}'
+  body: '{"input":[{"content":[{"text":"Reply with the single word: pong","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-3-mini","store":false}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: a5657f96-03d2-9ca0-833c-78330ca9223f
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a5657f96-03d2-9ca0-833c-78330ca9223f","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"pong","type":"output_text"}],"id":"msg_a5657f96-03d2-9ca0-833c-78330ca9223f","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":118},"cost_in_usd_ticks":3221500,"input_tokens":199,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":110,"output_tokens_details":{"reasoning_tokens":109},"total_tokens":309},"user":null}'
+    value: 0fd31385-bc65-9260-99bc-cf0c8620f590
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"0fd31385-bc65-9260-99bc-cf0c8620f590","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"pong","type":"output_text"}],"id":"msg_0fd31385-bc65-9260-99bc-cf0c8620f590","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":141},"cost_in_usd_ticks":3821500,"input_tokens":199,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":134,"output_tokens_details":{"reasoning_tokens":133},"total_tokens":333},"user":null}'
 ---
 when:
   path: /v1/responses
@@ -26,12 +26,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"Reply with the single word: pong","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-3-mini"}'
+  body: '{"input":[{"content":[{"text":"Reply with the single word: pong","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-3-mini","store":false}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 2b4208d5-f6c1-9c13-997a-ca02f9b3963e
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"2b4208d5-f6c1-9c13-997a-ca02f9b3963e","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"pong","type":"output_text"}],"id":"msg_2b4208d5-f6c1-9c13-997a-ca02f9b3963e","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":104},"cost_in_usd_ticks":2871500,"input_tokens":199,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":96,"output_tokens_details":{"reasoning_tokens":95},"total_tokens":295},"user":null}'
+    value: 640eee70-e2c9-9906-bbab-d0322c03401b
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"640eee70-e2c9-9906-bbab-d0322c03401b","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"pong","type":"output_text"}],"id":"msg_640eee70-e2c9-9906-bbab-d0322c03401b","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":114},"cost_in_usd_ticks":3121500,"input_tokens":199,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":106,"output_tokens_details":{"reasoning_tokens":105},"total_tokens":305},"user":null}'

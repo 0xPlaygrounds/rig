@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 90,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -87,7 +87,7 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_f5f1208e-5cd6-9eae-b976-e9f087a15637",
+              "id": "rs_a52b96ba-2781-96b4-99ad-482ff986fce2",
               "content": [
                 {
                   "type": "summary",
@@ -103,14 +103,14 @@
           ],
           "usage": {
             "input_tokens": 2428,
-            "output_tokens": 209,
-            "total_tokens": 2637,
+            "output_tokens": 199,
+            "total_tokens": 2627,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 200
+            "reasoning_tokens": 190
           },
-          "message_id": "msg_f5f1208e-5cd6-9eae-b976-e9f087a15637",
-          "response_id": "f5f1208e-5cd6-9eae-b976-e9f087a15637",
-          "provider_request_id": "f5f1208e-5cd6-9eae-b976-e9f087a15637",
+          "message_id": "msg_a52b96ba-2781-96b4-99ad-482ff986fce2",
+          "response_id": "a52b96ba-2781-96b4-99ad-482ff986fce2",
+          "provider_request_id": "a52b96ba-2781-96b4-99ad-482ff986fce2",
           "finish_reason": "stop",
           "provider": "xai",
           "model": "grok-4.3",
@@ -120,7 +120,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "f5f1208e-5cd6-9eae-b976-e9f087a15637",
+            "id": "a52b96ba-2781-96b4-99ad-482ff986fce2",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -132,7 +132,7 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_f5f1208e-5cd6-9eae-b976-e9f087a15637",
+                "id": "rs_a52b96ba-2781-96b4-99ad-482ff986fce2",
                 "status": "completed",
                 "summary": [
                   {
@@ -151,7 +151,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_f5f1208e-5cd6-9eae-b976-e9f087a15637",
+                "id": "msg_a52b96ba-2781-96b4-99ad-482ff986fce2",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -168,7 +168,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -183,20 +183,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 2428,
-                "output_tokens": 217
+                "output_tokens": 206
               },
-              "cost_in_usd_ticks": 34231000,
+              "cost_in_usd_ticks": 33981000,
               "input_tokens": 2428,
               "input_tokens_details": {
                 "cached_tokens": 128
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 209,
+              "output_tokens": 199,
               "output_tokens_details": {
-                "reasoning_tokens": 200
+                "reasoning_tokens": 190
               },
-              "total_tokens": 2637
+              "total_tokens": 2627
             },
             "user": null
           }

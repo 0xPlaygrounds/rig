@@ -2,28 +2,28 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 13,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -147,7 +147,7 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+              "id": "rs_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade",
               "content": [
                 {
                   "type": "summary",
@@ -160,11 +160,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0"
+                "id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-0"
               },
               "provider": {
-                "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0",
-                "item_id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_0"
+                "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-0",
+                "item_id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_0"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -177,11 +177,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1"
+                "id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-1"
               },
               "provider": {
-                "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1",
-                "item_id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_1"
+                "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-1",
+                "item_id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_1"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -193,14 +193,14 @@
           ],
           "usage": {
             "input_tokens": 398,
-            "output_tokens": 340,
-            "total_tokens": 738,
+            "output_tokens": 276,
+            "total_tokens": 674,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 324
+            "reasoning_tokens": 260
           },
           "message_id": null,
-          "response_id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
-          "provider_request_id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+          "response_id": "76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade",
+          "provider_request_id": "76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -210,7 +210,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+            "id": "76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -222,7 +222,7 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+                "id": "rs_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade",
                 "status": "completed",
                 "summary": [
                   {
@@ -234,16 +234,16 @@
               },
               {
                 "arguments": "{}",
-                "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0",
-                "id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_0",
+                "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-0",
+                "id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_0",
                 "name": "lookup_harbor_label",
                 "status": "completed",
                 "type": "function_call"
               },
               {
                 "arguments": "{}",
-                "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1",
-                "id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_1",
+                "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-1",
+                "id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_1",
                 "name": "lookup_orchard_label",
                 "status": "completed",
                 "type": "function_call"
@@ -260,7 +260,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -298,20 +298,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 398,
-                "output_tokens": 343
+                "output_tokens": 280
               },
-              "cost_in_usd_ticks": 11459000,
+              "cost_in_usd_ticks": 9859000,
               "input_tokens": 398,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 340,
+              "output_tokens": 276,
               "output_tokens_details": {
-                "reasoning_tokens": 324
+                "reasoning_tokens": 260
               },
-              "total_tokens": 738
+              "total_tokens": 674
             },
             "user": null
           }
@@ -397,7 +397,7 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_b2efd026-bb0f-964c-886c-adc24c1cb8dd",
+                  "id": "rs_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade",
                   "content": [
                     {
                       "type": "summary",
@@ -410,11 +410,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0"
+                    "id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-0"
                   },
                   "provider": {
-                    "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0",
-                    "item_id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_0"
+                    "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-0",
+                    "item_id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_0"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -427,11 +427,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1"
+                    "id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-1"
                   },
                   "provider": {
-                    "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1",
-                    "item_id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_1"
+                    "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-1",
+                    "item_id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_1"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -449,11 +449,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0"
+                    "id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-0"
                   },
                   "provider": {
-                    "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-0",
-                    "item_id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_0"
+                    "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-0",
+                    "item_id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_0"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -467,11 +467,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1"
+                    "id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-1"
                   },
                   "provider": {
-                    "call_id": "call-ff46f461-56b2-49d0-b48a-bd1d273df05f-1",
-                    "item_id": "fc_b2efd026-bb0f-964c-886c-adc24c1cb8dd_1"
+                    "call_id": "call-09dd9f12-cca9-43b8-8e29-655ae59430ac-1",
+                    "item_id": "fc_76eeb0a1-f8ee-9365-9657-ad7b4dbe4ade_1"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -520,20 +520,31 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "reasoning",
+              "id": "rs_4e428b76-9790-9260-b803-ff92d3ca2e7d",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
+                }
+              ],
+              "provider": "xai"
+            },
+            {
               "type": "text",
-              "text": "The outputs are crimson-harbor and silver-orchard."
+              "text": "The tool outputs are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
             "input_tokens": 432,
-            "output_tokens": 168,
-            "total_tokens": 600,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 156
+            "output_tokens": 184,
+            "total_tokens": 616,
+            "cached_input_tokens": 384,
+            "reasoning_tokens": 171
           },
-          "message_id": "msg_c0412e7f-53a2-968d-ac5a-51d1a6f76668",
-          "response_id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
-          "provider_request_id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+          "message_id": "msg_4e428b76-9790-9260-b803-ff92d3ca2e7d",
+          "response_id": "4e428b76-9790-9260-b803-ff92d3ca2e7d",
+          "provider_request_id": "4e428b76-9790-9260-b803-ff92d3ca2e7d",
           "finish_reason": "stop",
           "provider": "xai",
           "model": "grok-4.3",
@@ -543,7 +554,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+            "id": "4e428b76-9790-9260-b803-ff92d3ca2e7d",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -555,15 +566,26 @@
             "object": "response",
             "output": [
               {
+                "id": "rs_4e428b76-9790-9260-b803-ff92d3ca2e7d",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering.",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
                 "content": [
                   {
                     "annotations": [],
                     "logprobs": [],
-                    "text": "The outputs are crimson-harbor and silver-orchard.",
+                    "text": "The tool outputs are crimson-harbor and silver-orchard.",
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_c0412e7f-53a2-968d-ac5a-51d1a6f76668",
+                "id": "msg_4e428b76-9790-9260-b803-ff92d3ca2e7d",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -580,7 +602,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -618,20 +640,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 432,
-                "output_tokens": 176
+                "output_tokens": 191
               },
-              "cost_in_usd_ticks": 7584000,
+              "cost_in_usd_ticks": 5968000,
               "input_tokens": 432,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 384
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 168,
+              "output_tokens": 184,
               "output_tokens_details": {
-                "reasoning_tokens": 156
+                "reasoning_tokens": 171
               },
-              "total_tokens": 600
+              "total_tokens": 616
             },
             "user": null
           }

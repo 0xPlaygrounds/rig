@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -108,11 +108,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_4d909b70-9a22-9434-8254-23a700f02443",
+              "id": "rs_f71ddfa4-0681-9329-913e-8c49c5b67fbd",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Extracting structured data from the text.\n\nExtracted name, age, and profession. Preparing to call the submit function."
+                  "content": "Extracting structured data from the text about Jane Smith."
                 }
               ],
               "provider": "xai"
@@ -121,11 +121,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0"
+                "id": "call-4ef61118-b3bd-487c-9494-fd08b0400911-0"
               },
               "provider": {
-                "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
-                "item_id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0"
+                "call_id": "call-4ef61118-b3bd-487c-9494-fd08b0400911-0",
+                "item_id": "fc_f71ddfa4-0681-9329-913e-8c49c5b67fbd_0"
               },
               "function": {
                 "name": "submit",
@@ -141,14 +141,14 @@
           ],
           "usage": {
             "input_tokens": 408,
-            "output_tokens": 269,
-            "total_tokens": 677,
+            "output_tokens": 224,
+            "total_tokens": 632,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 250
+            "reasoning_tokens": 205
           },
           "message_id": null,
-          "response_id": "4d909b70-9a22-9434-8254-23a700f02443",
-          "provider_request_id": "4d909b70-9a22-9434-8254-23a700f02443",
+          "response_id": "f71ddfa4-0681-9329-913e-8c49c5b67fbd",
+          "provider_request_id": "f71ddfa4-0681-9329-913e-8c49c5b67fbd",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -158,7 +158,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "4d909b70-9a22-9434-8254-23a700f02443",
+            "id": "f71ddfa4-0681-9329-913e-8c49c5b67fbd",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -170,11 +170,11 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_4d909b70-9a22-9434-8254-23a700f02443",
+                "id": "rs_f71ddfa4-0681-9329-913e-8c49c5b67fbd",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "Extracting structured data from the text.\n\nExtracted name, age, and profession. Preparing to call the submit function.",
+                    "text": "Extracting structured data from the text about Jane Smith.",
                     "type": "summary_text"
                   }
                 ],
@@ -182,8 +182,8 @@
               },
               {
                 "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
-                "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
-                "id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0",
+                "call_id": "call-4ef61118-b3bd-487c-9494-fd08b0400911-0",
+                "id": "fc_f71ddfa4-0681-9329-913e-8c49c5b67fbd_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -200,7 +200,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -250,20 +250,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 408,
-                "output_tokens": 273
+                "output_tokens": 228
               },
-              "cost_in_usd_ticks": 9809000,
+              "cost_in_usd_ticks": 8684000,
               "input_tokens": 408,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 269,
+              "output_tokens": 224,
               "output_tokens_details": {
-                "reasoning_tokens": 250
+                "reasoning_tokens": 205
               },
-              "total_tokens": 677
+              "total_tokens": 632
             },
             "user": null
           }

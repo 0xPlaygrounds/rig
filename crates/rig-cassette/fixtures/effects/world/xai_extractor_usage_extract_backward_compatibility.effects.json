@@ -107,25 +107,14 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "reasoning",
-              "id": "rs_450dbb4a-9b53-9e2f-9125-25bc9be25852",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Extracting structured data from the text about John Doe."
-                }
-              ],
-              "provider": "xai"
-            },
-            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0"
+                "id": "call-d19ed087-1db4-4d85-aa42-f9fcc47aa292-0"
               },
               "provider": {
-                "call_id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0",
-                "item_id": "fc_450dbb4a-9b53-9e2f-9125-25bc9be25852_0"
+                "call_id": "call-d19ed087-1db4-4d85-aa42-f9fcc47aa292-0",
+                "item_id": "fc_58ce45df-6d11-99c8-9997-109c5cc68f00_0"
               },
               "function": {
                 "name": "submit",
@@ -141,14 +130,14 @@
           ],
           "usage": {
             "input_tokens": 408,
-            "output_tokens": 212,
-            "total_tokens": 620,
+            "output_tokens": 210,
+            "total_tokens": 618,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 193
+            "reasoning_tokens": 191
           },
           "message_id": null,
-          "response_id": "450dbb4a-9b53-9e2f-9125-25bc9be25852",
-          "provider_request_id": "450dbb4a-9b53-9e2f-9125-25bc9be25852",
+          "response_id": "58ce45df-6d11-99c8-9997-109c5cc68f00",
+          "provider_request_id": "58ce45df-6d11-99c8-9997-109c5cc68f00",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -158,7 +147,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "450dbb4a-9b53-9e2f-9125-25bc9be25852",
+            "id": "58ce45df-6d11-99c8-9997-109c5cc68f00",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -170,20 +159,9 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_450dbb4a-9b53-9e2f-9125-25bc9be25852",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "Extracting structured data from the text about John Doe.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
                 "arguments": "{\"name\":\"John Doe\",\"age\":30,\"profession\":\"software engineer\"}",
-                "call_id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0",
-                "id": "fc_450dbb4a-9b53-9e2f-9125-25bc9be25852_0",
+                "call_id": "call-d19ed087-1db4-4d85-aa42-f9fcc47aa292-0",
+                "id": "fc_58ce45df-6d11-99c8-9997-109c5cc68f00_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -200,7 +178,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -250,20 +228,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 408,
-                "output_tokens": 216
+                "output_tokens": 214
               },
-              "cost_in_usd_ticks": 8384000,
+              "cost_in_usd_ticks": 8334000,
               "input_tokens": 408,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 212,
+              "output_tokens": 210,
               "output_tokens_details": {
-                "reasoning_tokens": 193
+                "reasoning_tokens": 191
               },
-              "total_tokens": 620
+              "total_tokens": 618
             },
             "user": null
           }

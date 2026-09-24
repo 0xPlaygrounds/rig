@@ -2,63 +2,63 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 17,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 18,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 22,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 23,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 29,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -358,11 +358,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
+              "id": "rs_611db87a-0dfd-9548-b633-2bccbf4c6cec",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Running the production-readiness scenario."
+                  "content": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text."
                 }
               ],
               "provider": "xai"
@@ -371,11 +371,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
               },
               "provider": {
-                "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
               },
               "function": {
                 "name": "ping_empty",
@@ -387,14 +387,14 @@
           ],
           "usage": {
             "input_tokens": 743,
-            "output_tokens": 322,
-            "total_tokens": 1065,
+            "output_tokens": 320,
+            "total_tokens": 1063,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 316
+            "reasoning_tokens": 314
           },
           "message_id": null,
-          "response_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
-          "provider_request_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
+          "response_id": "611db87a-0dfd-9548-b633-2bccbf4c6cec",
+          "provider_request_id": "611db87a-0dfd-9548-b633-2bccbf4c6cec",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -404,7 +404,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
+            "id": "611db87a-0dfd-9548-b633-2bccbf4c6cec",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -416,11 +416,11 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
+                "id": "rs_611db87a-0dfd-9548-b633-2bccbf4c6cec",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "Running the production-readiness scenario.",
+                    "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
                     "type": "summary_text"
                   }
                 ],
@@ -428,8 +428,8 @@
               },
               {
                 "arguments": "{}",
-                "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                "id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0",
+                "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                "id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0",
                 "name": "ping_empty",
                 "status": "completed",
                 "type": "function_call"
@@ -446,7 +446,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -570,20 +570,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 743,
-                "output_tokens": 325
+                "output_tokens": 323
               },
-              "cost_in_usd_ticks": 15321500,
+              "cost_in_usd_ticks": 15271500,
               "input_tokens": 743,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 322,
+              "output_tokens": 320,
               "output_tokens_details": {
-                "reasoning_tokens": 316
+                "reasoning_tokens": 314
               },
-              "total_tokens": 1065
+              "total_tokens": 1063
             },
             "user": null
           }
@@ -644,11 +644,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
+                  "id": "rs_611db87a-0dfd-9548-b633-2bccbf4c6cec",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario."
+                      "content": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text."
                     }
                   ],
                   "provider": "xai"
@@ -657,11 +657,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -679,11 +679,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -814,25 +814,14 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "reasoning",
-              "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
-                }
-              ],
-              "provider": "xai"
-            },
-            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
+                "id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1"
               },
               "provider": {
-                "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                "item_id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -861,14 +850,14 @@
           ],
           "usage": {
             "input_tokens": 757,
-            "output_tokens": 433,
-            "total_tokens": 1190,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 360
+            "output_tokens": 132,
+            "total_tokens": 889,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 59
           },
           "message_id": null,
-          "response_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
-          "provider_request_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
+          "response_id": "c5e09e13-c7f3-9156-937b-1076809144a1",
+          "provider_request_id": "c5e09e13-c7f3-9156-937b-1076809144a1",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -878,7 +867,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
+            "id": "c5e09e13-c7f3-9156-937b-1076809144a1",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -890,20 +879,9 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
                 "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
-                "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                "id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0",
+                "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                "id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0",
                 "name": "inspect_manifest",
                 "status": "completed",
                 "type": "function_call"
@@ -920,7 +898,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -1044,20 +1022,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 757,
-                "output_tokens": 436
+                "output_tokens": 135
               },
-              "cost_in_usd_ticks": 18271500,
+              "cost_in_usd_ticks": 5370500,
               "input_tokens": 757,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 704
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 433,
+              "output_tokens": 132,
               "output_tokens_details": {
-                "reasoning_tokens": 360
+                "reasoning_tokens": 59
               },
-              "total_tokens": 1190
+              "total_tokens": 889
             },
             "user": null
           }
@@ -1118,11 +1096,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
+                  "id": "rs_611db87a-0dfd-9548-b633-2bccbf4c6cec",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario."
+                      "content": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text."
                     }
                   ],
                   "provider": "xai"
@@ -1131,11 +1109,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1153,11 +1131,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1174,25 +1152,14 @@
               "id": null,
               "content": [
                 {
-                  "type": "reasoning",
-                  "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
-                    }
-                  ],
-                  "provider": "xai"
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
+                    "id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1"
                   },
                   "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                    "item_id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1227,11 +1194,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
+                    "id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1"
                   },
                   "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                    "item_id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1365,11 +1332,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
+                "id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2"
               },
               "provider": {
-                "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                "call_id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2",
+                "item_id": "fc_463734e5-5a23-9169-9907-2005deb7d665_0"
               },
               "function": {
                 "name": "join_labels",
@@ -1392,11 +1359,11 @@
             "output_tokens": 55,
             "total_tokens": 896,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 25
+            "reasoning_tokens": 27
           },
           "message_id": null,
-          "response_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
-          "provider_request_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
+          "response_id": "463734e5-5a23-9169-9907-2005deb7d665",
+          "provider_request_id": "463734e5-5a23-9169-9907-2005deb7d665",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -1406,7 +1373,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
+            "id": "463734e5-5a23-9169-9907-2005deb7d665",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -1419,8 +1386,8 @@
             "output": [
               {
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
-                "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                "id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0",
+                "call_id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2",
+                "id": "fc_463734e5-5a23-9169-9907-2005deb7d665_0",
                 "name": "join_labels",
                 "status": "completed",
                 "type": "function_call"
@@ -1437,7 +1404,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -1572,7 +1539,7 @@
               "num_sources_used": 0,
               "output_tokens": 55,
               "output_tokens_details": {
-                "reasoning_tokens": 25
+                "reasoning_tokens": 27
               },
               "total_tokens": 896
             },
@@ -1635,11 +1602,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
+                  "id": "rs_611db87a-0dfd-9548-b633-2bccbf4c6cec",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario."
+                      "content": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text."
                     }
                   ],
                   "provider": "xai"
@@ -1648,11 +1615,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1670,11 +1637,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1691,25 +1658,14 @@
               "id": null,
               "content": [
                 {
-                  "type": "reasoning",
-                  "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
-                    }
-                  ],
-                  "provider": "xai"
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
+                    "id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1"
                   },
                   "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                    "item_id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1744,11 +1700,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
+                    "id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1"
                   },
                   "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                    "item_id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1768,11 +1724,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
+                    "id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2"
                   },
                   "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "call_id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2",
+                    "item_id": "fc_463734e5-5a23-9169-9907-2005deb7d665_0"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1798,11 +1754,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
+                    "id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2"
                   },
                   "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "call_id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2",
+                    "item_id": "fc_463734e5-5a23-9169-9907-2005deb7d665_0"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1933,25 +1889,14 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "reasoning",
-              "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Running the production-readiness scenario."
-                }
-              ],
-              "provider": "xai"
-            },
-            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
+                "id": "call-23858d49-debd-4ebd-a5bf-ebb67cba281e-3"
               },
               "provider": {
-                "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                "call_id": "call-23858d49-debd-4ebd-a5bf-ebb67cba281e-3",
+                "item_id": "fc_7b5d0413-c35c-9bae-8807-85a6d795a451_0"
               },
               "function": {
                 "name": "escape_echo",
@@ -1965,14 +1910,14 @@
           ],
           "usage": {
             "input_tokens": 890,
-            "output_tokens": 283,
-            "total_tokens": 1173,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 256
+            "output_tokens": 77,
+            "total_tokens": 967,
+            "cached_input_tokens": 832,
+            "reasoning_tokens": 50
           },
           "message_id": null,
-          "response_id": "8868afed-f733-9ee3-8085-20c58409643c",
-          "provider_request_id": "8868afed-f733-9ee3-8085-20c58409643c",
+          "response_id": "7b5d0413-c35c-9bae-8807-85a6d795a451",
+          "provider_request_id": "7b5d0413-c35c-9bae-8807-85a6d795a451",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -1982,7 +1927,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "8868afed-f733-9ee3-8085-20c58409643c",
+            "id": "7b5d0413-c35c-9bae-8807-85a6d795a451",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -1994,20 +1939,9 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "Running the production-readiness scenario.",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                "id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0",
+                "call_id": "call-23858d49-debd-4ebd-a5bf-ebb67cba281e-3",
+                "id": "fc_7b5d0413-c35c-9bae-8807-85a6d795a451_0",
                 "name": "escape_echo",
                 "status": "completed",
                 "type": "function_call"
@@ -2024,7 +1958,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -2148,20 +2082,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 890,
-                "output_tokens": 286
+                "output_tokens": 80
               },
-              "cost_in_usd_ticks": 16184000,
+              "cost_in_usd_ticks": 4314000,
               "input_tokens": 890,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 832
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 283,
+              "output_tokens": 77,
               "output_tokens_details": {
-                "reasoning_tokens": 256
+                "reasoning_tokens": 50
               },
-              "total_tokens": 1173
+              "total_tokens": 967
             },
             "user": null
           }
@@ -2222,11 +2156,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
+                  "id": "rs_611db87a-0dfd-9548-b633-2bccbf4c6cec",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario."
+                      "content": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text."
                     }
                   ],
                   "provider": "xai"
@@ -2235,11 +2169,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2257,11 +2191,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
+                    "id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0"
                   },
                   "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "call_id": "call-2a10e498-71ab-4225-a790-ec057760bf1e-0",
+                    "item_id": "fc_611db87a-0dfd-9548-b633-2bccbf4c6cec_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2278,25 +2212,14 @@
               "id": null,
               "content": [
                 {
-                  "type": "reasoning",
-                  "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
-                    }
-                  ],
-                  "provider": "xai"
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
+                    "id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1"
                   },
                   "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                    "item_id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2331,11 +2254,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
+                    "id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1"
                   },
                   "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "call_id": "call-157a4d30-5e61-4355-a498-bf52e573c2ab-1",
+                    "item_id": "fc_c5e09e13-c7f3-9156-937b-1076809144a1_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2355,11 +2278,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
+                    "id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2"
                   },
                   "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "call_id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2",
+                    "item_id": "fc_463734e5-5a23-9169-9907-2005deb7d665_0"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2385,11 +2308,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
+                    "id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2"
                   },
                   "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "call_id": "call-b8ea1e47-3974-4049-a2da-66c0e3da3c90-2",
+                    "item_id": "fc_463734e5-5a23-9169-9907-2005deb7d665_0"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2406,25 +2329,14 @@
               "id": null,
               "content": [
                 {
-                  "type": "reasoning",
-                  "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "Running the production-readiness scenario."
-                    }
-                  ],
-                  "provider": "xai"
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
+                    "id": "call-23858d49-debd-4ebd-a5bf-ebb67cba281e-3"
                   },
                   "provider": {
-                    "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                    "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                    "call_id": "call-23858d49-debd-4ebd-a5bf-ebb67cba281e-3",
+                    "item_id": "fc_7b5d0413-c35c-9bae-8807-85a6d795a451_0"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -2444,11 +2356,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
+                    "id": "call-23858d49-debd-4ebd-a5bf-ebb67cba281e-3"
                   },
                   "provider": {
-                    "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                    "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                    "call_id": "call-23858d49-debd-4ebd-a5bf-ebb67cba281e-3",
+                    "item_id": "fc_7b5d0413-c35c-9bae-8807-85a6d795a451_0"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -2580,19 +2492,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK."
+              "text": "Production readiness confirmed: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK."
             }
           ],
           "usage": {
             "input_tokens": 944,
-            "output_tokens": 156,
-            "total_tokens": 1100,
+            "output_tokens": 172,
+            "total_tokens": 1116,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 133
+            "reasoning_tokens": 152
           },
-          "message_id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
-          "response_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
-          "provider_request_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+          "message_id": "msg_90d81a5e-a167-9d98-830b-b696b14f9337",
+          "response_id": "90d81a5e-a167-9d98-830b-b696b14f9337",
+          "provider_request_id": "90d81a5e-a167-9d98-830b-b696b14f9337",
           "finish_reason": "stop",
           "provider": "xai",
           "model": "grok-4.3",
@@ -2602,7 +2514,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+            "id": "90d81a5e-a167-9d98-830b-b696b14f9337",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -2618,11 +2530,11 @@
                   {
                     "annotations": [],
                     "logprobs": [],
-                    "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.",
+                    "text": "Production readiness confirmed: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+                "id": "msg_90d81a5e-a167-9d98-830b-b696b14f9337",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -2639,7 +2551,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -2763,20 +2675,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 944,
-                "output_tokens": 163
+                "output_tokens": 180
               },
-              "cost_in_usd_ticks": 13684000,
+              "cost_in_usd_ticks": 14084000,
               "input_tokens": 944,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 156,
+              "output_tokens": 172,
               "output_tokens_details": {
-                "reasoning_tokens": 133
+                "reasoning_tokens": 152
               },
-              "total_tokens": 1100
+              "total_tokens": 1116
             },
             "user": null
           }

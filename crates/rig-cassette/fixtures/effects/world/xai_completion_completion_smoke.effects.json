@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -75,30 +75,30 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_3e6e5491-75f1-9865-806f-a702d8c64dbe",
+              "id": "rs_5e8b49ab-d388-9221-8f60-bc62063b8b47",
               "content": [
                 {
                   "type": "summary",
-                  "content": "I need to explain Rust and why memory safety matters in one or two sentences."
+                  "content": "I will explain Rust and why memory safety matters in one or two sentences."
                 }
               ],
               "provider": "xai"
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that emphasizes performance, concurrency, and memory safety through its ownership model and compile-time checks, without relying on a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++."
+              "text": "Rust is a systems programming language that guarantees memory safety and thread safety at compile time via its ownership and borrowing model, without needing a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++."
             }
           ],
           "usage": {
             "input_tokens": 222,
-            "output_tokens": 239,
-            "total_tokens": 461,
+            "output_tokens": 312,
+            "total_tokens": 534,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 175
+            "reasoning_tokens": 250
           },
-          "message_id": "msg_3e6e5491-75f1-9865-806f-a702d8c64dbe",
-          "response_id": "3e6e5491-75f1-9865-806f-a702d8c64dbe",
-          "provider_request_id": "3e6e5491-75f1-9865-806f-a702d8c64dbe",
+          "message_id": "msg_5e8b49ab-d388-9221-8f60-bc62063b8b47",
+          "response_id": "5e8b49ab-d388-9221-8f60-bc62063b8b47",
+          "provider_request_id": "5e8b49ab-d388-9221-8f60-bc62063b8b47",
           "finish_reason": "stop",
           "provider": "xai",
           "model": "grok-4.3",
@@ -108,7 +108,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "3e6e5491-75f1-9865-806f-a702d8c64dbe",
+            "id": "5e8b49ab-d388-9221-8f60-bc62063b8b47",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -120,11 +120,11 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_3e6e5491-75f1-9865-806f-a702d8c64dbe",
+                "id": "rs_5e8b49ab-d388-9221-8f60-bc62063b8b47",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "I need to explain Rust and why memory safety matters in one or two sentences.",
+                    "text": "I will explain Rust and why memory safety matters in one or two sentences.",
                     "type": "summary_text"
                   }
                 ],
@@ -135,11 +135,11 @@
                   {
                     "annotations": [],
                     "logprobs": [],
-                    "text": "Rust is a systems programming language that emphasizes performance, concurrency, and memory safety through its ownership model and compile-time checks, without relying on a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++.",
+                    "text": "Rust is a systems programming language that guarantees memory safety and thread safety at compile time via its ownership and borrowing model, without needing a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++.",
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_3e6e5491-75f1-9865-806f-a702d8c64dbe",
+                "id": "msg_5e8b49ab-d388-9221-8f60-bc62063b8b47",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -156,7 +156,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -171,20 +171,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 222,
-                "output_tokens": 247
+                "output_tokens": 319
               },
-              "cost_in_usd_ticks": 6734000,
+              "cost_in_usd_ticks": 8559000,
               "input_tokens": 222,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 239,
+              "output_tokens": 312,
               "output_tokens_details": {
-                "reasoning_tokens": 175
+                "reasoning_tokens": 250
               },
-              "total_tokens": 461
+              "total_tokens": 534
             },
             "user": null
           }

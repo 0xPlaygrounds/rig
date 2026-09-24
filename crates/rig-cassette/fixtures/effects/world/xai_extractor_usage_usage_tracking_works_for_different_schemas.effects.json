@@ -121,11 +121,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+              "id": "rs_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Extracting structured data from the text about Alice."
+                  "content": "Extracting structured data from the text: name, age, and profession."
                 }
               ],
               "provider": "xai"
@@ -134,11 +134,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
+                "id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0"
               },
               "provider": {
-                "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                "call_id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0",
+                "item_id": "fc_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25_0"
               },
               "function": {
                 "name": "submit",
@@ -154,14 +154,14 @@
           ],
           "usage": {
             "input_tokens": 406,
-            "output_tokens": 194,
-            "total_tokens": 600,
+            "output_tokens": 205,
+            "total_tokens": 611,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 177
+            "reasoning_tokens": 188
           },
           "message_id": null,
-          "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
-          "provider_request_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+          "response_id": "36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
+          "provider_request_id": "36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -171,7 +171,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+            "id": "36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -183,11 +183,11 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                "id": "rs_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "Extracting structured data from the text about Alice.",
+                    "text": "Extracting structured data from the text: name, age, and profession.",
                     "type": "summary_text"
                   }
                 ],
@@ -195,8 +195,8 @@
               },
               {
                 "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                "id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0",
+                "call_id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0",
+                "id": "fc_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -213,7 +213,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -263,20 +263,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 406,
-                "output_tokens": 197
+                "output_tokens": 208
               },
-              "cost_in_usd_ticks": 7909000,
+              "cost_in_usd_ticks": 8184000,
               "input_tokens": 406,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 194,
+              "output_tokens": 205,
               "output_tokens_details": {
-                "reasoning_tokens": 177
+                "reasoning_tokens": 188
               },
-              "total_tokens": 600
+              "total_tokens": 611
             },
             "user": null
           }
@@ -359,7 +359,7 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+              "id": "rs_cda6a5a0-6fa2-9676-8edd-4faa9f767727",
               "content": [
                 {
                   "type": "summary",
@@ -372,11 +372,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0"
+                "id": "call-06fc36f5-d9e3-4694-85d4-9982ccfefddd-0"
               },
               "provider": {
-                "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
-                "item_id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0"
+                "call_id": "call-06fc36f5-d9e3-4694-85d4-9982ccfefddd-0",
+                "item_id": "fc_cda6a5a0-6fa2-9676-8edd-4faa9f767727_0"
               },
               "function": {
                 "name": "submit",
@@ -393,14 +393,14 @@
           ],
           "usage": {
             "input_tokens": 409,
-            "output_tokens": 180,
-            "total_tokens": 589,
+            "output_tokens": 210,
+            "total_tokens": 619,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 155
+            "reasoning_tokens": 185
           },
           "message_id": null,
-          "response_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
-          "provider_request_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+          "response_id": "cda6a5a0-6fa2-9676-8edd-4faa9f767727",
+          "provider_request_id": "cda6a5a0-6fa2-9676-8edd-4faa9f767727",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -410,7 +410,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+            "id": "cda6a5a0-6fa2-9676-8edd-4faa9f767727",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -422,7 +422,7 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+                "id": "rs_cda6a5a0-6fa2-9676-8edd-4faa9f767727",
                 "status": "completed",
                 "summary": [
                   {
@@ -434,8 +434,8 @@
               },
               {
                 "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
-                "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
-                "id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0",
+                "call_id": "call-06fc36f5-d9e3-4694-85d4-9982ccfefddd-0",
+                "id": "fc_cda6a5a0-6fa2-9676-8edd-4faa9f767727_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -452,7 +452,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -505,20 +505,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 409,
-                "output_tokens": 183
+                "output_tokens": 213
               },
-              "cost_in_usd_ticks": 7596500,
+              "cost_in_usd_ticks": 8346500,
               "input_tokens": 409,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 180,
+              "output_tokens": 210,
               "output_tokens_details": {
-                "reasoning_tokens": 155
+                "reasoning_tokens": 185
               },
-              "total_tokens": 589
+              "total_tokens": 619
             },
             "user": null
           }

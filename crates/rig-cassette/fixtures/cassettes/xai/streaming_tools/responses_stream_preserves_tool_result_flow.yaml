@@ -7,35 +7,59 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are a terse assistant. A function named `get_status_word` is available. Call that function once before answering. After the function result is available, answer in one short sentence that repeats the exact returned word.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Use the get_status_word function once, then reply with the exact returned word in one short sentence.","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-4-0709","stream":true,"tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"You are a terse assistant. A function named `get_status_word` is available. Call that function once before answering. After the function result is available, answer in one short sentence that repeats the exact returned word.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Use the get_status_word function once, then reply with the exact returned word in one short sentence.","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-4-0709","store":false,"stream":true,"tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: a4e3f585-54d4-95c7-a20b-b87ff62e0ca7
+    value: b3153da3-8b31-91e5-b816-fb469facee34
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a4e3f585-54d4-95c7-a20b-b87ff62e0ca7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"b3153da3-8b31-91e5-b816-fb469facee34","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a4e3f585-54d4-95c7-a20b-b87ff62e0ca7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"b3153da3-8b31-91e5-b816-fb469facee34","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"arguments":"","call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
-    event: response.function_call_arguments.delta
-    data: {"delta":"{}","item_id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
-    event: response.function_call_arguments.done
-    data: {"arguments":"{}","item_id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.done"}
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"I will call get_status_word","item_id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" once and reply with","item_id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the exact returned word in a single short sentence.","item_id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","output_index":0,"sequence_number":7,"summary_index":0,"text":"I will call get_status_word once and reply with the exact returned word in a single short sentence.","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","output_index":0,"part":{"text":"I will call get_status_word once and reply with the exact returned word in a single short sentence.","type":"summary_text"},"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"arguments":"{}","call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","status":"completed","type":"function_call"},"output_index":0,"sequence_number":5,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in a single short sentence.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call-ee893490-6ce9-45c3-8a03-b8f56c622ccd-0","id":"fc_b3153da3-8b31-91e5-b816-fb469facee34_0","name":"get_status_word","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":10,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{}","item_id":"fc_b3153da3-8b31-91e5-b816-fb469facee34_0","output_index":1,"sequence_number":11,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{}","item_id":"fc_b3153da3-8b31-91e5-b816-fb469facee34_0","name":"get_status_word","output_index":1,"sequence_number":12,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{}","call_id":"call-ee893490-6ce9-45c3-8a03-b8f56c622ccd-0","id":"fc_b3153da3-8b31-91e5-b816-fb469facee34_0","name":"get_status_word","status":"completed","type":"function_call"},"output_index":1,"sequence_number":13,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a4e3f585-54d4-95c7-a20b-b87ff62e0ca7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{}","call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":324,"output_tokens":270},"cost_in_usd_ticks":8684000,"input_tokens":324,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":266,"output_tokens_details":{"reasoning_tokens":259},"total_tokens":590},"user":null},"sequence_number":6,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"b3153da3-8b31-91e5-b816-fb469facee34","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in a single short sentence.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-ee893490-6ce9-45c3-8a03-b8f56c622ccd-0","id":"fc_b3153da3-8b31-91e5-b816-fb469facee34_0","name":"get_status_word","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":324,"output_tokens":318},"cost_in_usd_ticks":8540000,"input_tokens":324,"input_tokens_details":{"cached_tokens":320},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":314,"output_tokens_details":{"reasoning_tokens":307},"total_tokens":638},"user":null},"sequence_number":14,"type":"response.completed"}
 
 ---
 when:
@@ -47,78 +71,72 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are a terse assistant. A function named `get_status_word` is available. Call that function once before answering. After the function result is available, answer in one short sentence that repeats the exact returned word.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Use the get_status_word function once, then reply with the exact returned word in one short sentence.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","status":"completed","type":"function_call"},{"call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","output":"azure","status":"completed","type":"function_call_output"}],"model":"grok-4-0709","stream":true,"tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"You are a terse assistant. A function named `get_status_word` is available. Call that function once before answering. After the function result is available, answer in one short sentence that repeats the exact returned word.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Use the get_status_word function once, then reply with the exact returned word in one short sentence.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_b3153da3-8b31-91e5-b816-fb469facee34","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in a single short sentence.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-ee893490-6ce9-45c3-8a03-b8f56c622ccd-0","id":"fc_b3153da3-8b31-91e5-b816-fb469facee34_0","name":"get_status_word","status":"completed","type":"function_call"},{"call_id":"call-ee893490-6ce9-45c3-8a03-b8f56c622ccd-0","output":"azure","status":"completed","type":"function_call_output"}],"model":"grok-4-0709","store":false,"stream":true,"tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: 45486ef8-573b-9d6c-915b-a425cf9f6fad
+    value: 09bec359-c2f4-994c-84c2-3e90a73dc10f
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"45486ef8-573b-9d6c-915b-a425cf9f6fad","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"09bec359-c2f4-994c-84c2-3e90a73dc10f","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"45486ef8-573b-9d6c-915b-a425cf9f6fad","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"09bec359-c2f4-994c-84c2-3e90a73dc10f","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+    data: {"item_id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"I will call get_status_word","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"I will call get_status_word","item_id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" once and reply with","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the exact returned ","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"word in one short sentence.","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" once and reply with the exact returned word in one short sentence.","item_id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":8,"summary_index":0,"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"response.reasoning_summary_text.done"}
+    data: {"item_id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","output_index":0,"sequence_number":6,"summary_index":0,"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"response.reasoning_summary_text.done"}
 
     event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"part":{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"},"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item_id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","output_index":0,"part":{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"},"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":10,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":8,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"content":[],"id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":11,"type":"response.output_item.added"}
+    data: {"item":{"content":[],"id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":9,"type":"response.output_item.added"}
 
     event: response.content_part.added
-    data: {"content_index":0,"item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":12,"type":"response.content_part.added"}
+    data: {"content_index":0,"item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":10,"type":"response.content_part.added"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"The","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"The","item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","logprobs":[],"output_index":1,"sequence_number":11,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" word","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" word","item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","logprobs":[],"output_index":1,"sequence_number":12,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" is","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" is","item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","logprobs":[],"output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" azure","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":16,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" azure","item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","logprobs":[],"output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":".","item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","logprobs":[],"output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":18,"text":"The word is azure.","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","logprobs":[],"output_index":1,"sequence_number":16,"text":"The word is azure.","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"},"sequence_number":19,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"},"sequence_number":17,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"}],"id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":20,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"}],"id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":18,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"45486ef8-573b-9d6c-915b-a425cf9f6fad","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"}],"id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":337,"output_tokens":295},"cost_in_usd_ticks":8052500,"input_tokens":337,"input_tokens_details":{"cached_tokens":320},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":288,"output_tokens_details":{"reasoning_tokens":283},"total_tokens":625},"user":null},"sequence_number":21,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"09bec359-c2f4-994c-84c2-3e90a73dc10f","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_09bec359-c2f4-994c-84c2-3e90a73dc10f","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"}],"id":"msg_09bec359-c2f4-994c-84c2-3e90a73dc10f","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":337,"output_tokens":290},"cost_in_usd_ticks":9271500,"input_tokens":337,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":283,"output_tokens_details":{"reasoning_tokens":278},"total_tokens":620},"user":null},"sequence_number":19,"type":"response.completed"}
 
