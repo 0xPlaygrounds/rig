@@ -5,7 +5,7 @@
 //! use rig_core::providers::anthropic::{Anthropic, completion::CLAUDE_SONNET_4_6};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let wire = Anthropic::from_env()?.messages(CLAUDE_SONNET_4_6);
+//! let wire = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
 //! # Ok(())
 //! # }
 //! ```
@@ -365,7 +365,7 @@ impl Messages {
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
+    ///     .completion(CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching();
     /// # Ok(())
     /// # }
@@ -385,7 +385,7 @@ impl Messages {
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
+    ///     .completion(CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching_1h();
     /// # Ok(())
     /// # }
@@ -408,7 +408,7 @@ impl Messages {
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
+    ///     .completion(CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching()
     ///     .with_static_prefix_cache_ttl(CacheTtl::OneHour);
     /// # Ok(())

@@ -2,7 +2,7 @@
 //!
 //! ```no_run
 //! use rig_core::providers::cohere::{Cohere, EMBED_V4};
-//! let wire = Cohere::from_env()?.embeddings(EMBED_V4, None);
+//! let wire = Cohere::from_env()?.embedding(EMBED_V4, None);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

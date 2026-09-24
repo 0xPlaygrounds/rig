@@ -6,7 +6,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = anthropic::Anthropic::from_env()?;
 //!
-//! let sonnet = provider.messages(anthropic::completion::CLAUDE_SONNET_4_6);
+//! let sonnet = provider.completion(anthropic::completion::CLAUDE_SONNET_4_6);
 //! # Ok(())
 //! # }
 //! ```

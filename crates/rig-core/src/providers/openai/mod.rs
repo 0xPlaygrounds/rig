@@ -9,7 +9,7 @@
 //!
 //! let gpt_5_2 = provider.responses(openai::GPT_5_2);
 //! let chat = provider.chat(openai::GPT_5_2);
-//! let embeddings = provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! let embeddings = provider.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //! # Ok(())
 //! # }
 //! ```

@@ -6,7 +6,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = voyageai::VoyageAi::from_env()?;
 //!
-//! let embeddings = provider.embeddings(voyageai::VOYAGE_3_5, None);
+//! let embeddings = provider.embedding(voyageai::VOYAGE_3_5, None);
 //! let reranker = provider.rerank(voyageai::RERANK_2_5);
 //! # Ok(())
 //! # }

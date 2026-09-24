@@ -2,7 +2,7 @@
 //!
 //! ```
 //! use rig_core::providers::ollama::Ollama;
-//! let chat = Ollama::new().chat("qwen3");
+//! let chat = Ollama::new().completion("qwen3");
 //! assert_eq!(chat.model, "qwen3");
 //! ```
 

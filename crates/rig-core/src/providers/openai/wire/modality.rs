@@ -3,7 +3,7 @@
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, TEXT_EMBEDDING_3_SMALL};
-//! let wire = OpenAI::new("key").embeddings(TEXT_EMBEDDING_3_SMALL, None);
+//! let wire = OpenAI::new("key").embedding(TEXT_EMBEDDING_3_SMALL, None);
 //! ```
 
 use serde::{Deserialize, Serialize};

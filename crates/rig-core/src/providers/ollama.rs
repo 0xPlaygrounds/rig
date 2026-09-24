@@ -6,8 +6,8 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = ollama::Ollama::new();
 //!
-//! let qwen = provider.chat("qwen2.5:14b");
-//! let embeddings = provider.embeddings(ollama::ALL_MINILM, Some(384));
+//! let qwen = provider.completion("qwen2.5:14b");
+//! let embeddings = provider.embedding(ollama::ALL_MINILM, Some(384));
 //! # Ok(())
 //! # }
 //! ```

@@ -21,7 +21,7 @@ use crate::operation::{Completion, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// Copilot's embeddings wire is the shared one, pointed at Copilot by
-/// [`Copilot::embeddings`]; the editor envelope is the dialect's modality
+/// [`Copilot::embedding`]; the editor envelope is the dialect's modality
 /// hook.
 pub use crate::providers::openai::wire::Embeddings;
 use crate::providers::openai::wire::{
@@ -354,7 +354,7 @@ impl Wire for CopilotWire {
 /// Copilot's model-listing wire.
 ///
 /// `GET /models` answers with the whole catalogue, so
-/// [`Decoder::continuation`] keeps its default `None`.
+/// [`Decoder::cursor`] keeps its default `None`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which Copilot, and how to reach it.

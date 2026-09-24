@@ -466,7 +466,7 @@ where
 /// interpreted; unknown frames produce metadata-only warnings and optional raw
 /// passthrough events. Corrupt frames yield errors without stopping consumption.
 /// Transport failure flushes delivered content before one final error.
-/// [`call`] fails on the first error; streams expose errors in-band.
+/// [`Model::call`] fails on the first error; streams expose errors in-band.
 pub struct WireDriver<Op: Operation, D, F = WireFrame> {
     decoder: D,
     out: Op::Output,
