@@ -1,5 +1,5 @@
 //! The rig-core-only path: with `default-features = false`, `rig-rmcp` depends
-//! on rig-core alone and exposes MCP tools as `PortableDynamicTool`s. This
+//! on rig-core alone and exposes MCP tools as `DynamicTool`s. This
 //! test drives one against an in-process rmcp server without touching
 //! rig-agent (it compiles and passes under both feature configurations).
 #![cfg(not(target_family = "wasm"))]
@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use rig_core::tool::PortableDynamicTool;
+use rig_core::tool::DynamicTool;
 use rig_rmcp::{McpTool, tools_from_server};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientInfo, ContentBlock, ErrorData, Implementation,
@@ -58,7 +58,7 @@ fn tool(name: &str) -> Tool {
 }
 
 #[tokio::test]
-async fn mcp_tool_runs_as_a_portable_dynamic_tool_without_rig_agent() {
+async fn mcp_tool_runs_as_a_dynamic_tool_without_rig_agent() {
     let (c2s, sfc) = tokio::io::duplex(8192);
     let (s2c, cfs) = tokio::io::duplex(8192);
     let server_task = tokio::spawn(async move {
@@ -72,7 +72,7 @@ async fn mcp_tool_runs_as_a_portable_dynamic_tool_without_rig_agent() {
     let peer = client.peer().clone();
 
     // One tool, converted through `From`.
-    let greet: PortableDynamicTool = McpTool::from_mcp_server(tool("greet"), peer.clone()).into();
+    let greet: DynamicTool = McpTool::from_mcp_server(tool("greet"), peer.clone()).into();
     assert_eq!(greet.name(), "greet");
     assert_eq!(greet.definition().description, "greet tool");
     let output = greet
@@ -85,7 +85,7 @@ async fn mcp_tool_runs_as_a_portable_dynamic_tool_without_rig_agent() {
     // carries the tool's output.
     let mut many = tools_from_server([tool("greet"), tool("missing")], &peer)
         .into_iter()
-        .map(PortableDynamicTool::from);
+        .map(DynamicTool::from);
     let _greet_again = many.next().expect("two tools");
     let missing = many.next().expect("two tools");
     let error = missing

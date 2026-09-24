@@ -24,7 +24,6 @@ path = "src/lib.rs"
 doctest = true
 
 [dependencies]
-as-any = { workspace = true }
 async-stream = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }

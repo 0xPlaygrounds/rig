@@ -1,6 +1,6 @@
 //! Registry contracts for refreshable external tool sources.
 //! Generation tokens protect newer registrations from stale refreshes, while
-//! [`PortableDynamicTool::is_live`] reports disconnection without tool execution.
+//! [`DynamicTool::is_live`] reports disconnection without tool execution.
 //!
 //! ```
 //! use rig_core::tool::ManagedToolToken;
@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::PortableDynamicTool;
+use super::DynamicTool;
 
 /// Opaque identity for one managed registry generation.
 ///
@@ -49,10 +49,7 @@ pub trait ManagedToolSink {
     /// Last-registration-wins: an existing name is replaced. Tools that
     /// report `!is_live()` are skipped. Returns one generation token per
     /// installed name, to hand back to [`Self::reconcile_managed_tools`].
-    fn add_managed_tools(
-        &self,
-        tools: Vec<PortableDynamicTool>,
-    ) -> HashMap<String, ManagedToolToken>;
+    fn add_managed_tools(&self, tools: Vec<DynamicTool>) -> HashMap<String, ManagedToolToken>;
 
     /// Atomically reconcile one source's registrations with a refreshed tool
     /// list. Existing names change only while their `expected` generation is
@@ -62,6 +59,6 @@ pub trait ManagedToolSink {
     fn reconcile_managed_tools(
         &self,
         expected: HashMap<String, ManagedToolToken>,
-        tools: Vec<PortableDynamicTool>,
+        tools: Vec<DynamicTool>,
     ) -> HashMap<String, ManagedToolToken>;
 }

@@ -148,9 +148,7 @@ async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
         Arc::new(serde_json::Map::new()),
     );
     let tool = McpTool::from_mcp_server(definition, client.peer().clone()).with_timeout(timeout);
-    let handle = ToolServer::new()
-        .portable_dynamic_tool(tool.clone().into())
-        .run();
+    let handle = ToolServer::new().dynamic_tool(tool.clone().into()).run();
     Fixture {
         handle,
         tool,

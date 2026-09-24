@@ -727,12 +727,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "as-any"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0f477b951e452a0b6b4a10b53ccd569042d1d01729b519e02074a9c0958a063"
-
-[[package]]
 name = "as-slice"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10541,7 +10535,6 @@ name = "rig-core"
 version = "0.42.0"
 dependencies = [
  "anyhow",
- "as-any",
  "assert_fs",
  "async-stream",
  "base64 0.22.1",

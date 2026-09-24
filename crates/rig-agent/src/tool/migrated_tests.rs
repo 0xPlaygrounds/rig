@@ -3,7 +3,7 @@ use crate::test_utils::{
     MockToolError, mock_math_toolset,
 };
 use portable_fixtures::{
-    PortableEmbeddingFixture, portable_dynamic_fixture, portable_fixture_output,
+    PortableEmbeddingFixture, context_free_dynamic_fixture, portable_fixture_output,
 };
 use rig_core::embeddings::tool::ToolSchema;
 use rig_core::message::{DocumentSourceKind, ToolResultContent};
@@ -16,10 +16,7 @@ use super::*;
 mod portable_fixtures {
     use rig_core::{
         message::{ImageMediaType, ToolResultContent},
-        tool::{
-            PortableDynamicTool, PortableTool, PortableToolEmbedding, ToolExecutionError,
-            ToolOutput,
-        },
+        tool::{DynamicTool, PortableTool, PortableToolEmbedding, ToolExecutionError, ToolOutput},
     };
     use serde::{Deserialize, Serialize};
 
@@ -53,10 +50,10 @@ mod portable_fixtures {
         ToolOutput::content(content).expect("fixture content is non-empty")
     }
 
-    pub fn portable_dynamic_fixture() -> PortableDynamicTool {
-        PortableDynamicTool::new(
-            "portable_runtime_name",
-            "portable dynamic definition",
+    pub fn context_free_dynamic_fixture() -> DynamicTool {
+        DynamicTool::new(
+            "dynamic_runtime_name",
+            "context-free dynamic definition",
             serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -72,9 +69,11 @@ mod portable_fixtures {
                         .and_then(serde_json::Value::as_bool)
                         .unwrap_or_default()
                     {
-                        Err(ToolExecutionError::provider("portable dynamic failure")
-                            .with_code("portable_dynamic_fixture")
-                            .with_model_output(portable_fixture_output("portable dynamic failure")))
+                        Err(ToolExecutionError::provider("context-free dynamic failure")
+                            .with_code("context_free_dynamic_fixture")
+                            .with_model_output(portable_fixture_output(
+                                "context-free dynamic failure",
+                            )))
                     } else {
                         Ok(portable_fixture_output(format!(
                             "dynamic:{}",
@@ -231,7 +230,7 @@ fn named_tool(name: &str, description: &str) -> DynamicTool {
         name,
         description,
         json!({ "type": "object", "properties": {} }),
-        move |_context, _args| {
+        move |_args| {
             let output = output.clone();
             Box::pin(async move { Ok(ToolOutput::text(output)) })
         },
@@ -437,26 +436,26 @@ async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
 }
 
 #[tokio::test]
-async fn portable_dynamic_tool_executes_in_classic_registry_without_callback_rewrite() {
-    let portable = portable_dynamic_fixture();
+async fn context_free_dynamic_tool_executes_in_classic_registry_without_callback_rewrite() {
+    let tool = context_free_dynamic_fixture();
     let mut toolset = ToolSet::default();
     toolset.add_dynamic_tool(named_tool("before", "before"));
-    let registered_name = toolset.add_portable_dynamic_tool(portable);
+    let registered_name = toolset.add_dynamic_tool(tool);
     toolset.add_dynamic_tool(named_tool("after", "after"));
 
-    assert_eq!(registered_name, "portable_runtime_name");
+    assert_eq!(registered_name, "dynamic_runtime_name");
     assert_eq!(
         toolset
             .tool_definitions()
             .iter()
             .map(|definition| definition.name.as_str())
             .collect::<Vec<_>>(),
-        ["before", "portable_runtime_name", "after"]
+        ["before", "dynamic_runtime_name", "after"]
     );
 
     let result = toolset
         .execute(
-            "portable_runtime_name",
+            "dynamic_runtime_name",
             r#"{"value":"ok"}"#,
             &mut ToolContext::new(),
         )
@@ -466,7 +465,7 @@ async fn portable_dynamic_tool_executes_in_classic_registry_without_callback_rew
 
     let failure = toolset
         .execute(
-            "portable_runtime_name",
+            "dynamic_runtime_name",
             r#"{"value":"ignored","fail":true}"#,
             &mut ToolContext::new(),
         )
@@ -474,12 +473,12 @@ async fn portable_dynamic_tool_executes_in_classic_registry_without_callback_rew
     assert!(failure.is_error());
     let error = failure
         .error()
-        .expect("portable failure should be retained");
+        .expect("context-free dynamic failure should be retained");
     assert_eq!(error.kind(), ToolErrorKind::Provider);
-    assert_eq!(error.code(), Some("portable_dynamic_fixture"));
+    assert_eq!(error.code(), Some("context_free_dynamic_fixture"));
     assert_eq!(
         error.model_output(),
-        &portable_fixture_output("portable dynamic failure")
+        &portable_fixture_output("context-free dynamic failure")
     );
     assert_eq!(failure.output(), error.model_output());
 }

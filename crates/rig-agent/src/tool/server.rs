@@ -31,8 +31,8 @@ use rig_core::{
 use crate::{
     completion::ToolDefinition,
     tool::{
-        DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext,
-        ToolDispatch, ToolLease, ToolResult, ToolSet, execute_tool,
+        DynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext, ToolDispatch, ToolLease,
+        ToolResult, ToolSet, execute_tool,
     },
 };
 
@@ -306,12 +306,6 @@ impl ToolServer {
         tools.into_iter().fold(self, Self::dynamic_tool)
     }
 
-    /// Add a portable tool.
-    pub fn portable_dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
-        self.toolset.add_portable_dynamic_tool(tool);
-        self
-    }
-
     /// Add a registration built elsewhere.
     pub fn registered_tool(mut self, tool: RegisteredTool) -> Self {
         self.toolset.add_registered_tool(tool);
@@ -439,13 +433,6 @@ impl ToolServerHandle {
     /// Add a runtime-defined tool.
     pub fn add_dynamic_tool(&self, tool: DynamicTool) {
         self.register(RegisteredTool::from_dynamic(tool));
-    }
-
-    /// Add a portable tool.
-    pub fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
-        self.register(RegisteredTool::from_dynamic(DynamicTool::from_portable(
-            tool,
-        )));
     }
 
     /// Add a registration built elsewhere.
@@ -793,14 +780,11 @@ pub enum ToolServerError {
 }
 
 impl ManagedToolSink for ToolServerHandle {
-    fn add_managed_tools(
-        &self,
-        tools: Vec<PortableDynamicTool>,
-    ) -> HashMap<String, ManagedToolToken> {
+    fn add_managed_tools(&self, tools: Vec<DynamicTool>) -> HashMap<String, ManagedToolToken> {
         self.add_managed(
             tools
                 .into_iter()
-                .map(|tool| RegisteredTool::from_dynamic(DynamicTool::from_portable(tool)))
+                .map(RegisteredTool::from_dynamic)
                 .collect(),
         )
     }
@@ -808,13 +792,13 @@ impl ManagedToolSink for ToolServerHandle {
     fn reconcile_managed_tools(
         &self,
         expected: HashMap<String, ManagedToolToken>,
-        tools: Vec<PortableDynamicTool>,
+        tools: Vec<DynamicTool>,
     ) -> HashMap<String, ManagedToolToken> {
         self.reconcile_managed(
             expected,
             tools
                 .into_iter()
-                .map(|tool| RegisteredTool::from_dynamic(DynamicTool::from_portable(tool)))
+                .map(RegisteredTool::from_dynamic)
                 .collect(),
         )
     }

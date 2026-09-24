@@ -97,13 +97,13 @@ fn main() {
     assert_namespaced_portable::<StablePortableTool>();
     assert_prelude_portable::<StablePortableTool>();
 
-    let portable_dynamic = rig::tool::PortableDynamicTool::new(
-        "portable_dynamic",
-        "portable dynamic tool",
+    let dynamic = rig::tool::DynamicTool::new(
+        "dynamic",
+        "context-free dynamic tool",
         serde_json::json!({"type": "object"}),
         |arguments| Box::pin(async move { Ok(rig::tool::ToolOutput::json(arguments)) }),
     );
-    let _ = &portable_dynamic;
+    let _ = &dynamic;
 
     // With the classic runtime (default), `rig::tool::Tool` is the *contextual*
     // trait, and a portable tool still registers through the blanket impl.
@@ -143,8 +143,6 @@ fn main() {
         // the blanket impl.
         assert_classic_tool::<ContextualTool>();
         assert_classic_tool::<StablePortableTool>();
-
-        let _classic_dynamic = rig::tool::DynamicTool::from_portable(portable_dynamic);
 
         // Regression: `#[rig_tool]` must auto-detect the *fully-qualified* facade
         // path `rig::tool::ToolContext` as runtime context (not a model

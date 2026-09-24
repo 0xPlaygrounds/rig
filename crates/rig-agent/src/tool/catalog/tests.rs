@@ -1,9 +1,9 @@
 use super::*;
-use crate::tool::{PortableDynamicTool, ToolOutput, ToolSet};
+use crate::tool::{DynamicTool, ToolOutput, ToolSet};
 
-fn portable(name: &str) -> PortableDynamicTool {
+fn dynamic(name: &str) -> DynamicTool {
     let reply = format!("{name}!");
-    PortableDynamicTool::new(
+    DynamicTool::new(
         name,
         format!("the {name} tool"),
         serde_json::json!({"type": "object"}),
@@ -19,10 +19,10 @@ fn portable(name: &str) -> PortableDynamicTool {
 #[tokio::test]
 async fn catalog_matches_definitions_and_dispatches_by_name() {
     let mut set = ToolSet::default();
-    set.add_portable_dynamic_tool(portable("alpha"));
-    set.add_portable_dynamic_tool(portable("beta"));
+    set.add_dynamic_tool(dynamic("alpha"));
+    set.add_dynamic_tool(dynamic("beta"));
     let mut retrieval_only = ToolSet::default();
-    retrieval_only.add_portable_dynamic_tool(portable("gamma"));
+    retrieval_only.add_dynamic_tool(dynamic("gamma"));
     set.add_retrievable_tools(retrieval_only);
 
     let catalog = set.catalog();
@@ -52,7 +52,7 @@ async fn an_owned_execution_matches_the_borrowed_one_and_is_static() {
     }
 
     let mut set = ToolSet::default();
-    set.add_portable_dynamic_tool(portable("alpha"));
+    set.add_dynamic_tool(dynamic("alpha"));
     let catalog = set.catalog();
 
     let mut context = ToolContext::new();
@@ -78,8 +78,8 @@ async fn an_owned_execution_matches_the_borrowed_one_and_is_static() {
 #[tokio::test]
 async fn retain_names_narrows_definitions_and_dispatch() {
     let mut set = ToolSet::default();
-    set.add_portable_dynamic_tool(portable("alpha"));
-    set.add_portable_dynamic_tool(portable("beta"));
+    set.add_dynamic_tool(dynamic("alpha"));
+    set.add_dynamic_tool(dynamic("beta"));
     let mut catalog = set.catalog();
     catalog.retain_names(&BTreeSet::from(["beta".to_string()]));
     assert_eq!(catalog.names().collect::<Vec<_>>(), ["beta"]);

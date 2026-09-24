@@ -1,10 +1,10 @@
 use super::*;
-use crate::tool::portable_tool_definition;
+use crate::tool::tool_definition;
 
 #[test]
 fn test_think_tool_definition() {
     let tool = ThinkTool;
-    let definition = portable_tool_definition(&tool);
+    let definition = tool_definition(&tool);
 
     assert_eq!(definition.name, "think");
     assert!(

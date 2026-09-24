@@ -4,7 +4,7 @@ use super::super::tests::{recorded, recorded_json};
 use super::*;
 use crate::driver::Bound;
 use crate::embeddings::EmbeddingModel as _;
-use crate::error::ProviderError;
+use crate::error::{ErrorKind, ProviderError};
 use crate::model::ModelLister as _;
 use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
 use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
@@ -231,7 +231,13 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     .embed_texts_response(vec!["one".to_owned()])
     .await
     .expect_err("OpenAI always reports usage");
-    assert!(error.to_string().contains("usage"), "{error}");
+    assert_eq!(error.kind(), ErrorKind::Response, "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("openai embedding response omitted required usage"),
+        "{error}"
+    );
 
     // Together does not guarantee it, so the same reply succeeds there.
     let response = Bound::new(
@@ -830,41 +836,39 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
 /// vector, so the disagreement never appears in the reply at all.
 #[test]
 fn an_unhonourable_width_is_refused_before_the_request_is_built() {
-    fn refusal(dialect: &Dialect, model: &str, ndims: usize) -> ProviderError {
-        OpenAI::with_key(dialect, "k")
+    fn refusal(dialect: &Dialect, model: &str, ndims: usize) -> String {
+        let error: ProviderError = OpenAI::with_key(dialect, "k")
             .embeddings(model, Some(ndims))
             .encode(documents(), Mode::Unary)
             .expect_err("a width the dialect cannot honour must not reach the wire")
-            .into()
+            .into();
+        assert_eq!(error.kind(), ErrorKind::Request, "{error}");
+        error.to_string()
     }
 
     // The two Doubleword refusals read differently, and both texts are the
     // provider's documented contract rather than prose.
     assert_eq!(
-        refusal(&DOUBLEWORD, QWEN3_EMBEDDING_8B, 0).to_string(),
-        "doubleword embeddings require `dimensions` to be greater than zero"
+        refusal(&DOUBLEWORD, QWEN3_EMBEDDING_8B, 0),
+        "RequestError: doubleword embeddings require `dimensions` to be greater than zero"
     );
     for over_or_under in [8_192, 31] {
         assert_eq!(
-            refusal(&DOUBLEWORD, QWEN3_EMBEDDING_8B, over_or_under).to_string(),
-            "doubleword embeddings require `dimensions` to be between 32 and 4096"
+            refusal(&DOUBLEWORD, QWEN3_EMBEDDING_8B, over_or_under),
+            "RequestError: doubleword embeddings require `dimensions` to be between 32 and 4096"
         );
     }
 
     // Mistral's ceiling, and its fixed-width model refusing the parameter
     // itself rather than a value.
     assert_eq!(
-        refusal(&MISTRAL, CODESTRAL_EMBED, 3_073).to_string(),
-        "mistral embeddings require `output_dimension` to be at most 3072 for Codestral Embed"
+        refusal(&MISTRAL, CODESTRAL_EMBED, 3_073),
+        "RequestError: mistral embeddings require `output_dimension` to be at most 3072 for \
+         Codestral Embed"
     );
-    assert!(
-        matches!(
-            refusal(&MISTRAL, MISTRAL_EMBED, 512),
-            ProviderError::UnsupportedParameter {
-                provider: "mistral",
-                parameter: "output_dimension",
-            }
-        ),
+    assert_eq!(
+        refusal(&MISTRAL, MISTRAL_EMBED, 512),
+        "RequestError: mistral embeddings do not support the `output_dimension` parameter",
         "a fixed-width model has no width to request"
     );
 

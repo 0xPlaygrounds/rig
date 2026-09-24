@@ -179,7 +179,6 @@ rig-core = { path = "crates/rig-core", version = "0.42.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", default-features = false }
 anyhow = "1"
 arrow-array = "58"
-as-any = "0.3"
 assert_fs = "1"
 async-stream = "0.3"
 axum = "0.8"

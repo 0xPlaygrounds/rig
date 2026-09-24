@@ -5,7 +5,7 @@
 //! This is the seam an ECS schedule or a job system uses when it keeps
 //! `AgentRun` as *the* loop and only owns the IO around it: an erased
 //! [`ModelHandle`] over a local model, a [`ToolSet`] of
-//! [`PortableDynamicTool`]s pinned into a [`ToolCatalog`], a run built from a
+//! [`DynamicTool`]s pinned into a [`ToolCatalog`], a run built from a
 //! [`RunSpec`], [`prepare_request`] for each `CallModel` step, and tool
 //! dispatch by name for each `CallTools` step. Exits non-zero on any
 //! deviation; `tests/core/agent_run_stepper.rs` runs it and checks its
@@ -26,7 +26,7 @@ use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::tool::{PortableDynamicTool, ToolContext, ToolOutput};
+use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
 use rig_core::error::ProviderError;
@@ -107,8 +107,8 @@ impl CompletionModel for ScriptedModel {
     }
 }
 
-fn add_tool() -> PortableDynamicTool {
-    PortableDynamicTool::new(
+fn add_tool() -> DynamicTool {
+    DynamicTool::new(
         "add",
         "Add x and y",
         serde_json::json!({
@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. An erased tool set, pinned into a catalog for the turn.
     let mut tools = ToolSet::default();
-    tools.add_portable_dynamic_tool(add_tool());
+    tools.add_dynamic_tool(add_tool());
     let catalog: ToolCatalog = tools.catalog();
     assert_eq!(catalog.names().collect::<Vec<_>>(), ["add"]);
 

@@ -150,7 +150,7 @@ fn make_dynamic_tool(name: &str, description: &str) -> DynamicTool {
         name,
         description,
         serde_json::json!({"type": "object", "properties": {}}),
-        |_context, _args| Box::pin(async { Ok(ToolOutput::text("local")) }),
+        |_args| Box::pin(async { Ok(ToolOutput::text("local")) }),
     )
 }
 
@@ -637,7 +637,7 @@ async fn mcp_tool_preserves_provider_definition() {
     });
     let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
     let handle = ToolServer::new()
-        .portable_dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
+        .dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
         .run();
     let defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(defs.len(), 1);
@@ -665,7 +665,7 @@ async fn disconnected_directly_registered_mcp_tool_is_retired_on_dispatch() {
     });
     let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
     let handle = ToolServer::new()
-        .portable_dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
+        .dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
         .run();
 
     client.cancel().await.unwrap();
@@ -684,7 +684,7 @@ async fn disconnected_directly_registered_mcp_tool_is_retired_on_dispatch() {
     task.abort();
 }
 
-/// Registering MCP tools into an agent through portable tools keeps the
+/// Registering MCP tools into an agent through dynamic tools keeps the
 /// configured timeout on each of them, so a hanging call is bounded instead
 /// of blocking forever (see issue #1914).
 #[tokio::test]
@@ -693,7 +693,6 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
     use rig_agent::test_utils::MockCompletionModel;
     use rig_agent::tool::DynamicTool;
     use rig_agent::tool::{ToolContext, ToolErrorKind};
-    use rig_core::tool::PortableDynamicTool;
     use rmcp::model::{
         CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
         ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
@@ -755,7 +754,7 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
         .dynamic_tools(
             tools_from_server([tool("a"), tool("b")], &peer)
                 .into_iter()
-                .map(|tool| DynamicTool::from(PortableDynamicTool::from(tool)))
+                .map(DynamicTool::from)
                 .collect(),
         )
         .build();
@@ -774,7 +773,7 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
             tools_from_server([tool("hang_forever")], &peer)
                 .into_iter()
                 .map(|tool| tool.with_timeout(Duration::from_millis(200)))
-                .map(|tool| DynamicTool::from(PortableDynamicTool::from(tool)))
+                .map(DynamicTool::from)
                 .collect(),
         )
         .build();

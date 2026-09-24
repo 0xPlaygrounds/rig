@@ -85,6 +85,13 @@ fn encoded(
         .with_request_id_header(provider.dialect.request_id_header))
 }
 
+/// Refuse an embeddings request parameter the dialect does not accept.
+fn unsupported_parameter(provider: &str, parameter: &str) -> EncodeError {
+    EncodeError::request(format!(
+        "{provider} embeddings do not support the `{parameter}` parameter"
+    ))
+}
+
 /// The embeddings wire.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
@@ -147,11 +154,14 @@ impl Embeddings {
     }
 
     /// Validate declared widths against the dialect's zero-width and model policies.
-    /// Return a parameter error for unsupported widths; unknown models are unchecked.
+    /// Return a request error for unsupported widths; unknown models are unchecked.
     fn refuse_unhonourable_width(&self) -> Result<(), EncodeError> {
         let quirks = &self.provider.dialect.quirks.embedding;
+        let provider = self.provider.dialect.name;
         let invalid = |requirement, parameter| {
-            EncodeError::invalid_parameter_value(self.provider.dialect.name, parameter, requirement)
+            EncodeError::request(format!(
+                "{provider} embeddings require `{parameter}` {requirement}"
+            ))
         };
         // A dialect that reads no width field has nothing to refuse: the
         // caller's number never reaches the wire, and the shared driver
@@ -178,10 +188,7 @@ impl Embeddings {
             return Ok(());
         }
         match width.accepted {
-            AcceptedWidths::Fixed => Err(EncodeError::unsupported_parameter(
-                self.provider.dialect.name,
-                parameter,
-            )),
+            AcceptedWidths::Fixed => Err(unsupported_parameter(provider, parameter)),
             AcceptedWidths::Range { min, max, .. } if (min..=max).contains(&declared) => Ok(()),
             AcceptedWidths::Range { requirement, .. } => Err(invalid(requirement, parameter)),
         }
@@ -232,9 +239,10 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Embedding>) {
         if event.usage.is_none() && self.requires_usage {
-            out.push(Err(ProviderError::MissingUsage {
-                provider: self.provider,
-            }));
+            out.push(Err(ProviderError::Response(format!(
+                "{} embedding response omitted required usage",
+                self.provider
+            ))));
             return;
         }
         let usage = event
@@ -296,22 +304,19 @@ impl Wire for Embeddings {
         // Base64 vectors are not decoded anywhere, so asking for them would
         // answer 200 with a payload rig cannot read.
         if self.encoding_format == Some(EncodingFormat::Base64) {
-            return Err(EncodeError::unsupported_response_encoding(
-                self.provider.dialect.name,
-                "base64",
-            ));
+            return Err(EncodeError::request(format!(
+                "Rig cannot decode {} embedding responses encoded as `base64`",
+                self.provider.dialect.name
+            )));
         }
         if self.encoding_format.is_some() && !quirks.supports_encoding_format {
-            return Err(EncodeError::unsupported_parameter(
+            return Err(unsupported_parameter(
                 self.provider.dialect.name,
                 "encoding_format",
             ));
         }
         if self.user.is_some() && !quirks.supports_user {
-            return Err(EncodeError::unsupported_parameter(
-                self.provider.dialect.name,
-                "user",
-            ));
+            return Err(unsupported_parameter(self.provider.dialect.name, "user"));
         }
         self.refuse_unhonourable_width()?;
 

@@ -99,7 +99,6 @@ pub mod telemetry;
 const _: fn() = || {
     fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     fn assert_send_static<T: Send + 'static>() {}
-    assert_send_sync_static::<tool::PortableDynamicTool>();
     assert_send_sync_static::<tool::ManagedToolToken>();
     assert_send_sync_static::<streaming::StreamEvent>();
     // The serializable identity a typed view is resolved from.
