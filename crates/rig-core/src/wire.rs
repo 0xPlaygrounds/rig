@@ -186,7 +186,8 @@ pub enum Mode {
 ///
 /// Implemented once per operation in [`crate::operation`], never per
 /// provider. For a unary operation `Event` is `Response` and the fold takes
-/// the one event.
+/// the one event. What an operation's consumer does around a call (its
+/// span, request scoping, request-id stamping) lives in that consumer.
 pub trait Operation: Sized + 'static {
     /// The normalized request this operation accepts.
     type Request: WasmCompatSend + 'static;
@@ -201,9 +202,6 @@ pub trait Operation: Sized + 'static {
     type Output: Sink<Self> + WasmCompatSend;
     /// The fold from events to the response.
     type Fold: Fold<Self> + WasmCompatSend;
-    /// The canonical telemetry operation a wire performs. `()` for
-    /// operations that open no span.
-    type Telemetry: Copy;
 
     /// The operation's name, as telemetry and records spell it.
     const NAME: &'static str;
@@ -215,59 +213,6 @@ pub trait Operation: Sized + 'static {
     /// associate output with input. Defaults to an empty fold.
     fn fold(_request: &Self::Request) -> Self::Fold {
         Self::Fold::default()
-    }
-
-    /// Scope a request to the wire about to encode it: drop request content
-    /// that only a provider other than `issuers` can interpret. Operations
-    /// with no such content do nothing.
-    fn scope_to_wire(_request: &mut Self::Request, _issuers: &[&str]) {}
-
-    /// The model `request` names over the wire's own, when the operation's
-    /// requests can name one.
-    fn request_model(_request: &Self::Request) -> Option<&str> {
-        None
-    }
-
-    /// Stamp the transport request id read off the reply's headers onto a
-    /// terminal event. Operations whose events carry no transport id do
-    /// nothing.
-    fn stamp_request_id(_event: &mut Self::Event, _request_id: &Option<String>) {}
-
-    /// Stamp what the driver learned about a unary reply beyond its events.
-    fn stamp_reply(_response: &mut Self::Response, _reply: Reply) {}
-
-    /// Converts an unmodeled payload to a passthrough event, or skips it with
-    /// `None` by default.
-    fn unknown(_payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
-        None
-    }
-
-    /// The canonical telemetry operation for a unary (`false`) or streaming
-    /// (`true`) call. A wire whose endpoint has its own canonical name
-    /// overrides [`Wire::telemetry`].
-    fn telemetry(streaming: bool) -> Self::Telemetry;
-
-    /// The operation's telemetry span. The default is no span: an operation
-    /// with nothing to record (verification, model listing) opens none.
-    fn span(
-        _provider: &str,
-        _model: Option<&str>,
-        _telemetry: Self::Telemetry,
-        _request: &Self::Request,
-    ) -> tracing::Span {
-        tracing::Span::none()
-    }
-
-    /// Record the folded response onto the operation's span.
-    fn record(_span: &tracing::Span, _response: &Self::Response) {}
-
-    /// Records streamed event metadata on the operation span. Defaults to no action.
-    fn record_event(_span: &tracing::Span, _event: &Self::Event) {}
-
-    /// Adds the provider and request path to a failed reply's error. The
-    /// default adds nothing.
-    fn with_route(error: ProviderError, _provider: &str, _path: &str) -> ProviderError {
-        error
     }
 }
 
@@ -303,6 +248,10 @@ pub trait Sink<Op: Operation>: Default {
 
     /// Check the operation's sequence laws over this batch.
     fn check_laws(&self, _laws: &mut Self::Laws) {}
+
+    /// Take a payload the decoder did not model. An operation with a raw
+    /// passthrough channel forwards it; the default drops it.
+    fn unknown(&mut self, _payload: crate::streaming::UnknownPayload) {}
 }
 
 /// The fold from a reply's events to its response.
@@ -334,6 +283,15 @@ pub trait ObservationSink {
 /// Where a decoder writes one `interpret` step's events.
 pub type Output<Op> = <Op as Operation>::Output;
 
+/// How a reply ended without the provider's own terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum End {
+    /// The reply's bytes ran out.
+    Eof,
+    /// The transport failed mid-reply; its error follows the flush.
+    Failed,
+}
+
 /// Synchronous state machine for one reply. Classifies frames and interprets
 /// known events without transport access. HTTP uses [`WireFrame`]; a wire
 /// over another transport names its own frame type.
@@ -350,36 +308,16 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// maps, open-block state and wire-quirk quarantine live here.
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Op>);
 
-    /// End-of-reply flush without a terminal (close open blocks). Must not
-    /// synthesize a terminal: EOF without the provider's end event is
-    /// truncation.
-    fn finish(&mut self, _out: &mut Output<Op>) {}
-
-    /// Flush content the provider fully delivered before a terminal error
-    /// reaches the consumer. Must not push a terminal.
-    fn flush_before_terminal_error(&mut self, _out: &mut Output<Op>) {}
+    /// Flush what the reply delivered but the decoder still holds, at the
+    /// reply's `end`. Must not synthesize a terminal: EOF without the
+    /// provider's end event is truncation, and a failed transport's error
+    /// follows whatever this flushes.
+    fn finish(&mut self, _out: &mut Output<Op>, _end: End) {}
 
     /// The observation projection: verdicts, usage, ids and error envelopes
     /// read off a raw payload before normalization discards them. The
     /// default projects nothing.
     fn project(&self, _payload: &[u8], _sink: &mut dyn ObservationSink) {}
-
-    /// Returns the reassembled provider document for a buffered reply delivered
-    /// as frames. The driver uses this when the body is not a JSON document.
-    fn document(&self) -> Option<serde_json::Value> {
-        None
-    }
-
-    /// A paged operation's next request, if the reply named one.
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        None
-    }
-
-    /// Whether this frame carries only analysis metadata: it still decodes,
-    /// but does not advance observation's EOF/corruption positions.
-    fn is_analysis_only(&self, _frame: &Frame) -> bool {
-        false
-    }
 
     /// Whether `interpret` consumed the wire's own in-band terminal failure
     /// and already pushed the flush-then-error sequence itself.
@@ -446,10 +384,11 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
         vec![self.name().to_owned()]
     }
 
-    /// The canonical telemetry operation this wire performs. Override when
-    /// the endpoint has its own name (Gemini `generate_content`).
-    fn telemetry(&self, streaming: bool) -> Telemetry<Self> {
-        <Self::Op as Operation>::telemetry(streaming)
+    /// The canonical GenAI operation a completion span names, when the
+    /// endpoint has its own (Gemini `generate_content`). `None` names the
+    /// chat operation of the call's mode.
+    fn telemetry(&self, _streaming: bool) -> Option<crate::telemetry::GenAiOperation> {
+        None
     }
 }
 
@@ -461,5 +400,3 @@ pub type Response<W> = <<W as Wire>::Op as Operation>::Response;
 pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
 /// A wire's capability type.
 pub type Capabilities<W> = <<W as Wire>::Op as Operation>::Capabilities;
-/// A wire's telemetry operation type.
-pub type Telemetry<W> = <<W as Wire>::Op as Operation>::Telemetry;

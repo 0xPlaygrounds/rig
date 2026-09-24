@@ -14,6 +14,10 @@ pub enum WireEvent<T> {
     /// The frame carries a discriminator this client models and its payload
     /// decoded fully.
     Known(T),
+    /// A modeled frame that carries only analysis metadata (an id, no
+    /// content). It is interpreted like [`Self::Known`], but does not
+    /// advance observation's frame positions.
+    Metadata(T),
     /// Valid JSON not recognized by this classifier.
     /// Drivers log structural metadata only and skip interpretation.
     Unknown {
@@ -36,6 +40,7 @@ impl<T> WireEvent<T> {
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> WireEvent<U> {
         match self {
             Self::Known(event) => WireEvent::Known(f(event)),
+            Self::Metadata(event) => WireEvent::Metadata(f(event)),
             Self::Unknown { event_type, value } => WireEvent::Unknown { event_type, value },
             Self::Corrupt(error) => WireEvent::Corrupt(error),
         }
@@ -218,6 +223,7 @@ pub fn classify_with_repair<T>(
             None => WireEvent::Corrupt(on_unrepairable(&corrupt)),
             Some(repaired) => match classify(&repaired) {
                 WireEvent::Known(event) => WireEvent::Known(event),
+                WireEvent::Metadata(event) => WireEvent::Metadata(event),
                 // `Unknown` is unreachable in practice (an unknown tag never
                 // classified `Corrupt` in the first pass); treat it as the
                 // defect it would be.
@@ -241,6 +247,7 @@ pub fn classify_or<T>(
     match first(data) {
         WireEvent::Corrupt(first_error) => match then(data) {
             WireEvent::Known(event) => WireEvent::Known(event),
+            WireEvent::Metadata(event) => WireEvent::Metadata(event),
             WireEvent::Corrupt(error) => WireEvent::Corrupt(error),
             WireEvent::Unknown { .. } => WireEvent::Corrupt(first_error),
         },

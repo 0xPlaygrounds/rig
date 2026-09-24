@@ -22,13 +22,10 @@ impl Operation for ModelListing {
     type Capabilities = ();
     type Output = One<Self>;
     type Fold = Take<Self>;
-    type Telemetry = ();
 
     const NAME: &'static str = "model_listing";
 
     fn is_terminal(_event: &Self::Event) -> bool {
         true
     }
-
-    fn telemetry(_streaming: bool) -> Self::Telemetry {}
 }

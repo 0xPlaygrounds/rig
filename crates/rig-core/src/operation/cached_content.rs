@@ -23,15 +23,12 @@ impl Operation for ContextCache {
     type Capabilities = ();
     type Output = One<Self>;
     type Fold = CachedContentFold;
-    type Telemetry = ();
 
     const NAME: &'static str = "cached_content";
 
     fn is_terminal(_event: &Self::Event) -> bool {
         true
     }
-
-    fn telemetry(_streaming: bool) -> Self::Telemetry {}
 }
 
 /// Concatenates listing pages in arrival order or retains the first resource.

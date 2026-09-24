@@ -353,23 +353,75 @@ macro_rules! new_modality_span {
     };
 }
 
-/// Runs a call of the unary operation `Op` in its canonical span and records
-/// the response with [`Operation::record`](crate::wire::Operation::record) on
-/// success. Returns the call's result unchanged; errors leave only request
-/// metadata on the span.
-pub async fn instrument_modality<Op, E>(
+impl GenAiOperation {
+    /// The chat operation of a completion call in `streaming` mode.
+    pub(crate) const fn chat(streaming: bool) -> Self {
+        if streaming {
+            Self::ChatStreaming
+        } else {
+            Self::Chat
+        }
+    }
+}
+
+/// The span of a completion call as `operation`, named for the model the
+/// request actually sends (every wire honours its override on encode, else
+/// the wire's own), carrying its system instructions when content recording
+/// is on.
+pub(crate) fn completion_span(
+    provider: &str,
+    wire_model: Option<&str>,
+    operation: GenAiOperation,
+    request: &crate::completion::CompletionRequest,
+) -> tracing::Span {
+    debug_assert!(operation.is_completion());
+    let model = request.model.as_deref().or(wire_model).unwrap_or_default();
+    SpanBuilder::new(provider, model, operation)
+        .system_instructions(
+            request.system_instructions(),
+            request.record_telemetry_content,
+        )
+        .build()
+}
+
+/// Record a completion's identity (its response id, else its message id),
+/// model and usage onto `span`.
+pub(crate) fn record_completion(
+    span: &tracing::Span,
+    response_id: Option<&str>,
+    message_id: Option<&str>,
+    model: Option<&str>,
+    usage: &Usage,
+) {
+    span.record_response(response_id.or(message_id), model, usage);
+}
+
+/// A unary modality response: the GenAI operation that produces it, and
+/// the facts its span records.
+pub trait ModalityResponse {
+    /// The canonical operation the response's span names.
+    const OPERATION: GenAiOperation;
+
+    /// Record the response's id, model and usage onto `span`.
+    fn record(&self, span: &tracing::Span);
+}
+
+/// Runs a unary modality call in the canonical span of its response type
+/// and records the response on success. Returns the call's result
+/// unchanged; errors leave only request metadata on the span.
+pub async fn instrument_modality<R, E>(
     provider: &str,
     request_model: &str,
-    call: impl Future<Output = Result<Op::Response, E>>,
-) -> Result<Op::Response, E>
+    call: impl Future<Output = Result<R, E>>,
+) -> Result<R, E>
 where
-    Op: crate::wire::Operation<Telemetry = GenAiOperation>,
+    R: ModalityResponse,
 {
-    debug_assert!(!Op::telemetry(false).is_completion());
-    let span = SpanBuilder::new(provider, request_model, Op::telemetry(false)).build();
+    debug_assert!(!R::OPERATION.is_completion());
+    let span = SpanBuilder::new(provider, request_model, R::OPERATION).build();
     let result = tracing::Instrument::instrument(call, span.clone()).await;
     if let Ok(response) = &result {
-        Op::record(&span, response);
+        response.record(&span);
     }
     result
 }

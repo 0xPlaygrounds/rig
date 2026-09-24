@@ -59,12 +59,12 @@ impl crate::wire::Wire for Interactions {
         Some(&self.model)
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
+    fn telemetry(&self, streaming: bool) -> Option<GenAiOperation> {
+        Some(if streaming {
             GenAiOperation::InteractionsStreaming
         } else {
             GenAiOperation::Interactions
-        }
+        })
     }
 
     fn encode(
@@ -161,12 +161,12 @@ impl crate::wire::Wire for InteractionResume {
         None
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
+    fn telemetry(&self, streaming: bool) -> Option<GenAiOperation> {
+        Some(if streaming {
             GenAiOperation::InteractionsStreaming
         } else {
             GenAiOperation::Interactions
-        }
+        })
     }
 
     /// Reads an existing interaction, so the request carries no body and the

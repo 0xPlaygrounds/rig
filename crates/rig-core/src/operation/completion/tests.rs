@@ -75,7 +75,11 @@ where
     let own = wire.name().to_owned();
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     // The canned reply does not decode; only the request matters here.
-    let _ = crate::driver::call(&wire, &http, history(&own), None).await;
+    let _ = crate::completion::CompletionModel::complete(
+        &crate::driver::Model::new(wire, http.clone()),
+        history(&own),
+    )
+    .await;
     let requests = http.requests();
     let request = requests.first().expect("the wire sent its request");
     String::from_utf8_lossy(&request.body).into_owned()
@@ -159,8 +163,6 @@ fn provenance_round_trips_and_older_histories_load() {
 
 #[test]
 fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
-    use crate::wire::Operation;
-
     let mut request = history("anthropic");
     request.chat_history.insert(
         1,
@@ -173,7 +175,7 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
         },
     );
     assert_eq!(request.chat_history.len(), 4);
-    super::Completion::scope_to_wire(&mut request, &["anthropic"]);
+    crate::message::retain_replayable_reasoning(&mut request.chat_history, &["anthropic"]);
     assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
     assert!(request.chat_history.iter().all(|message| match message {
         Message::Assistant { content, .. } => !content.is_empty(),
@@ -315,7 +317,11 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         let mut request = history("unused");
         request.chat_history[1] = Message::Assistant { id: None, content };
         let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-        let _ = crate::driver::call(&wire, &http, request, None).await;
+        let _ = crate::completion::CompletionModel::complete(
+            &crate::driver::Model::new(wire, http.clone()),
+            request,
+        )
+        .await;
         let requests = http.requests();
         String::from_utf8_lossy(&requests[0].body).into_owned()
     }
@@ -403,7 +409,11 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
             request.chat_history[1] = Message::Assistant { id: None, content };
             let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
             let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
-            let _ = crate::driver::call(&wire, &http, request, None).await;
+            let _ = crate::completion::CompletionModel::complete(
+                &crate::driver::Model::new(wire, http.clone()),
+                request,
+            )
+            .await;
             let body = String::from_utf8_lossy(&http.requests()[0].body).into_owned();
             issuers
                 .iter()
@@ -490,7 +500,11 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
         content: response.choice.clone(),
     };
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-    let _ = crate::driver::call(&wire, &http, request, None).await;
+    let _ = crate::completion::CompletionModel::complete(
+        &crate::driver::Model::new(wire, http.clone()),
+        request,
+    )
+    .await;
     let body: serde_json::Value =
         serde_json::from_slice(&http.requests()[0].body).expect("a JSON body");
     let item = body["input"]

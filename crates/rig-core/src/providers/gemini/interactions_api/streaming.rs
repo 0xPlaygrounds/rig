@@ -309,7 +309,7 @@ impl Decoder<Completion> for InteractionsDecoder {
         }
     }
 
-    fn finish(&mut self, _out: &mut Output<Completion>) {
+    fn finish(&mut self, _out: &mut Output<Completion>, _end: crate::wire::End) {
         // EOF without interaction.completed is truncation, not successful completion.
     }
 

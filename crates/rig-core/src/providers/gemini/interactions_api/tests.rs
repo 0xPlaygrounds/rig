@@ -1365,10 +1365,13 @@ fn the_mode_chooses_the_query_and_the_framing_and_the_key_is_a_header() {
 #[test]
 fn the_interactions_wire_keeps_its_span_names() {
     let wire = interactions_wire();
-    assert_eq!(Wire::telemetry(&wire, false), GenAiOperation::Interactions);
+    assert_eq!(
+        Wire::telemetry(&wire, false),
+        Some(GenAiOperation::Interactions)
+    );
     assert_eq!(
         Wire::telemetry(&wire, true),
-        GenAiOperation::InteractionsStreaming
+        Some(GenAiOperation::InteractionsStreaming)
     );
 }
 

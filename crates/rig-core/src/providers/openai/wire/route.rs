@@ -18,9 +18,7 @@ use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
 };
 use crate::telemetry::GenAiOperation;
-use crate::wire::{
-    Body, Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame};
 
 use super::OpenAI;
 use super::chat::{Chat, ChatDecoder, ChatEvent};
@@ -207,7 +205,7 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.capabilities())
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
+    fn telemetry(&self, streaming: bool) -> Option<GenAiOperation> {
         on_route!(self, wire => wire.telemetry(streaming))
     }
 }
@@ -250,24 +248,12 @@ impl Decoder<Completion> for OpenAiDecoder {
         }
     }
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
-        on_route!(self, decoder => decoder.finish(out))
-    }
-
-    fn flush_before_terminal_error(&mut self, out: &mut Output<Completion>) {
-        on_route!(self, decoder => decoder.flush_before_terminal_error(out))
+    fn finish(&mut self, out: &mut Output<Completion>, end: crate::wire::End) {
+        on_route!(self, decoder => decoder.finish(out, end))
     }
 
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
         on_route!(self, decoder => decoder.project(payload, sink))
-    }
-
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        on_route!(self, decoder => decoder.continuation())
-    }
-
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        on_route!(self, decoder => decoder.is_analysis_only(frame))
     }
 
     fn is_finished(&self) -> bool {

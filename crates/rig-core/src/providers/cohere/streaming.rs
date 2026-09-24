@@ -394,7 +394,7 @@ impl crate::wire::Decoder<Completion> for ChatDecoder {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {
+    fn finish(&mut self, _out: &mut AdapterOutput, _end: crate::wire::End) {
         // EOF without message-end is truncation, not successful completion.
     }
 }

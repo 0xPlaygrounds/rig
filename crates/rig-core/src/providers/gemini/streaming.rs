@@ -143,28 +143,33 @@ impl GenerateContentDecoder {
     }
 }
 
+/// Whether `frame` names only the response id: analysis metadata, with no
+/// content to decode.
+fn is_response_id_only(frame: &WireFrame) -> bool {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ResponseIdOnly {
+        #[serde(rename = "responseId")]
+        _id: String,
+    }
+    matches!(
+        wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
+        WireEvent::Known(_)
+    )
+}
+
 impl Decoder<Completion> for GenerateContentDecoder {
     type Event = GenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<GenerateContentResponse> {
         // ID-only metadata must not create an unknown-content truncation tail.
-        if <Self as Decoder<Completion>>::is_analysis_only(self, &frame) {
-            return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
+        if is_response_id_only(&frame) {
+            return match wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]) {
+                WireEvent::Known(event) => WireEvent::Metadata(event),
+                other => other,
+            };
         }
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
-    }
-
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct ResponseIdOnly {
-            #[serde(rename = "responseId")]
-            _id: String,
-        }
-        matches!(
-            wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
-            WireEvent::Known(_)
-        )
     }
 
     fn interpret(&mut self, data: GenerateContentResponse, out: &mut Output<Completion>) {
@@ -261,7 +266,10 @@ impl Decoder<Completion> for GenerateContentDecoder {
         }
     }
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
+    fn finish(&mut self, out: &mut Output<Completion>, end: crate::wire::End) {
+        if end == crate::wire::End::Failed {
+            return;
+        }
         // Empty unary replies require a truncating finish reason; stream truncation
         // is represented by an absent terminal record instead.
         let cut_short = self

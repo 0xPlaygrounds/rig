@@ -319,8 +319,8 @@ impl Decoder<Verify> for VerifyKeyDecoder {
     }
 
     /// Emit success if no recognized page supplied an event.
-    fn finish(&mut self, out: &mut Output<Verify>) {
-        if !self.answered {
+    fn finish(&mut self, out: &mut Output<Verify>, end: crate::wire::End) {
+        if end == crate::wire::End::Eof && !self.answered {
             out.push(Ok(()));
         }
     }

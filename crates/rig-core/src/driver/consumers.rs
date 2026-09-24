@@ -23,10 +23,13 @@ use crate::providers::gemini::cached_content::{
     NewCachedContent, on_handle,
 };
 use crate::rerank::{RerankModel, RerankResponse};
-use crate::streaming::CompletionStream;
+use crate::streaming::{CompletionStream, StreamEvent};
+use crate::telemetry::{
+    GenAiOperation, ModalityResponse, SpanBuilder, completion_span, record_completion,
+};
 use crate::transcription::{TranscriptionModel, TranscriptionRequest, TranscriptionResponse};
 use crate::wasm_compat::WasmCompatSend;
-use crate::wire::{Mode, Operation, Wire};
+use crate::wire::{Mode, Operation, Request, Response, Wire};
 
 impl<W, T> CompletionModel for Model<W, T>
 where
@@ -38,15 +41,70 @@ where
         mut request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
         let extensions = std::mem::take(&mut request.extensions);
-        self.unary(request, extensions, |error, _, _| error).await
+        self.scope(&mut request);
+        let span = self.completion_span(&request, false);
+        let response = self
+            .unary(request, extensions, span.clone(), |error, _, _| error)
+            .await?;
+        record_completion(
+            &span,
+            response.response_id.as_deref(),
+            response.message_id.as_deref(),
+            response.model.as_deref(),
+            &response.usage,
+        );
+        Ok(response)
     }
 
-    async fn stream(
+    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        let events = self.completion_events(request)?;
+        Ok(CompletionStream::new(self.wire.name(), events))
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        self.wire.capabilities()
+    }
+}
+
+impl<W, T> Model<W, T>
+where
+    W: Wire<Op = Completion> + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
+{
+    /// Drop request content that no issuer this wire accepts for the
+    /// request's model can interpret: another provider's reasoning state.
+    fn scope(&self, request: &mut CompletionRequest) {
+        let model = request.model.as_deref().or(self.wire.model());
+        let issuers = self.wire.replay_issuers(model);
+        let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
+    }
+
+    /// The completion span of `request`, as the wire names its operation.
+    fn completion_span(&self, request: &CompletionRequest, streaming: bool) -> tracing::Span {
+        let operation = self
+            .wire
+            .telemetry(streaming)
+            .unwrap_or(GenAiOperation::chat(streaming));
+        completion_span(self.wire.name(), self.wire.model(), operation, request)
+    }
+
+    /// The streamed events of `request` before the completion fold: the
+    /// terminal record carries the reply's transport request id, and its
+    /// response facts are recorded on the completion span.
+    pub(super) fn completion_events(
         &self,
         mut request: CompletionRequest,
-    ) -> Result<CompletionStream, ProviderError> {
+    ) -> Result<
+        impl futures::Stream<Item = Result<StreamEvent, ProviderError>>
+        + WasmCompatSend
+        + 'static
+        + use<W, T>,
+        ProviderError,
+    > {
         let extensions = std::mem::take(&mut request.extensions);
-        let span = self.span(&request, true);
+        self.scope(&mut request);
+        let span = self.completion_span(&request, true);
         let steps = self.run(
             request,
             Mode::Streaming,
@@ -54,18 +112,63 @@ where
             span.clone(),
             |error, _, _| error,
         )?;
-        let events = tracing_futures::Instrument::instrument(steps, span).filter_map(|step| {
+        let recording = span.clone();
+        let mut request_id = None;
+        let events = steps.filter_map(move |step| {
             futures::future::ready(match step {
-                Ok(Step::Event(event)) => Some(Ok(event)),
+                Ok(Step::Opened(opened)) => {
+                    request_id = opened;
+                    None
+                }
+                Ok(Step::Event(mut event)) => {
+                    if let StreamEvent::Final(terminal) = &mut event {
+                        // The terminal's own id wins: it saw the reply that
+                        // carried it.
+                        if terminal.provider_request_id.is_none() {
+                            terminal.provider_request_id.clone_from(&request_id);
+                        }
+                        record_completion(
+                            &recording,
+                            terminal.response_id.as_deref(),
+                            terminal.message_id.as_deref(),
+                            terminal.model.as_deref(),
+                            &terminal.usage,
+                        );
+                    }
+                    Some(Ok(event))
+                }
                 Ok(Step::Done(_)) => None,
                 Err(error) => Some(Err(error)),
             })
         });
-        Ok(CompletionStream::new(self.wire.name(), events))
+        Ok(tracing_futures::Instrument::instrument(events, span))
     }
+}
 
-    fn capabilities(&self) -> ProviderCapabilities {
-        self.wire.capabilities()
+impl<W, T> Model<W, T>
+where
+    W: Wire + Clone,
+    T: Transport<Payload = W::Payload, Frame = W::Frame>,
+    Response<W>: ModalityResponse,
+{
+    /// A unary modality call in its canonical span.
+    async fn modality(&self, request: Request<W>) -> Result<Response<W>, ProviderError> {
+        let span = SpanBuilder::new(
+            self.wire.name(),
+            self.wire.model().unwrap_or_default(),
+            <Response<W> as ModalityResponse>::OPERATION,
+        )
+        .build();
+        let response = self
+            .unary(
+                request,
+                http::Extensions::new(),
+                span.clone(),
+                |error, _, _| error,
+            )
+            .await?;
+        response.record(&span);
+        Ok(response)
     }
 }
 
@@ -86,7 +189,7 @@ where
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
-        let response = self.call(texts.into_iter().collect()).await?;
+        let response = self.modality(texts.into_iter().collect()).await?;
         // Reject vectors whose width violates the model's declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
@@ -116,7 +219,7 @@ where
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
     ) -> Result<ImageEmbeddingResponse, ProviderError> {
-        let response = self.call(images.into_iter().collect()).await?;
+        let response = self.modality(images.into_iter().collect()).await?;
         // Image vectors must also honour the declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
@@ -138,7 +241,7 @@ where
         &self,
         request: TranscriptionRequest,
     ) -> Result<TranscriptionResponse, ProviderError> {
-        self.call(request).await
+        self.modality(request).await
     }
 }
 
@@ -160,7 +263,7 @@ where
             query: query.to_owned(),
             documents,
         };
-        self.call(request).await
+        self.modality(request).await
     }
 }
 
@@ -174,7 +277,7 @@ where
         &self,
         request: crate::image_generation::ImageGenerationRequest,
     ) -> Result<crate::image_generation::ImageGenerationResponse, ProviderError> {
-        self.call(request).await
+        self.modality(request).await
     }
 }
 
@@ -188,7 +291,7 @@ where
         &self,
         request: crate::audio_generation::AudioGenerationRequest,
     ) -> Result<crate::audio_generation::AudioGenerationResponse, ProviderError> {
-        self.call(request).await
+        self.modality(request).await
     }
 }
 
@@ -200,9 +303,14 @@ where
     async fn list_all(&self) -> Result<ModelList, ProviderError> {
         let pages = paginate(self.wire.name(), ModelListing::NAME, |cursor| async move {
             let page = self
-                .unary(cursor, http::Extensions::new(), |error, provider, path| {
-                    crate::model::listing::with_route(error, provider, path)
-                })
+                .unary(
+                    cursor,
+                    http::Extensions::new(),
+                    tracing::Span::none(),
+                    |error, provider, path| {
+                        crate::model::listing::with_route(error, provider, path)
+                    },
+                )
                 .await?;
             Ok((page.models, page.next))
         })

@@ -25,7 +25,7 @@ impl Decoder<Completion, usize> for Scripted {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {}
+    fn finish(&mut self, _out: &mut AdapterOutput, _end: crate::wire::End) {}
 }
 
 fn drive(batches: Vec<Vec<StreamEvent>>) {

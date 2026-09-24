@@ -16,11 +16,9 @@ use super::*;
 use crate::completion::{CompletionRequestBuilder, CompletionResponse};
 use crate::embeddings::EmbeddingResponse;
 use crate::error::ProviderError;
-use crate::operation::{Completion, Embedding, Rerank, RerankRequest, Transcription};
 use crate::rerank::RerankResponse;
-use crate::streaming::{StreamEvent, StreamFinal};
-use crate::transcription::{TranscriptionRequest, TranscriptionResponse};
-use crate::wire::Operation;
+use crate::streaming::StreamFinal;
+use crate::transcription::TranscriptionResponse;
 
 /// One JSON line per case, in the order [`cases`] runs them.
 const EXPECTED: &str = r#"{"case":"fresh completion chat","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
@@ -224,19 +222,21 @@ fn cases() -> Vec<Value> {
             .with_response_id("emb_id")
             .with_model("emb_model")
             .with_usage(usage());
-        let result = futures::executor::block_on(instrument_modality::<Embedding, _>(
-            "prov",
-            "model",
-            async move { Ok::<_, ProviderError>(response) },
-        ));
+        let result = futures::executor::block_on(instrument_modality::<
+            crate::embeddings::EmbeddingResponse,
+            _,
+        >("prov", "model", async move {
+            Ok::<_, ProviderError>(response)
+        }));
         assert!(result.is_ok());
     });
     run("instrument_modality err", &mut out, || {
-        let result = futures::executor::block_on(instrument_modality::<Embedding, _>(
-            "prov",
-            "model",
-            async move { Err::<EmbeddingResponse, _>(ProviderError::Provider("no".into())) },
-        ));
+        let result = futures::executor::block_on(instrument_modality::<
+            crate::embeddings::EmbeddingResponse,
+            _,
+        >("prov", "model", async move {
+            Err::<EmbeddingResponse, _>(ProviderError::Provider("no".into()))
+        }));
         assert!(result.is_err());
     });
     run(
@@ -247,16 +247,17 @@ fn cases() -> Vec<Value> {
                 .preamble("sys".into())
                 .record_content_telemetry(true)
                 .build();
-            let span = Completion::span(
-                "prov",
-                Some("model"),
-                Completion::telemetry(false),
-                &request,
-            );
+            let span = completion_span("prov", Some("model"), GenAiOperation::Chat, &request);
             let response = CompletionResponse::new(vec![], usage(), "prov", Value::Null)
                 .with_message_id("msg_1")
                 .with_model("resp_model");
-            Completion::record(&span, &response);
+            record_completion(
+                &span,
+                response.response_id.as_deref(),
+                response.message_id.as_deref(),
+                response.model.as_deref(),
+                &response.usage,
+            );
         },
     );
     run(
@@ -266,59 +267,47 @@ fn cases() -> Vec<Value> {
             let request = CompletionRequestBuilder::unbound("hi")
                 .model("override")
                 .build();
-            let span =
-                Completion::span("prov", Some("model"), Completion::telemetry(true), &request);
+            let span = completion_span(
+                "prov",
+                Some("model"),
+                GenAiOperation::ChatStreaming,
+                &request,
+            );
             let terminal = StreamFinal::new("prov", usage(), Value::Null)
                 .with_response_id("resp_1")
                 .with_message_id("msg_1")
                 .with_model("m2");
-            Completion::record_event(&span, &StreamEvent::Final(terminal));
+            record_completion(
+                &span,
+                terminal.response_id.as_deref(),
+                terminal.message_id.as_deref(),
+                terminal.model.as_deref(),
+                &terminal.usage,
+            );
         },
     );
     run("embedding operation span+record", &mut out, || {
-        let span = Embedding::span(
-            "prov",
-            Some("model"),
-            Embedding::telemetry(false),
-            &vec!["a".to_owned()],
-        );
+        let span = SpanBuilder::new("prov", "model", EmbeddingResponse::OPERATION).build();
         let response = EmbeddingResponse::new(vec![], "prov")
             .with_response_id("emb_id")
             .with_model("emb_model")
             .with_usage(usage());
-        Embedding::record(&span, &response);
+        response.record(&span);
     });
     run("rerank operation span+record", &mut out, || {
-        let request = RerankRequest {
-            query: "q".into(),
-            documents: vec!["d".into()],
-        };
-        let span = Rerank::span("prov", Some("model"), Rerank::telemetry(false), &request);
+        let span = SpanBuilder::new("prov", "model", RerankResponse::OPERATION).build();
         let response = RerankResponse::new(vec![], "prov")
             .with_response_id("rr_id")
             .with_model("rr_model")
             .with_usage(usage());
-        Rerank::record(&span, &response);
+        response.record(&span);
     });
     run("transcription operation span+record", &mut out, || {
-        let request = TranscriptionRequest {
-            data: vec![1],
-            filename: "a.wav".into(),
-            language: None,
-            prompt: None,
-            temperature: None,
-            additional_params: None,
-        };
-        let span = Transcription::span(
-            "prov",
-            Some("model"),
-            Transcription::telemetry(false),
-            &request,
-        );
+        let span = SpanBuilder::new("prov", "model", TranscriptionResponse::OPERATION).build();
         let response = TranscriptionResponse::new("text", "prov")
             .with_response_id("tr_id")
             .with_usage(usage());
-        Transcription::record(&span, &response);
+        response.record(&span);
     });
     run("span combinator on a native response", &mut out, || {
         SpanBuilder::new("prov", "model", GenAiOperation::Chat)

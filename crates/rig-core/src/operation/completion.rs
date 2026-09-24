@@ -16,7 +16,6 @@ use crate::streaming::{
     BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
     SyntheticIds, ToolCallEnd, UnknownPayload,
 };
-use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply, Sink};
 
 /// Generating an assistant turn, unary or streamed.
@@ -33,87 +32,11 @@ impl Operation for Completion {
     type Capabilities = crate::completion::ProviderCapabilities;
     type Output = AdapterOutput;
     type Fold = CompletionFold;
-    type Telemetry = GenAiOperation;
 
     const NAME: &'static str = "completion";
 
     fn is_terminal(event: &Self::Event) -> bool {
         matches!(event, StreamEvent::Final(_))
-    }
-
-    fn telemetry(streaming: bool) -> Self::Telemetry {
-        if streaming {
-            GenAiOperation::ChatStreaming
-        } else {
-            GenAiOperation::Chat
-        }
-    }
-
-    /// Forwards unmodeled payloads without adding them to aggregated content.
-    fn unknown(payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
-        Some(StreamEvent::Unknown(payload))
-    }
-
-    /// Reasoning another wire issued is omitted; see
-    /// [`crate::message::retain_replayable_reasoning`].
-    fn scope_to_wire(request: &mut Self::Request, issuers: &[&str]) {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, issuers);
-    }
-
-    fn request_model(request: &Self::Request) -> Option<&str> {
-        request.model.as_deref()
-    }
-
-    fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {
-        // The terminal's own id wins: it saw the reply that carried it.
-        if let StreamEvent::Final(terminal) = event
-            && terminal.provider_request_id.is_none()
-        {
-            terminal.provider_request_id = request_id.clone();
-        }
-    }
-
-    fn span(
-        provider: &str,
-        model: Option<&str>,
-        telemetry: Self::Telemetry,
-        request: &Self::Request,
-    ) -> tracing::Span {
-        // The request's override is the model actually sent (every wire
-        // honours it on encode), so it is the one the span names.
-        let model = request.model.as_deref().or(model).unwrap_or_default();
-        debug_assert!(telemetry.is_completion());
-        SpanBuilder::new(provider, model, telemetry)
-            .system_instructions(
-                request.system_instructions(),
-                request.record_telemetry_content,
-            )
-            .build()
-    }
-
-    // Both prefer the response identity, falling back to the message identity.
-    fn record(span: &tracing::Span, response: &Self::Response) {
-        span.record_response(
-            response
-                .response_id
-                .as_deref()
-                .or(response.message_id.as_deref()),
-            response.model.as_deref(),
-            &response.usage,
-        );
-    }
-
-    fn record_event(span: &tracing::Span, event: &Self::Event) {
-        if let StreamEvent::Final(terminal) = event {
-            span.record_response(
-                terminal
-                    .response_id
-                    .as_deref()
-                    .or(terminal.message_id.as_deref()),
-                terminal.model.as_deref(),
-                &terminal.usage,
-            );
-        }
     }
 }
 
@@ -137,6 +60,11 @@ impl Sink<Completion> for AdapterOutput {
         laws.check_batch(self);
         #[cfg(not(any(test, debug_assertions)))]
         let _ = laws;
+    }
+
+    /// Forwards unmodeled payloads without adding them to aggregated content.
+    fn unknown(&mut self, payload: UnknownPayload) {
+        AdapterOutput::unknown(self, payload);
     }
 }
 

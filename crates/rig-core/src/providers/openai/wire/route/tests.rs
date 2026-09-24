@@ -72,8 +72,10 @@ fn body_with_request(
         panic!("a completion route sends one request");
     };
     match request.body() {
-        Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
-        Body::Multipart(_) => panic!("neither completion route sends a multipart body"),
+        crate::wire::Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
+        crate::wire::Body::Multipart(_) => {
+            panic!("neither completion route sends a multipart body")
+        }
     }
 }
 

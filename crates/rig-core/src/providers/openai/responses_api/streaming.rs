@@ -1089,14 +1089,13 @@ impl Decoder<Completion> for ResponsesDecoder {
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput) {
-        self.flush(out);
-    }
-
-    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
-        // Tool calls the provider fully delivered are content: they flush
-        // before the terminal error reaches the consumer.
-        self.accumulator.flush_tool_calls(out);
+    fn finish(&mut self, out: &mut AdapterOutput, end: crate::wire::End) {
+        match end {
+            crate::wire::End::Eof => self.flush(out),
+            // Tool calls the provider fully delivered are content: they
+            // flush before the terminal error reaches the consumer.
+            crate::wire::End::Failed => self.accumulator.flush_tool_calls(out),
+        }
     }
 
     fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {

@@ -140,11 +140,13 @@ fn instrument_modality_records_usage_and_identity() {
             .build()
             .expect("runtime");
         runtime
-            .block_on(instrument_modality::<crate::operation::Embedding, _>(
-                "probe",
-                "probe-embed",
-                async { Ok::<_, crate::error::ProviderError>(response) },
-            ))
+            .block_on(
+                instrument_modality::<crate::embeddings::EmbeddingResponse, _>(
+                    "probe",
+                    "probe-embed",
+                    async { Ok::<_, crate::error::ProviderError>(response) },
+                ),
+            )
             .expect("call succeeds");
     });
 

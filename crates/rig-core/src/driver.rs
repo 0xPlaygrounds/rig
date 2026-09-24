@@ -28,7 +28,7 @@ use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
 use crate::providers::internal::wire::WireEvent;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::{
-    Capabilities, Decoder, Event, Fold, Mode, Operation, Reply, Request, Response, Sink, Wire,
+    Capabilities, Decoder, End, Event, Fold, Mode, Operation, Reply, Request, Response, Sink, Wire,
     WireFrame,
 };
 
@@ -82,8 +82,12 @@ where
     }
 }
 
-/// One step of a reply: an event, or the folded response of a unary call.
+/// One step of a reply: a streamed reply's opening, an event, or the folded
+/// response of a unary call.
 enum Step<W: Wire> {
+    /// A streamed reply opened, with its transport request id when the
+    /// transport read one. Exactly once, before the stream's events.
+    Opened(Option<String>),
     Event(Event<W>),
     /// Exactly once, last, and only for a unary call.
     Done(Response<W>),
@@ -103,19 +107,25 @@ where
     /// runtime goes through [`CompletionModel`](crate::completion::CompletionModel),
     /// whose request carries its context.
     pub async fn call(&self, request: Request<W>) -> Result<Response<W>, ProviderError> {
-        self.unary(request, http::Extensions::new(), |error, _, _| error)
-            .await
+        self.unary(
+            request,
+            http::Extensions::new(),
+            tracing::Span::none(),
+            |error, _, _| error,
+        )
+        .await
     }
 
-    /// [`Self::call`] with the call's extensions, decorating a failed
-    /// page's error with its route.
+    /// [`Self::call`] with the call's extensions and span, decorating a
+    /// failed page's error with its route. The span records the transport
+    /// request id; the caller records the response.
     async fn unary(
         &self,
         request: Request<W>,
         extensions: http::Extensions,
+        span: tracing::Span,
         route_error: RouteError,
     ) -> Result<Response<W>, ProviderError> {
-        let span = self.span(&request, false);
         let result = async {
             let steps = self.run(request, Mode::Unary, extensions, span.clone(), route_error)?;
             futures::pin_mut!(steps);
@@ -134,15 +144,6 @@ where
             record_request_id(&span, error.provider_request_id());
         }
         result
-    }
-
-    fn span(&self, request: &Request<W>, streaming: bool) -> tracing::Span {
-        <W::Op as Operation>::span(
-            self.wire.name(),
-            self.wire.model(),
-            self.wire.telemetry(streaming),
-            request,
-        )
     }
 
     /// The driver: encode, send each request of the payload through the
@@ -166,8 +167,6 @@ where
         let wire = self.wire.clone();
         let transport = self.transport.clone();
         let mut fold = <W::Op as Operation>::fold(&request);
-        let mut request = request;
-        scope_to_wire(&wire, &mut request);
         let payload = wire.encode(request, mode)?;
         let first = open(&transport, payload, mode, &extensions)?;
 
@@ -206,6 +205,7 @@ where
 
                 if mode == Mode::Streaming {
                     record_request_id(&span, page_request_id.as_deref());
+                    yield Ok(Step::Opened(page_request_id.clone()));
                     while let Some(frame) = frames.next().await {
                         match frame {
                             Ok(frame) => {
@@ -222,7 +222,7 @@ where
                             }
                         }
                         for item in driver.drain() {
-                            yield stamped::<W>(item, &page_request_id, &span).map(Step::Event);
+                            yield stamped(item, &page_request_id, &span).map(Step::Event);
                         }
                         if driver.done() {
                             return;
@@ -230,7 +230,7 @@ where
                     }
                     driver.finish();
                     for item in driver.drain() {
-                        yield stamped::<W>(item, &page_request_id, &span).map(Step::Event);
+                        yield stamped(item, &page_request_id, &span).map(Step::Event);
                     }
                     return;
                 }
@@ -314,7 +314,6 @@ where
             };
             match fold.finish(reply) {
                 Ok(response) => {
-                    <W::Op as Operation>::record(&span, &response);
                     record_request_id(&span, request_id.as_deref());
                     yield Ok(Step::Done(response));
                 }
@@ -399,24 +398,22 @@ where
         if self.done {
             return;
         }
-        let analysis_only = self.observation.is_some() && self.decoder.is_analysis_only(&frame);
         let classified = self.decoder.classify(frame);
-        // Never exempt a corrupt frame, even when the provider's metadata
-        // predicate accepts its shape.
-        let corrupt = matches!(classified, WireEvent::Corrupt(_));
-        if (corrupt || !analysis_only) && self.observation.is_some() {
+        // A frame of analysis metadata alone does not advance observation's
+        // EOF and corruption positions.
+        if self.observation.is_some() && !matches!(classified, WireEvent::Metadata(_)) {
             self.frames += 1;
         }
         match classified {
-            WireEvent::Known(event) => self.decoder.interpret(event, &mut self.out),
+            WireEvent::Known(event) | WireEvent::Metadata(event) => {
+                self.decoder.interpret(event, &mut self.out)
+            }
             // Skipped semantically, but surfaced verbatim where the
             // operation has a raw passthrough channel; aggregation never
             // folds it into the answer.
             WireEvent::Unknown { event_type, value } => {
                 warn_unmodeled(&event_type, &value);
-                if let Some(event) = Op::unknown(value) {
-                    self.out.push(Ok(event));
-                }
+                self.out.unknown(value);
             }
             WireEvent::Corrupt(error) => {
                 if let Some(observation) = &self.observation {
@@ -441,7 +438,7 @@ where
         if let Some(observation) = &self.observation {
             observation.fail(&error);
         }
-        self.decoder.flush_before_terminal_error(&mut self.out);
+        self.decoder.finish(&mut self.out, End::Failed);
         self.collect();
         self.ready.push(Err(error));
         self.done = true;
@@ -456,7 +453,7 @@ where
         if let Some(observation) = &self.observation {
             observation.transport_eof(self.frames);
         }
-        self.decoder.finish(&mut self.out);
+        self.decoder.finish(&mut self.out, End::Eof);
         self.out.check_laws(&mut self.laws);
         self.collect();
         if let Some(observation) = &self.observation {
@@ -515,7 +512,7 @@ pub enum TriagedFrame<T> {
 /// latter. Corrupt frames return a JSON error.
 pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, ProviderError> {
     match event {
-        WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
+        WireEvent::Known(event) | WireEvent::Metadata(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
             warn_unmodeled(&event_type, &value);
             Ok(TriagedFrame::Unknown(value))
@@ -558,35 +555,19 @@ fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
     counter.0
 }
 
-/// Stamp the transport request id captured off the reply onto a terminal
-/// event or a preserved provider error. An id an upstream constructor
-/// already attached is never replaced: it saw the reply that carried it.
-fn stamped<W: Wire>(
-    item: Result<Event<W>, ProviderError>,
+/// Stamp the transport request id captured off the reply onto a preserved
+/// provider error. An id an upstream constructor already attached is never
+/// replaced: it saw the reply that carried it.
+fn stamped<E>(
+    item: Result<E, ProviderError>,
     request_id: &Option<String>,
     span: &tracing::Span,
-) -> Result<Event<W>, ProviderError> {
-    match item {
-        Ok(mut event) => {
-            <W::Op as Operation>::stamp_request_id(&mut event, request_id);
-            <W::Op as Operation>::record_event(span, &event);
-            Ok(event)
-        }
-        Err(error) => {
-            let error = error.with_provider_request_id(request_id.clone());
-            record_request_id(span, error.provider_request_id());
-            Err(error)
-        }
-    }
-}
-
-/// Drop request content no issuer this wire accepts for the request's model
-/// can interpret.
-fn scope_to_wire<W: Wire>(wire: &W, request: &mut Request<W>) {
-    let model = <W::Op as Operation>::request_model(request).or(wire.model());
-    let issuers = wire.replay_issuers(model);
-    let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
-    <W::Op as Operation>::scope_to_wire(request, &issuers);
+) -> Result<E, ProviderError> {
+    item.map_err(|error| {
+        let error = error.with_provider_request_id(request_id.clone());
+        record_request_id(span, error.provider_request_id());
+        error
+    })
 }
 
 /// Record the transport request id on the call's span, success or failure.
@@ -615,42 +596,36 @@ where
         extensions.insert(context);
     }
     Model::new(wire.clone(), http.clone())
-        .unary(request, extensions, |error, _, _| error)
+        .unary(request, extensions, tracing::Span::none(), |error, _, _| {
+            error
+        })
         .await
 }
 
 #[cfg(test)]
-/// The driver's streamed path over `wire` and `http`, observed by
-/// `context`: the decoder's events, before any completion fold.
+/// The completion stream over `wire` and `http`, observed by `context`: the
+/// events as the model stamps them, before the completion fold.
 pub(crate) fn stream<W, H>(
     wire: &W,
     http: &H,
-    request: Request<W>,
+    request: crate::completion::CompletionRequest,
     context: Option<AdapterContext>,
 ) -> Result<
-    impl futures::Stream<Item = Result<Event<W>, ProviderError>> + WasmCompatSend + use<W, H>,
+    impl futures::Stream<Item = Result<crate::streaming::StreamEvent, ProviderError>>
+    + WasmCompatSend
+    + use<W, H>,
     ProviderError,
 >
 where
-    W: Wire<Payload = crate::wire::Encoded, Frame = WireFrame> + Clone,
+    W: Wire<Op = crate::operation::Completion, Payload = crate::wire::Encoded, Frame = WireFrame>
+        + Clone,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    let mut extensions = http::Extensions::new();
+    let mut request = request;
     if let Some(context) = context {
-        extensions.insert(context);
+        request.extensions.insert(context);
     }
-    let model = Model::new(wire.clone(), http.clone());
-    let span = model.span(&request, true);
-    let steps = model.run(request, Mode::Streaming, extensions, span, |error, _, _| {
-        error
-    })?;
-    Ok(steps.filter_map(|step| {
-        futures::future::ready(match step {
-            Ok(Step::Event(event)) => Some(Ok(event)),
-            Ok(Step::Done(_)) => None,
-            Err(error) => Some(Err(error)),
-        })
-    }))
+    Model::new(wire.clone(), http.clone()).completion_events(request)
 }
 
 #[cfg(test)]

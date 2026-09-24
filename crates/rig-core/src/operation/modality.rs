@@ -7,10 +7,10 @@
 //! assert_eq!(capabilities.declared, Some(768));
 //! ```
 
-use super::{One, Take};
+use super::One;
 use crate::embeddings::Embedding as Vector;
 use crate::error::ProviderError;
-use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
+use crate::telemetry::{GenAiOperation, ModalityResponse, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply};
 
 /// Embedding batch limit, resolved dimensions, and optional caller-declared width.
@@ -82,7 +82,7 @@ pub struct RerankRequest {
     pub documents: Vec<String>,
 }
 
-/// Declare one unary modality operation.
+/// Declare one unary modality operation, and the span facts of its response.
 macro_rules! modality_operation {
     (
         $(#[$doc:meta])*
@@ -107,7 +107,6 @@ macro_rules! modality_operation {
             type Capabilities = $capabilities;
             type Output = One<Self>;
             type Fold = $fold;
-            type Telemetry = GenAiOperation;
 
             const NAME: &'static str = $name;
 
@@ -119,39 +118,66 @@ macro_rules! modality_operation {
                 #[allow(clippy::redundant_closure_call)]
                 ($seed)(request)
             }
+        }
 
-            fn telemetry(_streaming: bool) -> Self::Telemetry {
-                GenAiOperation::$telemetry
-            }
+        impl ModalityResponse for $response {
+            const OPERATION: GenAiOperation = GenAiOperation::$telemetry;
 
-            fn stamp_reply(response: &mut Self::Response, reply: Reply) {
-                if response.provider_request_id.is_none() {
-                    response.provider_request_id = reply.provider_request_id;
-                }
-                if response.raw.is_null() {
-                    response.raw = reply.raw;
-                }
-            }
-
-            fn span(
-                provider: &str,
-                model: Option<&str>,
-                telemetry: Self::Telemetry,
-                _request: &Self::Request,
-            ) -> tracing::Span {
-                debug_assert!(!telemetry.is_completion());
-                SpanBuilder::new(provider, model.unwrap_or_default(), telemetry).build()
-            }
-
-            fn record(span: &tracing::Span, response: &Self::Response) {
+            fn record(&self, span: &tracing::Span) {
                 span.record_response(
-                    response.response_id.as_deref(),
-                    response.model.as_deref(),
-                    &response.usage,
+                    self.response_id.as_deref(),
+                    self.model.as_deref(),
+                    &self.usage,
                 );
             }
         }
     };
+}
+
+/// A unary modality operation's one answer, filled in with what the driver
+/// learned about the reply: its transport request id and, when the answer
+/// carries no document, the reply's.
+pub struct Answer<Op: Operation> {
+    value: Option<Op::Event>,
+}
+
+impl<Op: Operation> Default for Answer<Op> {
+    fn default() -> Self {
+        Self { value: None }
+    }
+}
+
+/// Folds one answering operation through [`Answer`].
+macro_rules! answer_fold {
+    ($op:ident) => {
+        impl Fold<$op> for Answer<$op> {
+            fn absorb(&mut self, event: <$op as Operation>::Event) -> Result<(), ProviderError> {
+                if self.value.is_none() {
+                    self.value = Some(event);
+                }
+                Ok(())
+            }
+
+            fn finish(self, reply: Reply) -> Result<<$op as Operation>::Response, ProviderError> {
+                let mut response = self.value.ok_or_else(|| {
+                    ProviderError::Response(format!("{} reply carried no payload", $op::NAME))
+                })?;
+                fill(&mut response.provider_request_id, &mut response.raw, reply);
+                Ok(response)
+            }
+        }
+    };
+}
+
+/// Fill a response's transport request id and raw document from the reply,
+/// keeping what the decoder already set.
+fn fill(provider_request_id: &mut Option<String>, raw: &mut serde_json::Value, reply: Reply) {
+    if provider_request_id.is_none() {
+        *provider_request_id = reply.provider_request_id;
+    }
+    if raw.is_null() {
+        *raw = reply.raw;
+    }
 }
 
 modality_operation!(
@@ -190,10 +216,11 @@ modality_operation!(
         capabilities: usize,
         telemetry: Rerank,
         name: "rerank",
-        fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        fold: Answer<Self>,
+        seed: |_: &_| Answer::default(),
     }
 );
+answer_fold!(Rerank);
 
 modality_operation!(
     /// Transcribes audio using provider-specific request encoding.
@@ -203,10 +230,11 @@ modality_operation!(
         capabilities: (),
         telemetry: Transcription,
         name: "transcription",
-        fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        fold: Answer<Self>,
+        seed: |_: &_| Answer::default(),
     }
 );
+answer_fold!(Transcription);
 
 #[cfg(feature = "image")]
 modality_operation!(
@@ -217,10 +245,12 @@ modality_operation!(
         capabilities: (),
         telemetry: ImageGeneration,
         name: "image_generation",
-        fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        fold: Answer<Self>,
+        seed: |_: &_| Answer::default(),
     }
 );
+#[cfg(feature = "image")]
+answer_fold!(ImageGeneration);
 
 #[cfg(feature = "audio")]
 modality_operation!(
@@ -231,10 +261,12 @@ modality_operation!(
         capabilities: (),
         telemetry: AudioGeneration,
         name: "audio_generation",
-        fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        fold: Answer<Self>,
+        seed: |_: &_| Answer::default(),
     }
 );
+#[cfg(feature = "audio")]
+answer_fold!(AudioGeneration);
 
 /// Accumulates vectors in reply order and pairs them positionally with request
 /// documents. Finishing rejects missing replies or unequal vector/document counts.
@@ -329,7 +361,7 @@ impl Fold<Embedding> for Embedded {
             provider_request_id: metadata.provider_request_id,
             raw: metadata.raw,
         };
-        Embedding::stamp_reply(&mut response, reply);
+        fill(&mut response.provider_request_id, &mut response.raw, reply);
         Ok(response)
     }
 }
@@ -367,7 +399,7 @@ impl Fold<ImageEmbedding> for Embedded {
             provider_request_id: metadata.provider_request_id,
             raw: metadata.raw,
         };
-        ImageEmbedding::stamp_reply(&mut response, reply);
+        fill(&mut response.provider_request_id, &mut response.raw, reply);
         Ok(response)
     }
 }

@@ -1252,6 +1252,16 @@ impl ChatDecoder {
 
 use crate::operation::Completion;
 
+impl ChatDecoder {
+    /// Fully-delivered tool calls flush before a terminal error reaches the
+    /// consumer, so a first-`Err`-stop consumer sees them too.
+    fn flush_delivered_tool_calls(&mut self, out: &mut Output<Completion>) {
+        for slot in self.open_tool_calls.drain_ordered() {
+            out.push(Ok(slot.end_event(UnparseableToolInput::Drop)));
+        }
+    }
+}
+
 impl Decoder<Completion> for ChatDecoder {
     type Event = ChatEvent;
 
@@ -1279,7 +1289,9 @@ impl Decoder<Completion> for ChatDecoder {
         // Inspect raw arguments for length cuts, including empty strings normalized to {}.
         let may_be_budget_cut = match &classified {
             WireEvent::Corrupt(_) => true,
-            WireEvent::Known(frame) => self.is_budget_cut_tool_turn(frame),
+            WireEvent::Known(frame) | WireEvent::Metadata(frame) => {
+                self.is_budget_cut_tool_turn(frame)
+            }
             WireEvent::Unknown { .. } => false,
         };
         if may_be_budget_cut && let Some(frame) = self.body_without_calls_cut_by_the_budget(&data) {
@@ -1311,14 +1323,18 @@ impl Decoder<Completion> for ChatDecoder {
             ChatEvent::Failure(error) => {
                 // Content the provider fully delivered reaches the consumer
                 // before the failure, and no terminal record follows.
-                self.flush_before_terminal_error(out);
+                self.flush_delivered_tool_calls(out);
                 out.error(error);
                 self.failed = true;
             }
         }
     }
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
+    fn finish(&mut self, out: &mut Output<Completion>, end: crate::wire::End) {
+        if end == crate::wire::End::Failed {
+            self.flush_delivered_tool_calls(out);
+            return;
+        }
         // Tool calls the provider fully delivered are content, so a truncated
         // reply still flushes them. Partial calls drop in the accumulator.
         let output_length_truncation = matches!(
@@ -1356,14 +1372,6 @@ impl Decoder<Completion> for ChatDecoder {
             return;
         }
         self.emit_terminal(out);
-    }
-
-    fn flush_before_terminal_error(&mut self, out: &mut Output<Completion>) {
-        // Fully-delivered tool calls flush before the terminal error reaches
-        // the consumer, so a first-`Err`-stop consumer sees them too.
-        for slot in self.open_tool_calls.drain_ordered() {
-            out.push(Ok(slot.end_event(UnparseableToolInput::Drop)));
-        }
     }
 
     fn is_finished(&self) -> bool {

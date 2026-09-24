@@ -100,12 +100,12 @@ impl Wire for GenerateContent {
     }
 
     /// Select the telemetry operation for unary or streamed completion.
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
+    fn telemetry(&self, streaming: bool) -> Option<GenAiOperation> {
+        Some(if streaming {
             GenAiOperation::ChatStreaming
         } else {
             GenAiOperation::GenerateContent
-        }
+        })
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {

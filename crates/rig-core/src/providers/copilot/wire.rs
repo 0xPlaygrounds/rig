@@ -346,7 +346,7 @@ impl Wire for CopilotWire {
         self.wire.capabilities()
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
+    fn telemetry(&self, streaming: bool) -> Option<GenAiOperation> {
         self.wire.telemetry(streaming)
     }
 }

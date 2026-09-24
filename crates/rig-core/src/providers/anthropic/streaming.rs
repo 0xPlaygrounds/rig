@@ -623,7 +623,7 @@ impl Decoder<Completion> for MessagesDecoder {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {
+    fn finish(&mut self, _out: &mut AdapterOutput, _end: crate::wire::End) {
         // EOF without `message_delta` is truncation: open blocks stay
         // partial, and no terminal record may be synthesized.
     }

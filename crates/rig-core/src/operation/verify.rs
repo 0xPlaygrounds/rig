@@ -21,15 +21,12 @@ impl Operation for Verify {
     type Capabilities = ();
     type Output = One<Self>;
     type Fold = Take<Self>;
-    type Telemetry = ();
 
     const NAME: &'static str = "verify";
 
     fn is_terminal(_event: &Self::Event) -> bool {
         true
     }
-
-    fn telemetry(_streaming: bool) -> Self::Telemetry {}
 }
 
 /// Accepts any body, including an empty one, after driver status validation.
@@ -50,8 +47,8 @@ impl Decoder<Verify> for VerifyDecoder {
 
     /// A 2xx with an empty body still verifies: the driver only reaches
     /// `finish` when nothing framed, and the status already said yes.
-    fn finish(&mut self, out: &mut Output<Verify>) {
-        if out.items().is_empty() {
+    fn finish(&mut self, out: &mut Output<Verify>, end: crate::wire::End) {
+        if end == crate::wire::End::Eof && out.items().is_empty() {
             out.push(Ok(()));
         }
     }

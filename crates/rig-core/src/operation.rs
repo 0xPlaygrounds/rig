@@ -27,7 +27,7 @@ pub use modality::AudioGeneration;
 #[cfg(feature = "image")]
 pub use modality::ImageGeneration;
 pub use modality::{
-    Embedding, EmbeddingCapabilities, ImageEmbedding, Rerank, RerankRequest, Transcription,
+    Answer, Embedding, EmbeddingCapabilities, ImageEmbedding, Rerank, RerankRequest, Transcription,
 };
 pub use verify::{Verify, VerifyDecoder};
 
@@ -59,7 +59,7 @@ impl<Op: Operation> Sink<Op> for One<Op> {
 }
 
 /// Retains the first event and ignores later events. Finishing without an
-/// event returns a decode error; otherwise reply metadata is stamped on the response.
+/// event returns a decode error.
 pub struct Take<Op: Operation> {
     value: Option<Op::Event>,
 }
@@ -82,14 +82,12 @@ where
         Ok(())
     }
 
-    fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError> {
-        let mut response: Op::Response = self
+    fn finish(self, _reply: Reply) -> Result<Op::Response, ProviderError> {
+        Ok(self
             .value
             .ok_or_else(|| {
                 ProviderError::Response(format!("{} reply carried no payload", Op::NAME))
             })?
-            .into();
-        Op::stamp_reply(&mut response, reply);
-        Ok(response)
+            .into())
     }
 }

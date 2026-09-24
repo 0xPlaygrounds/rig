@@ -485,7 +485,7 @@ impl crate::wire::Decoder<Completion> for OllamaDecoder {
 
     /// EOF without a `done: true` record is truncation: no terminal record
     /// may be synthesized.
-    fn finish(&mut self, _out: &mut crate::operation::AdapterOutput) {}
+    fn finish(&mut self, _out: &mut crate::operation::AdapterOutput, _end: crate::wire::End) {}
 }
 
 /// The reply of `GET /api/tags`: every model the daemon has pulled.

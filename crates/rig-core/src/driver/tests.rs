@@ -26,8 +26,7 @@ use crate::test_utils::{
     RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
 };
 use crate::wire::{
-    Body, Decoder, Encoded, Mode, ObservationSink, Operation, Output, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Mode, ObservationSink, Output, Sink, Wire, WireEvent, WireFrame,
 };
 
 // ── the fake completion wire ────────────────────────────────────────────
@@ -766,11 +765,11 @@ async fn a_failed_listing_page_names_its_provider_and_path() {
 #[test]
 fn the_completion_operation_names_its_span_by_mode() {
     assert_eq!(
-        Completion::telemetry(false),
+        crate::telemetry::GenAiOperation::chat(false),
         crate::telemetry::GenAiOperation::Chat
     );
     assert_eq!(
-        Completion::telemetry(true),
+        crate::telemetry::GenAiOperation::chat(true),
         crate::telemetry::GenAiOperation::ChatStreaming
     );
 }
@@ -919,8 +918,8 @@ impl Decoder<Completion> for GuardedDecoder {
     /// guard exists for, reached without a second frame vocabulary.
     fn interpret(&mut self, _event: (), _out: &mut Output<Completion>) {}
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
-        if self.whole {
+    fn finish(&mut self, out: &mut Output<Completion>, end: crate::wire::End) {
+        if self.whole && end == crate::wire::End::Eof {
             out.error(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));

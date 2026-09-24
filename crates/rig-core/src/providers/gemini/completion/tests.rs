@@ -1994,9 +1994,12 @@ fn the_wire_keeps_its_span_names() {
     let wire = wire("gemini-2.5-flash");
     assert_eq!(
         Wire::telemetry(&wire, false),
-        GenAiOperation::GenerateContent
+        Some(GenAiOperation::GenerateContent)
     );
-    assert_eq!(Wire::telemetry(&wire, true), GenAiOperation::ChatStreaming);
+    assert_eq!(
+        Wire::telemetry(&wire, true),
+        Some(GenAiOperation::ChatStreaming)
+    );
 }
 
 /// An `inlineData` part is model output the *stream* vocabulary cannot
