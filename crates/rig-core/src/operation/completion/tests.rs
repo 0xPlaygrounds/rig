@@ -704,13 +704,66 @@ async fn a_complete_stream_whose_terminal_names_no_issuer_keeps_the_requested_fa
     while stream.next().await.is_some() {}
     let terminal = stream.response.as_ref().expect("the stream completed");
     assert_eq!(terminal.model, None, "the stream never reported a model");
-    assert_eq!(
-        terminal.reasoning_issuer, None,
-        "so its terminal names no issuer"
-    );
+    // The decoder named no issuer; the fold gave the terminal the up-front one.
+    assert_eq!(terminal.reasoning_issuer.as_deref(), Some("anthropic"));
 
     assert_eq!(stream.reasoning_issuer(), Some("anthropic"));
     let response = stream.finish().expect("a complete stream finishes");
+    let issuers: Vec<Option<&str>> = response
+        .choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.provider.as_deref()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(issuers, [Some("anthropic")], "{:?}", response.choice);
+}
+
+/// The bus path: an agent run takes a provider's stream as events, carries
+/// them across the effect bus serialized, and rebuilds a stream from them
+/// (`from_events`), which knows no up-front issuer. The model-less terminal
+/// must carry the requested family itself.
+#[tokio::test]
+async fn a_model_less_terminal_carries_the_requested_family_across_the_bus() {
+    use crate::completion::CompletionModel as _;
+    use crate::streaming::{StreamEvent, StreamEvents, StreamingCompletionResponse};
+    use futures::StreamExt;
+
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(vec![Ok(Bytes::from_static(
+        MODELLESS_OPENROUTER_CHAT.as_bytes(),
+    ))]);
+    let provider_stream = crate::driver::Bound::new(
+        OpenAI::with_key(&OPENROUTER, "test-key").chat("anthropic/claude-haiku-4.5"),
+        http,
+    )
+    .stream(history("unused"))
+    .await
+    .expect("the stream opens");
+    // What crosses the bus: each yielded event, serialized and read back.
+    let carried: Vec<StreamEvent> = provider_stream
+        .map(|event| {
+            let event = event.expect("a stream event");
+            let json = serde_json::to_value(&event).expect("serializes");
+            serde_json::from_value(json).expect("loads")
+        })
+        .collect()
+        .await;
+    let terminal = carried
+        .iter()
+        .find_map(|event| match event {
+            StreamEvent::Final(terminal) => Some(terminal),
+            _ => None,
+        })
+        .expect("the stream completed");
+    assert_eq!(terminal.model, None, "the stream never reported a model");
+    assert_eq!(terminal.issuer(), "anthropic");
+
+    let events: StreamEvents = Box::pin(futures::stream::iter(carried.into_iter().map(Ok)));
+    let mut rebuilt = StreamingCompletionResponse::from_events("default", events);
+    while rebuilt.next().await.is_some() {}
+    assert_eq!(rebuilt.reasoning_issuer(), Some("anthropic"));
+    let response = rebuilt.finish().expect("a complete stream finishes");
     let issuers: Vec<Option<&str>> = response
         .choice
         .iter()
