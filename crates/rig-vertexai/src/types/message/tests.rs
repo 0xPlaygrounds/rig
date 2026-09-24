@@ -57,9 +57,7 @@ fn test_assistant_image_response_round_trips_through_history_in_order() {
                 ]),
         ),
     ]);
-    let response: CompletionResponse = response
-        .complete()
-        .expect("image response should convert");
+    let response: CompletionResponse = response.complete().expect("image response should convert");
 
     let content: vertexai::model::Content = RigMessage(Message::Assistant {
         id: None,

@@ -60,7 +60,11 @@ impl Wire for Images {
         Some(&self.model)
     }
 
-    fn encode(&self, request: ImageGenerationRequest, _mode: Mode) -> Result<InvokeModel, EncodeError> {
+    fn encode(
+        &self,
+        request: ImageGenerationRequest,
+        _mode: Mode,
+    ) -> Result<InvokeModel, EncodeError> {
         let request = TextToImageGeneration::new(request.prompt)
             .width(request.width)
             .height(request.height);
@@ -81,8 +85,10 @@ impl Transport<Images> for BedrockRuntime {
         payload: InvokeModel,
         _mode: Mode,
         _observation: Option<Observation>,
-    ) -> Result<impl Future<Output = Opened<InvokeModel, Vec<u8>>> + Send + 'static + use<>, ProviderError>
-    {
+    ) -> Result<
+        impl Future<Output = Opened<InvokeModel, Vec<u8>>> + Send + 'static + use<>,
+        ProviderError,
+    > {
         let runtime = self.clone();
         Ok(async move {
             let sent = runtime

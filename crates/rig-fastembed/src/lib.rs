@@ -201,6 +201,9 @@ impl Decoder<Embedding, (Vec<String>, Vec<Vec<f32>>)> for FastembedDecoder {
                 vec: vector.into_iter().map(f64::from).collect(),
             })
             .collect();
-        out.push(Ok(embeddings::EmbeddingResponse::new(embeddings, "fastembed")));
+        out.push(Ok(embeddings::EmbeddingResponse::new(
+            embeddings,
+            "fastembed",
+        )));
     }
 }

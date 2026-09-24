@@ -205,11 +205,12 @@ impl Decoder<rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecod
 
     fn finish(&mut self, out: &mut Output<rig_core::operation::Embedding>) {
         out.push(match self.failure.take() {
-            None => Ok(
-                embeddings::EmbeddingResponse::new(std::mem::take(&mut self.embeddings), PROVIDER_NAME)
-                    .with_usage(self.usage)
-                    .with_raw(serde_json::Value::Array(std::mem::take(&mut self.raw))),
-            ),
+            None => Ok(embeddings::EmbeddingResponse::new(
+                std::mem::take(&mut self.embeddings),
+                PROVIDER_NAME,
+            )
+            .with_usage(self.usage)
+            .with_raw(serde_json::Value::Array(std::mem::take(&mut self.raw)))),
             Some(error) => Err(ProviderError::Response(error.to_string())),
         });
     }

@@ -54,9 +54,10 @@ fn stream_of(model: &str, events: Vec<aws_bedrock::ConverseStreamOutput>) -> Com
 fn folded(items: Vec<Result<StreamEvent, ProviderError>>) -> CompletionStream {
     CompletionStream::relay(
         PROVIDER_NAME,
-        Box::pin(futures::stream::iter(items).map(|item| {
-            item.map_err(|error| ErrorReport::from(&error))
-        })),
+        Box::pin(
+            futures::stream::iter(items)
+                .map(|item| item.map_err(|error| ErrorReport::from(&error))),
+        ),
     )
 }
 
@@ -838,7 +839,11 @@ async fn a_scripted_streams_terminal_carries_raw() {
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = stream.folded().terminal().cloned().expect("terminal record");
+    let terminal = stream
+        .folded()
+        .terminal()
+        .cloned()
+        .expect("terminal record");
 
     let raw = &terminal.raw;
     let typed: BedrockStreamingResponse =

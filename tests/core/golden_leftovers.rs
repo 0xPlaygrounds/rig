@@ -348,7 +348,7 @@ async fn required_rerank_effect_log_is_the_golden_fixture() {
         driver
             .register_erased(
                 HandlerKey::from("host/rerank"),
-                ErasedHandler::new(rig::serve::adapters::RerankAdapter::new("host", MockRerank)),
+                ErasedHandler::new(rig::serve::adapters::ModelAdapter::new("host", rig::Model::new(MockRerank, MockRerank))),
             )
             .expect("a fresh key");
     })

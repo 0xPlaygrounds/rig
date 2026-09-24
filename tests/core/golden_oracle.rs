@@ -33,8 +33,9 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
     driver
         .register_erased(
             HandlerKey::from(RERANK_KEY),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::RerankAdapter::new(
-                "host", MockRerank,
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
+                "host",
+                rig::Model::new(MockRerank, MockRerank),
             )),
         )
         .expect("a fresh key");

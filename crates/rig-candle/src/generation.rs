@@ -581,7 +581,6 @@ pub struct InferredCompletion {
     pub(crate) choice: Vec<AssistantContent>,
 }
 
-
 /// One event of a local generation, as the generator hands it to the
 /// streaming adapter.
 ///

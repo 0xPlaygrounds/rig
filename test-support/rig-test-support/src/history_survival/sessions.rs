@@ -12,7 +12,6 @@
 
 use serde_json::Value;
 
-use rig_agent::completion::CompletionModel;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
 use rig_core::message::{
     AssistantContent, Message, ReasoningContent, ToolResultContent, UserContent,
@@ -67,14 +66,19 @@ fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
 /// Record the first turn on `first`, persist and reload its history, answer
 /// the call, and continue on `second` (the same model, or another model of
 /// the same provider).
-pub async fn run<A, B>(first: A, second: B, cell: Cell)
-where
-    A: CompletionModel,
-    B: CompletionModel,
+pub async fn run<W, T, Wm, Tr>(
+    first: rig_core::driver::Model<W, T>,
+    second: rig_core::driver::Model<Wm, Tr>,
+    cell: Cell,
+) where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    Tr: rig_core::driver::Transport<Wm>,
 {
     let loaded = turn_one(&first, cell).await;
     let answer = second
-        .completion(request(cell, loaded))
+        .call(request(cell, loaded), None)
         .await
         .unwrap_or_else(|error| {
             panic!(
@@ -88,14 +92,19 @@ where
 /// Record the first turn on `first`, then checkpoint a world holding the
 /// continuation, restore it into a fresh world whose model handler is
 /// `second`, and let the restored world send it.
-pub async fn run_checkpoint<A, B>(first: A, second: B, cell: Cell)
-where
-    A: CompletionModel,
-    B: CompletionModel + Clone + 'static,
+pub async fn run_checkpoint<W, T, Wm, Tr>(
+    first: rig_core::driver::Model<W, T>,
+    second: rig_core::driver::Model<Wm, Tr>,
+    cell: Cell,
+) where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    Tr: rig_core::driver::Transport<Wm>,
 {
     use bevy_app::App;
     use rig_core::effect::{EffectKind, Outcome};
-    use rig_core::serve::{ErasedHandler, adapters::CompletionAdapter};
+    use rig_core::serve::{ErasedHandler, adapters::ModelAdapter};
     use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect};
     use rig_ecs::checkpoint::{Checkpoint, RestoreMode, load_world, save_world};
 
@@ -107,9 +116,9 @@ where
         app.cleanup();
         app
     }
-    let handler = |model: B| {
+    let handler = |model: rig_core::driver::Model<Wm, Tr>| {
         ErasedHandler::new(crate::ecs_agent::RuntimeHandler {
-            inner: std::sync::Arc::new(CompletionAdapter::new("session", model)),
+            inner: std::sync::Arc::new(ModelAdapter::new("session", model)),
             runtime: crate::ecs_agent::io_runtime(),
         })
     };
@@ -166,12 +175,16 @@ where
 
 /// Run turn one and return its history (prompt, reply, tool result) after a
 /// JSON persistence round trip that must preserve it exactly.
-async fn turn_one<A: CompletionModel>(first: &A, cell: Cell) -> Vec<Message> {
+async fn turn_one<W, T>(first: &rig_core::driver::Model<W, T>, cell: Cell) -> Vec<Message>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+{
     let prompt = Message::user(
         "Think it through, then call lookup_code for record alpha. Do not guess the code.",
     );
     let reply = first
-        .completion(request(cell, vec![prompt.clone()]))
+        .call(request(cell, vec![prompt.clone()]), None)
         .await
         .unwrap_or_else(|error| panic!("[{}] turn one: {error}", cell.provider));
     let call = reply
@@ -275,9 +288,10 @@ fn assert_answer(cell: Cell, choice: &[AssistantContent]) {
 /// An agent with conversation memory answers a tool-using prompt, then a
 /// second prompt in the same conversation, streamed or not. The second
 /// prompt's request is built from what the agent wrote to memory.
-pub async fn run_memory<A>(model: A, cell: Cell, streamed: bool)
+pub async fn run_memory<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell, streamed: bool)
 where
-    A: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     use futures::StreamExt;
     use rig_agent::agent::{AgentBuilder, MultiTurnStreamItem};

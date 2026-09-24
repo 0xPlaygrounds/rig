@@ -4,15 +4,11 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Text};
 
-
 use super::{
-    converse_output::{
-        ContentBlock, ReasoningContentBlock, StopReason, TokenUsage,
-    },
+    converse_output::{ContentBlock, ReasoningContentBlock, StopReason, TokenUsage},
     json::AwsDocument,
 };
 use rig_core::completion;
-
 
 /// Normalize Bedrock token counts into rig's usage record. Shared by the
 /// unary response path and the streaming terminal record.

@@ -6,11 +6,11 @@ use crate::types::{
 };
 
 use crate::completion::{Converse, ConverseFrame, ConverseRequest};
+use aws_sdk_bedrockruntime::types as aws_bedrock;
+use base64::{Engine as _, prelude::BASE64_STANDARD};
 use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::wire::{Mode, Wire as _};
-use aws_sdk_bedrockruntime::types as aws_bedrock;
-use base64::{Engine as _, prelude::BASE64_STANDARD};
 use rig_core::{
     completion,
     message::{AssistantContent, ReasoningContent},
@@ -64,7 +64,9 @@ fn complete_as(
 }
 
 /// `output` as a Nova model's Converse endpoint answers it.
-fn complete(output: InternalConverseOutput) -> Result<completion::CompletionResponse, ProviderError> {
+fn complete(
+    output: InternalConverseOutput,
+) -> Result<completion::CompletionResponse, ProviderError> {
     complete_as("amazon.nova-pro-v1:0", output)
 }
 
@@ -143,8 +145,8 @@ fn aws_converse_output_preserves_parallel_tool_calls_in_completion_response() {
         ),
     ];
 
-    let completion = complete(make_output_with_content(content, None))
-        .expect("conversion should succeed");
+    let completion =
+        complete(make_output_with_content(content, None)).expect("conversion should succeed");
 
     let choice: Vec<_> = completion.choice.into_iter().collect();
     assert_eq!(choice.len(), 3);
@@ -668,8 +670,7 @@ fn aws_converse_output_round_trips_through_serde_json_value() {
     );
     assert!(value.get("trace").is_none(), "SDK-typed extras are skipped");
 
-    let back: InternalConverseOutput =
-        serde_json::from_value(value.clone()).expect("deserialize");
+    let back: InternalConverseOutput = serde_json::from_value(value.clone()).expect("deserialize");
     assert_eq!(
         serde_json::to_value(&back).expect("re-serialize"),
         value,

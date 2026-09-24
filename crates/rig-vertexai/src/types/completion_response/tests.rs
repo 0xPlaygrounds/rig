@@ -19,7 +19,8 @@ impl Transport<crate::completion::GenerateContent> for Reply {
                 crate::completion::VertexRequest,
                 vertexai::model::GenerateContentResponse,
             >,
-        > + Send
+        >
+        + Send
         + 'static
         + use<>,
         ProviderError,

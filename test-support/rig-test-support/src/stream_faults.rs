@@ -28,8 +28,6 @@ use rig_agent::agent::StreamingError;
 
 use rig_agent::agent::StreamingResult;
 
-use rig_agent::completion::CompletionModel;
-
 use rig_agent::completion::PromptError;
 
 use rig_core::effect::EffectFamily;
@@ -695,8 +693,11 @@ impl NativeRun {
 /// Drive one streamed native run of `prompt` on a fresh world over `model`
 /// with an agent-level budget of two turns; `configure` shapes the agent
 /// before the run is spawned.
-pub async fn native_run(
-    model: impl CompletionModel + 'static,
+pub async fn native_run<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
     prompt: &str,
     witness: bool,

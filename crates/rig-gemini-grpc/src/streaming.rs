@@ -229,10 +229,10 @@ fn terminal_record(
         .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
 
     streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage, raw)
-    .with_optional_finish_reason(finish_reason)
-    .with_optional_response_id(Some(response.response_id.clone()).filter(|id| !id.is_empty()))
-    .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty()))
-    .with_reasoning_issuer(super::completion::REASONING_ISSUER)
+        .with_optional_finish_reason(finish_reason)
+        .with_optional_response_id(Some(response.response_id.clone()).filter(|id| !id.is_empty()))
+        .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty()))
+        .with_reasoning_issuer(super::completion::REASONING_ISSUER)
 }
 
 #[cfg(test)]

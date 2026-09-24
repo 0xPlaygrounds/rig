@@ -12,12 +12,12 @@
 use rig_core::completion::{CompletionRequest, CompletionRequestBuilder, FinishReason};
 use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
-use rig_core::wire::Mode;
-use rig_gemini_grpc::completion::{GenerateContent, GrpcFrame};
 use rig_core::test_utils::streaming_conformance::{
     InterleavedReasoningFixture, ProviderWireFixture, WireDriver, WireInput, event_frame,
     fixtures::drain,
 };
+use rig_core::wire::Mode;
+use rig_gemini_grpc::completion::{GenerateContent, GrpcFrame};
 use rig_gemini_grpc::proto;
 
 /// Replays scripted protobuf chunks as a streamed reply.
@@ -33,10 +33,7 @@ impl Transport<GenerateContent> for Scripted {
         _mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<proto::GenerateContentRequest, GrpcFrame>>
-        + Send
-        + 'static
-        + use<>,
+        impl Future<Output = Opened<proto::GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
         ProviderError,
     > {
         let chunks = std::mem::take(

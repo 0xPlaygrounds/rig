@@ -404,14 +404,18 @@ async fn collect_terminal(mut stream: streaming::CompletionStream) -> streaming:
 async fn stream_from_events_terminal_carries_raw() {
     let mut stream = stream_from_events(
         vec![response(vec![text_part("hi")], 0), terminal_frame()]
-        .into_iter()
-        .map(Ok)
-        .collect(),
+            .into_iter()
+            .map(Ok)
+            .collect(),
     );
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = stream.folded().terminal().cloned().expect("terminal record");
+    let terminal = stream
+        .folded()
+        .terminal()
+        .cloned()
+        .expect("terminal record");
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =

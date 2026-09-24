@@ -21,17 +21,21 @@ impl Transport<GenerateContent> for Scripted {
     > {
         let replies = std::mem::take(&mut *self.0.lock().expect("script lock"));
         Ok(async move {
-            Opened::new(futures::stream::iter(replies.into_iter().map(move |reply| {
-                reply.map(|reply| match mode {
-                    Mode::Unary => GrpcFrame::Whole(Box::new(reply)),
-                    Mode::Streaming => GrpcFrame::Chunk(reply),
-                })
-            })))
+            Opened::new(futures::stream::iter(replies.into_iter().map(
+                move |reply| {
+                    reply.map(|reply| match mode {
+                        Mode::Unary => GrpcFrame::Whole(Box::new(reply)),
+                        Mode::Streaming => GrpcFrame::Chunk(reply),
+                    })
+                },
+            )))
         })
     }
 }
 
-fn scripted(replies: Vec<Result<GenerateContentResponse, ProviderError>>) -> Model<GenerateContent, Scripted> {
+fn scripted(
+    replies: Vec<Result<GenerateContentResponse, ProviderError>>,
+) -> Model<GenerateContent, Scripted> {
     Model::new(
         GenerateContent::new(GEMINI_2_5_FLASH),
         Scripted(std::sync::Arc::new(std::sync::Mutex::new(replies))),
@@ -53,7 +57,9 @@ pub(crate) fn complete(
 pub(crate) fn stream_from_events(
     chunks: Vec<Result<GenerateContentResponse, ProviderError>>,
 ) -> CompletionStream {
-    scripted(chunks).stream(hello(), None).expect("the stream opens")
+    scripted(chunks)
+        .stream(hello(), None)
+        .expect("the stream opens")
 }
 
 // ============================================================

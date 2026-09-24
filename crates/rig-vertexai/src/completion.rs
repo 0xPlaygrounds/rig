@@ -74,7 +74,11 @@ impl Wire for GenerateContent {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<VertexRequest, EncodeError> {
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<VertexRequest, EncodeError> {
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"

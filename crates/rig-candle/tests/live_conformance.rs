@@ -19,7 +19,9 @@ async fn raw_completion(
     model: &Model<Generation, CandleModel>,
     request: CompletionRequest,
 ) -> Result<CandleCompletionResponse, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(serde_json::from_value(model.call(request, None).await?.raw)?)
+    Ok(serde_json::from_value(
+        model.call(request, None).await?.raw,
+    )?)
 }
 
 fn model() -> Result<Model<Generation, CandleModel>, Box<dyn std::error::Error + Send + Sync>> {
@@ -76,12 +78,15 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
     let loaded_model = model()?;
 
     let simple = tokio::time::timeout(Duration::from_secs(300), async {
-        raw_completion(&loaded_model, loaded_model
-                    .completion_request("Answer with only the capital of France.")
-                    .temperature(0.0)
-                    .max_tokens(32)
-                    .build())
-            .await
+        raw_completion(
+            &loaded_model,
+            loaded_model
+                .completion_request("Answer with only the capital of France.")
+                .temperature(0.0)
+                .max_tokens(32)
+                .build(),
+        )
+        .await
     })
     .await??;
     if !simple.text.contains("Paris") {

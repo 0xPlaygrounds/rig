@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use serde_json::Value;
 
 use rig_agent::agent::AgentBuilder;
-use rig_agent::completion::CompletionModel;
 use rig_core::completion::CompletionResponse;
 use rig_core::driver::WireDriver;
 use rig_core::error::ProviderError;
@@ -24,7 +23,7 @@ use rig_core::providers::anthropic::wire::Anthropic;
 use rig_core::providers::gemini::Gemini;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
-use rig_core::wire::{Fold, HasCompletion, Mode, Reply, Wire, WireFrame};
+use rig_core::wire::{Fold, Mode, Reply, Wire, WireFrame};
 
 use super::{Dialect, response_tokens, string_values, unpaired_tool_calls};
 use crate::reasoning::{TOOL_SYSTEM_PROMPT, TOOL_USER_PROMPT, WeatherTool};
@@ -40,7 +39,7 @@ pub const FOLLOW_UP: &str = "Using the weather you already retrieved, should I p
 /// without I/O: the exact normalization a live call would perform.
 pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, ProviderError>
 where
-    W: Wire<Op = Completion>,
+    W: Wire<Op = Completion, Frame = WireFrame>,
 {
     let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(body.to_owned()));
@@ -212,9 +211,10 @@ pub struct Observation {
 pub type Observed = Arc<std::sync::Mutex<Option<Observation>>>;
 
 /// Continue the ported history on the target wire.
-pub async fn run<M>(model: M, cell: Cell) -> Observation
+pub async fn run<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell) -> Observation
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let mut builder = AgentBuilder::new(model)

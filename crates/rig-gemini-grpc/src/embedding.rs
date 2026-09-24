@@ -95,8 +95,12 @@ impl Transport<Embeddings> for GeminiGrpc {
         _observation: Option<Observation>,
     ) -> Result<
         impl Future<
-            Output = Opened<Vec<(String, EmbedContentRequest)>, (String, proto::EmbedContentResponse)>,
-        > + Send
+            Output = Opened<
+                Vec<(String, EmbedContentRequest)>,
+                (String, proto::EmbedContentResponse),
+            >,
+        >
+        + Send
         + 'static
         + use<>,
         ProviderError,

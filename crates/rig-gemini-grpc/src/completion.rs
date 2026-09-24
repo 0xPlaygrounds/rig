@@ -19,19 +19,19 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
+use futures::StreamExt;
 use rig_core::completion::{self, CompletionRequest};
+use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
 use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
 };
 use rig_core::providers::gemini::{
     GEMINI_TEXT_EXTRAS_KEY, text_signature_extras, text_thought_signature,
 };
-use futures::StreamExt;
-use rig_core::driver::{Observation, Opened, Transport};
-use rig_core::error::EncodeError;
-use rig_core::operation::Completion;
 use rig_core::wire::{Mode, Wire};
 use std::convert::TryFrom;
 
@@ -323,7 +323,9 @@ pub(crate) fn create_grpc_request(
 
 fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, EncodeError> {
     match msg {
-        message::Message::System { .. } => Err(EncodeError::request("System messages must be sent via Gemini gRPC system_instruction")),
+        message::Message::System { .. } => Err(EncodeError::request(
+            "System messages must be sent via Gemini gRPC system_instruction",
+        )),
         message::Message::User { content } => {
             let parts = content
                 .into_iter()
@@ -363,7 +365,9 @@ fn rig_user_content_to_grpc_part(
                 .map(|content| match content {
                     message::ToolResultContent::Text(t) => Ok(serde_json::Value::String(t.text)),
                     message::ToolResultContent::Json { value } => Ok(value),
-                    message::ToolResultContent::Image(_) => Err(EncodeError::request("Gemini gRPC does not support images in tool results")),
+                    message::ToolResultContent::Image(_) => Err(EncodeError::request(
+                        "Gemini gRPC does not support images in tool results",
+                    )),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let result_value = if values.len() == 1 {
@@ -390,7 +394,9 @@ fn rig_user_content_to_grpc_part(
         }
         message::UserContent::Image(img) => {
             let Some(media_type) = img.media_type else {
-                return Err(EncodeError::request("Media type for image is required for Gemini"));
+                return Err(EncodeError::request(
+                    "Media type for image is required for Gemini",
+                ));
             };
 
             match media_type {
@@ -400,7 +406,9 @@ fn rig_user_content_to_grpc_part(
                 | message::ImageMediaType::HEIC
                 | message::ImageMediaType::HEIF => {}
                 _ => {
-                    return Err(EncodeError::request(format!("Unsupported image media type {media_type:?}")));
+                    return Err(EncodeError::request(format!(
+                        "Unsupported image media type {media_type:?}"
+                    )));
                 }
             }
 

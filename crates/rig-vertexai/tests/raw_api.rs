@@ -37,15 +37,14 @@ fn complete(reply: GenerateContentResponse) -> Result<CompletionResponse, Provid
 /// reads back as the SDK type.
 #[test]
 fn typed_raw_response_can_be_stored_and_recovered() -> anyhow::Result<()> {
-    let wire: GenerateContentResponse =
-        serde_json::from_value(serde_json::json!({
-            "responseId": "offline-vertex-response",
-            "candidates": [{
-                "content": {"role": "model", "parts": [{"text": "hello"}]},
-                "finishReason": 1,
-                "avgLogprobs": -0.25
-            }]
-        }))?;
+    let wire: GenerateContentResponse = serde_json::from_value(serde_json::json!({
+        "responseId": "offline-vertex-response",
+        "candidates": [{
+            "content": {"role": "model", "parts": [{"text": "hello"}]},
+            "finishReason": 1,
+            "avgLogprobs": -0.25
+        }]
+    }))?;
     anyhow::ensure!(wire.response_id == "offline-vertex-response");
     anyhow::ensure!(
         wire.candidates
@@ -58,8 +57,7 @@ fn typed_raw_response_can_be_stored_and_recovered() -> anyhow::Result<()> {
     anyhow::ensure!(
         matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "hello")
     );
-    let restored: GenerateContentResponse =
-        serde_json::from_value(response.raw)?;
+    let restored: GenerateContentResponse = serde_json::from_value(response.raw)?;
     anyhow::ensure!(restored.response_id == "offline-vertex-response");
     anyhow::ensure!(
         restored

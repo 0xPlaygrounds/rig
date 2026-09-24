@@ -13,11 +13,11 @@ use rig_candle::{
 use rig_core::completion::{CompletionRequest, CompletionRequestBuilder, FinishReason};
 use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
-use rig_core::wire::Mode;
 use rig_core::streaming::{BlockId, ToolCallEnd};
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
 };
+use rig_core::wire::Mode;
 
 type CandleEvent = GenerationEvent;
 

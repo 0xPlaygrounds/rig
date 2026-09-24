@@ -2,8 +2,8 @@ use std::io::Write;
 
 use anyhow::Context;
 use futures::StreamExt;
-use rig::candle::CandleCompletionResponse;
 use rig::Model;
+use rig::candle::CandleCompletionResponse;
 use rig::candle::{CandleModel, Generation, ModelData};
 use rig::streaming::{Delta, StreamEvent};
 

@@ -42,12 +42,17 @@ impl Transport<Generation> for Scripted {
         + use<>,
         ProviderError,
     > {
-        let events = std::mem::take(&mut *self.0.lock().map_err(|_| {
-            ProviderError::Provider("the script lock was poisoned".to_owned())
-        })?);
+        let events = std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .map_err(|_| ProviderError::Provider("the script lock was poisoned".to_owned()))?,
+        );
         Ok(async move {
             Opened::new(futures::stream::iter(
-                events.into_iter().map(|event| Ok(CandleFrame::Event(event))),
+                events
+                    .into_iter()
+                    .map(|event| Ok(CandleFrame::Event(event))),
             ))
         })
     }
@@ -57,8 +62,11 @@ impl Transport<Generation> for Scripted {
 fn stream_from_events(
     events: Vec<GenerationEvent>,
 ) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
-    rig_core::Model::new(Generation, Scripted(Arc::new(std::sync::Mutex::new(events))))
-        .stream(request(vec![Message::user("hello")]), None)
+    rig_core::Model::new(
+        Generation,
+        Scripted(Arc::new(std::sync::Mutex::new(events))),
+    )
+    .stream(request(vec![Message::user("hello")]), None)
 }
 
 /// One unary completion's local response record, read off its `raw`.
@@ -1238,7 +1246,8 @@ async fn closed_admission_controller_fails_public_operations()
     let model = CandleModel::builder(model_data()?).build()?;
     let loaded = &model.state;
     loaded.concurrency.close();
-    let completion_error = generation(&model).call(request(vec![Message::user("hello")]), None)
+    let completion_error = generation(&model)
+        .call(request(vec![Message::user("hello")]), None)
         .await
         .err()
         .ok_or("closed completion admission unexpectedly succeeded")?;
@@ -1247,7 +1256,8 @@ async fn closed_admission_controller_fails_public_operations()
             .to_string()
             .contains("concurrency controller is closed")
     );
-    let stream_error = generation(&model).stream(request(vec![Message::user("hello")]), None)
+    let stream_error = generation(&model)
+        .stream(request(vec![Message::user("hello")]), None)
         .err()
         .ok_or("closed stream admission unexpectedly succeeded")?;
     assert!(
@@ -1265,7 +1275,8 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
     let first_model = model.clone();
     let first = tokio::spawn(async move {
-        generation(&first_model).call(request(vec![Message::user("hello")]), None)
+        generation(&first_model)
+            .call(request(vec![Message::user("hello")]), None)
             .await
     });
     control.wait_until_entered().await;
@@ -1357,7 +1368,8 @@ async fn streaming_channel_applies_bounded_backpressure()
 async fn blocking_task_panic_maps_to_typed_completion_error()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, _, _) = controlled_model(false, true, 1)?;
-    let error = generation(&model).call(request(vec![Message::user("hello")]), None)
+    let error = generation(&model)
+        .call(request(vec![Message::user("hello")]), None)
         .await
         .err()
         .ok_or("blocking task panic unexpectedly succeeded")?;
@@ -1691,10 +1703,10 @@ async fn completion_raw_round_trips_into_the_local_record()
         .max_tokens(2)
         .build()?;
 
-    let response = generation(&model).call(request(vec![Message::user("hello")]), None)
+    let response = generation(&model)
+        .call(request(vec![Message::user("hello")]), None)
         .await?;
-    let escape_hatch = raw_completion(&model, request(vec![Message::user("hello")]))
-        .await?;
+    let escape_hatch = raw_completion(&model, request(vec![Message::user("hello")])).await?;
 
     assert!(
         !response.raw.is_null(),

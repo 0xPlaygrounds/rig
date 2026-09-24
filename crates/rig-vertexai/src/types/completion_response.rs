@@ -3,15 +3,15 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::Usage;
 use rig_core::error::ProviderError;
-use rig_core::operation::{AdapterOutput, Completion};
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
-use rig_core::streaming::StreamFinal;
-use rig_core::wire::Decoder;
 use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
 };
+use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
+use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::streaming::StreamFinal;
+use rig_core::wire::Decoder;
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
@@ -113,8 +113,8 @@ fn assistant_content(
 
     for part in content.parts.iter() {
         // Preserve opaque signature bytes as base64 for exact replay.
-        let signature = (!part.thought_signature.is_empty())
-            .then(|| BASE64.encode(&part.thought_signature));
+        let signature =
+            (!part.thought_signature.is_empty()).then(|| BASE64.encode(&part.thought_signature));
 
         if let Some(function_call) = part.function_call() {
             let args_json = function_call.args.as_ref().map_or_else(

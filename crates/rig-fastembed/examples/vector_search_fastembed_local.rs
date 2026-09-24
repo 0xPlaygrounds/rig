@@ -3,6 +3,7 @@ use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
+use rig_core::Model;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -10,7 +11,6 @@ use rig_core::{
         VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
     },
 };
-use rig_core::Model;
 use rig_fastembed::{Fastembed, TextEmbeddings};
 use serde::{Deserialize, Serialize};
 use std::path::Path;

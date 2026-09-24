@@ -19,16 +19,16 @@
 
 mod support;
 
-use google_cloud_aiplatform_v1::client::PredictionService;
 use futures::StreamExt;
+use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::Model;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, Text, ToolChoice, UserContent};
 use rig_core::streaming::StreamEvent;
+use rig_vertexai::VertexAi;
 use rig_vertexai::client::VertexAiClientError;
 use rig_vertexai::completion::GenerateContent;
-use rig_vertexai::VertexAi;
 use std::time::Duration;
 use support::{LocalEndpoint, Reply, SentinelCredentials, text_response, tool_call_response};
 
@@ -338,7 +338,10 @@ async fn a_streamed_call_re_emits_the_unary_reply() {
         }
     }
     assert_eq!(text, "streamed");
-    assert_eq!(terminals, 1, "the re-emitted reply ends with one terminal record");
+    assert_eq!(
+        terminals, 1,
+        "the re-emitted reply ends with one terminal record"
+    );
     let response = stream.finish().expect("a terminal record");
     assert!(
         matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "streamed")

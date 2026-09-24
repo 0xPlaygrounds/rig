@@ -228,7 +228,11 @@ impl Wire for Converse {
         (issuer != PROVIDER_NAME).then_some(issuer)
     }
 
-    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<ConverseRequest, EncodeError> {
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
         Ok(ConverseRequest {
             request: AwsCompletionRequest::new(request, self.prompt_caching),
