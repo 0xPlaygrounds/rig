@@ -41,6 +41,8 @@ pub(crate) struct FoldStep<'a> {
     /// Whether the terminal record names the provider (a stream that came
     /// over the bus) rather than the opener.
     pub provider_from_terminal: bool,
+    /// The reasoning issuer named before the terminal record, if any.
+    pub reasoning_issuer: Option<&'a str>,
 }
 
 /// What one fold step decided about an event.
@@ -88,6 +90,15 @@ pub(crate) fn absorb(step: FoldStep<'_>, event: StreamEvent) -> Absorbed {
             }
             if step.provider_from_terminal && !response.provider.is_empty() {
                 step.provider.clone_from(&response.provider);
+            }
+            // A terminal that names no issuer (a gateway stream that never
+            // reported its served model) carries the one named up front, so
+            // whatever reads the yielded record (the effect bus, a
+            // `from_events` stream, an observer) records the same issuer.
+            if response.reasoning_issuer.is_none()
+                && let Some(issuer) = step.reasoning_issuer
+            {
+                response.reasoning_issuer = Some(issuer.to_owned());
             }
             *step.response = Some(response.clone());
             Absorbed::Yield(StreamEvent::Final(response))
@@ -525,31 +536,23 @@ impl StreamingCompletionResponse {
         self
     }
 
-    /// The issuer this stream's reasoning records. Once the terminal record
-    /// has arrived: the issuer it names, else the issuer named up front, else
-    /// its provider. Before it: the issuer named up front, else the provider
-    /// that opened the stream. A terminal that names no issuer (a gateway
-    /// stream that never reported its served model) therefore keeps the
-    /// up-front issuer instead of falling back to the gateway. `None` before
+    /// The issuer this stream's reasoning records: the terminal record's
+    /// [`StreamFinal::issuer`] once it has arrived; before it, the issuer
+    /// named up front, else the provider that opened the stream. A terminal
+    /// that named no issuer was given the up-front one when it arrived, so a
+    /// gateway stream that never reported its served model keeps it instead
+    /// of falling back to the gateway. `None` before
     /// the terminal of a stream rebuilt from events ([`Self::from_events`]),
     /// whose opening label names a handler, not an issuer: its reasoning is
     /// then of unknown provenance.
     pub fn reasoning_issuer(&self) -> Option<&str> {
         match &self.response {
-            Some(terminal) => Some(self.terminal_issuer(terminal)),
+            Some(terminal) => Some(terminal.issuer()),
             None => self
                 .reasoning_issuer
                 .as_deref()
                 .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
         }
-    }
-
-    fn terminal_issuer<'a>(&'a self, terminal: &'a StreamFinal) -> &'a str {
-        terminal
-            .reasoning_issuer
-            .as_deref()
-            .or(self.reasoning_issuer.as_deref())
-            .unwrap_or_else(|| terminal.issuer())
     }
 
     /// Returns the accumulated choice without consuming it.
@@ -573,7 +576,7 @@ impl StreamingCompletionResponse {
                     .to_owned(),
             ));
         };
-        let issuer = self.terminal_issuer(terminal).to_owned();
+        let issuer = terminal.issuer().to_owned();
         Ok(fold_finish(
             self.accumulator,
             Some(terminal),
@@ -675,6 +678,7 @@ impl Stream for StreamingCompletionResponse {
                         message_id: &mut stream.message_id,
                         provider: &mut stream.provider,
                         provider_from_terminal: stream.provider_from_terminal,
+                        reasoning_issuer: stream.reasoning_issuer.as_deref(),
                     };
                     match absorb(step, event) {
                         Absorbed::Yield(event) => Poll::Ready(Some(Ok(event))),
