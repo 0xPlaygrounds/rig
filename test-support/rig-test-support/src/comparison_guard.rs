@@ -31,7 +31,11 @@ use crate::scenario_registry::ScenarioError;
 ///   `.get` (`observation.raw["extras"]`).
 ///
 /// A `CassetteMode::Replay` arm, a branch taken only in replay, and the
-/// `else` of a branch that rules replay out are exempt. Keys match in any
+/// `else` of a branch that rules replay out are exempt; a `matches!` or
+/// `if let` pattern selects replay only when every alternative is `Replay`.
+/// A `for (key, value)` loop over a binding of a recorded document's
+/// `.as_object()` is checked too, and any name a `let` pattern binds shadows
+/// an earlier recorded binding. Keys match in any
 /// ASCII case, and a comparison with `None` (a presence check) is exempt.
 /// Each finding names its function or method.
 pub fn exact_volatile_comparisons(
@@ -44,6 +48,7 @@ pub fn exact_volatile_comparisons(
         function: String::new(),
         replay_depth: 0,
         recorded_bindings: Vec::new(),
+        recorded_objects: Vec::new(),
         findings: Vec::new(),
     };
     visitor.visit_file(&syntax);
@@ -56,6 +61,9 @@ struct GuardVisitor<'a> {
     replay_depth: usize,
     /// Local names bound to a recorded document in the current function.
     recorded_bindings: Vec<String>,
+    /// Local names bound to a recorded document's JSON object
+    /// (`let object = recorded.as_object().unwrap()`).
+    recorded_objects: Vec<String>,
     findings: Vec<String>,
 }
 
@@ -158,14 +166,69 @@ fn is_replay_condition(expr: &Expr) -> bool {
             }
             _ => false,
         },
-        Expr::Macro(mac) => mac.mac.path.is_ident("matches") && mentions(&mac.mac.tokens, "Replay"),
-        Expr::Let(binding) => {
-            let pattern = &binding.pat;
-            mentions(&quote::quote!(#pattern), "Replay")
+        Expr::Macro(mac) => {
+            mac.mac.path.is_ident("matches")
+                && matches_pattern(&mac.mac).is_some_and(|pattern| is_replay_pattern(&pattern))
         }
+        Expr::Let(binding) => is_replay_pattern(&binding.pat),
         Expr::Paren(paren) => is_replay_condition(&paren.expr),
         _ => false,
     }
+}
+
+/// The pattern of a `matches!(expression, pattern)` call, ignoring any
+/// `if` guard after it.
+fn matches_pattern(mac: &Macro) -> Option<Pat> {
+    mac.parse_body_with(|input: syn::parse::ParseStream<'_>| {
+        input.parse::<Expr>()?;
+        input.parse::<Token![,]>()?;
+        let pattern = Pat::parse_multi_with_leading_vert(input)?;
+        input.parse::<TokenStream>()?;
+        Ok(pattern)
+    })
+    .ok()
+}
+
+/// Every name a pattern binds: `recorded` in `let (recorded, _) = …`.
+fn bound_names(pattern: &Pat, names: &mut Vec<String>) {
+    match pattern {
+        Pat::Ident(ident) => names.push(ident.ident.to_string()),
+        Pat::Type(typed) => bound_names(&typed.pat, names),
+        Pat::Tuple(tuple) => tuple.elems.iter().for_each(|elem| bound_names(elem, names)),
+        Pat::TupleStruct(tuple) => tuple.elems.iter().for_each(|elem| bound_names(elem, names)),
+        Pat::Struct(fields) => fields
+            .fields
+            .iter()
+            .for_each(|field| bound_names(&field.pat, names)),
+        Pat::Reference(reference) => bound_names(&reference.pat, names),
+        Pat::Slice(slice) => slice.elems.iter().for_each(|elem| bound_names(elem, names)),
+        _ => {}
+    }
+}
+
+/// Whether `expr` is a recorded document's JSON object: a method chain
+/// through `as_object` (and `unwrap`, `expect`, `clone`, `cloned`, `?`) on a
+/// recorded document.
+fn is_recorded_object(expr: &Expr, bindings: &[String]) -> bool {
+    fn walk(expr: &Expr, bindings: &[String], seen_object: bool) -> bool {
+        match expr {
+            Expr::MethodCall(call) => {
+                let method = call.method.to_string();
+                match method.as_str() {
+                    "as_object" => walk(&call.receiver, bindings, true),
+                    "unwrap" | "expect" | "clone" | "cloned" => {
+                        walk(&call.receiver, bindings, seen_object)
+                    }
+                    _ => false,
+                }
+            }
+            Expr::Reference(reference) => walk(&reference.expr, bindings, seen_object),
+            Expr::Paren(paren) => walk(&paren.expr, bindings, seen_object),
+            Expr::Try(attempt) => walk(&attempt.expr, bindings, seen_object),
+            expr => seen_object && is_recorded_document(expr, bindings),
+        }
+    }
+    walk(expr, bindings, false)
 }
 
 /// Whether a match arm's pattern selects replay only: `Replay`, or an
@@ -291,34 +354,44 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
         let outer = std::mem::replace(&mut self.function, node.sig.ident.to_string());
         let bindings = std::mem::take(&mut self.recorded_bindings);
+        let objects = std::mem::take(&mut self.recorded_objects);
         visit::visit_item_fn(self, node);
         self.recorded_bindings = bindings;
+        self.recorded_objects = objects;
         self.function = outer;
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         let outer = std::mem::replace(&mut self.function, node.sig.ident.to_string());
         let bindings = std::mem::take(&mut self.recorded_bindings);
+        let objects = std::mem::take(&mut self.recorded_objects);
         visit::visit_impl_item_fn(self, node);
         self.recorded_bindings = bindings;
+        self.recorded_objects = objects;
         self.function = outer;
     }
 
     fn visit_local(&mut self, node: &'ast syn::Local) {
-        let pattern = match &node.pat {
-            Pat::Type(typed) => typed.pat.as_ref(),
-            pattern => pattern,
+        // Every name the pattern binds shadows an earlier binding of it.
+        let mut names = Vec::new();
+        bound_names(&node.pat, &mut names);
+        let init = node.init.as_ref().map(|init| init.expr.as_ref());
+        let recorded = init.is_some_and(|init| is_recorded_document(init, &self.recorded_bindings));
+        let object = init.is_some_and(|init| is_recorded_object(init, &self.recorded_bindings));
+        self.recorded_bindings
+            .retain(|bound| !names.contains(bound));
+        self.recorded_objects.retain(|bound| !names.contains(bound));
+        let single = match &node.pat {
+            Pat::Type(typed) => matches!(typed.pat.as_ref(), Pat::Ident(_)),
+            Pat::Ident(_) => true,
+            _ => false,
         };
-        if let Pat::Ident(pattern) = pattern {
-            let name = pattern.ident.to_string();
-            let recorded = node
-                .init
-                .as_ref()
-                .is_some_and(|init| is_recorded_document(&init.expr, &self.recorded_bindings));
-            // A new binding of the name shadows the old one either way.
-            self.recorded_bindings.retain(|bound| *bound != name);
+        if single && let Some(name) = names.first() {
             if recorded {
-                self.recorded_bindings.push(name);
+                self.recorded_bindings.push(name.clone());
+            }
+            if object {
+                self.recorded_objects.push(name.clone());
             }
         }
         visit::visit_local(self, node);
@@ -381,12 +454,21 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
         if self.replay_depth == 0
             && let Pat::Tuple(tuple) = node.pat.as_ref()
             && let [Pat::Ident(key), Pat::Ident(value)] = tuple.elems.iter().collect::<Vec<_>>()[..]
-            && mentions(&quote::quote!(#iterated), "as_object")
+            && (mentions(&quote::quote!(#iterated), "as_object")
+                || matches!(root_of(&node.expr), Expr::Path(path)
+                if path.path.get_ident().is_some_and(|ident| {
+                    self.recorded_objects.iter().any(|name| ident == name)
+                })))
         {
             let block = &node.body;
             let body = quote::quote!(#block);
             let involves_recorded =
                 is_recorded_document(root_of(&node.expr), &self.recorded_bindings)
+                    || is_recorded_object(&node.expr, &self.recorded_bindings)
+                    || matches!(root_of(&node.expr), Expr::Path(path)
+                    if path.path.get_ident().is_some_and(|ident| {
+                        self.recorded_objects.iter().any(|name| ident == name)
+                    }))
                     || self
                         .recorded_bindings
                         .iter()
