@@ -926,10 +926,9 @@ async fn foreign_reasoning_in_history_is_refused_not_dropped()
         },
         Message::user("again"),
     ];
-    let error = generation(&model)
-        .call(request(history), None)
-        .await
-        .expect_err("the local prompt cannot render foreign reasoning");
+    let Err(error) = generation(&model).call(request(history), None).await else {
+        return Err("the local prompt cannot render foreign reasoning".into());
+    };
     assert!(
         error.to_string().contains("structured reasoning"),
         "the prompt protocol refuses it: {error}"
