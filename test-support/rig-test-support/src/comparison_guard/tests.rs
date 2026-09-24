@@ -313,3 +313,70 @@ fn an_entry_by_entry_loop_over_a_recorded_object_is_flagged() {
         "{found:?}"
     );
 }
+
+#[test]
+fn a_matches_pattern_with_another_mode_is_not_replay() {
+    let source = r#"
+        fn either_mode() {
+            if matches!(mode, CassetteMode::Replay | CassetteMode::Record) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if !matches!(mode, CassetteMode::Replay | CassetteMode::Record) {
+                assert!(raw.get("created").is_none());
+            } else {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+            if let CassetteMode::Replay | CassetteMode::Record = mode {
+                assert_eq!(raw["updated"], body["updated"]);
+            }
+        }
+        fn replay_only() {
+            if matches!(mode, CassetteMode::Replay) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if matches!(mode, CassetteMode::Replay if strict) {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        functions,
+        ["either_mode", "either_mode", "either_mode"],
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_loop_over_a_let_bound_recorded_object_is_flagged() {
+    let source = r#"
+        fn bound_object() {
+            let body = recorded_json_response("x", "cell");
+            let object = body.as_object().expect("an object");
+            for (key, value) in object {
+                assert_eq!(raw.get(key), Some(value));
+            }
+        }
+        fn rebound_by_a_tuple() {
+            let body = recorded_json_response("x", "cell");
+            let (body, _) = (live_document(), 0);
+            assert_eq!(raw["extras"], body);
+        }
+        fn a_live_object() {
+            let object = raw.as_object().expect("an object");
+            for (key, value) in object {
+                assert_eq!(copy.get(key), Some(value));
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["bound_object"], "{found:?}");
+}
