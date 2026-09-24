@@ -810,7 +810,7 @@ fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseSt
 }
 
 /// Drive `items` through the normalized pipeline exactly as the
-/// `CompletionModel` seam does, returning the terminal.
+/// `Model` seam does, returning the terminal.
 async fn normalized_terminal(items: Vec<Result<StreamEvent, ProviderError>>) -> StreamFinal {
     let mut stream = folded(items);
     while let Some(item) = stream.next().await {
@@ -853,7 +853,7 @@ async fn a_scripted_streams_terminal_carries_raw() {
 }
 
 /// The load-bearing streaming capture property at the seam
-/// `CompletionModel::stream` routes through: the terminal's `raw` is
+/// `Model::stream` routes through: the terminal's `raw` is
 /// Bedrock's own `BedrockStreamingResponse` — it deserializes back into
 /// that type and re-serializes identically — and re-normalizing that
 /// capture reproduces every normalized field. The Bedrock `stopReason`
@@ -958,4 +958,43 @@ async fn a_converse_stream_whose_send_fails_reports_it_in_band() {
         first.is_err(),
         "the failed send is the first item: {first:?}"
     );
+}
+
+/// A unary reply goes through the same fold as a stream, so an empty text
+/// block is no content on both paths.
+#[tokio::test]
+async fn an_empty_text_block_is_no_content_unary_or_streamed() {
+    use crate::types::converse_output::InternalConverseOutput;
+
+    let message = aws_bedrock::Message::builder()
+        .role(aws_bedrock::ConversationRole::Assistant)
+        .content(aws_bedrock::ContentBlock::Text(String::new()))
+        .build()
+        .expect("message builds");
+    let output: InternalConverseOutput =
+        aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
+            .output(aws_bedrock::ConverseOutput::Message(message))
+            .stop_reason(aws_bedrock::StopReason::EndTurn)
+            .build()
+            .expect("output builds")
+            .try_into()
+            .expect("output mirrors");
+    let unary = crate::types::assistant_content::tests::complete(output).expect("unary reply");
+
+    let mut stream = stream_of(
+        "amazon.nova-lite-v1:0",
+        vec![
+            text_delta_event(0, ""),
+            block_stop(0),
+            message_stop_event(aws_bedrock::StopReason::EndTurn),
+            metadata_event_with_usage(1, 0),
+        ],
+    );
+    while let Some(item) = stream.next().await {
+        item.expect("stream item");
+    }
+    let streamed = stream.finish().expect("streamed reply");
+
+    assert!(unary.choice.is_empty(), "{:?}", unary.choice);
+    assert!(streamed.choice.is_empty(), "{:?}", streamed.choice);
 }

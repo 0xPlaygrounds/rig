@@ -28,7 +28,7 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `raw_normalize_empty_stop_sequence` | `raw` beside normalized | empty choice | recorded |
-//! | 2 | `completion_empty_stop_sequence` | `CompletionModel::completion` | empty choice | recorded |
+//! | 2 | `completion_empty_stop_sequence` | `Model::call` | empty choice | recorded |
 //! | 3 | `agent_prompt_empty_stop_sequence` | agent `prompt` | empty text | recorded |
 //! | 4 | `streaming_empty_stop_sequence` | streamed twin | empty choice | recorded |
 //! | 5 | `agent_stream_empty_stop_sequence` | agent streamed twin | empty text | recorded |

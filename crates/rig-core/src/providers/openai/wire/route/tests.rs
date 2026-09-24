@@ -1,8 +1,7 @@
 //! The route's options, reached the way a caller reaches them.
 //!
-//! `crate::driver::Model<OpenAI>::completion` yields a `crate::driver::Model<OpenAiWire>`, so every
-//! per-route option has to be reachable through `Bound::map_wire` or it is
-//! not reachable at all. Each test below asserts on the *encoded request*:
+//! `OpenAI::completion` yields an `OpenAiWire`, so every per-route option
+//! has to be reachable on that wire or it is not reachable at all. Each test below asserts on the *encoded request*:
 //! an option that only sets a field the encoder ignores is not forwarded.
 
 use super::*;
@@ -54,8 +53,7 @@ fn request() -> CompletionRequest {
     }
 }
 
-/// What `provider`'s route sends after `option` went through
-/// [`Bound::map_wire`].
+/// What `provider`'s route sends after `option` rewrote its wire.
 fn body(provider: OpenAI, option: impl FnOnce(OpenAiWire) -> OpenAiWire) -> serde_json::Value {
     body_with_request(provider, option, request())
 }

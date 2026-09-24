@@ -1719,7 +1719,7 @@ async fn stream_from_events_terminal_carries_raw()
     Ok(())
 }
 
-/// Raw capture through the real `CompletionModel::completion` path on the
+/// Raw capture through the real `Model::call` path on the
 /// tiny in-crate model (greedy, so two runs generate the same tokens): `raw`
 /// deserializes back into `CandleCompletionResponse`, re-serializes
 /// identically, and reports the same text and token counts `raw_completion`
@@ -1763,7 +1763,7 @@ async fn completion_raw_round_trips_into_the_local_record()
     Ok(())
 }
 
-/// The streaming twin through the real `CompletionModel::stream` path: the
+/// The streaming twin through the real `Model::stream` path: the
 /// terminal `StreamFinal.raw` is the local record the generator's `Final`
 /// event carries — it round-trips into `CandleCompletionResponse`, agrees
 /// with a second stream's terminal on text and token counts, and

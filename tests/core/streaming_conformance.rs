@@ -117,7 +117,7 @@ mod copilot {
     }
 }
 
-/// The ChatGPT backend's LIVE SSE route: `ResponsesCompletionModel::stream`
+/// The ChatGPT backend's LIVE SSE route: `Model::stream` over the Responses wire
 /// relays the OpenAI Responses SSE wire (the envelope-repairing buffered
 /// replay is a separate pipeline, exercised by
 /// `terminal_body_content_merges_per_kind` below). The wire frames are the

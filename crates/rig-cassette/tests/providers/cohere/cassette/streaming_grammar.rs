@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
 //! through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
 //! record, usage, and finish reason.
 
 use futures::StreamExt;

@@ -1326,7 +1326,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
 }
 
 /// Raw-capture tests: the `/api/chat` reply driven end to end through
-/// `CompletionModel::completion` on the bound chat wire over the recording
+/// `Model::call` on the bound chat wire over the recording
 /// mock transport. Ollama has no request-id contract, so there is nothing
 /// transport-side to reattach; `CompletionResponse::raw` is the `/api/chat`
 /// body verbatim. The body carries the timing fields (`total_duration`,

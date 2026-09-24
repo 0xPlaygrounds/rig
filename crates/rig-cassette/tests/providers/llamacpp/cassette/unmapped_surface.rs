@@ -142,7 +142,7 @@ async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
 /// `multimodal_matrix.rs` a question worth asking rather than an assumption.
 ///
 /// It doubles as the evidence for the dialect's `verify_path`: this is the
-/// route `Bound::verify()` issues, so a successful verification is a
+/// route `Model::verify()` issues, so a successful verification is a
 /// successful `/props`.
 #[tokio::test]
 async fn props_states_which_model_and_modalities_produced_this_corpus() {

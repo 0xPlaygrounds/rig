@@ -1,5 +1,5 @@
 //! Typed-route parity for OpenAI: the provider-native view of a reply
-//! reproduces what `CompletionModel::completion` returns.
+//! reproduces what `Model::call` returns.
 //!
 //! # What this pins
 //!

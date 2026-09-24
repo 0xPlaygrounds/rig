@@ -295,7 +295,7 @@ fn stream_events_from_sse_body(
 }
 
 /// The response a decoded event sequence folds to: the operation's own
-/// fold — the one [`crate::driver::stream`] drains into — closed with the
+/// fold — the one `Model::stream` drains into — closed with the
 /// reply document the turn came from.
 fn folded_stream_events(
     provider: &str,

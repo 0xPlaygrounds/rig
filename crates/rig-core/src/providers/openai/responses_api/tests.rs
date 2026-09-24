@@ -2573,7 +2573,7 @@ fn output_without_usable_type_tag_decodes_to_unknown() {
 // exclusive on OpenAI's Responses API (400 `mutually_exclusive_parameters`),
 // so URL-backed PDFs must not carry the hardcoded `filename`. These tests
 // cover the `TryFrom<crate::completion::Message> for Vec<InputItem>` path
-// that `CompletionModel::completion()` requests actually go through.
+// that `Model::call` requests actually go through.
 //
 // See <https://platform.openai.com/docs/guides/pdf-files> for the
 // `input_file` content part and its `file_url` / `file_data` / `file_id`

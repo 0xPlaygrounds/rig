@@ -99,7 +99,7 @@ fn prompt() -> CompletionRequest {
     }
 }
 
-/// Fold a recorded unary body through the wire, as [`crate::driver::call`]
+/// Fold a recorded unary body through the wire, as `Model::call`
 /// does.
 async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResponse {
     crate::driver::Model::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
@@ -108,7 +108,7 @@ async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResp
         .expect("the recorded body folds")
 }
 
-/// Fold a recorded SSE body through the wire, as [`crate::driver::stream`]
+/// Fold a recorded SSE body through the wire, as `Model::stream`
 /// does, draining every event first.
 async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionResponse {
     let bound = crate::driver::Model::new(

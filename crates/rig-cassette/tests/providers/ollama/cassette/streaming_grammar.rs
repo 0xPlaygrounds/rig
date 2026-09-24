@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Ollama's native chat wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
 //! record, usage, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!

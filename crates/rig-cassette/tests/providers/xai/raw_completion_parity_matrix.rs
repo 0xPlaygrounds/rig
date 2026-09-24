@@ -1,6 +1,6 @@
 //! View parity on xAI: the provider-native fields in
 //! [`rig::completion::CompletionResponse::raw`] are what
-//! `CompletionModel::completion` reports.
+//! `Model::call` reports.
 //!
 //! **The contract.** xAI runs on the shared Responses model, so the provider
 //! reply captured in `raw` is the Responses [`CompletionResponse`] — a type

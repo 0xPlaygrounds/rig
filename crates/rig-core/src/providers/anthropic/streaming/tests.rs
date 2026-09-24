@@ -1898,7 +1898,7 @@ mod terminal_emission {
     /// pins it — so stamping the transport's 200 over every streamed frame
     /// would overwrite that meaning and flip a refusal's retry verdict.
     /// The unary driver's fold-failure decoration is scoped to one reply
-    /// and is where [`crate::driver::call`] supplies it.
+    /// and is where `Model::call` supplies it.
     #[tokio::test]
     async fn streamed_error_envelope_preserves_the_verbatim_body() {
         const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
@@ -2039,7 +2039,7 @@ mod terminal_emission {
     }
 
     /// Raw capture on the streaming terminal, through the real
-    /// `CompletionModel::stream` seam on `Bound` over the mock transport:
+    /// `Model::stream` seam on `Model` over the mock transport:
     /// the decoder serializes the native terminal onto the record it maps,
     /// so the terminal `StreamFinal.raw` is Anthropic's own
     /// `StreamingCompletionResponse`. A `message_delta` with

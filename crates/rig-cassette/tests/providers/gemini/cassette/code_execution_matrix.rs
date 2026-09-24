@@ -24,8 +24,8 @@
 //!
 //! | # | cell | transport | surface | dimension pinned |
 //! |---|------|-----------|---------|------------------|
-//! | 1 | `blocking_raw_model_answers_after_code_execution` | blocking | `CompletionModel::completion` | baseline: code parts skipped, text survives |
-//! | 2 | `streaming_raw_model_answers_after_code_execution` | streaming | `CompletionModel::stream` | parity twin of 1 |
+//! | 1 | `blocking_raw_model_answers_after_code_execution` | blocking | `Model::call` | baseline: code parts skipped, text survives |
+//! | 2 | `streaming_raw_model_answers_after_code_execution` | streaming | `Model::stream` | parity twin of 1 |
 //! | 3 | `blocking_agent_prompt_answers_after_code_execution` | blocking | `Agent::prompt` | agent surface |
 //! | 4 | `streaming_agent_prompt_answers_after_code_execution` | streaming | `Agent::prompt` | parity twin of 3 |
 //! | 5 | `blocking_raw_completion_keeps_native_code_parts` | blocking | `CompletionResponse::raw` | escape hatch still exposes the parts |

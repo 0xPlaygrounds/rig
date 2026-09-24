@@ -1,7 +1,7 @@
 //! Cassette-backed OpenAI Responses coverage for URL-backed PDF documents.
 //!
 //! Regression coverage for sending a `DocumentSourceKind::Url` PDF through
-//! `CompletionModel::completion()`: the request must carry `file_url` without
+//! `Model::call`: the request must carry `file_url` without
 //! the hardcoded `filename`, which the Responses API rejects alongside a URL
 //! with 400 `mutually_exclusive_parameters`.
 //! See <https://platform.openai.com/docs/guides/pdf-files>.

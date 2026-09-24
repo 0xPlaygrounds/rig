@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Gemini (REST `generateContent`
 //! streaming plus the Interactions API), asserted through the *normalized*
-//! path: the aggregated [`StreamingCompletionResponse::snapshot`], the terminal
+//! path: the aggregated [`CompletionStream::folded`] snapshot, the terminal
 //! [`StreamFinal`] record, usage, IDs, and finish reason — real recorded wire
 //! traffic, not synthetic chunks.
 //!

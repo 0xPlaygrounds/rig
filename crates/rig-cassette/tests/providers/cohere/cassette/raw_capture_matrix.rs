@@ -3,7 +3,7 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: `CompletionModel::completion` serializes the value
+//! Raw capture is always on: `Model::call` serializes the value
 //! its inherent `raw_completion` returned — Cohere's own [`CompletionResponse`]
 //! — onto [`rig::completion::CompletionResponse::raw`] before `try_into`
 //! normalizes it. There is no opt-in and nothing about it reaches the wire;

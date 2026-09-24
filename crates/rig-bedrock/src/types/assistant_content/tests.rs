@@ -64,7 +64,7 @@ fn complete_as(
 }
 
 /// `output` as a Nova model's Converse endpoint answers it.
-fn complete(
+pub(crate) fn complete(
     output: InternalConverseOutput,
 ) -> Result<completion::CompletionResponse, ProviderError> {
     complete_as("amazon.nova-pro-v1:0", output)
@@ -95,6 +95,43 @@ fn make_usage(input: i32, output: i32, total: i32) -> aws_bedrock::TokenUsage {
         .total_tokens(total)
         .build()
         .unwrap()
+}
+
+/// A unary call reports the Converse usage, cache counters included, and
+/// reports none when the reply carried none.
+#[test]
+fn a_unary_call_reports_the_converse_usage() {
+    let usage = aws_bedrock::TokenUsage::builder()
+        .input_tokens(100)
+        .output_tokens(50)
+        .total_tokens(150)
+        .cache_read_input_tokens(7)
+        .cache_write_input_tokens(3)
+        .build()
+        .unwrap();
+    let response = complete(make_output_with_content(
+        vec![aws_bedrock::ContentBlock::Text("x".into())],
+        Some(usage),
+    ))
+    .unwrap();
+    assert_eq!(
+        response.usage,
+        completion::Usage {
+            input_tokens: Some(100),
+            output_tokens: Some(50),
+            total_tokens: Some(150),
+            cached_input_tokens: Some(7),
+            cache_creation_input_tokens: Some(3),
+            ..Default::default()
+        }
+    );
+
+    let unreported = complete(make_output_with_content(
+        vec![aws_bedrock::ContentBlock::Text("x".into())],
+        None,
+    ))
+    .unwrap();
+    assert_eq!(unreported.usage, completion::Usage::default());
 }
 
 #[test]

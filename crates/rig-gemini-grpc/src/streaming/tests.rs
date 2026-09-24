@@ -377,7 +377,7 @@ fn terminal_frame() -> proto::GenerateContentResponse {
     }
 }
 
-/// Drive protobuf events through the pipeline the `CompletionModel` seam
+/// Drive protobuf events through the pipeline the `Model` seam
 /// uses, returning the terminal record.
 async fn normalized_terminal(
     events: Vec<proto::GenerateContentResponse>,
@@ -425,7 +425,7 @@ async fn stream_from_events_terminal_carries_raw() {
 }
 
 /// The load-bearing streaming capture property at the seam
-/// `CompletionModel::stream` routes through: the terminal's `raw` is
+/// `Model::stream` routes through: the terminal's `raw` is
 /// Gemini's own terminal `GenerateContentResponse` — it deserializes back
 /// into that prost message and re-serializes identically — and
 /// re-normalizing that capture reproduces every normalized field. The
