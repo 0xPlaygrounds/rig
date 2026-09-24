@@ -111,12 +111,17 @@ pub(crate) fn usage(body: &str) -> Option<(u64, u64)> {
             // A read costs less than an input token; a five-minute write 1.25
             // times one and a one-hour write twice one.
             let cache_read = count(usage, "cache_read_input_tokens").unwrap_or(0);
-            let cache_write = count(usage, "cache_creation_input_tokens").unwrap_or(0);
-            let hour_write = usage
-                .get("cache_creation")
+            let breakdown = usage.get("cache_creation");
+            let hour_write = breakdown
                 .and_then(|creation| count(creation, "ephemeral_1h_input_tokens"))
-                .unwrap_or(0)
-                .min(cache_write);
+                .unwrap_or(0);
+            let five_minute_write = breakdown
+                .and_then(|creation| count(creation, "ephemeral_5m_input_tokens"))
+                .unwrap_or(0);
+            // The total, else the breakdown's sum when only it was sent.
+            let cache_write = count(usage, "cache_creation_input_tokens")
+                .unwrap_or(hour_write + five_minute_write);
+            let hour_write = hour_write.min(cache_write);
             let short_write = cache_write - hour_write;
             return Some((
                 input + cache_read + (short_write * 5).div_ceil(4) + hour_write * 2,

@@ -120,22 +120,28 @@ impl<'ast> Visit<'ast> for DeclaringVisitor {
 
 /// The account failures a call from `caller` to a helper declares, given
 /// every definition of that helper name as (file, declared failures): the
-/// definition in the calling file, else the only one, else all of them when
-/// they agree. Same-named helpers in different files are never merged.
-/// Errors name the files when the definitions disagree and none is in
-/// `caller`: the call cannot be resolved without a module path.
+/// definitions in the calling file when there are any, else all of them,
+/// provided they agree. Same-named helpers are never merged. Errors name the
+/// files of the disagreeing definitions: the call cannot be resolved
+/// without a module path.
 pub fn wrapper_declarations<'a>(
     definitions: &'a [(std::path::PathBuf, std::collections::BTreeSet<String>)],
     caller: &std::path::Path,
 ) -> Result<std::collections::BTreeSet<String>, Vec<&'a std::path::Path>> {
-    if let Some((_, declared)) = definitions.iter().find(|(file, _)| file == caller) {
-        return Ok(declared.clone());
-    }
-    let mut distinct = definitions.iter().map(|(_, declared)| declared);
+    let local: Vec<_> = definitions
+        .iter()
+        .filter(|(file, _)| file == caller)
+        .collect();
+    let candidates: Vec<_> = if local.is_empty() {
+        definitions.iter().collect()
+    } else {
+        local
+    };
+    let mut distinct = candidates.iter().map(|(_, declared)| declared);
     match distinct.next() {
         None => Ok(std::collections::BTreeSet::new()),
         Some(first) if distinct.all(|declared| declared == first) => Ok(first.clone()),
-        Some(_) => Err(definitions.iter().map(|(file, _)| file.as_path()).collect()),
+        Some(_) => Err(candidates.iter().map(|(file, _)| file.as_path()).collect()),
     }
 }
 
