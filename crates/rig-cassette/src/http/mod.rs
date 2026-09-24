@@ -3145,9 +3145,10 @@ fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
 mod tests;
 
 /// A reqwest client that buffers unary responses and optionally records complete
-/// exchanges, preserving non-UTF-8 bodies as base64. Multipart requests are
-/// not recorded, but a file they upload is logged in the created-resource
-/// ledger; streaming requests pass through untouched.
+/// exchanges, preserving non-UTF-8 bodies as base64. Multipart and streaming
+/// requests are not recorded, but what they create is logged in the
+/// created-resource ledger: a streamed reply's SSE events before the chunk
+/// that completes each one reaches the caller.
 #[derive(Clone, Debug, Default)]
 pub struct DirectRecordingHttpClient {
     inner: rig_reqwest::ReqwestClient,
@@ -3250,7 +3251,94 @@ impl HttpClientExt for DirectRecordingHttpClient {
     where
         T: Into<Bytes> + Send,
     {
-        self.inner.send_streaming(req)
+        use futures::StreamExt as _;
+
+        let inner = self.inner.clone();
+        let recorder = self.recorder.clone();
+        let (parts, body) = req.into_parts();
+        let body: Bytes = body.into();
+        let method = parts.method.to_string();
+        let uri = parts.uri.to_string();
+        let request = HttpRequest::from_parts(parts, body.clone());
+        async move {
+            let response = inner.send_streaming(request).await?;
+            let Some(recorder) = recorder else {
+                return Ok(response);
+            };
+            let (parts, stream) = response.into_parts();
+            let status = parts.status.as_u16();
+            let tap = Arc::new(std::sync::Mutex::new(StreamLedgerTap {
+                recorder,
+                method,
+                uri,
+                request_body: body,
+                status,
+                pending: Vec::new(),
+            }));
+            let per_chunk = tap.clone();
+            let logged = stream
+                .map(move |chunk| {
+                    if let Ok(bytes) = &chunk
+                        && let Ok(mut tap) = per_chunk.lock()
+                    {
+                        tap.feed(bytes);
+                    }
+                    chunk
+                })
+                .chain(
+                    futures::stream::once(async move {
+                        if let Ok(mut tap) = tap.lock() {
+                            tap.finish();
+                        }
+                    })
+                    .filter_map(|()| async { None }),
+                );
+            let stream: http_client::BoxedStream = Box::pin(logged);
+            Ok(HttpResponse::from_parts(parts, stream))
+        }
+    }
+}
+
+/// Ledger logging for a streamed reply on the direct path: each complete SSE
+/// event is checked for created resources before the chunk that completed
+/// it reaches the caller. A body that is not SSE (one JSON document or
+/// array) is checked when the stream ends.
+struct StreamLedgerTap {
+    recorder: DirectRecorder,
+    method: String,
+    uri: String,
+    request_body: Bytes,
+    status: u16,
+    /// Bytes after the last complete event.
+    pending: Vec<u8>,
+}
+
+impl StreamLedgerTap {
+    fn feed(&mut self, bytes: &[u8]) {
+        self.pending.extend_from_slice(bytes);
+        let events = relay::complete_events(&self.pending);
+        let consumed: usize = events.iter().map(Vec::len).sum();
+        for event in events {
+            self.log(&event);
+        }
+        self.pending.drain(..consumed);
+    }
+
+    fn finish(&mut self) {
+        let rest = std::mem::take(&mut self.pending);
+        if !rest.iter().all(u8::is_ascii_whitespace) {
+            self.log(&rest);
+        }
+    }
+
+    fn log(&self, body: &[u8]) {
+        self.recorder.log_created(
+            &self.method,
+            &self.uri,
+            &self.request_body,
+            self.status,
+            body,
+        );
     }
 }
 

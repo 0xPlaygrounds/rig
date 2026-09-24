@@ -236,7 +236,7 @@ impl Tap {
 }
 
 /// Complete `\n\n`-terminated SSE events in `body`, each with its terminator.
-fn complete_events(body: &[u8]) -> Vec<Vec<u8>> {
+pub(crate) fn complete_events(body: &[u8]) -> Vec<Vec<u8>> {
     let mut events = Vec::new();
     let mut start = 0;
     let mut index = 0;
