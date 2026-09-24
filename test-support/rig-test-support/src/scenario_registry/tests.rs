@@ -218,4 +218,15 @@ fn same_named_helpers_in_different_files_are_not_merged() {
     ];
     assert_eq!(wrapper_declarations(&agreeing, &cells), Ok(set(&["Auth"])));
     assert_eq!(wrapper_declarations(&[], &cells), Ok(set(&[])));
+    // Two same-named methods in the calling file that disagree cannot be
+    // told apart either.
+    let same_file = [
+        (cells.clone(), set(&["Auth"])),
+        (cells.clone(), set(&[])),
+        (support.clone(), set(&["Auth"])),
+    ];
+    assert_eq!(
+        wrapper_declarations(&same_file, &cells),
+        Err(vec![cells.as_path(), cells.as_path()])
+    );
 }

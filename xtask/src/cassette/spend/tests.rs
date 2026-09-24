@@ -30,6 +30,13 @@ fn usage_is_read_from_every_provider_shape() {
         ),
         Some((4 * 2 + 10, 0))
     );
+    // Only the breakdown: its parts are the writes.
+    assert_eq!(
+        usage(
+            r#"{"usage":{"cache_creation":{"ephemeral_1h_input_tokens":4,"ephemeral_5m_input_tokens":8},"input_tokens":0,"output_tokens":0}}"#
+        ),
+        Some((4 * 2 + 10, 0))
+    );
     assert_eq!(
         usage(
             r#"{"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"thoughtsTokenCount":4}}"#

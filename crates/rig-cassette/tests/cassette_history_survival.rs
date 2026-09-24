@@ -53,9 +53,9 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
     (
         "xai/prompt_caching/streaming_probe.yaml",
         "reasoning_id",
-        "the streaming cache probe rebuilds its third turn's assistant message from the \
-         streamed text by design, and grok-3-mini's reasoning item here arrived without \
-         encrypted content under `store: false`, so xAI keeps nothing its id could name",
+        "the shared streaming cache probe rebuilds its third turn's assistant message \
+         from the streamed text alone by design (`run_cache_probe_streaming`), so any \
+         reasoning the second turn delivered is not sent back",
     ),
 ];
 

@@ -425,3 +425,50 @@ async fn the_direct_path_logs_a_streamed_creation_before_the_caller_reads_it() {
     let (seen, _) = stream_through_direct_client(&stateless, r#"{"store":false}"#).await;
     assert!(seen.iter().all(Vec::is_empty), "{seen:?}");
 }
+
+#[test]
+fn a_streamed_event_split_across_chunks_is_logged_when_it_completes() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let mut tap = StreamLedgerTap {
+        recorder: openai_direct_recorder(&ledger_path),
+        method: "POST".to_owned(),
+        uri: "https://api.openai.com/v1/responses".to_owned(),
+        request_body: Bytes::from_static(b"{}"),
+        status: 200,
+        pending: Vec::new(),
+    };
+    let (head, tail) = CREATED_STREAM.split_at(40);
+    tap.feed(head.as_bytes());
+    assert!(
+        ledger::outstanding(&ledger_path).is_empty(),
+        "half an event names nothing"
+    );
+    tap.feed(tail.as_bytes());
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_direct"]);
+    assert!(tap.pending.is_empty(), "every complete event was consumed");
+}
+
+#[test]
+fn only_successful_text_streams_are_tapped() {
+    let headers = |content_type: &str| {
+        let mut headers = http_client::HeaderMap::new();
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_str(content_type).expect("header"),
+        );
+        headers
+    };
+    assert!(StreamLedgerTap::taps(
+        200,
+        &headers("text/event-stream; charset=utf-8")
+    ));
+    assert!(StreamLedgerTap::taps(200, &headers("application/json")));
+    assert!(!StreamLedgerTap::taps(200, &headers("audio/mpeg")));
+    assert!(!StreamLedgerTap::taps(400, &headers("text/event-stream")));
+    assert!(!StreamLedgerTap::taps(200, &http_client::HeaderMap::new()));
+}
