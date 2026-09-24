@@ -728,6 +728,85 @@ fn only_gemini_reasoning_is_replayed() {
     assert_eq!(signatures, vec![b"grpc".as_slice(), b"rest".as_slice()]);
 }
 
+/// Answers with one text reply and keeps every request it was given.
+#[derive(Clone, Default)]
+struct Recording(std::sync::Arc<std::sync::Mutex<Vec<GenerateContentRequest>>>);
+
+impl Transport<GenerateContent> for Recording {
+    fn send(
+        &self,
+        request: GenerateContentRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        self.0.lock().expect("recording lock").push(request);
+        let reply = GenerateContentResponse {
+            candidates: vec![crate::proto::Candidate {
+                content: Some(crate::proto::Content {
+                    parts: vec![text_part("6".to_owned())],
+                    role: "model".to_owned(),
+                }),
+                finish_reason: crate::proto::candidate::FinishReason::Stop as i32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        Ok(async move {
+            Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(Box::new(
+                reply,
+            )))]))
+        })
+    }
+}
+
+/// Through the driver, which scopes history to the wire's replay issuers
+/// before encoding, Gemini's own reasoning still reaches the request.
+#[test]
+fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
+    use base64::Engine;
+    use rig_core::message::{AssistantContent, Reasoning};
+
+    let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
+    let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
+        AssistantContent::Reasoning(
+            Reasoning::new_with_signature(text, Some(signature(bytes))).with_provider(issuer),
+        )
+    };
+    let mut request = hello();
+    request.chat_history = vec![
+        message::Message::user("What is 2 + 2?"),
+        message::Message::Assistant {
+            id: None,
+            content: vec![
+                reasoning("gemini thought", b"gemini", REASONING_ISSUER),
+                reasoning("anthropic thought", b"anthropic", "anthropic"),
+                AssistantContent::text("4"),
+            ],
+        },
+        message::Message::user("And 3 + 3?"),
+    ];
+    let recording = Recording::default();
+    futures::executor::block_on(
+        Model::new(GenerateContent::new(GEMINI_2_5_FLASH), recording.clone()).call(request, None),
+    )
+    .expect("the call succeeds");
+
+    let sent = recording.0.lock().expect("recording lock");
+    let signatures: Vec<&[u8]> = sent
+        .first()
+        .expect("one request")
+        .contents
+        .iter()
+        .flat_map(|content| content.parts.iter())
+        .filter(|part| part.thought)
+        .map(|part| part.thought_signature.as_slice())
+        .collect();
+    assert_eq!(signatures, vec![b"gemini".as_slice()]);
+}
+
 /// A tool schema the shared Gemini conversion cannot flatten is a request that
 /// could not be built, as it is on the HTTP wire.
 #[test]
