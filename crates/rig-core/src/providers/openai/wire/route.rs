@@ -190,6 +190,10 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.replay_issuers(model))
     }
 
+    fn reasoning_issuer(&self, model: Option<&str>) -> Option<String> {
+        on_route!(self, wire => wire.reasoning_issuer(model))
+    }
+
     fn route(&self) -> Option<&str> {
         on_route!(self, wire => wire.route())
     }

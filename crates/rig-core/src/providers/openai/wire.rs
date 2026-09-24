@@ -1274,6 +1274,20 @@ fn model_vendor(model: &str) -> &str {
     vendor.trim_start_matches('~')
 }
 
+/// The issuer of the reasoning a reply to `model` over `dialect` carries,
+/// known from the request alone: for a gateway that relays upstream
+/// reasoning, the requested model's family ([`upstream_reasoning_issuer`]).
+/// A router or preset model (`openrouter/auto`, `@preset/name`) names no
+/// family, so its issuer is `<gateway>/<gateway>` or `<gateway>/@preset`,
+/// which only another router or preset request replays. `None` for a
+/// dialect that stamps no upstream issuer.
+pub(crate) fn request_reasoning_issuer(dialect: &Dialect, model: &str) -> Option<String> {
+    dialect
+        .quirks
+        .upstream_reasoning_issuer
+        .then(|| upstream_reasoning_issuer(dialect.name, model))
+}
+
 /// The reasoning issuers a request to `model` over `dialect` replays.
 ///
 /// A dialect without upstream issuers replays its own reasoning. A gateway

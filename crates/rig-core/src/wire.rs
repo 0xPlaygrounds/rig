@@ -418,6 +418,14 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
         vec![self.name().to_owned()]
     }
 
+    /// The issuer of the reasoning a reply to a request for `model` carries,
+    /// when the request already decides it. A stream records it from the
+    /// start, so a turn cut short before the terminal record keeps it. The
+    /// default is none: the terminal record, else this wire's name, decides.
+    fn reasoning_issuer(&self, _model: Option<&str>) -> Option<String> {
+        None
+    }
+
     /// Stable endpoint template for observation grouping, without base-URL
     /// prefixes or interpolated values. `None` uses the concrete request path.
     fn route(&self) -> Option<&str> {

@@ -35,6 +35,7 @@ use crate::rerank::{RerankModel, RerankResponse};
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::{TranscriptionModel, TranscriptionRequest, TranscriptionResponse};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wire::Operation;
 use crate::wire::Wire;
 
 /// The transport bound set every `Bound` model needs: `Clone` because a
@@ -77,11 +78,15 @@ where
         context: Option<AdapterContext>,
     ) -> Result<StreamingCompletionResponse, ProviderError> {
         let provider = self.wire.name().to_owned();
+        let issuer = self.wire.reasoning_issuer(
+            <Completion as Operation>::request_model(&request).or(self.wire.model()),
+        );
         let frames = stream(&self.wire, &self.http, request, context)?;
-        Ok(StreamingCompletionResponse::stream(
-            provider,
-            Box::pin(frames),
-        ))
+        let response = StreamingCompletionResponse::stream(provider, Box::pin(frames));
+        Ok(match issuer {
+            Some(issuer) => response.with_reasoning_issuer(issuer),
+            None => response,
+        })
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
