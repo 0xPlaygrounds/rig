@@ -454,7 +454,7 @@ fn a_streamed_event_split_across_chunks_is_logged_when_it_completes() {
 }
 
 #[test]
-fn only_successful_text_streams_are_tapped() {
+fn every_stream_but_a_known_binary_one_is_tapped() {
     let headers = |content_type: &str| {
         let mut headers = http_client::HeaderMap::new();
         headers.insert(
@@ -463,12 +463,18 @@ fn only_successful_text_streams_are_tapped() {
         );
         headers
     };
-    assert!(StreamLedgerTap::taps(
-        200,
-        &headers("text/event-stream; charset=utf-8")
-    ));
-    assert!(StreamLedgerTap::taps(200, &headers("application/json")));
-    assert!(!StreamLedgerTap::taps(200, &headers("audio/mpeg")));
-    assert!(!StreamLedgerTap::taps(400, &headers("text/event-stream")));
-    assert!(!StreamLedgerTap::taps(200, &http_client::HeaderMap::new()));
+    assert!(StreamLedgerTap::taps(&headers(
+        "text/event-stream; charset=utf-8"
+    )));
+    assert!(StreamLedgerTap::taps(&headers("application/json")));
+    // A stream that names no type may still name what it created.
+    assert!(StreamLedgerTap::taps(&http_client::HeaderMap::new()));
+    for binary in [
+        "audio/mpeg",
+        "image/png",
+        "video/mp4",
+        "application/octet-stream",
+    ] {
+        assert!(!StreamLedgerTap::taps(&headers(binary)), "{binary}");
+    }
 }

@@ -465,6 +465,8 @@ fn account_failures_are_declared_by_their_cells() {
                         files
                             .iter()
                             .map(|file| display_repo_path(file))
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
                             .collect::<Vec<_>>()
                             .join(", ")
                     ));
