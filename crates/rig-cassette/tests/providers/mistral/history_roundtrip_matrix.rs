@@ -131,20 +131,21 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The provider-native surface: the reply's verbatim JSON, which
             // the driver keeps on `CompletionResponse::raw`, read the way a
             // caller reaching past the normalized view reads it.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.complete(request(&model, cell)).await?;
             Observation {
                 text: content_text(&response.raw["choices"][0]["message"]["content"]),
                 saw_terminal: true,
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.complete(request(&model, cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,

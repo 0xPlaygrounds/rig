@@ -15,7 +15,9 @@ async fn preamble_override_forces_codeword_blocking() {
                 "hook_stress_patch/preamble_override_forces_codeword_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         "You are a terse assistant.",
                         Some("stress-agent"),
                         None,
@@ -67,7 +69,9 @@ async fn tool_choice_required_forces_a_tool_call_blocking() {
                 "hook_stress_patch/tool_choice_required_forces_a_tool_call_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         "You are a calculator assistant.",
                         Some("stress-agent"),
                         None,
@@ -116,7 +120,7 @@ async fn history_replacement_injects_prior_fact_blocking() {
             "hook_stress_patch/history_replacement_injects_prior_fact_blocking",
             |client| async move {
                 let mut ecs = runtime::agent(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                    client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                     "You are a helpful assistant. Use the conversation so far to answer.",
                     Some("stress-agent"),
                     None,
@@ -168,7 +172,9 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
                 "hook_stress_patch/multi_field_patch_applies_preamble_and_context_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         "You are a terse assistant.",
                         Some("stress-agent"),
                         None,

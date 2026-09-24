@@ -63,7 +63,13 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -94,7 +100,13 @@ async fn stream_raw_exposes_terminal_cost() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_cost should replay from its cassette");

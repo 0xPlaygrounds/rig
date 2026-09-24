@@ -2,7 +2,7 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, Route};
@@ -21,12 +21,12 @@ pub(super) const SYSTEM_PROMPT: &str =
 /// dialect of its own: it speaks the plain OpenAI format at a base URL the
 /// caller supplies. Both surfaces are therefore the `OPENAI` dialect with an
 /// explicit base URL.
-pub(super) type BoundResponses = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundResponses = Model<OpenAI, BoxedHttpClient>;
 
 /// mistral.rs's chat-completions surface, bound to the bundled transport:
 /// the same dialect routed to `/chat/completions` once, so a cell's
 /// `client.agent(model)` lands there.
-pub(super) type BoundCompletions = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundCompletions = Model<OpenAI, BoxedHttpClient>;
 
 pub(super) fn model_name() -> String {
     std::env::var("MISTRALRS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())

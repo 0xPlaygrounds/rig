@@ -26,7 +26,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?.bound()?;
 
     let generator_agent = openai_client
-        .agent(openai::GPT_4)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .into_agent_builder()
         .preamble(
             "
             Your goal is to complete the task based on <user input>. If there are feedback
@@ -43,7 +44,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let evaluator_agent = openai_client.extractor::<Evaluation>(openai::GPT_4)
+    let evaluator_agent = openai_client.endpoint(|provider_config| provider_config.completion(openai::GPT_4)).into_extractor_builder::<Evaluation>()
         .append_preamble("
             Evaluate this following code implementation for:
             1. code correctness

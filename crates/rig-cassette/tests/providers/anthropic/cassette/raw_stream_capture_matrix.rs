@@ -50,7 +50,7 @@ use rig::message::AssistantContent;
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::{ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
@@ -89,7 +89,7 @@ const THINKING_SCENARIO: &str =
 const TOOL_USE_SCENARIO: &str =
     "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream";
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages>;
 
 fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(32).build()
@@ -136,7 +136,7 @@ struct Streamed {
     terminal: StreamFinal,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> Streamed {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> Streamed {
     let mut items = Vec::new();
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -159,12 +159,12 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 /// [`capture_terminal`]; these two assert on the non-terminal items too, so
 /// the drain stays local.
 async fn streamed_body(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     model_name: &str,
     build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: Observed<Streamed>,
 ) {
-    let model = client.completion(model_name);
+    let model = client.endpoint(|provider_config| provider_config.completion(model_name));
     let stream = model
         .stream(build(&model))
         .await
@@ -307,7 +307,9 @@ async fn terminal_raw_round_trips_into_provider_type() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    }),
                     probe_request,
                     sink,
                 )
@@ -410,7 +412,9 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_terminal(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                }),
                 |model| {
                     model
                         .completion_request(IMMEDIATE_PROMPT)
@@ -486,7 +490,9 @@ async fn normalized_terminal_matches_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    }),
                     probe_request,
                     sink,
                 )

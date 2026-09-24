@@ -14,7 +14,7 @@ use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
     completion::{CompletionModel, CompletionRequest, CompletionResponse, Usage},
-    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse, ToolCallEnd},
+    streaming::{BlockId, CompletionStream, StreamEvent, StreamFinal, ToolCallEnd},
     tool::{Tool, ToolContext},
 };
 use rig_core::error::ProviderError;
@@ -46,7 +46,7 @@ fn response(
 struct FastResearchModel;
 
 impl CompletionModel for FastResearchModel {
-    async fn completion(
+    async fn complete(
         &self,
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
@@ -63,13 +63,10 @@ impl CompletionModel for FastResearchModel {
         ))
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
+    async fn stream(&self, _request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        Ok(CompletionStream::new(
             "fast",
-            Box::pin(stream::iter([
+            stream::iter([
                 Ok(StreamEvent::BlockEnd {
                     id: BlockId::wire("search-1"),
                     end: rig_agent::streaming::BlockClose::ToolCall(
@@ -86,7 +83,7 @@ impl CompletionModel for FastResearchModel {
                     usage(3),
                     serde_json::json!({}),
                 ))),
-            ])),
+            ]),
         ))
     }
 }
@@ -95,7 +92,7 @@ impl CompletionModel for FastResearchModel {
 struct StrongSynthesisModel;
 
 impl CompletionModel for StrongSynthesisModel {
-    async fn completion(
+    async fn complete(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
@@ -111,13 +108,10 @@ impl CompletionModel for StrongSynthesisModel {
         Ok(response("strong", AssistantContent::text(answer), 5))
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
+    async fn stream(&self, _request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        Ok(CompletionStream::new(
             "strong",
-            Box::pin(stream::iter([
+            stream::iter([
                 Ok(StreamEvent::text(
                     BlockId::wire("text-1"),
                     "The strong model synthesized the committed search result.",
@@ -127,7 +121,7 @@ impl CompletionModel for StrongSynthesisModel {
                     usage(5),
                     serde_json::json!({}),
                 ))),
-            ])),
+            ]),
         ))
     }
 }

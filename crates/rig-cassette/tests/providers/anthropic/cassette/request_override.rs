@@ -199,7 +199,10 @@ async fn request_overridden_by_hook_blocking() {
         "request_override/request_overridden_by_hook_blocking",
         move |client| async move {
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(PREAMBLE)
                 .tool(weather)
                 .tool(GetTime)
@@ -234,7 +237,10 @@ async fn request_overridden_by_hook_streaming() {
         "request_override/request_overridden_by_hook_streaming",
         move |client| async move {
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(PREAMBLE)
                 .tool(weather)
                 .tool(GetTime)

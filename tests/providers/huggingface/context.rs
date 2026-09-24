@@ -16,7 +16,11 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            provider.agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
+            provider
+                .endpoint(|provider_config| {
+                    provider_config.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+                })
+                .into_agent_builder(),
             rig::AgentBuilder::context,
         )
         .build();

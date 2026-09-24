@@ -68,7 +68,9 @@ async fn stream_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| {
             capture_text_and_terminal(
-                client.completion(RAW_CAPTURE_MATRIX_MODEL),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(RAW_CAPTURE_MATRIX_MODEL)
+                }),
                 request,
                 sink.clone(),
             )
@@ -104,7 +106,9 @@ async fn stream_raw_exposes_terminal_queue_time() {
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time",
         |client| {
             capture_terminal(
-                client.completion(RAW_CAPTURE_MATRIX_MODEL),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(RAW_CAPTURE_MATRIX_MODEL)
+                }),
                 request,
                 sink.clone(),
             )

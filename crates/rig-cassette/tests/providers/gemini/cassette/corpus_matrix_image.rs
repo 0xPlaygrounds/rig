@@ -5,17 +5,20 @@
 //! the scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
 use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
+    client: &Model<Gemini, H>,
+) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        model: client
+            .endpoint(|provider_config| provider_config.completion(GEMINI_3_FLASH_PREVIEW)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

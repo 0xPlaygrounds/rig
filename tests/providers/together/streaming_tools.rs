@@ -17,7 +17,8 @@ async fn streaming_tools_smoke() {
         .bound()
         .expect("transport should build");
     let agent = provider
-        .agent(together::LLAMA_2_70B_CHAT_TOGETHER)
+        .endpoint(|provider_config| provider_config.completion(together::LLAMA_2_70B_CHAT_TOGETHER))
+        .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

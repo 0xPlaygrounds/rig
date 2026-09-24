@@ -196,7 +196,7 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
     driver
         .register_erased(
             model_key.clone(),
-            ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            ErasedHandler::new(rig::serve::adapters::ModelAdapter::completion(
                 "default", model,
             ))
             .layered(CancelStreamLayer),

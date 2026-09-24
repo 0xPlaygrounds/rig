@@ -75,7 +75,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .agent(xai::GROK_4)
+                .endpoint(|provider_config| provider_config.completion(xai::GROK_4)).into_agent_builder()
                 .preamble(
                     "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
                      After calling the tool, respond with ONLY minified JSON matching this schema: \

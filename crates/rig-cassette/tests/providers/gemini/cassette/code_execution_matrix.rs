@@ -156,7 +156,7 @@ fn text_of(choice: &[AssistantContent]) -> String {
 
 /// Drain a normalized stream into its text and terminal record.
 async fn drain(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> (String, Vec<AssistantContent>, bool) {
     let mut text = String::new();
     let mut saw_terminal = false;
@@ -184,7 +184,7 @@ async fn blocking_body(
     max_tokens: Option<u64>,
     expected_substring: &'static str,
 ) {
-    let model = client.completion(model_id);
+    let model = client.endpoint(|provider_config| provider_config.completion(model_id));
     let mut request = model
         .completion_request(prompt)
         .temperature(0.0)
@@ -193,7 +193,7 @@ async fn blocking_body(
         request = request.max_tokens(max_tokens);
     }
 
-    let response = CompletionModel::completion(&model, request.build())
+    let response = CompletionModel::complete(&model, request.build())
         .await
         .expect("a turn carrying code-execution parts must still convert");
 
@@ -215,7 +215,7 @@ async fn streaming_body(
     max_tokens: Option<u64>,
     expected_substring: &'static str,
 ) {
-    let model = client.completion(model_id);
+    let model = client.endpoint(|provider_config| provider_config.completion(model_id));
     let mut request = model
         .completion_request(prompt)
         .temperature(0.0)
@@ -297,7 +297,7 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
         "code_execution_matrix/blocking_agent_prompt_answers_after_code_execution",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
                 .temperature(0.0)
                 .max_tokens(2000)
                 .additional_params(code_execution_params())
@@ -328,7 +328,7 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
         "code_execution_matrix/streaming_agent_prompt_answers_after_code_execution",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
                 .temperature(0.0)
                 .max_tokens(2000)
                 .additional_params(code_execution_params())
@@ -376,7 +376,9 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
         |client| async move {
             use rig::providers::gemini::completion::gemini_api_types::PartKind;
 
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+            });
             let request = model
                 .completion_request(
                     "Use the code execution tool to sum the integers from 1 to 100. \
@@ -388,7 +390,7 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("a turn carrying code-execution parts must still convert");
 
@@ -548,7 +550,9 @@ async fn blocking_code_execution_with_visible_thoughts() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_code_execution_with_visible_thoughts",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+            });
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .temperature(0.0)
@@ -556,7 +560,7 @@ async fn blocking_code_execution_with_visible_thoughts() {
                 .additional_params(code_execution_params_with_thoughts())
                 .build();
 
-            let response = CompletionModel::completion(&model, request)
+            let response = CompletionModel::complete(&model, request)
                 .await
                 .expect("code-execution parts next to thought parts must still convert");
 
@@ -588,7 +592,9 @@ async fn streaming_code_execution_with_visible_thoughts() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/streaming_code_execution_with_visible_thoughts",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+            });
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .temperature(0.0)
@@ -633,7 +639,9 @@ async fn blocking_code_execution_with_preamble() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_code_execution_with_preamble",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+            });
             let request = model
                 .completion_request(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -642,7 +650,7 @@ async fn blocking_code_execution_with_preamble() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let response = CompletionModel::completion(&model, request)
+            let response = CompletionModel::complete(&model, request)
                 .await
                 .expect("systemInstruction + codeExecution must still convert");
             assert!(
@@ -664,7 +672,9 @@ async fn streaming_code_execution_with_preamble() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/streaming_code_execution_with_preamble",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+            });
             let request = model
                 .completion_request(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -926,7 +936,10 @@ async fn blocking_code_execution_replayed_in_chat_history() {
         "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .temperature(0.0)
                 .max_tokens(2000)
                 .additional_params(code_execution_params())
@@ -1017,11 +1030,12 @@ mod unit {
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
-        let model = Gemini::new("unit-key")
-            .bind(RecordingHttpClient::new(reply_with(parts)))
-            .completion("gemini-2.5-flash");
+        let model = rig::driver::Model::new(
+            Gemini::new("unit-key").completion("gemini-2.5-flash"),
+            RecordingHttpClient::new(reply_with(parts)),
+        );
         let request = model.completion_request("unit").build();
-        model.completion(request).await
+        model.complete(request).await
     }
 
     /// Not a recording: Gemini always narrates a code round, so a candidate

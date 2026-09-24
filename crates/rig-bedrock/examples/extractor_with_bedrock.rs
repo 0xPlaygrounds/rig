@@ -1,4 +1,3 @@
-use rig_agent::prelude::*;
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use schemars::JsonSchema;
@@ -20,7 +19,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     let client = Client::from_env()?;
-    let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE).build();
+    let data_extractor =
+        rig_agent::extractor::ExtractorBuilder::<Person>::new(client.completion(AMAZON_NOVA_LITE))
+            .build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?

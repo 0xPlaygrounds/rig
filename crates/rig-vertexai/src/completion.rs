@@ -16,7 +16,7 @@ use rig_core::completion::{
     CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
 };
 use rig_core::error::ProviderError;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 
 /// `gemini-1.5-pro`
 pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
@@ -134,17 +134,14 @@ fn streaming_unsupported() -> ProviderError {
 }
 
 impl CompletionModelTrait for CompletionModel {
-    async fn completion(
+    async fn complete(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
         self.raw_completion(request).await?.try_into()
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    async fn stream(&self, _request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
         Err(streaming_unsupported())
     }
 }

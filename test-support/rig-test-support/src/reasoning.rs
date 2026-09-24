@@ -323,6 +323,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
@@ -395,7 +396,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     assistant_content.push(AssistantContent::text(&streamed_text));
 
     let turn1_assistant = Message::Assistant {
-        id: stream.message_id.clone(),
+        id: stream.message_id().map(str::to_owned),
         content: assistant_content,
     };
 
@@ -419,6 +420,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
@@ -476,11 +478,12 @@ where
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let response = agent
         .model
-        .completion(request)
+        .complete(request)
         .await
         .expect("Turn 1 completion");
 
@@ -526,11 +529,12 @@ where
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let response2 = agent
         .model
-        .completion(request2)
+        .complete(request2)
         .await
         .expect("Turn 2 completion - provider may have rejected reasoning in chat history");
 

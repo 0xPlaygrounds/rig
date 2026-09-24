@@ -14,7 +14,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let agent = client
-        .agent("gemini-2.5-flash")
+        .completion("gemini-2.5-flash")
+        .into_agent_builder()
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         .build();

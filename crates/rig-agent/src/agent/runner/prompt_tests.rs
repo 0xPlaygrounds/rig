@@ -1827,10 +1827,11 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
     }))
     .expect("object params")
     .expect("params carry data");
-    let model = MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Text(Text {
-        text: String::new(),
-        additional_params: Some(metadata.clone()),
-    }))]);
+    let model =
+        MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: Some(metadata.clone()),
+        }))]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent

@@ -5,7 +5,8 @@ use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
     let agent = Client::from_env()?
-        .agent(AMAZON_NOVA_LITE)
+        .completion(AMAZON_NOVA_LITE)
+        .into_agent_builder()
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

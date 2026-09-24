@@ -11,7 +11,11 @@ use super::support::with_deepseek_cassette;
 #[tokio::test]
 async fn list_models_smoke() {
     with_deepseek_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.models().list_all().await {
+        let models = match client
+            .endpoint(|provider_config| provider_config.models())
+            .list_all()
+            .await
+        {
             Ok(models) => models,
             Err(error) => {
                 panic!(
@@ -45,7 +49,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Re
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .models()
+                .endpoint(|provider_config| provider_config.models())
                 .list_all()
                 .await
                 .expect_err("a bogus key must not list models");

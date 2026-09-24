@@ -11,10 +11,10 @@ pub use crate::agent::{
     Agent, AgentHook, HookContext, ModelHandle, ModelRef, ModelSelection, ModelSelectionAction,
     MultiTurnStreamItem, RunEvents, StreamingResult,
 };
-pub use crate::client::{AgentModelExt, AgentProviderExt};
+pub use crate::client::AgentModelExt;
 pub use crate::completion::{CompletionModel, Message, PromptError, StructuredOutputError};
 pub use crate::tool::{Tool, ToolSet};
-pub use rig_core::driver::{Bind, Bound, CompletionProvider};
+pub use rig_core::driver::{Model, Transport};
 pub use rig_core::error::ProviderError;
 
 pub use rig_core::Embed;

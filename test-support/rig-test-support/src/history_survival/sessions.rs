@@ -61,6 +61,7 @@ fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
         additional_params: (cell.params)(),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -74,7 +75,7 @@ where
 {
     let loaded = turn_one(&first, cell).await;
     let answer = second
-        .completion(request(cell, loaded))
+        .complete(request(cell, loaded))
         .await
         .unwrap_or_else(|error| {
             panic!(
@@ -95,7 +96,7 @@ where
 {
     use bevy_app::App;
     use rig_core::effect::{EffectKind, Outcome};
-    use rig_core::serve::{ErasedHandler, adapters::CompletionAdapter};
+    use rig_core::serve::{ErasedHandler, adapters::ModelAdapter};
     use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect};
     use rig_ecs::checkpoint::{Checkpoint, RestoreMode, load_world, save_world};
 
@@ -109,7 +110,7 @@ where
     }
     let handler = |model: B| {
         ErasedHandler::new(crate::ecs_agent::RuntimeHandler {
-            inner: std::sync::Arc::new(CompletionAdapter::new("session", model)),
+            inner: std::sync::Arc::new(ModelAdapter::completion("session", model)),
             runtime: crate::ecs_agent::io_runtime(),
         })
     };
@@ -171,7 +172,7 @@ async fn turn_one<A: CompletionModel>(first: &A, cell: Cell) -> Vec<Message> {
         "Think it through, then call lookup_code for record alpha. Do not guess the code.",
     );
     let reply = first
-        .completion(request(cell, vec![prompt.clone()]))
+        .complete(request(cell, vec![prompt.clone()]))
         .await
         .unwrap_or_else(|error| panic!("[{}] turn one: {error}", cell.provider));
     let call = reply

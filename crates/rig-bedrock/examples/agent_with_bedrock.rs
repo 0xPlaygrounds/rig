@@ -1,6 +1,5 @@
 use rig_agent::{agent::AgentBuilder, prelude::*};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
-use rig_core::driver::CompletionProvider;
 use rig_core::loaders::FileLoader;
 use tracing::info;
 
@@ -35,7 +34,7 @@ fn client() -> Result<Client, anyhow::Error> {
 }
 
 fn partial_agent() -> Result<AgentBuilder, anyhow::Error> {
-    Ok(client()?.agent(AMAZON_NOVA_LITE))
+    Ok(client()?.completion(AMAZON_NOVA_LITE).into_agent_builder())
 }
 
 /// Create an AWS Bedrock agent with a system prompt

@@ -45,7 +45,7 @@ use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
     ResponseIdentity, Usage,
 };
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
@@ -65,7 +65,7 @@ const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: parity probe";
 const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool.";
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages>;
 
 fn text_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(TEXT_PROMPT).max_tokens(32).build()
@@ -321,11 +321,13 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
 /// shared counterpart, so the two drains stay here — each through the shared
 /// [`collect_required_terminal`].
 async fn capture_terminal_pair(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: Observed<(StreamFinal, StreamFinal)>,
 ) {
-    let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
+    let model = client.endpoint(|provider_config| {
+        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+    });
 
     let normalized = collect_required_terminal(
         model
@@ -384,7 +386,9 @@ async fn text_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                }),
                 text_request,
                 sink,
             )
@@ -408,7 +412,9 @@ async fn tool_call_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                }),
                 tool_request,
                 sink,
             )

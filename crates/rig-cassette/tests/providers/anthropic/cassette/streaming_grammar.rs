@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the Anthropic Messages wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
+//! [`CompletionStream::choice`], the terminal [`StreamFinal`]
 //! record, usage, IDs, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -31,7 +31,7 @@ struct StreamRun {
     message_id: Option<String>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_blocks: Vec::new(),
@@ -77,8 +77,8 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
-    run.message_id = stream.message_id.clone();
+    run.response = stream.terminal().cloned();
+    run.message_id = stream.message_id().map(str::to_owned);
     run
 }
 
@@ -120,7 +120,9 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
     with_anthropic_cassette(
         "streaming_grammar/thinking_multi_block_turn",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            });
             let request = model
                 .completion_request(
                     "How many positive integers n < 300 are divisible by 8 but not by 12? \
@@ -182,7 +184,9 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
 #[tokio::test]
 async fn parallel_tool_use_stays_distinct() {
     with_anthropic_cassette("streaming_grammar/parallel_tool_use", |client| async move {
-        let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+        let model = client.endpoint(|provider_config| {
+            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        });
         let request = model
             .completion_request(TWO_TOOL_STREAM_PROMPT)
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())

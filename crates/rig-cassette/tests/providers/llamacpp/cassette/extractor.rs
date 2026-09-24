@@ -8,7 +8,10 @@ use super::super::cassette_support::*;
 #[tokio::test]
 async fn extractor_smoke() {
     with_llamacpp_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = client.extractor::<SmokePerson>(CASSETTE_MODEL).build();
+        let extractor = client
+            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .into_extractor_builder::<SmokePerson>()
+            .build();
 
         let response = extractor
             .extract(EXTRACTOR_TEXT)

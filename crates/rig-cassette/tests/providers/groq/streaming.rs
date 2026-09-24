@@ -17,7 +17,8 @@ async fn streaming_smoke() {
         .bound()
         .expect("transport should build");
     let agent = groq
-        .agent(STREAMING_MODEL)
+        .endpoint(|provider_config| provider_config.completion(STREAMING_MODEL))
+        .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .build();
 

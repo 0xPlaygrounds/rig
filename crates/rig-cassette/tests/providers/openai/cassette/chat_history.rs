@@ -21,8 +21,8 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
             let call_count = Arc::new(AtomicUsize::new(0));
             let model = client
                 .openai
-                .responses(openai::GPT_5_2)
-                .map_wire(|wire| wire.with_system_instructions_as_messages());
+                .endpoint(|provider_config| provider_config.responses(openai::GPT_5_2))
+                .endpoint(|wire| wire.clone().with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)

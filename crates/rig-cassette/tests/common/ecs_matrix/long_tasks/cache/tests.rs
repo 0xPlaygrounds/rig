@@ -48,6 +48,7 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
+                extensions: Default::default(),
             };
             let encoded = model
                 .encode(request, Mode::Unary)

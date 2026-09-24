@@ -18,11 +18,12 @@ async fn completion_error_preserves_status_and_body() {
     with_cohere_cassette(
         "errors/completion_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion(UNKNOWN_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(UNKNOWN_MODEL));
             let request = model.completion_request(BASIC_PROMPT).build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("an unknown model should fail");
 

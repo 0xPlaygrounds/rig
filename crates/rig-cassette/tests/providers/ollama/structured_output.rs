@@ -23,7 +23,8 @@ async fn structured_output_prompt() {
         .bound()
         .expect("transport should build");
     let agent = ollama
-        .agent("qwen3:4b")
+        .endpoint(|provider_config| provider_config.completion("qwen3:4b"))
+        .into_agent_builder()
         .preamble("You are a creative fiction writer. Create detailed characters.")
         .output_schema::<Character>()
         .build();

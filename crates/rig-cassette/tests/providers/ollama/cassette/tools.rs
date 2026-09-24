@@ -14,9 +14,10 @@ const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn tool_with_optional_argument() {
     with_ollama_cassette("tools/optional_argument", |client| async move {
-        let report = optional_argument(client.completion(MODEL), |builder| {
-            builder.additional_params(json!({ "think": false }))
-        })
+        let report = optional_argument(
+            client.endpoint(|provider_config| provider_config.completion(MODEL)),
+            |builder| builder.additional_params(json!({ "think": false })),
+        )
         .await
         .expect("optional-argument conformance scenario should succeed");
         eprintln!("[ollama] {report:?}");
@@ -27,9 +28,10 @@ async fn tool_with_optional_argument() {
 #[tokio::test]
 async fn two_tools_nonstreaming_chain() {
     with_ollama_cassette("tools/two_tools_nonstreaming", |client| async move {
-        let report = sequential_tools(client.completion(MODEL), |builder| {
-            builder.additional_params(json!({ "think": false }))
-        })
+        let report = sequential_tools(
+            client.endpoint(|provider_config| provider_config.completion(MODEL)),
+            |builder| builder.additional_params(json!({ "think": false })),
+        )
         .await
         .expect("sequential-tool conformance scenario should succeed");
         eprintln!("[ollama] {report:?}");

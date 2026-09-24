@@ -49,9 +49,10 @@ fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
 }
 
 async fn blocking_stop(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
     let response = model
-        .completion(
+        .complete(
             model
                 .completion_request(STOP_PROMPT)
                 .additional_params(json!({ "reasoning_effort": "none" }))
@@ -64,9 +65,10 @@ async fn blocking_stop(client: BoundDoubleword) {
 }
 
 async fn blocking_length(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
     let response = model
-        .completion(
+        .complete(
             model
                 .completion_request(LENGTH_PROMPT)
                 .max_tokens(1)
@@ -78,9 +80,10 @@ async fn blocking_length(client: BoundDoubleword) {
 }
 
 async fn blocking_tool_calls_body(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_397B_A17B);
+    let model = client
+        .endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_397B_A17B));
     let response = model
-        .completion(
+        .complete(
             model
                 .completion_request(TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
@@ -105,7 +108,8 @@ async fn streaming_reason(
     max_tokens: u64,
     stop_probe: bool,
 ) -> FinishReason {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
     let mut builder = model.completion_request(prompt).max_tokens(max_tokens);
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
@@ -181,7 +185,9 @@ async fn streaming_tool_calls() {
     with_doubleword_cassette(
         "finish_reason_matrix/streaming_tool_calls",
         |client| async move {
-            let model = client.completion(doubleword::QWEN3_5_397B_A17B);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(doubleword::QWEN3_5_397B_A17B)
+            });
             let stream = model
                 .stream(
                     model

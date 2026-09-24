@@ -70,7 +70,13 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_doubleword_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -98,7 +104,13 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     let sink = Observed::default();
     with_doubleword_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
-        |client| capture_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_terminal(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_usage_and_object should replay from its cassette");

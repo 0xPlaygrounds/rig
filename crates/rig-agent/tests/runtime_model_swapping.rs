@@ -26,8 +26,8 @@ use rig_agent::{
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
-        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
-        StreamingCompletionResponse, ToolCallEnd, UnparseableToolInput,
+        BlockClose, BlockId, BlockKind, CompletionStream, Delta, MintKind, StreamEvent,
+        StreamFinal, ToolCallEnd, UnparseableToolInput,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
@@ -267,7 +267,7 @@ fn completion_from_script(
 fn stream_from_script(
     script: &Script,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, ProviderError> {
+) -> Result<CompletionStream, ProviderError> {
     script.record(request);
     let turn = script.next_turn();
     if let Turn::Error(message) = &turn {
@@ -350,10 +350,7 @@ fn stream_from_script(
             .with_message_id(turn.message_id()),
     )));
 
-    Ok(StreamingCompletionResponse::stream(
-        script.provider,
-        Box::pin(stream::iter(events)),
-    ))
+    Ok(CompletionStream::new(script.provider, stream::iter(events)))
 }
 
 #[derive(Clone)]
@@ -365,7 +362,7 @@ struct BetaModel(Arc<Script>);
 macro_rules! impl_test_model {
     ($model:ty) => {
         impl CompletionModel for $model {
-            async fn completion(
+            async fn complete(
                 &self,
                 request: CompletionRequest,
             ) -> Result<CompletionResponse, ProviderError> {
@@ -375,7 +372,7 @@ macro_rules! impl_test_model {
             async fn stream(
                 &self,
                 request: CompletionRequest,
-            ) -> Result<StreamingCompletionResponse, ProviderError> {
+            ) -> Result<CompletionStream, ProviderError> {
                 stream_from_script(&self.0, request)
             }
 
@@ -414,6 +411,7 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -445,7 +443,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_agent_stream(alpha_agent.prompt("stream type").stream());
 
     let unary = alpha
-        .completion(request("low-level unary"))
+        .complete(request("low-level unary"))
         .await
         .expect("direct unary response");
     assert_eq!(unary.provider, "alpha");
@@ -1358,7 +1356,7 @@ struct GatedToolModel {
 }
 
 impl CompletionModel for GatedToolModel {
-    async fn completion(
+    async fn complete(
         &self,
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
@@ -1371,13 +1369,10 @@ impl CompletionModel for GatedToolModel {
         )
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
+    async fn stream(&self, _request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        Ok(CompletionStream::new(
             "gated",
-            Box::pin(stream::iter([
+            stream::iter([
                 Ok(StreamEvent::text(
                     MintKind::Text.for_wire_index(0),
                     "unused",
@@ -1387,7 +1382,7 @@ impl CompletionModel for GatedToolModel {
                     usage(1),
                     serde_json::json!({}),
                 ))),
-            ])),
+            ]),
         ))
     }
 }
@@ -1455,7 +1450,7 @@ struct PendingUnaryModel {
 }
 
 impl CompletionModel for PendingUnaryModel {
-    async fn completion(
+    async fn complete(
         &self,
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
@@ -1464,14 +1459,8 @@ impl CompletionModel for PendingUnaryModel {
         std::future::pending::<Result<CompletionResponse, ProviderError>>().await
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
-            "pending",
-            Box::pin(stream::empty()),
-        ))
+    async fn stream(&self, _request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        Ok(CompletionStream::new("pending", stream::empty()))
     }
 }
 
@@ -1506,7 +1495,7 @@ struct PendingStreamingModel {
 }
 
 impl CompletionModel for PendingStreamingModel {
-    async fn completion(
+    async fn complete(
         &self,
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
@@ -1518,16 +1507,13 @@ impl CompletionModel for PendingStreamingModel {
         ))
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        let raw: rig_agent::streaming::StreamingResult = Box::pin(PendingRawStream {
+    async fn stream(&self, _request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
+        let raw = PendingRawStream {
             started: self.started.clone(),
             dropped: self.dropped.clone(),
             notified: false,
-        });
-        Ok(StreamingCompletionResponse::stream("pending", raw))
+        };
+        Ok(CompletionStream::new("pending", raw))
     }
 }
 

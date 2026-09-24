@@ -71,6 +71,7 @@ fn ask_with(history: Vec<Message>) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -88,6 +89,7 @@ fn ask(prompt: &str) -> CompletionRequest {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -102,7 +104,7 @@ async fn cached_content_lifecycle_chain() {
     with_gemini_prompt_caching_cassette(
         "stateful_chain_matrix/cached_content_lifecycle_chain",
         |client: BoundGemini| async move {
-            let caches = client.cached_contents();
+            let caches = client.endpoint(|provider_config| provider_config.cached_contents());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -138,10 +140,10 @@ async fn cached_content_lifecycle_chain() {
                 }
                 let model = generator
                     .clone()
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(name.clone()));
+                    .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                    .endpoint(|wire| wire.clone().with_cached_content(name.clone()));
                 let reply = model
-                    .completion(ask(
+                    .complete(ask(
                         "What is the code of record alpha? Reply with the code only.",
                     ))
                     .await
@@ -161,9 +163,9 @@ async fn cached_content_lifecycle_chain() {
             .await;
 
             let refused = client
-                .completion(CACHE_MODEL)
-                .map_wire(|wire| wire.with_cached_content(created.name.clone()))
-                .completion(ask("What is the code of record alpha?"))
+                .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                .endpoint(|wire| wire.clone().with_cached_content(created.name.clone()))
+                .complete(ask("What is the code of record alpha?"))
                 .await;
             let refused = refused.expect_err("a deleted cache handle must be refused");
             let report = rig::error::ErrorReport::from(&refused);
@@ -336,7 +338,7 @@ async fn interactions_chain_with_tool_call() {
             deleting_interactions(&client, &stored, async {
                 let model = client
                     .clone()
-                    .map_wire(|config| config.interactions(INTERACTIONS_MODEL));
+                    .endpoint(|config| config.clone().interactions(INTERACTIONS_MODEL));
                 let params = |previous: Option<String>| {
                     serde_json::to_value(AdditionalParameters {
                         store: Some(true),
@@ -347,7 +349,7 @@ async fn interactions_chain_with_tool_call() {
                 };
 
                 let first = model
-                    .completion(
+                    .complete(
                         model
                             .completion_request(
                                 "Use lookup_code to get the code of record alpha. Do not guess.",
@@ -363,7 +365,7 @@ async fn interactions_chain_with_tool_call() {
                 let call = only_call(&first.choice);
 
                 let second = model
-                    .completion(
+                    .complete(
                         model
                             .completion_request(Message::from(UserContent::tool_result_for(
                                 call.id.clone(),
@@ -382,7 +384,7 @@ async fn interactions_chain_with_tool_call() {
                 keep(&second_id);
 
                 let third = model
-                    .completion(
+                    .complete(
                         model
                             .completion_request(
                                 "Repeat the code you reported, exactly, and nothing else.",
@@ -476,9 +478,9 @@ async fn file_uri_chain() {
                         ),
                     ],
                 };
-                let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+                let model = client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH));
                 let first = model
-                    .completion(ask_with(vec![document.clone()]))
+                    .complete(ask_with(vec![document.clone()]))
                     .await
                     .expect("turn one reads the file by uri");
                 assert!(
@@ -497,7 +499,7 @@ async fn file_uri_chain() {
                     ),
                 ];
                 let second = model
-                    .completion(ask_with(history))
+                    .complete(ask_with(history))
                     .await
                     .expect("turn two still reads the file by uri");
                 assert!(

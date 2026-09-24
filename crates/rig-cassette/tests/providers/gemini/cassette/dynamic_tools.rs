@@ -8,7 +8,7 @@
 //! turns.
 
 use rig::completion::Message;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
@@ -23,14 +23,16 @@ use super::super::tools_support::{
 use crate::support::assert_mentions_expected_number;
 
 /// Build an in-memory index over the toolset's embeddable schemas.
-async fn build_tool_index<H: Socket>(
-    client: &Bound<Gemini, H>,
+async fn build_tool_index<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
+    client: &Model<Gemini, H>,
     toolset: &ToolSet,
 ) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
     rig::embeddings::ToolSchema,
-    Bound<gemini::embedding::Embeddings, H>,
+    Model<gemini::embedding::Embeddings, H>,
 > {
-    let embedding_model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+    let embedding_model = client.endpoint(|provider_config| {
+        provider_config.embeddings(gemini::embedding::EMBEDDING_001, None)
+    });
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -64,7 +66,10 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(add)
@@ -111,7 +116,10 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .retrieved_tools(1, index, toolset)
@@ -155,7 +163,10 @@ async fn sample_caps_retrieved_definitions() {
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .retrieved_tools(2, index, toolset)

@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI **chat-completions**
 //! wire (the compat family's canonical wire), asserted through the
-//! *normalized* path: the aggregated [`StreamingCompletionResponse::choice`],
+//! *normalized* path: the aggregated [`CompletionStream::choice`],
 //! the terminal [`StreamFinal`] record, usage, IDs, and finish reason — real
 //! recorded wire traffic, not synthetic chunks.
 //!
@@ -32,7 +32,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         text_chunks: 0,
@@ -67,7 +67,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.terminal().cloned();
     run
 }
 
@@ -122,7 +122,7 @@ async fn parallel_tool_calls_stay_distinct() {
     with_openai_completions_cassette(
         "streaming_grammar_chat/parallel_tool_calls",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = client.endpoint(|provider_config| provider_config.chat(openai::GPT_4O));
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -180,7 +180,7 @@ async fn tool_call_and_content_in_same_turn() {
     with_openai_completions_cassette(
         "streaming_grammar_chat/tool_call_with_content",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = client.endpoint(|provider_config| provider_config.chat(openai::GPT_4O));
             let request = model
                 .completion_request("Look up the harbor label for me.")
                 .preamble(
@@ -231,7 +231,7 @@ async fn logprobs_chunks_are_forward_compatible() {
     with_openai_completions_cassette(
         "streaming_grammar_chat/logprobs_chunks",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = client.endpoint(|provider_config| provider_config.chat(openai::GPT_4O));
             let request = model
                 .completion_request("Reply with one short sentence about tides.")
                 .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
@@ -257,7 +257,7 @@ async fn long_text_stream_preserves_order() {
     with_openai_completions_cassette(
         "streaming_grammar_chat/long_text_stream",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = client.endpoint(|provider_config| provider_config.chat(openai::GPT_4O));
             let request = model
                 .completion_request(
                     "Write a numbered list of exactly 12 one-line facts about rivers. \

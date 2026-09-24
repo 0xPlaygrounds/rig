@@ -121,7 +121,7 @@ fn max_tokens(cell: Cell) -> u64 {
 }
 
 async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(MODEL);
+    let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -130,7 +130,7 @@ async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.completion(request).await?;
+            let response = model.complete(request).await?;
             let choice = response.raw["choices"]
                 .as_array()
                 .and_then(|choices| choices.first())

@@ -32,7 +32,9 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/one_request_over_mistrals_batch_cap_is_rejected",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client.endpoint(|provider_config| {
+                provider_config.embeddings(mistral::embedding::MISTRAL_EMBED, None)
+            });
             // Straight through the model, bypassing the builder's chunking, so
             // the cell pins Mistral's own cap rather than rig's arithmetic.
             let error = model
@@ -53,7 +55,9 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/mistral_embed_reports_its_real_dimensions",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client.endpoint(|provider_config| {
+                provider_config.embeddings(mistral::embedding::MISTRAL_EMBED, None)
+            });
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.
@@ -71,7 +75,10 @@ async fn list_models_keeps_description_and_context_length() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/list_models_keeps_description_and_context_length",
         |client| async move {
-            let models = client.models().list_all().await?;
+            let models = client
+                .endpoint(|provider_config| provider_config.models())
+                .list_all()
+                .await?;
             assert_listing_carries_mistrals_fields(&models.data);
             Ok::<_, anyhow::Error>(())
         },
@@ -99,7 +106,7 @@ fn assert_declared_matches_returned(declared: usize, returned: usize) {
     );
 }
 
-fn assert_listing_carries_mistrals_fields(models: &[rig::model::Model]) {
+fn assert_listing_carries_mistrals_fields(models: &[rig::model::ModelInfo]) {
     assert!(!models.is_empty(), "the listing must not be empty");
     assert!(
         models.iter().any(|model| model.description.is_some()),
@@ -125,8 +132,9 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/streaming_with_two_candidates_answers_from_the_first",
         |client| async move {
-            let model = client.completion(mistral::MISTRAL_SMALL);
-            let mut stream: rig::streaming::StreamingCompletionResponse = model
+            let model = client
+                .endpoint(|provider_config| provider_config.completion(mistral::MISTRAL_SMALL));
+            let mut stream: rig::streaming::CompletionStream = model
                 .completion_request("Say one random word.")
                 .temperature(1.0)
                 .max_tokens(8)
@@ -232,9 +240,10 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
     with_mistral_capability_cassette(
         "capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted",
         |client| async move {
-            let model = client.completion(mistral::MISTRAL_SMALL);
+            let model = client
+                .endpoint(|provider_config| provider_config.completion(mistral::MISTRAL_SMALL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Add 2 and 3, then report the total.")
                         .preamble("Use the add tool, then report the total.".to_string())

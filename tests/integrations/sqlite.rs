@@ -8,7 +8,7 @@ use rig::sqlite::{
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::{
     Embed,
-    driver::Bound,
+    driver::Model,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
@@ -151,7 +151,9 @@ async fn vector_search_test() {
         .with_base_url(server.base_url())
         .bound()
         .unwrap();
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -235,7 +237,9 @@ async fn insert_documents_test() {
         .with_base_url(server.base_url())
         .bound()
         .unwrap();
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
     let embeddings = create_embeddings(model.clone()).await;
 
     let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), &model)
@@ -265,7 +269,7 @@ async fn insert_documents_test() {
     assert_eq!(embedding_count, 3);
 }
 
-async fn create_embeddings(model: Bound<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
+async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

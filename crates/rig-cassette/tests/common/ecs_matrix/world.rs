@@ -49,7 +49,7 @@ use rig_core::serve::ErasedHandler;
 
 use rig_core::serve::Serve;
 
-use rig_core::serve::adapters::CompletionAdapter;
+use rig_core::serve::adapters::ModelAdapter;
 
 use rig_core::serve::adapters::MemoryAdapter;
 
@@ -61,7 +61,7 @@ use rig_core::streaming::StreamEvent;
 
 use rig_core::streaming::StreamEvents;
 
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 
 use rig_core::tool::Tool;
 
@@ -137,27 +137,21 @@ pub(crate) struct FirstDelta<M> {
 }
 
 impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
-    async fn completion(
+    async fn complete(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        self.inner.completion(request).await
+        self.inner.complete(request).await
     }
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
         let stream = self.inner.stream(request).await?;
         let provider = stream.provider().to_owned();
-        let message_id = stream.message_id.clone();
         let tool = self.tool;
-        let mut gated = StreamingCompletionResponse::from_events(
+        Ok(CompletionStream::relay(
             provider,
             gate_events(Box::pin(stream), tool, self.release.clone()),
-        );
-        gated.message_id = message_id;
-        Ok(gated)
+        ))
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -533,7 +527,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         memory = register_memory(world);
     }
     let model_handler = |model: M, label: &str| {
-        let adapter = CompletionAdapter::new(label, model);
+        let adapter = ModelAdapter::completion(label, model);
         ErasedHandler::new(RuntimeHandler {
             inner: Arc::new(adapter),
             runtime: runtime.clone(),
@@ -561,7 +555,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             // exactly as the hand-registered adapter over the wire's own
             // model would, so a wire with model-level settings the
             // configuration does not carry cannot diverge silently.
-            let by_hand = CompletionAdapter::new(DEFAULT_LABEL, wire.model.clone()).descriptor();
+            let by_hand = ModelAdapter::completion(DEFAULT_LABEL, wire.model.clone()).descriptor();
             let built = handler.descriptor();
             assert_eq!(
                 (&built.family, &built.layers),
@@ -585,7 +579,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         None => {
             let model = match gate {
                 Some(tool) => ErasedHandler::new(RuntimeHandler {
-                    inner: Arc::new(CompletionAdapter::new(
+                    inner: Arc::new(ModelAdapter::completion(
                         DEFAULT_LABEL,
                         FirstDelta {
                             inner: wire.model.clone(),

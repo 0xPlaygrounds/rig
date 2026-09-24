@@ -91,7 +91,7 @@ struct ToolStreamObservation {
 }
 
 async fn collect_tool_calls_and_terminal(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> ToolStreamObservation {
     let mut observation = ToolStreamObservation {
         tool_calls: Vec::new(),
@@ -167,7 +167,11 @@ async fn stream_raw_round_trips_terminal_type() {
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| {
-            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, observed.clone())
+            capture_text_and_terminal(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                observed.clone(),
+            )
         },
     )
     .await
@@ -207,7 +211,13 @@ async fn stream_raw_exposes_terminal_service_tier() {
     let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier",
-        |client| capture_terminal(client.completion(DEFAULT_MODEL), request, observed.clone()),
+        |client| {
+            capture_terminal(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_service_tier should replay from its cassette");
@@ -248,7 +258,8 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
         |client| async move {
             // No shared capture helper collects completed tool calls beside
             // the terminal record, so this cell drives the stream itself.
-            let model = client.completion(DEFAULT_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL));
             let stream = model.stream(tool_request(&model)).await?;
             sink.put(collect_tool_calls_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())

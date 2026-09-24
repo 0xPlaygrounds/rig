@@ -337,7 +337,8 @@ async fn main() -> Result<()> {
 
     let agent = OpenAI::from_env()?
         .bound()?
-        .agent(openai::GPT_4O)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .into_agent_builder()
         .preamble("Follow the user's requested system_probe operation exactly.")
         .tool(SystemProbe)
         .build();

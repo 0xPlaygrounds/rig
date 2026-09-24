@@ -380,23 +380,20 @@ fn terminal_frame() -> proto::GenerateContentResponse {
 async fn normalized_terminal(
     events: Vec<proto::GenerateContentResponse>,
 ) -> streaming::StreamFinal {
-    collect_terminal(run_wire_stream(
-        futures::stream::iter(events.into_iter().map(Ok)),
-        GrpcAdapter::default(),
-    ))
-    .await
+    collect_terminal(translate(futures::stream::iter(events.into_iter().map(Ok)))).await
 }
 
-async fn collect_terminal(normalized: streaming::StreamingResult) -> streaming::StreamFinal {
-    let mut stream = streaming::StreamingCompletionResponse::stream(
-        super::super::completion::PROVIDER_NAME,
-        normalized,
-    );
+async fn collect_terminal(
+    normalized: impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
+) -> streaming::StreamFinal {
+    let mut stream =
+        streaming::CompletionStream::new(super::super::completion::PROVIDER_NAME, normalized);
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
     stream
-        .response
+        .terminal()
+        .cloned()
         .expect("the stream must end with a terminal record")
 }
 
@@ -414,7 +411,7 @@ async fn stream_from_events_terminal_carries_raw() {
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = stream.response.expect("terminal record");
+    let terminal = stream.terminal().expect("terminal record");
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
@@ -453,9 +450,9 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     // Feeding the capture back through the same pipeline tells the same
     // story as the terminal the stream produced.
-    let renormalized = collect_terminal(Box::pin(futures::stream::iter(vec![Ok(
-        StreamEvent::Final(terminal_record(&typed).expect("terminal record")),
-    )])))
+    let renormalized = collect_terminal(futures::stream::iter(vec![Ok(StreamEvent::Final(
+        terminal_record(&typed).expect("terminal record"),
+    ))]))
     .await;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);

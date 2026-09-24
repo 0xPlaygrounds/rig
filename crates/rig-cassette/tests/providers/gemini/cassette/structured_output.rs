@@ -65,7 +65,8 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let agent = client
-                .agent("gemini-3-flash-preview")
+                .endpoint(|provider_config| provider_config.completion("gemini-3-flash-preview"))
+                .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()
                 .output_mode(OutputMode::Native)
                 .build();
@@ -90,9 +91,12 @@ async fn classic_invalid_output_recovers_through_gemini_generate_content() {
         MockHttpResponse::success(text_response("not valid JSON", "gemini-runtime-invalid")),
         MockHttpResponse::success(output_tool_response("final_result")),
     ]);
-    let client = Gemini::new("test-key").bind(http.clone());
+    let client = rig::driver::Model::new(Gemini::new("test-key"), http.clone());
     let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
+        .endpoint(|provider_config| {
+            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+        })
+        .into_agent_builder()
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
         .default_max_turns(2)

@@ -37,7 +37,9 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     with_gemini_cassette(
         "generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+            });
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
             let request = model
@@ -55,7 +57,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("a truncated response should still convert, not error");
 
@@ -101,7 +103,10 @@ async fn structured_output_nested_arrays_and_optional_fields() {
         "generate_behaviors/structured_output_nested_arrays_and_optional_fields",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .output_schema::<EventRecord>()
                 .temperature(0.0)
                 .build();

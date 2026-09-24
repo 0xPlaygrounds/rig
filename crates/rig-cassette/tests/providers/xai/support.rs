@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::xai;
@@ -8,7 +8,7 @@ use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<OpenAI>) {
+async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Model<OpenAI>) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "xai",
@@ -26,7 +26,7 @@ async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound
 
 pub(super) async fn with_xai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
@@ -41,7 +41,7 @@ pub(super) async fn with_xai_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = xai_cassette(spec).await;
@@ -52,7 +52,7 @@ where
 /// Bogus-key variant for recording real 401s (rig#2314 error matrix).
 pub(super) async fn with_xai_cassette_bogus_key<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -85,7 +85,7 @@ pub(super) async fn with_xai_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = xai_cassette(spec).await;

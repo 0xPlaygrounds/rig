@@ -13,7 +13,7 @@
 //! ```
 
 use crate::TungsteniteClient;
-use rig_core::driver::Bound;
+use rig_core::driver::Model;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::responses_api::websocket::{
     ResponsesWebSocketExt, ResponsesWebSocketSession, ResponsesWebSocketSessionBuilder,
@@ -33,7 +33,7 @@ pub trait DefaultWebSocketClient {
         Self: Sync;
 }
 
-impl<H> DefaultWebSocketClient for Bound<Responses, H>
+impl<H> DefaultWebSocketClient for Model<Responses, H>
 where
     H: WasmCompatSend + WasmCompatSync,
 {

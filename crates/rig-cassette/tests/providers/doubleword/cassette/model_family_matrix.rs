@@ -33,9 +33,9 @@ const PROMPT: &str = "Reply with the single word: family-ok";
 const CAP: u64 = 96;
 
 async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
-    let model = client.completion(model_name);
+    let model = client.endpoint(|provider_config| provider_config.completion(model_name));
     let response = model
-        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+        .complete(model.completion_request(PROMPT).max_tokens(CAP).build())
         .await
         .expect("the advertised model should answer a blocking request");
 
@@ -181,7 +181,8 @@ async fn default_qwen_family_streaming() {
     with_doubleword_cassette(
         "model_family_matrix/default_qwen_family_streaming",
         |client| async move {
-            let model = client.completion(doubleword::QWEN3_5_9B);
+            let model = client
+                .endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
             let stream = model
                 .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
                 .await

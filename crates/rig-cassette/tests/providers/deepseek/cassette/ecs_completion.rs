@@ -10,7 +10,9 @@ async fn completion_smoke() {
         async {
             with_deepseek_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion(deepseek::DEEPSEEK_V4_FLASH),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(deepseek::DEEPSEEK_V4_FLASH)
+                    }),
                     BASIC_PREAMBLE,
                     1,
                 );

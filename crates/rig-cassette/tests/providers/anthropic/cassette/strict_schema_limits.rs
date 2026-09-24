@@ -84,8 +84,10 @@ async fn twenty_strict_tools_are_accepted() {
         "strict_schema_limits/twenty_strict_tools_are_accepted",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let tools = (0..20)
                 .map(|index| empty_tool(format!("boundary_tool_{index:02}")))
                 .collect::<Vec<_>>();
@@ -100,7 +102,7 @@ async fn twenty_strict_tools_are_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("the documented twenty-strict-tool boundary should succeed");
             assert_single_tool_call(&response, "boundary_tool_19", &json!({}));
@@ -115,8 +117,10 @@ async fn twenty_one_strict_tools_are_rejected() {
         "strict_schema_limits/twenty_one_strict_tools_are_rejected",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Call boundary_tool_20 with an empty object.")
                 .max_tokens(64)
@@ -131,7 +135,7 @@ async fn twenty_one_strict_tools_are_rejected() {
                 .build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("twenty-one strict tools should exceed the provider limit");
             assert_invalid_request(&error, "Too many strict tools");
@@ -146,8 +150,10 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
         "strict_schema_limits/twenty_four_optional_parameters_in_one_schema_hit_internal_limit",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request(
                     "Call optional_boundary with an empty object; omit every optional field.",
@@ -162,7 +168,7 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
                 .build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("the provider's internal grammar cap should reject this shape");
             assert_invalid_request(&error, "Schema is too complex");
@@ -177,8 +183,10 @@ async fn twenty_five_optional_parameters_are_rejected() {
         "strict_schema_limits/twenty_five_optional_parameters_are_rejected",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Call optional_boundary with an empty object.")
                 .max_tokens(64)
@@ -191,7 +199,7 @@ async fn twenty_five_optional_parameters_are_rejected() {
                 .build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("twenty-five optional parameters should exceed the provider limit");
             assert_invalid_request(&error, "too many optional parameters");
@@ -206,8 +214,10 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
         "strict_schema_limits/sixteen_union_parameters_in_one_schema_hit_internal_limit",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request(
                     "Call union_boundary and set every union_00 through union_15 field to null.",
@@ -222,7 +232,7 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
                 .build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("the provider's internal grammar cap should reject this shape");
             assert_invalid_request(&error, "Schema is too complex");
@@ -237,8 +247,10 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
         "strict_schema_limits/twenty_four_optional_parameters_across_tools_are_accepted",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let tools = (0..12)
                 .map(|tool_index| ToolDefinition {
                     name: format!("optional_tool_{tool_index:02}"),
@@ -262,7 +274,7 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("twenty-four simple optional parameters should be accepted");
             assert_single_tool_call(&response, "optional_tool_00", &json!({}));
@@ -277,8 +289,10 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
         "strict_schema_limits/sixteen_union_parameters_across_tools_are_accepted",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let tools = (0..16)
                 .map(|tool_index| ToolDefinition {
                     name: format!("union_tool_{tool_index:02}"),
@@ -302,7 +316,7 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("sixteen simple union parameters should be accepted");
             assert_single_tool_call(&response, "union_tool_00", &json!({ "value": null }));
@@ -317,8 +331,10 @@ async fn seventeen_union_parameters_are_rejected() {
         "strict_schema_limits/seventeen_union_parameters_are_rejected",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Call union_boundary with every field set to null.")
                 .max_tokens(64)
@@ -331,7 +347,7 @@ async fn seventeen_union_parameters_are_rejected() {
                 .build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("seventeen union parameters should exceed the provider limit");
             assert_invalid_request(&error, "too many parameters with union types");

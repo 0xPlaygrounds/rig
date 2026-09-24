@@ -45,7 +45,10 @@ async fn extract_backward_compatibility() -> Result<()> {
     with_copilot_cassette_result(
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
-            let extractor = client.extractor::<Person>(LIVE_LIGHT_MODEL).build();
+            let extractor = client
+                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+                .into_extractor_builder::<Person>()
+                .build();
 
             let person = extractor
                 .extract("John Doe is a 30 year old software engineer.")
@@ -67,7 +70,10 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_copilot_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
-            let extractor = client.extractor::<Person>(LIVE_LIGHT_MODEL).build();
+            let extractor = client
+                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+                .into_extractor_builder::<Person>()
+                .build();
 
             let response: TypedPromptResponse<Person> = extractor
                 .extract("Jane Smith is a 45 year old data scientist.")
@@ -93,7 +99,10 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
         |client| async move {
             use rig::message::Message;
 
-            let extractor = client.extractor::<Address>(LIVE_LIGHT_MODEL).build();
+            let extractor = client
+                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+                .into_extractor_builder::<Address>()
+                .build();
 
             let chat_history = vec![Message::user(
                 "I'm looking at a property that might be interesting.",
@@ -122,7 +131,10 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_copilot_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
-            let extractor = client.extractor::<Person>(LIVE_LIGHT_MODEL).build();
+            let extractor = client
+                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+                .into_extractor_builder::<Person>()
+                .build();
 
             let text = "Bob Johnson is a 55 year old retired teacher.";
 
@@ -153,13 +165,19 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_copilot_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
-            let person_extractor = client.extractor::<Person>(LIVE_LIGHT_MODEL).build();
+            let person_extractor = client
+                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+                .into_extractor_builder::<Person>()
+                .build();
             let person_response = person_extractor
                 .extract("Alice is a 25 year old developer.")
                 .await?;
             anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
-            let address_extractor = client.extractor::<Address>(LIVE_LIGHT_MODEL).build();
+            let address_extractor = client
+                .endpoint(|provider_config| provider_config.completion(LIVE_LIGHT_MODEL))
+                .into_extractor_builder::<Address>()
+                .build();
             let address_response = address_extractor
                 .extract("456 Oak Avenue, Cambridge, MA 02139")
                 .await?;

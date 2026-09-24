@@ -14,7 +14,8 @@ use crate::support::{
 async fn streaming_smoke() {
     with_bedrock_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .completion(bedrock::completion::AMAZON_NOVA_LITE)
+            .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -32,7 +33,8 @@ async fn streaming_smoke() {
 async fn streaming_tools_smoke() {
     with_bedrock_cassette("streaming/streaming_tools_smoke", |client| async move {
         let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .completion(bedrock::completion::AMAZON_NOVA_LITE)
+            .into_agent_builder()
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .max_tokens(1024)
             .tool(Subtract)

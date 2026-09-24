@@ -52,6 +52,7 @@ fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
         }),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -71,8 +72,22 @@ async fn turn(
 ) -> Vec<AssistantContent> {
     let request = request(route, history);
     match route {
-        Route::Chat => run(client.completion(model), request, streamed).await,
-        Route::Responses => run(client.responses(model), request, streamed).await,
+        Route::Chat => {
+            run(
+                client.endpoint(|provider_config| provider_config.completion(model)),
+                request,
+                streamed,
+            )
+            .await
+        }
+        Route::Responses => {
+            run(
+                client.endpoint(|provider_config| provider_config.responses(model)),
+                request,
+                streamed,
+            )
+            .await
+        }
     }
 }
 
@@ -83,7 +98,7 @@ async fn run<M: CompletionModel>(
 ) -> Vec<AssistantContent> {
     if !streamed {
         return model
-            .completion(request)
+            .complete(request)
             .await
             .expect("the turn completes")
             .choice

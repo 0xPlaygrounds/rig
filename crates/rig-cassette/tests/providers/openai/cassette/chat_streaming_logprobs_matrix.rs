@@ -129,7 +129,9 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = client
+        .openai
+        .endpoint(|provider_config| provider_config.chat(model_name(cell.model)));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -141,7 +143,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // The provider-native chat-completions reply rides serialized on
             // `CompletionResponse::raw`; decode it to read the same fields the
             // old raw surface exposed directly.
-            let response = model.completion(request).await?;
+            let response = model.complete(request).await?;
             let raw: openai::completion::CompletionResponse = serde_json::from_value(response.raw)?;
             let choice = raw
                 .choices

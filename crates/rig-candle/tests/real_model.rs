@@ -68,7 +68,8 @@ async fn loads_and_generates_with_a_real_local_model()
     }
     let final_response: CandleCompletionResponse = serde_json::from_value(
         stream
-            .response
+            .terminal()
+            .cloned()
             .ok_or_else(|| std::io::Error::other("real model stream omitted final metadata"))?
             .raw,
     )?;
@@ -81,7 +82,7 @@ async fn loads_and_generates_with_a_real_local_model()
 
     // Normalized unary surface: the same request through `completion()` must
     // produce non-empty text and non-zero usage.
-    let normalized = model.completion(request.clone()).await?;
+    let normalized = model.complete(request.clone()).await?;
     let normalized_text: String = normalized
         .choice
         .iter()
@@ -115,7 +116,7 @@ async fn loads_and_generates_with_a_real_local_model()
     if normalized_streamed.is_empty() {
         return Err(std::io::Error::other("normalized stream produced no text").into());
     }
-    if normalized_stream.response.is_none() {
+    if normalized_stream.terminal().is_none() {
         return Err(std::io::Error::other("normalized stream omitted its terminal record").into());
     }
     Ok(())

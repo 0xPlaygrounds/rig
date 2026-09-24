@@ -101,7 +101,9 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client

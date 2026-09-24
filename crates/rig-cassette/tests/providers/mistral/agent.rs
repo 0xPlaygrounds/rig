@@ -14,7 +14,11 @@ async fn completion_smoke() {
         .expect("MISTRAL_API_KEY should be set")
         .bound()
         .expect("client should build");
-    let agent = client.agent(DEFAULT_MODEL).preamble(BASIC_PREAMBLE).build();
+    let agent = client
+        .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+        .into_agent_builder()
+        .preamble(BASIC_PREAMBLE)
+        .build();
 
     let response = agent
         .prompt(BASIC_PROMPT)

@@ -44,7 +44,7 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_completion_parity_matrix/`.
 
 use rig::completion::{CompletionModel as _, FinishReason};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai;
@@ -64,7 +64,7 @@ const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
+fn request(model: &Model<CopilotWire>) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
@@ -99,7 +99,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     with_copilot_cassette_result(
         "raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion",
         |client| async move {
-            let model = client.completion(CHAT_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(CHAT_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -155,7 +155,8 @@ async fn responses_raw_completion_carries_request_id() {
     with_copilot_cassette_result(
         "raw_completion_parity_matrix/responses_raw_completion_carries_request_id",
         |client| async move {
-            let model = client.completion(RESPONSES_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(RESPONSES_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: a codex model routes through /responses"

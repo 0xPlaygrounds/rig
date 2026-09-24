@@ -4,13 +4,16 @@
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::providers::gemini::Gemini;
 
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
+    client: &Model<Gemini, H>,
+) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-2.5-flash-lite"),
+        model: client
+            .endpoint(|provider_config| provider_config.completion("gemini-2.5-flash-lite")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

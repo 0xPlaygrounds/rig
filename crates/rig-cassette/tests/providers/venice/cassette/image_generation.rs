@@ -15,7 +15,8 @@ async fn image_generation_smoke() {
     with_venice_cassette(
         "image_generation/image_generation_smoke",
         |client| async move {
-            let model = client.image_generation(venice::VENICE_SD35);
+            let model =
+                client.endpoint(|provider_config| provider_config.images(venice::VENICE_SD35));
             let response = model
                 .image_generation_request(
                     "A lighthouse on a rocky cliff at sunrise, clean illustrative style.",

@@ -43,6 +43,7 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -131,7 +132,7 @@ fn a_worker_thread_completes_through_the_retained_runtime() {
         handle.block_on(async {
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                model.completion(request("hello from a worker")),
+                model.complete(request("hello from a worker")),
             )
             .await
             .expect("worker completion deadline")

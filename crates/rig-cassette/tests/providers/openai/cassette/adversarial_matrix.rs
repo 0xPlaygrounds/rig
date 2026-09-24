@@ -18,7 +18,14 @@ fn reasoning(effort: &str) -> Option<serde_json::Value> {
 async fn colliding_ids_chat() {
     const SCENARIO: &str = "adversarial/colliding_ids_chat";
     with_openai_cassette("adversarial/colliding_ids_chat", |client| async move {
-        adversarial::colliding_ids(&client.openai.chat("gpt-4.1-mini"), "call_dup", None).await;
+        adversarial::colliding_ids(
+            &client
+                .openai
+                .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+            "call_dup",
+            None,
+        )
+        .await;
     })
     .await;
     adversarial::assert_colliding_recorded("openai", SCENARIO);
@@ -29,7 +36,9 @@ async fn colliding_ids_responses() {
     const SCENARIO: &str = "adversarial/colliding_ids_responses";
     with_openai_cassette("adversarial/colliding_ids_responses", |client| async move {
         adversarial::colliding_ids(
-            &client.openai.responses("gpt-4.1-mini"),
+            &client
+                .openai
+                .endpoint(|provider_config| provider_config.responses("gpt-4.1-mini")),
             "call_dup",
             Some(json!({ "store": false })),
         )
@@ -45,7 +54,13 @@ async fn out_of_order_results_chat() {
     with_openai_cassette(
         "adversarial/out_of_order_results_chat",
         |client| async move {
-            adversarial::out_of_order_results(&client.openai.chat("gpt-4.1-mini"), None).await;
+            adversarial::out_of_order_results(
+                &client
+                    .openai
+                    .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+                None,
+            )
+            .await;
         },
     )
     .await;
@@ -59,7 +74,9 @@ async fn out_of_order_results_responses() {
         "adversarial/out_of_order_results_responses",
         |client| async move {
             adversarial::out_of_order_results(
-                &client.openai.responses("gpt-5-mini"),
+                &client
+                    .openai
+                    .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
                 reasoning("low"),
             )
             .await;
@@ -76,7 +93,9 @@ async fn long_encrypted_payload() {
     const SCENARIO: &str = "adversarial/long_encrypted_payload";
     with_openai_cassette("adversarial/long_encrypted_payload", |client| async move {
         adversarial::reasoning_round_trip(
-            &client.openai.responses("gpt-5-mini"),
+            &client
+                .openai
+                .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
             "Work this out carefully before acting. Let n be the number of primes below 600 \
              and s the sum of the decimal digits of the 90th prime. Count the primes in \
              blocks of 100 and verify each block. If n + s is even, the record is alpha, \
@@ -98,7 +117,9 @@ async fn three_provider_round_trip() {
         "adversarial/three_provider_round_trip",
         |client| async move {
             adversarial::round_trip_hop(
-                &client.openai.responses("gpt-5-mini"),
+                &client
+                    .openai
+                    .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
                 Hop::OpenAiResponses,
                 reasoning("low"),
             )

@@ -89,7 +89,8 @@ async fn streaming_tools_smoke() {
         |client| async move {
             let agent = client
                 .openai
-                .agent(openai::GPT_4O)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .into_agent_builder()
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -112,7 +113,7 @@ async fn example_streaming_with_tools() {
     with_openai_cassette("streaming_tools/example_streaming_with_tools", |client| async move {
         let agent = client
             .openai
-            .agent(openai::GPT_4O)
+            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)).into_agent_builder()
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \
                  Use the tools provided to answer the user's question and answer in a full sentence.",
@@ -139,7 +140,8 @@ async fn responses_stream_preserves_tool_result_flow() {
         |client| async move {
             let agent = client
                 .openai
-                .agent(openai::GPT_4O)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .into_agent_builder()
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .build();
@@ -165,7 +167,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_openai_cassette(
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client.openai.endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

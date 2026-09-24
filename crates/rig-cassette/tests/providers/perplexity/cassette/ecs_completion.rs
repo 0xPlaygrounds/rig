@@ -9,8 +9,12 @@ async fn completion_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_perplexity_cassette("agent/completion_smoke", |client| async move {
-                let mut ecs =
-                    EcsAgent::new(client.completion(perplexity::SONAR), BASIC_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(
+                    client
+                        .endpoint(|provider_config| provider_config.completion(perplexity::SONAR)),
+                    BASIC_PREAMBLE,
+                    1,
+                );
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -41,7 +45,9 @@ async fn completion_with_perplexity_options() {
                 "agent/completion_with_perplexity_options",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.completion(perplexity::SONAR),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(perplexity::SONAR)
+                        }),
                         "Answer briefly and include the date or time context if relevant.",
                         1,
                     );

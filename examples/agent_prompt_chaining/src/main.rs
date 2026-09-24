@@ -3,7 +3,7 @@
 //! Run it to see one agent produce a value that the next agent transforms.
 
 use anyhow::Result;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -14,12 +14,20 @@ const RNG_PREAMBLE: &str =
 const ADDER_PREAMBLE: &str =
     "Add 1000 to the number you receive, unless it is 0. Return only the final number.";
 
-fn build_rng_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
-    openai.agent(openai::GPT_4).preamble(RNG_PREAMBLE).build()
+fn build_rng_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
+    openai
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .into_agent_builder()
+        .preamble(RNG_PREAMBLE)
+        .build()
 }
 
-fn build_adder_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
-    openai.agent(openai::GPT_4).preamble(ADDER_PREAMBLE).build()
+fn build_adder_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
+    openai
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .into_agent_builder()
+        .preamble(ADDER_PREAMBLE)
+        .build()
 }
 
 #[tokio::main]

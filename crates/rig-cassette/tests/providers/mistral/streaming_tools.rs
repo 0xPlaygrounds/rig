@@ -21,7 +21,8 @@ async fn streaming_tools_smoke() {
         .bound()
         .expect("client should build");
     let agent = client
-        .agent(TOOL_MODEL)
+        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(256)
         .tool(Adder)
@@ -44,7 +45,8 @@ async fn example_streaming_with_tools() {
         .bound()
         .expect("client should build");
     let agent = client
-        .agent(TOOL_MODEL)
+        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .into_agent_builder()
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",
@@ -70,7 +72,8 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
         .bound()
         .expect("client should build");
     let agent = client
-        .agent(TOOL_MODEL)
+        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .into_agent_builder()
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
         .tool(AlphaSignal)
@@ -97,7 +100,8 @@ async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
         .bound()
         .expect("client should build");
     let agent = client
-        .agent(TOOL_MODEL)
+        .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+        .into_agent_builder()
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
         .tool(AlphaSignal)

@@ -10,7 +10,8 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     let agent = live_client()
         .await
-        .agent(LIVE_MODEL)
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();
 

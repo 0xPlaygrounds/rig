@@ -132,9 +132,10 @@ async fn context_overflow_preserves_the_token_counts() {
     with_llamacpp_small_context_cassette(
         "error_matrix/context_overflow_blocking",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request(overflowing_prompt())
                         .max_tokens(8)
@@ -188,7 +189,8 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
     with_llamacpp_small_context_cassette(
         "error_matrix/context_overflow_streaming",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request(overflowing_prompt())
                 .max_tokens(8)
@@ -261,9 +263,11 @@ async fn an_unknown_model_is_ignored_rather_than_rejected() {
     with_llamacpp_cassette(
         "error_matrix/unknown_model_is_ignored",
         |client| async move {
-            let model = client.completion("rig/definitely-not-a-llamacpp-model");
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion("rig/definitely-not-a-llamacpp-model")
+            });
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Reply with the single word: ok")
                         .max_tokens(256)
@@ -308,9 +312,10 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
     with_llamacpp_missing_api_key_cassette(
         "error_matrix/missing_api_key_is_401",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let error = model
-                .completion(model.completion_request("hi").max_tokens(8).build())
+                .complete(model.completion_request("hi").max_tokens(8).build())
                 .await
                 .expect_err("a server started with --api-key must reject an unkeyed request");
 
@@ -342,9 +347,9 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
 #[tokio::test]
 async fn the_api_key_the_provider_sends_is_accepted() {
     with_llamacpp_api_key_cassette("error_matrix/api_key_is_accepted", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
         let response = model
-            .completion(
+            .complete(
                 model
                     .completion_request("Reply with the single word: ok")
                     .max_tokens(256)
@@ -373,6 +378,7 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
         "error_matrix/verify_rejects_a_missing_key",
         |client| async move {
             let error = client
+                .endpoint(|provider_config| provider_config.verify())
                 .verify()
                 .await
                 .expect_err("verification must fail without the key");
@@ -390,6 +396,7 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
 
     with_llamacpp_api_key_cassette("error_matrix/verify_accepts_the_key", |client| async move {
         client
+            .endpoint(|provider_config| provider_config.verify())
             .verify()
             .await
             .expect("verification must succeed with the key");
@@ -423,7 +430,7 @@ async fn the_model_listing_requires_the_key_on_a_keyed_server() {
         "error_matrix/model_listing_is_keyed",
         |client| async move {
             let error = client
-                .models()
+                .endpoint(|provider_config| provider_config.models())
                 .list_all()
                 .await
                 .expect_err("`/v1/models` must refuse an unkeyed client");
@@ -458,7 +465,9 @@ async fn embeddings_without_the_flag_are_a_501() {
         "error_matrix/embeddings_without_the_flag",
         |client| async move {
             let error = client
-                .embedding(CASSETTE_EMBEDDING_MODEL, None)
+                .endpoint(|provider_config| {
+                    provider_config.embeddings(CASSETTE_EMBEDDING_MODEL, None)
+                })
                 .embed_texts(["hello".to_string()])
                 .await
                 .expect_err("a server without --embeddings must refuse");
@@ -502,7 +511,9 @@ async fn embeddings_with_pooling_none_are_a_400() {
         "error_matrix/embeddings_with_pooling_none",
         |client| async move {
             let error = client
-                .embedding(CASSETTE_EMBEDDING_MODEL, None)
+                .endpoint(|provider_config| {
+                    provider_config.embeddings(CASSETTE_EMBEDDING_MODEL, None)
+                })
                 .embed_texts(["hello".to_string()])
                 .await
                 .expect_err("--pooling none is not OpenAI-compatible");
@@ -545,7 +556,7 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
         "error_matrix/embeddings_on_a_causal_lm",
         |client| async move {
             let embeddings = client
-                .embedding(CASSETTE_MODEL, None)
+                .endpoint(|provider_config| provider_config.embeddings(CASSETTE_MODEL, None))
                 .embed_texts(["hello".to_string()])
                 .await
                 .expect("llama.cpp pools a causal LM rather than refusing");
@@ -581,9 +592,9 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
 #[tokio::test]
 async fn tools_without_jinja_are_a_500() {
     with_llamacpp_no_jinja_cassette("error_matrix/tools_without_jinja", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
         let error = model
-            .completion(
+            .complete(
                 model
                     .completion_request("Add 2 and 3 using the tool.")
                     .tool(rig::tool::tool_definition(&crate::support::Adder))
@@ -627,9 +638,10 @@ async fn a_malformed_body_keeps_its_parse_error() {
     with_llamacpp_cassette(
         "error_matrix/malformed_request_field",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request("hi")
                         .max_tokens(8)
@@ -675,9 +687,10 @@ async fn an_oversized_output_cap_is_clamped_not_rejected() {
     with_llamacpp_small_context_cassette(
         "error_matrix/oversized_output_cap",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Say ok.")
                         // Two orders of magnitude past the server's -c 512.
@@ -722,7 +735,7 @@ async fn rerank_without_a_reranker_is_a_501() {
         "error_matrix/rerank_without_a_reranker",
         |client| async move {
             let error = client
-                .rerank(CASSETTE_RERANK_MODEL)
+                .endpoint(|provider_config| provider_config.reranker(CASSETTE_RERANK_MODEL))
                 .rerank("what is a panda?", vec!["hi".into(), "it is a bear".into()])
                 .await
                 .expect_err("a server without --reranking must refuse");
@@ -763,7 +776,7 @@ async fn rerank_without_a_reranker_is_a_501() {
 async fn rerank_with_an_empty_document_list_is_a_400() {
     with_llamacpp_rerank_cassette("error_matrix/rerank_empty_documents", |client| async move {
         let error = client
-            .rerank(CASSETTE_RERANK_MODEL)
+            .endpoint(|provider_config| provider_config.reranker(CASSETTE_RERANK_MODEL))
             .rerank("what is a panda?", Vec::new())
             .await
             .expect_err("an empty document list is refused by the server");
@@ -815,7 +828,9 @@ async fn an_embeddings_input_past_the_batch_size_is_a_500() {
             // with, and deterministic.
             let oversized = "word ".repeat(4_000);
             let error = client
-                .embedding(CASSETTE_EMBEDDING_MODEL, None)
+                .endpoint(|provider_config| {
+                    provider_config.embeddings(CASSETTE_EMBEDDING_MODEL, None)
+                })
                 .embed_texts([oversized])
                 .await
                 .expect_err("an input past the physical batch must fail");

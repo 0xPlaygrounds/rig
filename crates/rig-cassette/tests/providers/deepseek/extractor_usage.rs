@@ -45,7 +45,8 @@ async fn extract_backward_compatibility() -> Result<()> {
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
             let extractor = client
-                .extractor::<Person>(deepseek::DEEPSEEK_V4_FLASH)
+                .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+                .into_extractor_builder::<Person>()
                 .build();
 
             let person = extractor
@@ -77,7 +78,8 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
             let extractor = client
-                .extractor::<Person>(deepseek::DEEPSEEK_V4_FLASH)
+                .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+                .into_extractor_builder::<Person>()
                 .build();
 
             let response: TypedPromptResponse<Person> = extractor
@@ -120,7 +122,8 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
         "extractor_usage/extract_with_chat_history_with_usage_works",
         |client| async move {
             let extractor = client
-                .extractor::<Address>(deepseek::DEEPSEEK_V4_FLASH)
+                .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+                .into_extractor_builder::<Address>()
                 .build();
 
             let chat_history = vec![Message::user(
@@ -173,7 +176,8 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
             let extractor = client
-                .extractor::<Person>(deepseek::DEEPSEEK_V4_FLASH)
+                .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+                .into_extractor_builder::<Person>()
                 .build();
 
             let text = "Bob Johnson is a 55 year old retired teacher.";
@@ -222,7 +226,8 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
             let person_extractor = client
-                .extractor::<Person>(deepseek::DEEPSEEK_V4_FLASH)
+                .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+                .into_extractor_builder::<Person>()
                 .build();
             let person_response = person_extractor
                 .extract("Alice is a 25 year old developer.")
@@ -233,7 +238,8 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             );
 
             let address_extractor = client
-                .extractor::<Address>(deepseek::DEEPSEEK_V4_FLASH)
+                .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+                .into_extractor_builder::<Address>()
                 .build();
             let address_response = address_extractor
                 .extract("456 Oak Avenue, Cambridge, MA 02139")

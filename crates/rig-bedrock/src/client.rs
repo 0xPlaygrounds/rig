@@ -1,7 +1,6 @@
 use crate::image::ImageGenerationModel;
 use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
-use rig_core::driver::CompletionProvider;
 use rig_core::embeddings::EmbeddingsBuilder;
 use rig_core::error::ProviderError;
 use std::sync::Arc;
@@ -124,6 +123,11 @@ impl Client {
         EmbeddingsBuilder::new(self.embedding(model, Some(ndims)))
     }
 
+    /// This provider's completion model for `model`.
+    pub fn completion(&self, model: impl Into<String>) -> CompletionModel {
+        CompletionModel::new(self.clone(), model)
+    }
+
     /// This provider's image-generation model for `model`.
     pub fn image_generation(&self, model: impl Into<String>) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
@@ -132,13 +136,5 @@ impl Client {
     /// Returns success without making a request or validating credentials.
     pub async fn verify(&self) -> Result<(), ProviderError> {
         Ok(())
-    }
-}
-
-impl CompletionProvider for Client {
-    type Model = CompletionModel;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Model {
-        CompletionModel::new(self.clone(), model)
     }
 }

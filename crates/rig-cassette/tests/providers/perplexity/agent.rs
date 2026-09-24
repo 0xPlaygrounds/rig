@@ -14,7 +14,8 @@ async fn completion_smoke() {
         .bound()
         .expect("transport should build");
     let agent = perplexity
-        .agent(SONAR)
+        .endpoint(|provider_config| provider_config.completion(SONAR))
+        .into_agent_builder()
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .additional_params(serde_json::json!({

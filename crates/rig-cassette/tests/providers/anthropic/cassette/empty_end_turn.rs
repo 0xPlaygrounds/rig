@@ -141,7 +141,8 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
 
             let first_turn = model
                 .completion_request(TERMINAL_NOTIFY_PROMPT)
@@ -201,7 +202,8 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
         "empty_end_turn/prompt_loop_accepts_empty_terminal_turn_after_tool_result",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .preamble(TERMINAL_NOTIFY_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Notify::new(call_count.clone()))
@@ -248,7 +250,7 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     let call_count = Arc::new(AtomicUsize::new(0));
     super::super::support::with_anthropic_cassette("empty_end_turn/prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty", |client| async move {
     let agent = client
-        .agent(CLAUDE_SONNET_4_6)
+        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)).into_agent_builder()
         .preamble(TERMINAL_NOTIFY_WITH_ACK_PREAMBLE)
         .max_tokens(1024)
         .tool(Notify::new(call_count.clone()))

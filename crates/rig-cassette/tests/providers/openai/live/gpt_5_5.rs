@@ -43,7 +43,8 @@ async fn responses_prompt_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();
 
@@ -64,7 +65,8 @@ async fn responses_streaming_prompt_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -84,7 +86,8 @@ async fn responses_tools_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -107,7 +110,8 @@ async fn responses_streaming_tools_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -128,7 +132,10 @@ async fn responses_structured_output_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let agent = client.agent(openai::GPT_5_5).build();
+    let agent = client
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
+        .build();
 
     let response: Gpt55Event = agent
         .prompt_typed("Return a concise event object for a local Rust meetup in Seattle.")
@@ -141,7 +148,8 @@ async fn responses_structured_output_smoke() {
     assert_nonempty_response(&response.summary);
 
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .output_schema::<SmokeStructuredOutput>()
         .build();
     let response = agent
@@ -161,7 +169,10 @@ async fn responses_extractor_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
+    let extractor = client
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_extractor_builder::<SmokePerson>()
+        .build();
 
     let response = extractor
         .extract(EXTRACTOR_TEXT)
@@ -196,7 +207,8 @@ async fn responses_image_input_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble("You are an image describer.")
         .build();
     let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
@@ -225,7 +237,7 @@ async fn responses_reasoning_nonstreaming_smoke() {
         .bound()
         .expect("transport should build");
     reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-        client.completion(openai::GPT_5_5),
+        client.endpoint(|provider_config| provider_config.completion(openai::GPT_5_5)),
         Some(gpt_5_5_reasoning_params()),
     ))
     .await;
@@ -239,7 +251,7 @@ async fn responses_reasoning_streaming_smoke() {
         .bound()
         .expect("transport should build");
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-        client.completion(openai::GPT_5_5),
+        client.endpoint(|provider_config| provider_config.completion(openai::GPT_5_5)),
         Some(gpt_5_5_reasoning_params()),
     ))
     .await;
@@ -254,7 +266,8 @@ async fn responses_reasoning_tool_roundtrip_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -279,7 +292,8 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -305,7 +319,8 @@ async fn chat_completions_prompt_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();
 
@@ -327,7 +342,8 @@ async fn chat_completions_streaming_prompt_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -348,7 +364,8 @@ async fn chat_completions_tools_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -372,7 +389,8 @@ async fn chat_completions_streaming_tools_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -395,7 +413,8 @@ async fn chat_completions_structured_output_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .output_schema::<SmokeStructuredOutput>()
         .build();
 
@@ -418,7 +437,10 @@ async fn chat_completions_extractor_smoke() {
         .with_route(Route::Chat)
         .bound()
         .expect("transport should build");
-    let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
+    let extractor = client
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_extractor_builder::<SmokePerson>()
+        .build();
 
     let response = extractor
         .extract(EXTRACTOR_TEXT)
@@ -454,7 +476,8 @@ async fn chat_completions_image_input_smoke() {
         .bound()
         .expect("transport should build");
     let agent = client
-        .agent(openai::GPT_5_5)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_5_5))
+        .into_agent_builder()
         .preamble("You are an image describer.")
         .build();
     let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
@@ -482,7 +505,7 @@ async fn responses_websocket_smoke() -> anyhow::Result<()> {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = client.responses(openai::GPT_5_5);
+    let model = client.endpoint(|provider_config| provider_config.responses(openai::GPT_5_5));
     let mut session = model.responses_websocket().await?;
 
     let request = model

@@ -76,7 +76,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
             let agent = client
-                .agent(xai::GROK_3_MINI)
+                .endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI))
+                .into_agent_builder()
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();
 

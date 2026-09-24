@@ -29,7 +29,8 @@ async fn messages_prompt_smoke() {
         "opus_4_7/messages_prompt_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .preamble(BASIC_PREAMBLE)
                 .build();
 
@@ -51,7 +52,8 @@ async fn messages_streaming_prompt_smoke() {
         "opus_4_7/messages_streaming_prompt_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
                 .build();
 
@@ -72,7 +74,8 @@ async fn messages_tools_smoke() {
         "opus_4_7/messages_tools_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -97,7 +100,8 @@ async fn messages_streaming_tools_smoke() {
         "opus_4_7/messages_streaming_tools_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -121,7 +125,8 @@ async fn messages_structured_output_smoke() {
         "opus_4_7/messages_structured_output_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .output_schema::<SmokeStructuredOutput>()
                 .build();
 
@@ -144,7 +149,10 @@ async fn messages_extractor_smoke() {
     super::super::support::with_anthropic_cassette(
         "opus_4_7/messages_extractor_smoke",
         |client| async move {
-            let extractor = client.extractor::<SmokePerson>(CLAUDE_OPUS_4_7).build();
+            let extractor = client
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_extractor_builder::<SmokePerson>()
+                .build();
 
             let response = extractor
                 .extract(EXTRACTOR_TEXT)
@@ -189,7 +197,8 @@ async fn messages_image_input_smoke() {
         "opus_4_7/messages_image_input_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .preamble("You are an image describer.")
                 .build();
             let image_bytes =
@@ -219,7 +228,7 @@ async fn messages_adaptive_thinking_nonstreaming_smoke() {
         "opus_4_7/messages_adaptive_thinking_nonstreaming_smoke",
         |client| async move {
             reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-                client.completion(CLAUDE_OPUS_4_7),
+                client.endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7)),
                 Some(opus_4_7_thinking_params()),
             ))
             .await;
@@ -248,7 +257,7 @@ async fn messages_adaptive_thinking_streaming_smoke() {
         |client| async move {
             reasoning::run_reasoning_roundtrip_streaming(
                 ReasoningRoundtripAgent::new(
-                    client.completion(CLAUDE_OPUS_4_7),
+                    client.endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7)),
                     Some(opus_4_7_thinking_params()),
                 )
                 .expecting_signed_reasoning_block(),
@@ -307,7 +316,8 @@ async fn messages_adaptive_thinking_tool_roundtrip_smoke() {
         "opus_4_7/messages_adaptive_thinking_tool_roundtrip_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(16384)
                 .tool(WeatherTool::new(call_count.clone()))
@@ -334,7 +344,8 @@ async fn messages_adaptive_thinking_streaming_tool_roundtrip_smoke() {
         "opus_4_7/messages_adaptive_thinking_streaming_tool_roundtrip_smoke",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_OPUS_4_7)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_OPUS_4_7))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(16384)
                 .tool(WeatherTool::new(call_count.clone()))

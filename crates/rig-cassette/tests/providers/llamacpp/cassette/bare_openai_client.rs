@@ -54,7 +54,8 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
         "bare_openai_client/caller_supplies_the_v1_prefix",
         |client| async move {
             let agent = client
-                .agent(CASSETTE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .into_agent_builder()
                 .preamble("You are a concise assistant.")
                 .max_tokens(256)
                 .build();
@@ -107,9 +108,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let bare = OpenAI::new("llamacpp-local").bind(recorder.clone());
+        let bare = rig::driver::Model::new(OpenAI::new("llamacpp-local"), recorder.clone());
         let _ = bare
-            .embedding("m", Some(1))
+            .endpoint(|provider_config| provider_config.embeddings("m", Some(1)))
             .embed_texts(["probe".to_string()])
             .await;
         let sent = &recorder.requests()[0];
@@ -125,9 +126,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let provider = OpenAI::with_key(&LLAMACPP, "").bind(recorder.clone());
+        let provider = rig::driver::Model::new(OpenAI::with_key(&LLAMACPP, ""), recorder.clone());
         let _ = provider
-            .embedding("m", Some(1))
+            .endpoint(|provider_config| provider_config.embeddings("m", Some(1)))
             .embed_texts(["probe".to_string()])
             .await;
         assert!(
@@ -144,9 +145,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/authorization_header_is_always_sent",
         |client| async move {
-            let model = client.chat(CASSETTE_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.chat(CASSETTE_MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Reply with the single word: ok")
                         .max_tokens(256)
@@ -204,7 +205,8 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
             let agent = client
-                .agent(CASSETTE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .into_agent_builder()
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -262,7 +264,8 @@ async fn agent_prompt_through_completions_api() {
         "bare_openai_client/agent_prompt_through_completions_api",
         |client| async move {
             let agent = client
-                .agent(CASSETTE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .into_agent_builder()
                 .preamble("You are a helpful assistant.")
                 .build();
 
@@ -284,7 +287,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = client.chat(CASSETTE_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.chat(CASSETTE_MODEL));
             let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
@@ -294,7 +297,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
             // what the decoder folded it into. The assistant text must be the
             // same text either way.
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("completions api request should succeed");
             assert_eq!(

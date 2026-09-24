@@ -18,7 +18,7 @@ use super::{
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     Reply as CoreReply, Serve,
-    adapters::{CompletionAdapter, MemoryAdapter, RerankAdapter, ToolAdapter, ToolFn},
+    adapters::{MemoryAdapter, ModelAdapter, ToolAdapter, ToolFn},
 };
 use rig_core::{
     completion::{CompletionRequest, Message},
@@ -64,6 +64,7 @@ fn completion_kind(stream: bool) -> EffectKind {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         },
         stream,
     }
@@ -774,7 +775,7 @@ async fn streaming_completion_flows_through_the_bus_final_terminated() {
         MockStreamEvent::final_response_with_total_tokens(7),
     ]]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::completion("mock", model))
         .expect("register");
     let _task = spawn(driver);
 
@@ -807,7 +808,7 @@ async fn a_unary_dispatch_of_a_streaming_completion_folds_to_the_response() {
         MockStreamEvent::final_response_with_total_tokens(3),
     ]]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::completion("mock", model))
         .expect("register");
     let _task = spawn(driver);
 
@@ -826,7 +827,7 @@ async fn a_unary_dispatch_of_a_unary_script_resolves_the_completion() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     let model = MockCompletionModel::from_turns([MockTurn::text("whole")]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::completion("mock", model))
         .expect("register");
     let _task = spawn(driver);
 
@@ -1184,7 +1185,7 @@ fn an_effect_stream_polls_cleanly_without_any_runtime() {
         MockStreamEvent::final_response_with_total_tokens(2),
     ]]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::completion("mock", model))
         .expect("register");
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
@@ -1219,7 +1220,7 @@ fn register_refuses_a_family_change_under_a_live_key() {
     let refused = registrar
         .register(
             "k",
-            CompletionAdapter::new("mock", MockCompletionModel::text("x")),
+            ModelAdapter::completion("mock", MockCompletionModel::text("x")),
         )
         .expect_err("a Completion handler cannot replace a Custom one");
     assert_eq!(refused.kind, ErrorKind::HandlerUnavailable);
@@ -1293,7 +1294,7 @@ async fn a_typed_view_binds_synchronously_after_a_runtime_registration() {
     registrar
         .register(
             "model",
-            CompletionAdapter::new("mock", MockCompletionModel::text("hi")),
+            ModelAdapter::completion("mock", MockCompletionModel::text("hi")),
         )
         .expect("fresh key");
     // Nobody has polled the driver: the descriptor is there, the bind works.
@@ -1522,7 +1523,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
     let key: Key<rig_core::effect::family::Completion> = driver
         .register_typed(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::completion(
                 "mock",
                 MockCompletionModel::from_turns([MockTurn::text("typed"), MockTurn::text("typed")]),
             ),
@@ -1564,7 +1565,7 @@ async fn register_typed_refuses_a_handler_of_another_family() {
     let report = registrar
         .register_typed::<rig_core::effect::family::Tool>(
             "model",
-            CompletionAdapter::new("mock", MockCompletionModel::text("x")),
+            ModelAdapter::completion("mock", MockCompletionModel::text("x")),
         )
         .expect_err("a completion adapter cannot prove a tool key");
     assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
@@ -1833,7 +1834,7 @@ async fn a_rerank_adapter_never_clones_the_model_and_publishes_its_batch_size() 
     driver
         .register(
             "rerank:probe",
-            RerankAdapter::new(
+            ModelAdapter::rerank(
                 "probe",
                 CloneCountingRerank {
                     clones: Arc::clone(&clones),
@@ -1894,7 +1895,7 @@ impl RerankModel for NonCloneRerank {
 async fn a_non_clone_rerank_model_registers_and_its_error_is_a_report() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver
-        .register("rerank:once", RerankAdapter::new("once", NonCloneRerank))
+        .register("rerank:once", ModelAdapter::rerank("once", NonCloneRerank))
         .expect("register");
     let task = spawn(driver);
     let handle: super::RerankHandle = dispatcher
@@ -2050,7 +2051,7 @@ async fn concurrent_agent_wrappers_receive_distinct_recorder_contexts() {
         };
         let (dispatcher, registrar, mut driver) = Bus::channel();
         driver
-            .register("model", CompletionAdapter::new("mock", model.clone()))
+            .register("model", ModelAdapter::completion("mock", model.clone()))
             .unwrap();
         let recorder = Counting {
             observation_sink: Some(Arc::new(rig_core::observe::ObservationLog::default())),
@@ -2133,7 +2134,7 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
             };
             let (dispatcher, _registrar, mut driver) = Bus::channel();
             driver
-                .register("model", CompletionAdapter::new("mock", model.clone()))
+                .register("model", ModelAdapter::completion("mock", model.clone()))
                 .unwrap();
             let sink = Arc::new(ObservationLog::default());
             let recorder = Counting {
@@ -2151,12 +2152,12 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
             let context =
                 explicit.then(|| AdapterContext::new(sink, Subject::scoped("caller"), "caller"));
             if streamed {
-                let mut stream = handle.stream_with_context(request, context);
+                let mut stream = handle.stream(observed(request, context));
                 while let Some(event) = within(stream.next()).await {
                     event.unwrap();
                 }
             } else {
-                within(handle.complete_with_context(request, context))
+                within(handle.complete(observed(request, context)))
                     .await
                     .unwrap();
             }
@@ -2506,7 +2507,7 @@ fn a_bind_on_a_closed_bus_is_bus_closed_not_unavailable() {
     driver
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::completion(
                 "gpt",
                 MockCompletionModel::from_turns([MockTurn::text("hi")]),
             ),
@@ -3559,4 +3560,15 @@ async fn labelled_memory_and_retrieve_adapters_serve_side_by_side() {
     }
     assert_eq!(tenant_a.load_count(), 1);
     assert_eq!(tenant_b.load_count(), 1);
+}
+
+/// `request` observed by `context`, as a caller hands it to a model handle.
+fn observed(
+    mut request: rig_core::completion::CompletionRequest,
+    context: Option<rig_core::observe::AdapterContext>,
+) -> rig_core::completion::CompletionRequest {
+    if let Some(context) = context {
+        request.extensions.insert(context);
+    }
+    request
 }

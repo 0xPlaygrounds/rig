@@ -16,7 +16,10 @@ async fn tools_smoke() {
         .bound()
         .expect("transport should build");
     let agent = provider
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+        .endpoint(|provider_config| {
+            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        })
+        .into_agent_builder()
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

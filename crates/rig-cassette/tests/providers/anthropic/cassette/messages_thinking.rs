@@ -46,7 +46,9 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
     with_anthropic_cassette(
         "messages_thinking/redacted_thinking_roundtrip_nonstreaming",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            });
 
             let first_request = model
                 .completion_request(redacted_thinking_prompt())
@@ -54,7 +56,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .additional_params(thinking_params())
                 .build();
             let first_response = model
-                .completion(first_request)
+                .complete(first_request)
                 .await
                 .expect("redacted-thinking completion should succeed");
 
@@ -78,7 +80,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .build();
 
             let second_response = model
-                .completion(second_request)
+                .complete(second_request)
                 .await
                 .expect("history containing redacted_thinking should be accepted");
 
@@ -107,8 +109,11 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
         "messages_thinking/static_prefix_ttl_coexists_with_extended_thinking",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| {
+                    let wire = wire.clone();
                     wire.with_automatic_caching().with_static_prefix_cache_ttl(
                         rig::providers::anthropic::completion::CacheTtl::OneHour,
                     )
@@ -131,7 +136,7 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
                 .additional_params(thinking_params())
                 .build();
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("extended thinking with a 1h static prefix should succeed");
 
@@ -150,7 +155,9 @@ async fn redacted_thinking_streaming() {
     with_anthropic_cassette(
         "messages_thinking/redacted_thinking_streaming",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            });
             let request = model
                 .completion_request(redacted_thinking_prompt())
                 .max_tokens(4096)

@@ -10,7 +10,7 @@
 use futures::StreamExt;
 use rig::agent::{AgentHook, MultiTurnStreamItem, StreamingError};
 use rig::completion::PromptError;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::prelude::*;
@@ -74,7 +74,7 @@ fn assert_settled_error(settled: &RecordSettled) {
 /// A unary tool program under `hook`, expected to end cancelled with
 /// `reason`; the log's families are `shape`.
 async fn unary_tool_run(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     hook: impl AgentHook + 'static,
     reason: &str,
     shape: &[EffectFamily],
@@ -83,7 +83,8 @@ async fn unary_tool_run(
     let settled = RecordSettled::default();
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let mut builder = client
-        .agent(CLAUDE_SONNET_4_6)
+        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .into_agent_builder()
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
@@ -128,14 +129,17 @@ enum Streamed {
 }
 
 async fn streamed_run(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     hook: impl AgentHook + 'static,
     reason: &str,
     program: Streamed,
 ) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let mut base = client.agent(CLAUDE_SONNET_4_6).name("golden");
+    let mut base = client
+        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .into_agent_builder()
+        .name("golden");
     base = base.temperature(0.0);
     let agent = match program {
         Streamed::Tools => base
@@ -238,7 +242,8 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
             let settled = RecordSettled::default();
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)

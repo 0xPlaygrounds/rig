@@ -14,7 +14,10 @@ async fn extractor_smoke() {
         .expect("MISTRAL_API_KEY should be set")
         .bound()
         .expect("client should build");
-    let extractor = client.extractor::<SmokePerson>(DEFAULT_MODEL).build();
+    let extractor = client
+        .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+        .into_extractor_builder::<SmokePerson>()
+        .build();
 
     let response = extractor
         .extract(EXTRACTOR_TEXT)

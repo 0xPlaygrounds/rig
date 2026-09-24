@@ -880,8 +880,7 @@ impl TurnSource for StreamingTurnSource {
                     // "the provider reported no reason" rather than "the turn
                     // stopped normally".
                     let reason = stream
-                        .response
-                        .as_ref()
+                        .terminal()
                         .and_then(|response| response.finish_reason.clone());
                     emit_completion_call!($usage, reason)
                 }};
@@ -896,7 +895,7 @@ impl TurnSource for StreamingTurnSource {
                         // attempt's response, never a previous attempt's. A
                         // stream that delivered no terminal is truncated per
                         // the emission contract and has no call to record.
-                        match stream.response.as_ref().map(|response| response.raw.clone()) {
+                        match stream.terminal().map(|response| response.raw.clone()) {
                             None => Err(truncated_stream_error().into()),
                             Some(raw) => match run.record_streamed_completion_call(
                                 usage,
@@ -1098,7 +1097,7 @@ impl TurnSource for StreamingTurnSource {
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
                             let partial = assembler.partial_turn(
-                                stream.message_id.clone(),
+                                stream.message_id().map(str::to_owned),
                                 stream.reasoning_issuer(),
                             );
                             // Gated on `has_hooks`: building the diagnostic context
@@ -1205,7 +1204,7 @@ impl TurnSource for StreamingTurnSource {
             // The terminal record is this attempt's: its identity, finish
             // reason and payload are read from it below, never from a
             // previous attempt's stream.
-            let Some(terminal) = stream.response.clone() else {
+            let Some(terminal) = stream.terminal().cloned() else {
                 yield Err(truncated_stream_error().into());
                 return;
             };
@@ -1236,7 +1235,7 @@ impl TurnSource for StreamingTurnSource {
 
             let mut final_turn_content = stream.snapshot();
             let streamed_turn = assembler.finish(
-                stream.message_id.clone(),
+                stream.message_id().map(str::to_owned),
                 &final_turn_content,
                 stream.reasoning_issuer(),
             );
@@ -2053,7 +2052,7 @@ pub(crate) enum CompletionDispatch {
     Stream {
         id: EffectId,
         kind: EffectKind,
-        stream: rig_core::streaming::StreamingCompletionResponse,
+        stream: rig_core::streaming::CompletionStream,
     },
 }
 

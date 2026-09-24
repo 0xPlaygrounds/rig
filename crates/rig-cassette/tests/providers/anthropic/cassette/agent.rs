@@ -11,7 +11,10 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            })
+            .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();
 
@@ -37,7 +40,10 @@ async fn completion_smoke_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            })
+            .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .record_to(recorder.clone())
@@ -63,7 +69,10 @@ async fn memory_conversation_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            })
+            .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .memory(rig::memory::InMemoryConversationMemory::new())

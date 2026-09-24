@@ -20,7 +20,7 @@ use rig_core::{
     effect::{EffectKind, HandlerDescriptor},
     serve::{
         Dispatch, Reply, Serve, ServingPolicy,
-        adapters::{CompletionAdapter, ToolAdapter},
+        adapters::{ModelAdapter, ToolAdapter},
     },
     tool::Tool,
 };
@@ -164,7 +164,7 @@ impl EcsAgent {
                     "parity/model"
                 },
                 RuntimeHandler {
-                    inner: Arc::new(CompletionAdapter::new(
+                    inner: Arc::new(ModelAdapter::completion(
                         if golden_identity { "default" } else { "parity" },
                         model,
                     )),

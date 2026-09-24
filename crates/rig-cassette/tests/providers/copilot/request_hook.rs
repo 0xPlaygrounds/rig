@@ -75,7 +75,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
             let agent = client
-                .agent(LIVE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .into_agent_builder()
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();
 

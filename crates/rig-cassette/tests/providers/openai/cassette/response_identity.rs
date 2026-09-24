@@ -23,7 +23,9 @@ async fn responses_nonstreaming_carries_identity() {
     with_openai_cassette(
         "response_identity/responses_nonstreaming_carries_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -52,7 +54,9 @@ async fn responses_streaming_carries_identity() {
     with_openai_cassette(
         "response_identity/responses_streaming_carries_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -81,7 +85,7 @@ async fn chat_completions_nonstreaming_carries_identity() {
     with_openai_completions_cassette(
         "response_identity/chat_completions_nonstreaming_carries_identity",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = client.endpoint(|provider_config| provider_config.chat(openai::GPT_4O));
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -107,7 +111,7 @@ async fn chat_completions_streaming_carries_identity() {
     with_openai_completions_cassette(
         "response_identity/chat_completions_streaming_carries_identity",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = client.endpoint(|provider_config| provider_config.chat(openai::GPT_4O));
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -143,7 +147,8 @@ async fn agent_tool_run_reports_per_attempt_identity() {
             let probe = IdentityProbe::default();
             let agent = client
                 .openai
-                .agent(openai::GPT_4O)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .into_agent_builder()
                 .preamble(TOOLS_PREAMBLE)
                 .tool(Adder)
                 .add_hook(probe.clone())
@@ -185,7 +190,8 @@ async fn streamed_agent_run_reports_identity() {
             let probe = IdentityProbe::default();
             let agent = client
                 .openai
-                .agent(openai::GPT_4O)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .into_agent_builder()
                 .preamble("You are a terse assistant.")
                 .add_hook(probe.clone())
                 .build();

@@ -16,7 +16,11 @@ async fn list_models_smoke() {
         .expect("MINIMAX_API_KEY should be set")
         .bound()
         .expect("client should build");
-    let models = match client.models().list_all().await {
+    let models = match client
+        .endpoint(|provider_config| provider_config.models())
+        .list_all()
+        .await
+    {
         Ok(models) => models,
         Err(error) => {
             panic!("listing MiniMax models should succeed\nDisplay: {error}\nDebug: {error:#?}")

@@ -55,7 +55,9 @@ async fn main() -> Result<(), anyhow::Error> {
     .await?;
 
     // // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     // Define the properties that will be retrieved from querying the graph nodes
     #[derive(Debug, Deserialize, Serialize)]

@@ -13,8 +13,8 @@ async fn responses() {
     with_xai_cassette("request_identity_matrix/responses", |client| async move {
         request_identity::run(
             cell,
-            client.completion(xai::GROK_3_MINI),
-            client.completion(xai::GROK_3_MINI),
+            client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)),
+            client.endpoint(|provider_config| provider_config.completion(xai::GROK_3_MINI)),
             None,
             // xAI's unknown-model error quotes the account's team id.
             |request| request.temperature(7.0),

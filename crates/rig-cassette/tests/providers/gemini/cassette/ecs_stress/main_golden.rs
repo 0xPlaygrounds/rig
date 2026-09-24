@@ -6,7 +6,7 @@ use rig::{
     completion::CompletionModel,
     serve::{
         ServingPolicy,
-        adapters::{CompletionAdapter, ToolAdapter},
+        adapters::{ModelAdapter, ToolAdapter},
     },
     tool::Tool,
 };
@@ -53,7 +53,7 @@ pub(super) async fn run(
         handlers.register(
             "stress-agent/model:default",
             RuntimeHandler {
-                inner: Arc::new(CompletionAdapter::new("default", model)),
+                inner: Arc::new(ModelAdapter::completion("default", model)),
                 runtime: io_runtime(),
             },
         )

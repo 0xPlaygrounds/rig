@@ -51,7 +51,8 @@ async fn main() -> Result<()> {
         .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
 
     let sliding_agent = client
-        .agent(openai::GPT_4O)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .into_agent_builder()
         .preamble("You are a helpful assistant. Keep responses short.")
         .memory(sliding_memory)
         .build();
@@ -67,7 +68,8 @@ async fn main() -> Result<()> {
         .with_filter(TokenWindowMemory::new(256, approx_token_count).into_filter());
 
     let token_agent = client
-        .agent(openai::GPT_4O)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .into_agent_builder()
         .preamble("You are a helpful assistant. Keep responses short.")
         .memory(token_memory)
         .build();

@@ -55,6 +55,17 @@ impl<W, T> Model<W, T> {
     pub fn new(wire: W, transport: T) -> Self {
         Self { wire, transport }
     }
+
+    /// The model of another wire on this transport, built from this one's.
+    /// With a provider configuration in place of a wire, this is how one
+    /// transport serves each of the provider's endpoints:
+    /// `openai.endpoint(|openai| openai.completion(model))`.
+    pub fn endpoint<V>(&self, wire: impl FnOnce(&W) -> V) -> Model<V, T>
+    where
+        T: Clone,
+    {
+        Model::new(wire(&self.wire), self.transport.clone())
+    }
 }
 
 impl<W: Wire, T> Model<W, T> {

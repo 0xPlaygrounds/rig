@@ -149,10 +149,11 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.complete(request(&model, cell)).await?;
             let calls = response
                 .choice
                 .iter()

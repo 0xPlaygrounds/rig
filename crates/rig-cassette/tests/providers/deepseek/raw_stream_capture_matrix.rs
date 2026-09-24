@@ -4,7 +4,7 @@
 //! **The feature.** Every stream's terminal
 //! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
 //! record — for DeepSeek the shared chat-completions
-//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
+//! [`CompletionStream`] over [`ChatUsage`] — serialized. Capture
 //! is always on: there is no flag to request it, nothing about it reaches the
 //! wire, and a `Value::Null` only ever means a terminal built by hand with no
 //! provider record behind it. It is the terminal record only, never the
@@ -20,7 +20,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `CompletionStream<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_cache_miss_tokens` | terminal-only field | the terminal accounting reads back as [`ChatUsage`], whose `extra` carries `prompt_cache_miss_tokens` and whose `to_normalized` keeps only the hit half | recorded |
 //! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` round-trips the same way and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
 //!
@@ -89,7 +89,7 @@ struct ReasoningStreamObservation {
 /// the terminal record, and cell 3 is about a third thing the stream carried
 /// — the reasoning deltas, and the completed block that supersedes them.
 async fn collect_reasoning_text_and_terminal(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> ReasoningStreamObservation {
     let mut observation = ReasoningStreamObservation {
         reasoning: String::new(),
@@ -149,7 +149,13 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -176,7 +182,13 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
-        |client| capture_terminal(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_terminal(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_cache_miss_tokens should replay from its cassette");
@@ -234,7 +246,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let stream = model.stream(reasoning_request(&model)).await?;
             sink.put(collect_reasoning_text_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())

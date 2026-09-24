@@ -1,14 +1,14 @@
 //! Typed extraction through an agent's `submit` output tool, with configurable retries.
 //!
 //! ```no_run
-//! use rig_agent::prelude::*;
+//! use rig_agent::{extractor::ExtractorBuilder, prelude::*};
 //! use rig_core::providers::openai::{self, OpenAI};
-//! use rig_reqwest::prelude::*;
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person { name: String, age: u8 }
-//! let provider = OpenAI::from_env()?.bound()?;
-//! let extractor = provider.extractor::<Person>(openai::GPT_4O).retries(2).build();
+//! let wire = OpenAI::from_env()?.completion(openai::GPT_4O);
+//! let model = Model::new(wire, rig_reqwest::client::bundled()?);
+//! let extractor = ExtractorBuilder::<Person>::new(model).retries(2).build();
 //! let person = extractor.extract("John is 30.").await?.output;
 //! # Ok(())
 //! # }

@@ -524,8 +524,7 @@ async fn assembled(
     items: Vec<Result<StreamEvent, ProviderError>>,
 ) -> (Vec<rig_core::message::ToolCall>, Vec<ErrorReport>) {
     use futures::StreamExt;
-    let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
+    let mut stream = CompletionStream::new(PROVIDER_NAME, futures::stream::iter(items));
     let mut calls = Vec::new();
     let mut errors = Vec::new();
     while let Some(item) = stream.next().await {
@@ -758,13 +757,13 @@ fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseSt
 /// Drive `items` through the normalized pipeline exactly as the
 /// `CompletionModel` seam does, returning the terminal.
 async fn normalized_terminal(items: Vec<Result<StreamEvent, ProviderError>>) -> StreamFinal {
-    let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
+    let mut stream = CompletionStream::new(PROVIDER_NAME, futures::stream::iter(items));
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
     stream
-        .response
+        .terminal()
+        .cloned()
         .expect("the stream must end with a terminal record")
 }
 
@@ -787,7 +786,7 @@ async fn stream_from_events_terminal_carries_raw() {
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = stream.response.expect("terminal record");
+    let terminal = stream.terminal().expect("terminal record");
 
     let raw = &terminal.raw;
     let typed: BedrockStreamingResponse =
@@ -863,8 +862,7 @@ async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
         .into_iter()
         .map(Ok),
     );
-    let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, run_wire_stream(events, state));
+    let mut stream = CompletionStream::new(PROVIDER_NAME, translate(events, state));
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }

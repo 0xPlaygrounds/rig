@@ -99,16 +99,16 @@ fn assert_recorded_transport_parity(blocking_scenario: &str, streaming_scenario:
 }
 
 async fn unknown_model_blocking_body(client: BoundDoubleword) {
-    let model = client.completion(UNKNOWN_MODEL);
+    let model = client.endpoint(|provider_config| provider_config.completion(UNKNOWN_MODEL));
     let error = model
-        .completion(model.completion_request(PROMPT).max_tokens(8).build())
+        .complete(model.completion_request(PROMPT).max_tokens(8).build())
         .await
         .expect_err("an unknown model should be rejected");
     assert_preserved_client_error(&error, 404);
 }
 
 async fn unknown_model_streaming_body(client: BoundDoubleword) {
-    let model = client.completion(UNKNOWN_MODEL);
+    let model = client.endpoint(|provider_config| provider_config.completion(UNKNOWN_MODEL));
     let result = model
         .stream(model.completion_request(PROMPT).max_tokens(8).build())
         .await;
@@ -124,16 +124,18 @@ async fn unknown_model_streaming_body(client: BoundDoubleword) {
 }
 
 async fn invalid_key_blocking_body(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
     let error = model
-        .completion(model.completion_request(PROMPT).max_tokens(8).build())
+        .complete(model.completion_request(PROMPT).max_tokens(8).build())
         .await
         .expect_err("invalid credentials should be rejected");
     assert_preserved_client_error(&error, 403);
 }
 
 async fn invalid_key_streaming_body(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
     let result = model
         .stream(model.completion_request(PROMPT).max_tokens(8).build())
         .await;
@@ -149,9 +151,10 @@ async fn invalid_key_streaming_body(client: BoundDoubleword) {
 }
 
 async fn invalid_temperature_blocking_body(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
     let error = model
-        .completion(
+        .complete(
             model
                 .completion_request(PROMPT)
                 .additional_params(json!({ "temperature": 100 }))
@@ -164,7 +167,8 @@ async fn invalid_temperature_blocking_body(client: BoundDoubleword) {
 }
 
 async fn invalid_temperature_streaming_body(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(doubleword::QWEN3_5_9B));
     let result = model
         .stream(
             model

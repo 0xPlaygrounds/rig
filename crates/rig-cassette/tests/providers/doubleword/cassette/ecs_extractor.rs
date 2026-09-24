@@ -8,11 +8,14 @@ async fn extractor_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_doubleword_cassette("extractor/extractor_smoke", |client| async move {
-                let response =
-                    EcsExtractor::<SmokePerson>::new(client.completion(DEFAULT_MODEL), None, None)
-                        .extract(EXTRACTOR_TEXT, &[])
-                        .await
-                        .expect("extractor request should succeed");
+                let response = EcsExtractor::<SmokePerson>::new(
+                    client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                    None,
+                    None,
+                )
+                .extract(EXTRACTOR_TEXT, &[])
+                .await
+                .expect("extractor request should succeed");
                 validate_extraction_fields(
                     "doubleword_extractor_smoke",
                     response.output.first_name.as_deref(),

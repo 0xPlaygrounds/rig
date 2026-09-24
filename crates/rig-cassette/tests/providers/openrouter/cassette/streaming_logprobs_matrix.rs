@@ -132,7 +132,8 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -144,7 +145,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // Log probabilities stay provider-native: the normalized response
             // models none, so the blocking control reads them off the reply
             // document the driver keeps on `raw`.
-            let document = model.completion(request).await?.raw;
+            let document = model.complete(request).await?.raw;
             Observation {
                 logprobs: document["choices"][0]["logprobs"].clone(),
                 finish_reason: document["choices"][0]["finish_reason"].clone(),

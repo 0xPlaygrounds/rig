@@ -1,5 +1,5 @@
 use assert_fs::TempDir;
-use rig::driver::{Bind as _, Bound};
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
@@ -13,7 +13,7 @@ use futures::FutureExt;
 async fn chatgpt_cassette_with_default_instructions(
     spec: impl Into<CassetteSpec>,
     default_instructions: impl Into<String>,
-) -> (ProviderCassette, Bound<OpenAI>) {
+) -> (ProviderCassette, Model<OpenAI>) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "chatgpt",
@@ -31,13 +31,13 @@ async fn chatgpt_cassette_with_default_instructions(
     (cassette, client)
 }
 
-async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<OpenAI>) {
+async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Model<OpenAI>) {
     chatgpt_cassette_with_default_instructions(spec, "").await
 }
 
 async fn chatgpt_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, Bound<OpenAI>, TempDir) {
+) -> (ProviderCassette, Model<OpenAI>, TempDir) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "chatgpt",
@@ -82,12 +82,12 @@ async fn chatgpt_noninteractive_oauth_cassette(
         provider = provider.with_account_id(account_id);
     }
 
-    (cassette, provider.bind(http), temp)
+    (cassette, rig::driver::Model::new(provider, http), temp)
 }
 
 pub(super) async fn with_chatgpt_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = chatgpt_cassette(spec).await;
@@ -100,7 +100,7 @@ pub(super) async fn with_chatgpt_cassette_default_instructions<F, Fut>(
     default_instructions: impl Into<String>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) =
@@ -113,7 +113,7 @@ pub(super) async fn with_chatgpt_noninteractive_oauth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client, _temp) = chatgpt_noninteractive_oauth_cassette(spec).await;

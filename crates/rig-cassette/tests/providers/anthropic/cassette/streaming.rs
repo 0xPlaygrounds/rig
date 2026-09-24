@@ -13,7 +13,10 @@ use crate::support::{
 async fn streaming_smoke() {
     with_anthropic_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            })
+            .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -64,7 +67,10 @@ async fn gateway_reports_input_tokens_on_message_delta() {
         "streaming/gateway_message_delta_metadata",
         |client| async move {
             let agent = client
-                .agent("anthropic/claude-haiku-4.5")
+                .endpoint(|provider_config| {
+                    provider_config.completion("anthropic/claude-haiku-4.5")
+                })
+                .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
                 .max_tokens(16)
                 .build();
@@ -125,7 +131,10 @@ async fn anthropic_proper_agrees_on_input_tokens_across_both_frames() {
         "streaming/input_tokens_agree_across_frames",
         |client| async move {
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
                 .max_tokens(64)
                 .build();

@@ -27,7 +27,8 @@ async fn tool_call_turn_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .into_agent_builder()
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -62,7 +63,8 @@ async fn cancelled_stream_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/cancelled_stream", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .into_agent_builder()
             .name("golden")
             .preamble("You are a concise assistant. Answer directly.")
             .temperature(0.0)

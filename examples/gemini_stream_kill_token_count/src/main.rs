@@ -10,8 +10,7 @@
 //! `streamGenerateContent` response. Any mid-stream disruption skips that chunk,
 //! so the exact server-side token count is unrecoverable. There is also no
 //! "cancel" flag to send Gemini — killing a stream is purely a client-side
-//! connection close (here, `StreamingCompletionResponse::cancel()` /
-//! `AbortHandle::abort()`).
+//! connection close (here, dropping the `CompletionStream`).
 //!
 //! ## The approach — one accounting path for every disruption
 //!
@@ -59,7 +58,7 @@ use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
 };
-use rig::streaming::{BlockClose, Delta, StreamEvent, StreamingCompletionResponse};
+use rig::streaming::{BlockClose, CompletionStream, Delta, StreamEvent};
 
 const MODEL: &str = "gemini-2.5-flash";
 /// Inject the disruption once this many output chars have streamed, so there is
@@ -82,11 +81,11 @@ enum Disruption {
     Stall,
 }
 
-/// Wraps a live `StreamingCompletionResponse` and injects a disruption after
+/// Wraps a live `CompletionStream` and injects a disruption after
 /// `after_chars` of output has been forwarded. This lets us exercise every
 /// disruption shape against a genuine Gemini stream's partial output.
 struct Disrupt {
-    inner: StreamingCompletionResponse,
+    inner: CompletionStream,
     mode: Disruption,
     after_chars: usize,
     seen_chars: usize,
@@ -94,7 +93,7 @@ struct Disrupt {
 }
 
 impl Disrupt {
-    fn new(inner: StreamingCompletionResponse, mode: Disruption, after_chars: usize) -> Self {
+    fn new(inner: CompletionStream, mode: Disruption, after_chars: usize) -> Self {
         // For `None`, make the trigger unreachable so it never fires.
         let after_chars = match mode {
             Disruption::None => usize::MAX,
@@ -128,9 +127,11 @@ impl Stream for Disrupt {
             this.fired = true;
             match this.mode {
                 Disruption::ManualKill => {
-                    // Real cancellation of the underlying stream (drops the HTTP
-                    // body / generator); surfaces to the consumer as `None`.
-                    this.inner.cancel();
+                    // Real cancellation: dropping the underlying stream drops
+                    // the HTTP body; surfaces to the consumer as `None`.
+                    let provider = this.inner.provider().to_owned();
+                    this.inner =
+                        CompletionStream::relay(provider, Box::pin(futures::stream::empty()));
                     return Poll::Ready(None);
                 }
                 Disruption::TransportError => {
@@ -350,7 +351,7 @@ async fn run_scenario(
     api_key: &str,
 ) -> anyhow::Result<Report> {
     let client = Gemini::from_env()?.bound()?;
-    let model = client.completion(MODEL);
+    let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
 
     let stream = model
         .completion_request(prompt)

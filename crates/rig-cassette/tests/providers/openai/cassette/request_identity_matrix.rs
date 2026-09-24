@@ -16,8 +16,12 @@ async fn chat_completions() {
         |client| async move {
             request_identity::run(
                 cell,
-                client.openai.chat("gpt-4.1-nano"),
-                client.openai.chat(REJECTED),
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.chat("gpt-4.1-nano")),
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.chat(REJECTED)),
                 None,
                 |request| request,
             )
@@ -37,8 +41,12 @@ async fn responses() {
     with_openai_cassette("request_identity_matrix/responses", |client| async move {
         request_identity::run(
             cell,
-            client.openai.responses("gpt-4.1-nano"),
-            client.openai.responses(REJECTED),
+            client
+                .openai
+                .endpoint(|provider_config| provider_config.responses("gpt-4.1-nano")),
+            client
+                .openai
+                .endpoint(|provider_config| provider_config.responses(REJECTED)),
             Some(serde_json::json!({ "store": false })),
             |request| request,
         )

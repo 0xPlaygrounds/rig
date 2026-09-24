@@ -199,7 +199,7 @@ impl MultiTurnStreamItem {
 /// Drain a provider stream abandoned by invalid tool-call recovery so the
 /// reported usage for the recovered completion call is not lost.
 pub(crate) async fn drain_stream_usage(
-    stream: &mut crate::streaming::StreamingCompletionResponse,
+    stream: &mut crate::streaming::CompletionStream,
 ) -> Result<crate::completion::Usage, StreamingError> {
     while let Some(content) = stream.next().await {
         match content {

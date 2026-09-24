@@ -176,9 +176,9 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_sends_a_base64_image",
         |client| async move {
-            let model = client.completion(VISION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(VISION_MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request(user_message(vec![
                             UserContent::text(COLOUR_PROMPT),
@@ -213,7 +213,11 @@ async fn streaming_raw_model_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_raw_model_sends_a_base64_image",
         |client| async move {
-            let agent = client.agent(VISION_MODEL).temperature(0.0).build();
+            let agent = client
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
+                .temperature(0.0)
+                .build();
             let mut stream = agent
                 .prompt(user_message(vec![
                     UserContent::text(COLOUR_PROMPT),
@@ -240,7 +244,8 @@ async fn blocking_agent_prompt_sends_a_base64_image() -> Result<()> {
         "multimodal_content/blocking_agent_prompt_sends_a_base64_image",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer with a single word.")
                 .temperature(0.0)
                 .build();
@@ -269,7 +274,8 @@ async fn blocking_image_only_message_carries_no_text_part() -> Result<()> {
         "multimodal_content/blocking_image_only_message_carries_no_text_part",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Name the dominant colour of any image you are shown, in one word.")
                 .temperature(0.0)
                 .build();
@@ -299,7 +305,8 @@ async fn blocking_two_images_in_one_message() -> Result<()> {
         "multimodal_content/blocking_two_images_in_one_message",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer in one short sentence.")
                 .temperature(0.0)
                 .build();
@@ -332,7 +339,8 @@ async fn blocking_image_url_reference_is_sent() -> Result<()> {
         "multimodal_content/blocking_image_url_reference_is_sent",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer in one short sentence.")
                 .temperature(0.0)
                 .build();
@@ -368,7 +376,8 @@ async fn blocking_image_on_a_second_model_family() -> Result<()> {
         "multimodal_content/blocking_image_on_a_second_model_family",
         |client| async move {
             let agent = client
-                .agent(SECOND_VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(SECOND_VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer with a single word.")
                 .temperature(0.0)
                 .build();
@@ -397,7 +406,8 @@ async fn blocking_image_survives_a_replayed_history() -> Result<()> {
         "multimodal_content/blocking_image_survives_a_replayed_history",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer in one short sentence.")
                 .temperature(0.0)
                 .build();
@@ -429,7 +439,8 @@ async fn streaming_image_survives_a_replayed_history() -> Result<()> {
         "multimodal_content/streaming_image_survives_a_replayed_history",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer in one short sentence.")
                 .temperature(0.0)
                 .build();
@@ -461,7 +472,8 @@ async fn blocking_unicode_text_beside_an_image() -> Result<()> {
         "multimodal_content/blocking_unicode_text_beside_an_image",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer with a single word.")
                 .temperature(0.0)
                 .build();
@@ -496,9 +508,9 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_reads_an_attached_pdf",
         |client| async move {
-            let model = client.completion(VISION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(VISION_MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request(user_message(vec![
                             UserContent::text(DOCUMENT_PROMPT),
@@ -532,7 +544,11 @@ async fn streaming_agent_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_agent_reads_an_attached_pdf",
         |client| async move {
-            let agent = client.agent(VISION_MODEL).temperature(0.0).build();
+            let agent = client
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
+                .temperature(0.0)
+                .build();
             let mut stream = agent
                 .prompt(user_message(vec![
                     UserContent::text(DOCUMENT_PROMPT),
@@ -559,7 +575,8 @@ async fn blocking_agent_reads_an_attached_pdf() -> Result<()> {
         "multimodal_content/blocking_agent_reads_an_attached_pdf",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer with just the word.")
                 .temperature(0.0)
                 .build();
@@ -593,7 +610,8 @@ async fn blocking_document_only_message_carries_no_text_part() -> Result<()> {
         "multimodal_content/blocking_document_only_message_carries_no_text_part",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Reply with the single code word found in any attached document.")
                 .temperature(0.0)
                 .build();
@@ -617,7 +635,8 @@ async fn blocking_document_and_image_in_one_message() -> Result<()> {
         "multimodal_content/blocking_document_and_image_in_one_message",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer in one short sentence.")
                 .temperature(0.0)
                 .build();
@@ -651,7 +670,8 @@ async fn blocking_document_on_a_second_model_family() -> Result<()> {
         "multimodal_content/blocking_document_on_a_second_model_family",
         |client| async move {
             let agent = client
-                .agent(SECOND_VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(SECOND_VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer with just the word.")
                 .temperature(0.0)
                 .build();
@@ -683,9 +703,9 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_sends_audio",
         |client| async move {
-            let model = client.completion(AUDIO_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(AUDIO_MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request(user_message(vec![
                             UserContent::text(AUDIO_PROMPT),
@@ -720,7 +740,11 @@ async fn streaming_agent_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_agent_sends_audio",
         |client| async move {
-            let agent = client.agent(AUDIO_MODEL).temperature(0.0).build();
+            let agent = client
+                .endpoint(|provider_config| provider_config.completion(AUDIO_MODEL))
+                .into_agent_builder()
+                .temperature(0.0)
+                .build();
             let mut stream = agent
                 .prompt(user_message(vec![
                     UserContent::text(AUDIO_PROMPT),
@@ -746,7 +770,11 @@ async fn blocking_agent_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_agent_sends_audio",
         |client| async move {
-            let agent = client.agent(AUDIO_MODEL).temperature(0.0).build();
+            let agent = client
+                .endpoint(|provider_config| provider_config.completion(AUDIO_MODEL))
+                .into_agent_builder()
+                .temperature(0.0)
+                .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text(AUDIO_PROMPT),
@@ -783,7 +811,8 @@ async fn blocking_text_only_content_still_flattens_to_a_string() -> Result<()> {
         "multimodal_content/blocking_text_only_content_still_flattens_to_a_string",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer in one short sentence.")
                 .temperature(0.0)
                 .build();
@@ -816,7 +845,8 @@ async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> 
         "multimodal_content/streaming_text_only_content_still_flattens_to_a_string",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer in one short sentence.")
                 .temperature(0.0)
                 .build();
@@ -847,7 +877,8 @@ async fn blocking_text_document_still_flattens_into_the_prompt() -> Result<()> {
         "multimodal_content/blocking_text_document_still_flattens_into_the_prompt",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Answer with just the word.")
                 .temperature(0.0)
                 .build();
@@ -929,7 +960,8 @@ async fn blocking_image_with_a_tool_configured() -> Result<()> {
         "multimodal_content/blocking_image_with_a_tool_configured",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Call record_colour with the dominant colour of the attached image.")
                 .tool(RecordColour)
                 .temperature(0.0)
@@ -965,7 +997,8 @@ async fn streaming_image_with_a_tool_configured() -> Result<()> {
         "multimodal_content/streaming_image_with_a_tool_configured",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("Call record_colour with the dominant colour of the attached image.")
                 .tool(RecordColour)
                 .temperature(0.0)

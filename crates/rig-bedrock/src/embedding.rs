@@ -90,7 +90,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String> + Send,
     ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
+        rig_core::telemetry::instrument_modality::<embeddings::EmbeddingResponse, _>(
             PROVIDER_NAME,
             &self.model,
             async {

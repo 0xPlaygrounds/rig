@@ -45,13 +45,13 @@ pub(super) fn register_memory(
     .expect("memory key")
 }
 pub(super) fn agent(
-    client: &rig::driver::Bound<Anthropic>,
+    client: &rig::driver::Model<Anthropic>,
     memory: impl ConversationMemory + 'static,
     preamble: &str,
     streamed: bool,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden_with_setup(
-        client.completion(CLAUDE_SONNET_4_6),
+        client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
         preamble,
         streamed,
         |world| {
@@ -197,7 +197,7 @@ pub(super) async fn run_prompts(
     outputs
 }
 pub(super) async fn remembers(
-    client: rig::driver::Bound<Anthropic>,
+    client: rig::driver::Model<Anthropic>,
     clears: Clears,
     prompts: &[&str],
     streamed: bool,

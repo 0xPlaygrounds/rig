@@ -11,9 +11,12 @@ async fn context_smoke() {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(CASSETTE_MODEL), |builder, doc| {
-                builder.context(doc)
-            })
+            .fold(
+                client
+                    .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                    .into_agent_builder(),
+                |builder, doc| builder.context(doc),
+            )
             .build();
 
         let response = agent

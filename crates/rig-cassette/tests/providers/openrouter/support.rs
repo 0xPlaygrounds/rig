@@ -1,4 +1,4 @@
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OPENROUTER, OpenAI, Route};
@@ -15,13 +15,13 @@ const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 ///
 /// Named once here so every `FnOnce(..)` bound below and every suite that
 /// needs to spell the provider out agrees on one type.
-pub(super) type BoundOpenRouter = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundOpenRouter = Model<OpenAI, BoxedHttpClient>;
 
 /// The same OpenRouter host on its `/responses` route, for the compatibility
 /// suite: OpenRouter serves `/responses` as well, and the point of those
 /// cells is that rig's Responses wire drives it once the configuration is
 /// routed there.
-pub(super) type BoundOpenRouterResponses = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundOpenRouterResponses = Model<OpenAI, BoxedHttpClient>;
 
 async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundOpenRouter) {
     let cassette = ProviderCassette::start(

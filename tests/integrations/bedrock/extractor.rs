@@ -28,7 +28,8 @@ fn assert_smoke_person(person: &SmokePerson) {
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn extractor_smoke() {
     let extractor = client()
-        .extractor::<SmokePerson>(BEDROCK_COMPLETION_MODEL)
+        .completion(BEDROCK_COMPLETION_MODEL)
+        .into_extractor_builder::<SmokePerson>()
         .build();
 
     let response = extractor
@@ -47,7 +48,8 @@ async fn extractor_smoke() {
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn extractor_with_chat_history_smoke() {
     let extractor = client()
-        .extractor::<SmokePerson>(BEDROCK_COMPLETION_MODEL)
+        .completion(BEDROCK_COMPLETION_MODEL)
+        .into_extractor_builder::<SmokePerson>()
         .build();
 
     let response = extractor

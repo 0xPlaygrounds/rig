@@ -262,6 +262,7 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
         additional_params: graph.additional_params.cloned(),
         output_schema,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 

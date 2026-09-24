@@ -259,7 +259,10 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
         "hook_stress/lifecycle_and_scratchpad_thread_across_multi_turn_blocking",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)
                 .temperature(0.0)
@@ -368,7 +371,10 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
         "hook_stress/request_patch_injects_context_and_narrows_active_tools_blocking",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .name("stress-agent")
                 .preamble(
                     "You are a helpful assistant. Use a tool for any arithmetic. Consult the \
@@ -444,7 +450,10 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
         "hook_stress/chained_arg_rewrite_then_result_redaction_blocking",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .name("stress-agent")
                 .preamble(
                     "You are a calculator assistant. You MUST use the add tool for the addition. \
@@ -524,7 +533,10 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
         "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)
                 .temperature(0.0)
@@ -645,7 +657,7 @@ async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
         "hook_stress/multi_tool_workflow_pairs_calls_and_results_per_turn_blocking",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
                 .name("stress-agent")
                 .preamble(
                     "You are a calculator assistant. You MUST use the provided tools for every \
@@ -720,7 +732,7 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
         "hook_stress/skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
                 .name("stress-agent")
                 .preamble(
                     "You are a calculator assistant. You MUST use the provided tools for every \
@@ -798,7 +810,10 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)
                 .temperature(0.0)

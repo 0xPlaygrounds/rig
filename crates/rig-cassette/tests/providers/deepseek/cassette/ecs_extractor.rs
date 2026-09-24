@@ -9,7 +9,9 @@ async fn extractor_smoke() {
         async {
             with_deepseek_cassette("extractor/extractor_smoke", |client| async move {
                 let mut extractor = EcsExtractor::<SmokePerson>::new(
-                    client.completion(deepseek::DEEPSEEK_V4_FLASH),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(deepseek::DEEPSEEK_V4_FLASH)
+                    }),
                     None,
                     None,
                 );

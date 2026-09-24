@@ -24,8 +24,8 @@ use rig_agent::bus::{Bus, BusDriver, ModelHandle};
 use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionRequestBuilder, CompletionResponse, ModelRef, Usage};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
-use rig_core::serve::adapters::CompletionAdapter;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::serve::adapters::ModelAdapter;
+use rig_core::streaming::CompletionStream;
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
@@ -63,7 +63,7 @@ struct ScriptedModel {
 }
 
 impl CompletionModel for ScriptedModel {
-    fn completion(
+    fn complete(
         &self,
         request: CompletionRequest,
         ) -> impl Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend {
@@ -99,7 +99,7 @@ impl CompletionModel for ScriptedModel {
     fn stream(
         &self,
         _request: CompletionRequest,
-        ) -> impl Future<Output = Result<StreamingCompletionResponse, ProviderError>> + WasmCompatSend
+        ) -> impl Future<Output = Result<CompletionStream, ProviderError>> + WasmCompatSend
     {
         std::future::ready(Err(ProviderError::Provider(
             "fixture drives unary completions only".to_string(),
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver.register(
         "model",
-        CompletionAdapter::new(ModelRef::new("fixture"), ScriptedModel::default()),
+        ModelAdapter::completion(ModelRef::new("fixture"), ScriptedModel::default()),
     )?;
     let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
     assert_eq!(model.model_ref().as_str(), "fixture");

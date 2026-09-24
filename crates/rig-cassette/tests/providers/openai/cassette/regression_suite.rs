@@ -29,7 +29,8 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
         "regression/chat_compat_finish_reason",
         |client| async move {
             let agent = client
-                .agent(openai::GPT_4O)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
                 .max_tokens(8)
                 .build();
@@ -58,7 +59,8 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
         "regression/chat_compat_finish_reason_natural",
         |client| async move {
             let agent = client
-                .agent(openai::GPT_4O)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .into_agent_builder()
                 .preamble(STREAMING_PREAMBLE)
                 .max_tokens(512)
                 .build();

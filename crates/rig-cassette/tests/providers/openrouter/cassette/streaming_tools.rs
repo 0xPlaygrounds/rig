@@ -28,7 +28,8 @@ async fn streaming_tools_smoke() {
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
             let agent = client
-                .agent(TOOL_MODEL)
+                .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+                .into_agent_builder()
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -61,7 +62,7 @@ struct EncryptedReasoningObservation {
 }
 
 async fn observe_stream(
-    stream: &mut rig::streaming::StreamingCompletionResponse,
+    stream: &mut rig::streaming::CompletionStream,
 ) -> EncryptedReasoningObservation {
     use futures::StreamExt;
     use rig::streaming::{Delta, StreamEvent};
@@ -136,7 +137,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
     with_openrouter_cassette(
         "streaming_tools/stream_encrypted_reasoning_reaches_the_choice",
         |client| async move {
-            let model = client.completion(ENCRYPTED_REASONING_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(ENCRYPTED_REASONING_MODEL));
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
             let request = model
@@ -207,7 +208,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
     with_openrouter_cassette(
         "streaming_tools/stream_encrypted_reasoning_survives_into_the_next_turn",
         |client| async move {
-            let model = client.completion(ENCRYPTED_REASONING_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(ENCRYPTED_REASONING_MODEL));
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
             let reasoning_params = serde_json::json!({
@@ -247,7 +248,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // The whole choice — reasoning block included — is what a caller
             // replays as history.
             let assistant_message = Message::Assistant {
-                id: stream.message_id.clone(),
+                id: stream.message_id().map(str::to_owned),
                 content: stream.snapshot(),
             };
             let tool_result_message = Message::User {
@@ -294,7 +295,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_openrouter_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion(TOOL_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL));
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -324,7 +325,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_openrouter_cassette(
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = client.completion(TOOL_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL));
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

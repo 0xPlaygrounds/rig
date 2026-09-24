@@ -25,7 +25,10 @@ async fn extractor_smoke() {
 
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
-            .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
+            .endpoint(|provider_config| {
+                provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+            })
+            .into_extractor_builder::<SmokePerson>()
             .additional_params(
                 serde_json::to_value(additional_params)
                     .expect("Gemini additional params should serialize"),
@@ -76,7 +79,10 @@ async fn extractor_with_additional_params() {
         "extractor/extractor_with_additional_params",
         |client| async move {
             let extractor = client
-                .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_extractor_builder::<Person>()
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
 

@@ -57,7 +57,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_venice_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "blocking probe");
     })
@@ -72,7 +72,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_venice_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "streaming probe");
     })
@@ -95,7 +95,7 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
     const SCENARIO: &str = "prompt_caching/cache_key_stable";
 
     with_venice_prompt_caching_cassette("prompt_caching/cache_key_stable", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
         let probe = probe().with_additional_params(serde_json::json!({
             "prompt_cache_key": "rig-cache-conformance-venice",
         }));
@@ -123,7 +123,7 @@ async fn live_cache_economics() {
         .expect("VENICE_API_KEY")
         .bound()
         .expect("transport should build");
-    let model = client.completion(CACHE_MODEL);
+    let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(&observation, &VENICE_CACHE_SUPPORT, "live_cache_economics");
 }
@@ -142,7 +142,8 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 
     with_venice_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
         let response = client
-            .agent(CACHE_MODEL)
+            .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+            .into_agent_builder()
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)

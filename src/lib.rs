@@ -4,8 +4,10 @@
 //! Re-exports `rig_core` at `rig::...` paths and, under the default `agent`
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
 //! carries the contextual tool API alongside the portable contracts, which are
-//! always available. `use rig::prelude::*;` brings in the model traits, the
-//! transport conveniences, and constructors such as `provider.agent(...)`.
+//! always available. `use rig::prelude::*;` brings in the model traits,
+//! [`Model`](rig_core::driver::Model) and its
+//! [`Transport`](rig_core::driver::Transport), and agent construction from a
+//! model with `model.into_agent_builder()`.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
 //! after their features wherever module naming allows:
@@ -19,15 +21,14 @@
 
 pub use rig_core::*;
 
-/// The bundled `reqwest` transport and its construction convenience
-/// (`rig-reqwest`). A provider's wire is bound to a transport to become a
-/// model, and that transport defaults to the erased
+/// The bundled `reqwest` transport (`rig-reqwest`). A
+/// [`Model`](rig_core::driver::Model) pairs a provider's wire with a
+/// transport, and that transport defaults to the erased
 /// [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient); with the
 /// default `reqwest` feature, [`prelude`] carries
-/// [`rig_reqwest::client::DefaultTransport`], which fills that default with a
-/// [`rig_reqwest::ReqwestClient`] so `Provider::from_env()?.bound()?` works
-/// without naming a transport. Without the feature, bind explicitly with
-/// [`Bind::bind`](rig_core::driver::Bind::bind) and any `HttpClientExt`
+/// [`rig_reqwest::client::DefaultTransport`], so
+/// `Provider::from_env()?.bound()?` pairs a provider with a fresh bundled
+/// transport. Without the feature, build a `Model` with any `HttpClientExt`
 /// implementation.
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
@@ -35,7 +36,7 @@ pub use rig_reqwest;
 
 /// The bundled `tokio-tungstenite` websocket backend and its default-backend
 /// conveniences (`rig-tungstenite`), on native targets. With the `websocket`
-/// feature, `bound.responses_websocket()` opens a session over it with no
+/// feature, `model.responses_websocket()` opens a session over it with no
 /// backend named; without it, rig has no websocket backend and a session is
 /// opened with `responses_websocket_with(..)` and any
 /// [`rig_core::ws_client::WebSocketClientExt`] implementation.
@@ -44,9 +45,9 @@ pub use rig_reqwest;
 pub use rig_tungstenite;
 
 /// Provider configurations and their wires. A wire says what to send and how
-/// to read the reply; bind it to a transport with
-/// [`Bound`](rig_core::driver::Bound) to get a model. The transport defaults
-/// to the erased [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient);
+/// to read the reply; pair it with a transport in a
+/// [`Model`](rig_core::driver::Model) to call it. The transport defaults to
+/// the erased [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient);
 /// the `reqwest` feature supplies the value behind it.
 pub mod providers {
     pub use rig_core::providers::*;
@@ -105,17 +106,12 @@ pub mod agent {
     }
 }
 
-/// Provider construction: bind a wire to a transport, then build agents.
+/// Provider construction errors and environment handling, and agent
+/// construction from a model.
 pub mod client {
-    // Runtime construction extensions on completion providers and models.
     #[cfg(feature = "agent")]
-    pub use rig_agent::client::{AgentModelExt, AgentProviderExt};
+    pub use rig_agent::client::AgentModelExt;
 
-    // Binding a provider configuration or bare wire to its transport.
-    // `CompletionProvider` is the seam `agent()` and `extractor()` hang on.
-    pub use rig_core::driver::{Bind, Bound, CompletionProvider};
-
-    // Construction errors and environment handling shared by every provider.
     pub use rig_core::client::*;
 
     // Default-transport construction over the bundled reqwest transport.
@@ -150,12 +146,11 @@ pub mod prelude {
     // The contextual `Tool` and its mutable `ToolContext`.
     #[cfg(feature = "agent")]
     pub use crate::tool::{Tool, ToolContext};
-    // `AgentProviderExt` adds `agent()` and `extractor()` to every type that
-    // builds a completion model.
+    // `AgentModelExt` turns any completion model into an agent builder.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentModelExt, AgentProviderExt, MultiTurnStreamItem, PromptError, RunEvents,
-        StreamingResult, StructuredOutputError, ToolSet,
+        Agent, AgentModelExt, MultiTurnStreamItem, PromptError, RunEvents, StreamingResult,
+        StructuredOutputError, ToolSet,
     };
     pub use rig_core::prelude::*;
     // Default-transport construction over the bundled reqwest transport.

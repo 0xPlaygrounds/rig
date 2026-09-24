@@ -64,6 +64,7 @@ fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
         additional_params: Some(params(cell)),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -75,7 +76,7 @@ async fn turn<M: CompletionModel>(
     let request = request(cell, history);
     if !cell.streamed {
         return model
-            .completion(request)
+            .complete(request)
             .await
             .expect("the turn completes")
             .choice
@@ -211,10 +212,16 @@ fn assert_recorded(cell: Cell, scenario: &str) {
 
 async fn run(client: BoundGemini, cell: Cell) {
     match cell.api {
-        Api::GenerateContent => conversation(client.completion(cell.model), cell).await,
+        Api::GenerateContent => {
+            conversation(
+                client.endpoint(|provider_config| provider_config.completion(cell.model)),
+                cell,
+            )
+            .await
+        }
         Api::Interactions => {
             conversation(
-                client.map_wire(|config| config.interactions(cell.model)),
+                client.endpoint(|config| config.clone().interactions(cell.model)),
                 cell,
             )
             .await

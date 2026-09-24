@@ -27,8 +27,8 @@ async fn strict_tools_opt_in_roundtrip() {
             // false, all properties required) must be accepted by the API.
             let model = client
                 .openai
-                .completion(openai::GPT_4O)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -36,7 +36,7 @@ async fn strict_tools_opt_in_roundtrip() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -79,7 +79,9 @@ async fn incomplete_response_surfaces_partial_output() {
     with_openai_cassette(
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O));
             let request = model
                 .completion_request(
                     "Write a story of at least 150 words about a lighthouse keeper.",
@@ -93,7 +95,7 @@ async fn incomplete_response_surfaces_partial_output() {
             // own reply in `raw`. `status` and `incomplete_details` are
             // Responses-API wire fields, so they are read off the latter.
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("an incomplete response should still convert, not error");
             let reply = ResponsesReply::deserialize(&response.raw)
@@ -147,8 +149,8 @@ async fn system_messages_as_input_items_mid_conversation() {
             // items instead of the top-level `instructions` field.
             let model = client
                 .openai
-                .responses(openai::GPT_4O)
-                .map_wire(|wire| wire.with_system_instructions_as_messages());
+                .endpoint(|provider_config| provider_config.responses(openai::GPT_4O))
+                .endpoint(|wire| wire.clone().with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble("You are a concise assistant.")
                 .build();

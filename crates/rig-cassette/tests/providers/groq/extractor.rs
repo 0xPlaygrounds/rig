@@ -14,7 +14,10 @@ async fn extractor_smoke() {
         .expect("GROQ_API_KEY should be set")
         .bound()
         .expect("transport should build");
-    let extractor = groq.extractor::<SmokePerson>(EXTRACTOR_MODEL).build();
+    let extractor = groq
+        .endpoint(|provider_config| provider_config.completion(EXTRACTOR_MODEL))
+        .into_extractor_builder::<SmokePerson>()
+        .build();
 
     let response = extractor
         .extract(EXTRACTOR_TEXT)

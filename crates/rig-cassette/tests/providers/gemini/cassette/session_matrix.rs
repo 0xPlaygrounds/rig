@@ -27,9 +27,9 @@ fn models(
     impl CompletionModel + Clone + 'static,
 ) {
     (
-        client.completion("gemini-2.5-flash"),
-        client.completion("gemini-2.5-flash"),
-        client.completion("gemini-3-flash-preview"),
+        client.endpoint(|provider_config| provider_config.completion("gemini-2.5-flash")),
+        client.endpoint(|provider_config| provider_config.completion("gemini-2.5-flash")),
+        client.endpoint(|provider_config| provider_config.completion("gemini-3-flash-preview")),
     )
 }
 

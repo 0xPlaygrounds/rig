@@ -33,7 +33,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::Message,
-    streaming::StreamingCompletionResponse,
+    streaming::CompletionStream,
     tool::ToolContext,
     vector_store::request::{Filter, VectorSearchRequest},
 };
@@ -338,20 +338,14 @@ impl ModelHandle {
         }
     }
 
-    /// A unary completion.
-    pub fn complete(&self, request: CompletionRequest) -> Completion {
-        self.complete_with_context(request, None)
-    }
-
-    /// A unary completion with explicit per-invocation observation state.
-    /// The context overrides recorder context for this call only.
-    pub fn complete_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<rig_core::observe::AdapterContext>,
-    ) -> Completion {
+    /// A unary completion. An [`AdapterContext`](rig_core::observe::AdapterContext)
+    /// in the request's extensions observes this call, overriding the
+    /// recorder's context for it.
+    pub fn complete(&self, mut request: CompletionRequest) -> Completion {
         let options = DispatchOptions {
-            adapter_context: context,
+            adapter_context: request
+                .extensions
+                .remove::<rig_core::observe::AdapterContext>(),
             ..DispatchOptions::default()
         };
         Typed::narrow(
@@ -367,23 +361,18 @@ impl ModelHandle {
         )
     }
 
-    /// Stream a completion through the canonical accumulator, surfacing bus errors
-    /// as stream errors. Uses the model label initially and the terminal record's
-    /// provider name when available.
-    pub fn stream(&self, request: CompletionRequest) -> StreamingCompletionResponse {
-        self.stream_with_context(request, None)
-    }
-
-    /// A streaming completion with explicit observation state retained by the
-    /// invocation, including lazy startup and partial consumption.
-    pub fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<rig_core::observe::AdapterContext>,
-    ) -> StreamingCompletionResponse {
+    /// Stream a completion through the canonical accumulator, surfacing bus
+    /// errors as stream errors. Uses the model label initially and the
+    /// terminal record's provider name when available. An
+    /// [`AdapterContext`](rig_core::observe::AdapterContext) in the request's
+    /// extensions observes the invocation, including lazy startup and
+    /// partial consumption.
+    pub fn stream(&self, mut request: CompletionRequest) -> CompletionStream {
         let provider = self.model_ref().to_string();
         let options = DispatchOptions {
-            adapter_context: context,
+            adapter_context: request
+                .extensions
+                .remove::<rig_core::observe::AdapterContext>(),
             ..DispatchOptions::default()
         };
         let stream: EffectStream = self.dispatcher.dispatch_stream_with(
@@ -679,11 +668,8 @@ impl RerankHandle {
 }
 
 /// Wrap bus events in a canonical completion accumulator, preserving stream errors.
-pub(crate) fn wrap_stream(
-    provider: impl Into<String>,
-    stream: EffectStream,
-) -> StreamingCompletionResponse {
-    StreamingCompletionResponse::from_events(provider, Box::pin(stream))
+pub(crate) fn wrap_stream(provider: impl Into<String>, stream: EffectStream) -> CompletionStream {
+    CompletionStream::relay(provider, Box::pin(stream))
 }
 
 // Bus views must stay thread-safe even where handlers permit local WASM state.

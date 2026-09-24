@@ -13,7 +13,7 @@ use futures::FutureExt;
 
 async fn with_openai_vllm_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let base_url =
@@ -39,7 +39,7 @@ async fn responses_api_accepts_null_metadata() {
     with_openai_vllm_cassette(
         "vllm/responses_api_accepts_null_metadata",
         |client| async move {
-            let model = client.completion("Qwen/Qwen3-0.6B");
+            let model = client.endpoint(|provider_config| provider_config.completion("Qwen/Qwen3-0.6B"));
             let request = model
                 .completion_request("Reply with a short acknowledgement.")
                 .max_tokens(8)
@@ -50,7 +50,7 @@ async fn responses_api_accepts_null_metadata() {
             // `CompletionResponse::raw`. One request therefore yields both
             // views, which is what the single recorded interaction allows.
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("vLLM Responses API completion with null metadata should deserialize");
             let reply = ProviderResponse::deserialize(&response.raw)

@@ -26,7 +26,7 @@ async fn retired_model_id_preserves_provider_error() {
             let request = model.completion_request("Say hi.").max_tokens(8).build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("a retired model id should be a provider error");
 
@@ -65,7 +65,7 @@ async fn bare_profile_only_model_id_is_rejected() {
             let request = model.completion_request("Say hi.").max_tokens(8).build();
 
             let error = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect_err("a bare profile-only model id should be a provider error");
 
@@ -109,7 +109,7 @@ async fn cross_region_profile_id_completes() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("cross-region profile completion should succeed");
 
@@ -137,7 +137,8 @@ async fn claude_profile_constant_completes() {
         "model_ids/claude_profile_constant_completes",
         |client| async move {
             let agent = client
-                .agent(bedrock::completion::ANTHROPIC_CLAUDE_HAIKU_4_5)
+                .completion(bedrock::completion::ANTHROPIC_CLAUDE_HAIKU_4_5)
+                .into_agent_builder()
                 .preamble("You are concise.")
                 .build();
 

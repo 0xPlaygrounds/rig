@@ -95,10 +95,10 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, ProviderResponse) {
-    let model = client.completion(openai::GPT_5_6_SOL);
+async fn two_turn_conversation(client: Model<OpenAI>) -> (ProviderResponse, ProviderResponse) {
+    let model = client.endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
     let first = model
-        .completion(model.completion_request(TURN_ONE).build())
+        .complete(model.completion_request(TURN_ONE).build())
         .await
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
@@ -106,7 +106,7 @@ async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, Prov
         content: first.choice.clone(),
     };
     let second = model
-        .completion(
+        .complete(
             model
                 .completion_request(TURN_TWO)
                 .messages([Message::user(TURN_ONE), assistant])
@@ -168,9 +168,11 @@ async fn compaction_item_decodes_on_the_response() {
     with_openai_cassette(
         "stateless_replay_matrix/compaction_item_decodes_on_the_response",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6_SOL);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6_SOL));
             let response = model
-                .completion(model.completion_request(TURN_ONE).build())
+                .complete(model.completion_request(TURN_ONE).build())
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);

@@ -139,6 +139,7 @@ fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), core_request))
@@ -335,6 +336,7 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
             model: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         };
         OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
     }));
@@ -498,6 +500,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
             model: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         };
         OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
     }));
@@ -528,6 +531,7 @@ fn openai_responses_request_preserves_prompt_cache_parameters() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
 
     let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))

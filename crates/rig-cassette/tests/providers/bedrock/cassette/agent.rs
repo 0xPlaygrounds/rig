@@ -14,7 +14,8 @@ use crate::support::{
 async fn completion_smoke() {
     with_bedrock_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .completion(bedrock::completion::AMAZON_NOVA_LITE)
+            .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .build();
 
@@ -33,7 +34,8 @@ async fn completion_smoke() {
 async fn tool_roundtrip_smoke() {
     with_bedrock_cassette("agent/tool_roundtrip_smoke", |client| async move {
         let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .completion(bedrock::completion::AMAZON_NOVA_LITE)
+            .into_agent_builder()
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .max_tokens(1024)
             .tool(Adder)

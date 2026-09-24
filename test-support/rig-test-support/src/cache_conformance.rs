@@ -318,6 +318,7 @@ impl CacheProbe {
             model: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         }
     }
 }
@@ -471,7 +472,7 @@ where
     M: CompletionModel,
 {
     model
-        .completion(probe.request(chat_history))
+        .complete(probe.request(chat_history))
         .await
         .unwrap_or_else(|error| panic!("cache probe {label} should succeed: {error}"))
 }
@@ -574,7 +575,7 @@ where
              which is exactly the streaming-path bug class this probe exists to catch"
         )
     });
-    (usage, text, stream.message_id.clone())
+    (usage, text, stream.message_id().map(str::to_owned))
 }
 
 /// Turn 1 must create a cache entry, or read one that was already warm.

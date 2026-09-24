@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, Message};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::providers::openai;
 use rig::providers::openai::wire::Chat;
@@ -162,7 +162,7 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(model: &Model<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
     let mut builder = model.completion_request(prompt(cell.shape)).max_tokens(24);
     for message in history(cell.shape) {
         builder = builder.message(message);
@@ -208,21 +208,23 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = client
+        .openai
+        .endpoint(|provider_config| provider_config.chat(model_name(cell.model)));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The raw surface is the same reply: the native chat-completions
             // response rides serialized on `CompletionResponse::raw`, so this
             // cell reads the text off the provider's own fields where the
             // normalized cell below reads rig's.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.complete(request(&model, cell)).await?;
             Observation {
                 text: provider_text(&response.raw)?,
                 saw_terminal: true,
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.complete(request(&model, cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,

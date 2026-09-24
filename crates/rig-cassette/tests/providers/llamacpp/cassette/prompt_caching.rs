@@ -133,7 +133,7 @@ fn recorded_cache_counters(scenario: &str) -> Vec<(u64, u64, u64)> {
 #[tokio::test]
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     with_llamacpp_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
         let observation = run_cache_probe(&model, &probe_for("llamacpp blocking probe")).await;
         assert_cache_conformance(&observation, &LLAMACPP_CACHE_SUPPORT, "blocking probe");
     })
@@ -165,7 +165,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
     with_llamacpp_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
         let observation =
             run_cache_probe_streaming(&model, &probe_for("llamacpp streaming probe")).await;
         assert_cache_conformance(&observation, &LLAMACPP_CACHE_SUPPORT, "streaming probe");
@@ -193,12 +193,13 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
     with_llamacpp_prompt_caching_cassette(
         "prompt_caching/cache_prompt_disabled",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let probe = probe_for("llamacpp cache_prompt switch");
 
             // Warm the slot.
             let warm = model
-                .completion(
+                .complete(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
@@ -211,7 +212,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
             let _ = warm;
 
             let second = model
-                .completion(
+                .complete(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
@@ -228,7 +229,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
             );
 
             let disabled = model
-                .completion(
+                .complete(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
@@ -247,7 +248,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
             );
 
             let after = model
-                .completion(
+                .complete(
                     model
                         .completion_request(probe.prompt)
                         .preamble(probe.preamble.clone())
@@ -282,7 +283,8 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 async fn agent_loop_does_not_move_its_own_prefix() {
     with_llamacpp_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
         let response = client
-            .agent(CASSETTE_MODEL)
+            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .into_agent_builder()
             .preamble(&probe_for("llamacpp agent loop").preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)

@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
 //! through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`CompletionStream::snapshot`], the terminal [`StreamFinal`]
 //! record, usage, and finish reason.
 
 use futures::StreamExt;
@@ -27,7 +27,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_delta: String::new(),
@@ -75,7 +75,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.terminal().cloned();
     run
 }
 
@@ -84,7 +84,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 #[tokio::test]
 async fn thinking_stream_keeps_reasoning_and_text_discrete() {
     with_cohere_cassette("streaming_grammar/thinking_stream", |client| async move {
-        let model = client.completion(REASONING_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(REASONING_MODEL));
         let request = model
             .completion_request(
                 "How many positive integers n < 100 are divisible by 6? \
@@ -165,7 +165,8 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
     with_cohere_cassette(
         "streaming_grammar/reasoning_then_tool_call",
         |client| async move {
-            let model = client.completion(REASONING_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(REASONING_MODEL));
             let request = model
                 .completion_request(
                     "Think it through, then call the subtract tool to compute 2 - 5. \
@@ -228,7 +229,8 @@ async fn required_tool_choice_streams_tool_call() {
     with_cohere_cassette(
         "streaming_grammar/required_tool_choice_streams_tool_call",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Use the subtract tool to calculate 8 - 3.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
@@ -260,7 +262,8 @@ async fn none_tool_choice_streams_text() {
     with_cohere_cassette(
         "streaming_grammar/none_tool_choice_streams_text",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Calculate 8 - 3. Answer directly without calling a tool.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))

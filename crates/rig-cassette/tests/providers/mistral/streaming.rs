@@ -17,7 +17,8 @@ async fn streaming_smoke() {
         .bound()
         .expect("client should build");
     let agent = client
-        .agent(DEFAULT_MODEL)
+        .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+        .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -37,7 +38,8 @@ async fn example_streaming_prompt() {
         .bound()
         .expect("client should build");
     let agent = client
-        .agent(DEFAULT_MODEL)
+        .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+        .into_agent_builder()
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

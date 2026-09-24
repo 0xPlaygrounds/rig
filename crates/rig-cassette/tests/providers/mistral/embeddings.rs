@@ -23,7 +23,9 @@ async fn derive_embeddings_and_vector_search() {
         .expect("MISTRAL_API_KEY should be set")
         .bound()
         .expect("client should build");
-    let embedding_model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+    let embedding_model = client.endpoint(|provider_config| {
+        provider_config.embeddings(mistral::embedding::MISTRAL_EMBED, None)
+    });
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .document(Greetings {
             message: "Hello, world!".to_string(),

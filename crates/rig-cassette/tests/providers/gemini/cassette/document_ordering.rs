@@ -45,7 +45,9 @@ async fn generate_content_keeps_documents_after_system_before_history() {
         "document_ordering/generate_content_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client
-                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))
@@ -82,7 +84,7 @@ async fn interactions_keeps_documents_after_system_before_history() {
         "document_ordering/interactions_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client
-                .map_wire(|config| config.interactions("gemini-3-flash-preview"))
+                .endpoint(|config| config.clone().interactions("gemini-3-flash-preview"))
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))

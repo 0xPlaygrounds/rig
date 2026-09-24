@@ -22,7 +22,10 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .name("stress-agent")
                 .configure_bus(rig::serve::ServingPolicy {
                     serial_per_handler: true,

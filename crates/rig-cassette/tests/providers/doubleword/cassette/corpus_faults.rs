@@ -13,7 +13,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells, faults};
 fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -24,7 +24,9 @@ fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static
 fn missing(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion("rig/definitely-not-a-doubleword-model"),
+        model: client.endpoint(|provider_config| {
+            provider_config.completion("rig/definitely-not-a-doubleword-model")
+        }),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

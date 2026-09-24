@@ -4,10 +4,9 @@
 use crate::bus_support;
 use bevy_reflect::TypePath;
 use rig_core::{
-    driver::Bind,
     effect::HandlerKey,
     providers::openai::wire::OpenAI,
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
 use rig_ecs::{
@@ -20,12 +19,12 @@ const BODY: &str = r#"{"id":"c","object":"chat.completion","created":0,"model":"
 
 fn handler(label: &str, token: &str, endpoint: &str) -> (ErasedHandler, RecordingHttpClient) {
     let http = RecordingHttpClient::new(BODY);
-    let model = OpenAI::new(token)
-        .with_base_url(endpoint)
-        .bind(http.clone())
-        .chat("model-x");
+    let model = rig_core::driver::Model::new(
+        OpenAI::new(token).with_base_url(endpoint).chat("model-x"),
+        http.clone(),
+    );
     (
-        ErasedHandler::new(CompletionAdapter::new(label, model)),
+        ErasedHandler::new(ModelAdapter::completion(label, model)),
         http,
     )
 }

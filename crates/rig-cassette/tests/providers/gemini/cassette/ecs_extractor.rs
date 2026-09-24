@@ -18,7 +18,9 @@ async fn extractor_smoke() {
                 "extractor/extractor_smoke",
                 |client| async move {
                     let mut extractor = EcsExtractor::<SmokePerson>::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         None,
                         Some(
                             serde_json::to_value(additional_params)
@@ -74,7 +76,9 @@ async fn extractor_with_additional_params() {
                 "extractor/extractor_with_additional_params",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         None,
                         Some(serde_json::to_value(params).expect("params should serialize")),
                     );

@@ -18,16 +18,16 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: rig::driver::Bound<rig::providers::openai::OpenAI>,
+    client: rig::driver::Model<rig::providers::openai::OpenAI>,
 ) -> (
     impl CompletionModel + Clone + 'static,
     impl CompletionModel + Clone + 'static,
     impl CompletionModel + Clone + 'static,
 ) {
     (
-        client.completion("grok-3-mini"),
-        client.completion("grok-3-mini"),
-        client.completion("grok-3-mini-fast"),
+        client.endpoint(|provider_config| provider_config.completion("grok-3-mini")),
+        client.endpoint(|provider_config| provider_config.completion("grok-3-mini")),
+        client.endpoint(|provider_config| provider_config.completion("grok-3-mini-fast")),
     )
 }
 

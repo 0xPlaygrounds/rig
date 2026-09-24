@@ -25,7 +25,10 @@ async fn add_tool_between_turns_appears_in_next_request() {
         |client| async move {
             let handle = ToolServer::new().tool(add).run();
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool_server_handle(handle.clone())
@@ -73,7 +76,7 @@ async fn remove_tool_between_turns_drops_definition() {
         |client| async move {
             let handle = ToolServer::new().tool(add).tool(subtract).run();
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)).into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool_server_handle(handle.clone())
@@ -123,14 +126,20 @@ async fn shared_tool_server_handle_updates_all_agents() {
         |client| async move {
             let handle = ToolServer::new().tool(add).run();
             let first_agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool_server_handle(handle.clone())
                 .default_max_turns(3)
                 .build();
             let second_agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool_server_handle(handle.clone())

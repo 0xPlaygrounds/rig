@@ -6,9 +6,8 @@
 use bevy_app::App;
 use rig_core::{
     completion::CompletionRequestBuilder,
-    driver::CompletionProvider,
     effect::{EffectKind, HandlerDescriptor, family},
-    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::CompletionAdapter},
+    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::ModelAdapter},
 };
 use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect};
 
@@ -47,7 +46,7 @@ fn main() -> anyhow::Result<()> {
     runtime.block_on(client.inner())?;
     let model = client.completion(rig_vertexai::completion::GEMINI_2_5_FLASH_LITE);
     let handler = Hosted {
-        handler: ErasedHandler::new(CompletionAdapter::new("vertex", model)),
+        handler: ErasedHandler::new(ModelAdapter::completion("vertex", model)),
         runtime: runtime.handle().clone(),
     };
     let mut app = App::new();

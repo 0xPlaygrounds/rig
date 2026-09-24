@@ -25,7 +25,10 @@ struct DocumentSentiment {
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?.bound()?;
-    let extractor = client.extractor::<DocumentSentiment>(openai::GPT_4).build();
+    let extractor = client
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .into_extractor_builder::<DocumentSentiment>()
+        .build();
 
     let sentiment = extractor.extract("I am happy").await?.output;
 

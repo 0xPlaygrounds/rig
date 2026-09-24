@@ -49,7 +49,7 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_stream_capture_matrix/`.
 
 use rig::completion::CompletionModel as _;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai::responses_api;
@@ -70,7 +70,7 @@ const CHAT_MODEL: &str = copilot::GPT_4O;
 const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
+fn request(model: &Model<CopilotWire>) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
@@ -144,7 +144,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(CHAT_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(CHAT_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -183,7 +183,12 @@ async fn chat_stream_raw_exposes_copilot_usage() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
-            capture_sole_terminal(client.completion(CHAT_MODEL), request, sink).await
+            capture_sole_terminal(
+                client.endpoint(|provider_config| provider_config.completion(CHAT_MODEL)),
+                request,
+                sink,
+            )
+            .await
         },
     )
     .await
@@ -255,7 +260,8 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(RESPONSES_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(RESPONSES_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
@@ -292,7 +298,12 @@ async fn responses_stream_raw_exposes_terminal_status() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
-            capture_sole_terminal(client.completion(RESPONSES_MODEL), request, sink).await
+            capture_sole_terminal(
+                client.endpoint(|provider_config| provider_config.completion(RESPONSES_MODEL)),
+                request,
+                sink,
+            )
+            .await
         },
     )
     .await

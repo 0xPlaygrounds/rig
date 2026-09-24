@@ -178,7 +178,8 @@ async fn permission_control_prompt_example() -> Result<()> {
 
             let agent = client
                 .clone()
-                .agent(CASSETTE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .into_agent_builder()
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
                 )
@@ -227,7 +228,8 @@ async fn permission_control_streaming_example() -> Result<()> {
 
             let agent = client
                 .clone()
-                .agent(CASSETTE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+                .into_agent_builder()
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
                 )

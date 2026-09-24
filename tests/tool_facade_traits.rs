@@ -130,17 +130,23 @@ fn completion_client_single_import_surface() {
     )
     .bound()
     .expect("the bundled transport builds");
-    let _model = bound.completion("gpt-4o");
-    let _agent = bound.agent("gpt-4o").build();
-    let _extractor = bound.extractor::<Extracted>("gpt-4o").build();
+    let _model = bound.endpoint(|provider_config| provider_config.completion("gpt-4o"));
+    let _agent = bound
+        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .into_agent_builder()
+        .build();
+    let _extractor = bound
+        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .into_extractor_builder::<Extracted>()
+        .build();
 }
 
 /// The same surface is reachable through explicit imports, without the
 /// prelude glob: `Bind`/`DefaultTransport` for construction and
-/// `AgentProviderExt` for the agent sugar.
+/// `AgentModelExt` for the agent sugar.
 #[test]
 fn completion_provider_explicit_facade_import_surface() {
-    use rig::client::AgentProviderExt;
+    use rig::client::AgentModelExt;
     use rig_reqwest::client::DefaultTransport;
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -154,9 +160,15 @@ fn completion_provider_explicit_facade_import_surface() {
     )
     .bound() // DefaultTransport
     .expect("the bundled transport builds");
-    let _model = bound.completion("gpt-4o"); // Bound::completion
-    let _agent = bound.agent("gpt-4o").build(); // AgentProviderExt
-    let _extractor = bound.extractor::<Extracted>("gpt-4o").build(); // AgentProviderExt
+    let _model = bound.endpoint(|provider_config| provider_config.completion("gpt-4o")); // Bound::completion
+    let _agent = bound
+        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .into_agent_builder()
+        .build(); // AgentModelExt
+    let _extractor = bound
+        .endpoint(|provider_config| provider_config.completion("gpt-4o"))
+        .into_extractor_builder::<Extracted>()
+        .build(); // AgentModelExt
 }
 
 /// `use rig::prelude::*` still brings the classic contextual `Tool` and

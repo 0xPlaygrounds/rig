@@ -9,7 +9,7 @@ use crate::agent::AgentBuilder;
 use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
-use crate::client::AgentProviderExt;
+use crate::client::AgentModelExt;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::run::transcript::tool_result_output;
@@ -26,7 +26,6 @@ use rig_core::message::{
     ToolResultContent, UserContent,
 };
 use rig_core::providers::anthropic;
-use rig_reqwest::client::DefaultTransport;
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -928,12 +927,14 @@ async fn assert_stream_usage_recorded_on_chat_spans(
 
     for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
         assert_eq!(chat_span.parent_id, Some(outer_span_id));
+        // The model adopts the chat span as its completion parent and names
+        // the operation it performs on it.
         assert_eq!(
             chat_span
                 .string_fields
                 .get("gen_ai.operation.name")
                 .map(String::as_str),
-            Some("chat")
+            Some("chat_streaming")
         );
         // A counter the provider did not report leaves its span field unset.
         let field = |name: &str| chat_span.fields.get(name).copied();
@@ -5402,9 +5403,12 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 
     // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
     // (rig reuses current span if one exists, so we need to ensure there's no current span)
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
+    let model = rig_core::driver::Model::new(
+        anthropic::wire::Anthropic::from_env()?.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+        rig_reqwest::client::bundled()?,
+    );
+    let agent = model
+        .into_agent_builder()
         .preamble("You are a helpful assistant.")
         .temperature(0.1)
         .max_tokens(100)
@@ -5459,9 +5463,12 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     use rig_core::message::Message;
 
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
+    let model = rig_core::driver::Model::new(
+        anthropic::wire::Anthropic::from_env()?.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+        rig_reqwest::client::bundled()?,
+    );
+    let agent = model
+        .into_agent_builder()
         .preamble("You are a helpful assistant. Keep responses brief.")
         .temperature(0.1)
         .max_tokens(50)

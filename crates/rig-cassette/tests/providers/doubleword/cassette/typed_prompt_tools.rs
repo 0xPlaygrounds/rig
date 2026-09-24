@@ -66,7 +66,8 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .agent(TOOL_MODEL)
+                .endpoint(|provider_config| provider_config.completion(TOOL_MODEL))
+                .into_agent_builder()
                 .preamble(
                     "When asked about weather, use the weather tool. Afterward return only JSON \
                      matching {\"city\": string, \"weather\": string}, preserving the tool result.",

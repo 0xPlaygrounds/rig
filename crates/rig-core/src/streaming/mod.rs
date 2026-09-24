@@ -15,7 +15,7 @@ mod event;
 use crate::completion::{CompletionResponse, Usage};
 use crate::error::ErrorReport;
 use crate::error::ProviderError;
-use crate::message::AssistantContent;
+use crate::message::{AssistantContent, ToolResult};
 use crate::operation::CompletionFold;
 pub use accumulator::BlockAccumulator;
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
@@ -426,3 +426,24 @@ impl Stream for CompletionStream {
 
 #[cfg(test)]
 mod tests;
+
+/// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum StreamedUserContent {
+    /// Tool result emitted during a multi-turn streaming agent loop.
+    ToolResult {
+        tool_result: ToolResult,
+        /// The block of the originating
+        /// tool-call block; `tool_result.call` is
+        /// the durable identifier of the answered call.
+        id: BlockId,
+    },
+}
+
+impl StreamedUserContent {
+    /// Create a streamed tool result correlated to the block of its call.
+    pub fn tool_result(tool_result: ToolResult, id: BlockId) -> Self {
+        Self::ToolResult { tool_result, id }
+    }
+}

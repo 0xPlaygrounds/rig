@@ -27,7 +27,10 @@ async fn runner_driven_multi_turn_streaming_loop() {
         "multi_turn_streaming/manual_multi_turn_streaming_loop",
         |client| async move {
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .endpoint(|provider_config| {
+                    provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                })
+                .into_agent_builder()
                 .preamble("You must use tools to answer arithmetic prompts.")
                 .tool(Add::new(add_calls.clone()))
                 .tool(Subtract::new(subtract_calls.clone()))

@@ -14,7 +14,8 @@ async fn completion_smoke() {
         .bound()
         .expect("transport should build");
     let agent = provider
-        .agent(hyperbolic::DEEPSEEK_R1)
+        .endpoint(|provider_config| provider_config.completion(hyperbolic::DEEPSEEK_R1))
+        .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build();
 

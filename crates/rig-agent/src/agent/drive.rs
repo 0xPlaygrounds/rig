@@ -22,7 +22,7 @@ mod tests;
 use crate::bus::{BusDriver, Dispatcher, Recording, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::CompletionAdapter;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::{
     completion::{CompletionModel, ModelRef},
     effect::{HandlerKey, Key, family},
@@ -232,7 +232,7 @@ impl AgentBus {
             self.registrar
                 .register_typed::<family::Completion>(
                     key.raw().clone(),
-                    CompletionAdapter::new(label.clone(), model),
+                    ModelAdapter::completion(label.clone(), model),
                 )
                 .map(|_| ()),
         );

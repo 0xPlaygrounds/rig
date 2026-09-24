@@ -78,7 +78,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         .expect("MISTRAL_API_KEY should be set")
         .bound()
         .expect("client should build")
-        .agent(DEFAULT_MODEL)
+        .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+        .into_agent_builder()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

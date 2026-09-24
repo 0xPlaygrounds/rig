@@ -16,13 +16,21 @@ async fn generated_image_as_user_content() {
             // credential and base URL as the image smoke test does.
             let generator = client
                 .clone()
-                .map_wire(|responses| {
+                .endpoint(|responses| {
+                    let responses = responses.clone();
                     openai::wire::OpenAI::with_key(&xai::DIALECT, responses.api_key)
                         .with_base_url(responses.base_url)
                 })
-                .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE);
+                .endpoint(|provider_config| {
+                    provider_config.images(xai::image_generation::GROK_IMAGINE_IMAGE)
+                });
             let bytes = image_inputs::generate(&generator, None, None).await;
-            image_inputs::as_user_content(&client.completion(xai::GROK_4), &bytes, None).await;
+            image_inputs::as_user_content(
+                &client.endpoint(|provider_config| provider_config.completion(xai::GROK_4)),
+                &bytes,
+                None,
+            )
+            .await;
         },
     )
     .await;
@@ -38,14 +46,17 @@ async fn generated_image_as_tool_result() {
         |client| async move {
             let generator = client
                 .clone()
-                .map_wire(|responses| {
+                .endpoint(|responses| {
+                    let responses = responses.clone();
                     openai::wire::OpenAI::with_key(&xai::DIALECT, responses.api_key)
                         .with_base_url(responses.base_url)
                 })
-                .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE);
+                .endpoint(|provider_config| {
+                    provider_config.images(xai::image_generation::GROK_IMAGINE_IMAGE)
+                });
             let bytes = image_inputs::generate(&generator, None, None).await;
             image_inputs::as_tool_result(
-                &client.completion(xai::GROK_4),
+                &client.endpoint(|provider_config| provider_config.completion(xai::GROK_4)),
                 &bytes,
                 Some(serde_json::json!({ "store": false })),
             )

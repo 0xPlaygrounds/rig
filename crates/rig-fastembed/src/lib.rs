@@ -192,7 +192,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
+        rig_core::telemetry::instrument_modality::<rig_core::embeddings::EmbeddingResponse, _>(
             "fastembed",
             &format!("{:?}", self.model),
             async {

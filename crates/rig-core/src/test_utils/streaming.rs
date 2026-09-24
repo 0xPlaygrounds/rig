@@ -91,6 +91,24 @@ pub enum MockStreamEvent {
 
 use super::completion::MockError;
 
+/// A script's events verbatim, written through the same
+/// [`AdapterOutput`](crate::operation::AdapterOutput) helpers every adapter
+/// uses, with no driver in between. A model that yields them can misbehave
+/// in ways a driven provider cannot, such as an event after its terminal
+/// record: the input for tests of a runtime's defenses.
+pub fn verbatim_events(
+    script: impl IntoIterator<Item = MockStreamEvent>,
+) -> Vec<Result<crate::streaming::StreamEvent, ProviderError>> {
+    let mut out = crate::operation::AdapterOutput::new();
+    let mut tool_ids = crate::streaming::SyntheticIds::tool();
+    for event in script {
+        if let Err(error) = event.emit(&mut out, &mut tool_ids) {
+            out.error(error);
+        }
+    }
+    out.into_items()
+}
+
 /// Fixture-syntax decoding of a part identity.
 ///
 /// Corpus fixtures are plain data and spell identities as strings; the

@@ -1,4 +1,3 @@
-use rig_core::driver::CompletionProvider;
 use std::fmt::Debug;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;
@@ -110,15 +109,12 @@ impl Client {
     }
 }
 
-impl CompletionProvider for Client {
-    type Model = CompletionModel;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Model {
+impl Client {
+    /// This provider's completion model for `model`.
+    pub fn completion(&self, model: impl Into<String>) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
-}
 
-impl Client {
     /// This provider's embedding model for `model`, at `ndims` dimensions
     /// when the caller named one rather than taking the model's default.
     pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> EmbeddingModel {

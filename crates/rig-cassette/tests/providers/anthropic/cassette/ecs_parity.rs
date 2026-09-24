@@ -20,7 +20,9 @@ async fn completion_smoke() {
         async {
             with_anthropic_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    }),
                     BASIC_PREAMBLE,
                     1,
                 );
@@ -44,7 +46,9 @@ async fn streaming_smoke() {
         async {
             with_anthropic_cassette("streaming/streaming_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    }),
                     STREAMING_PREAMBLE,
                     1,
                 );
@@ -82,7 +86,9 @@ async fn streaming_tools_smoke() {
                 "streaming_tools/streaming_tools_smoke",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                        }),
                         STREAMING_TOOLS_PREAMBLE,
                         2,
                     );

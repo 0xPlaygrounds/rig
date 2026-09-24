@@ -25,7 +25,7 @@ use rig_agent::{
         ModelTurnFinished, MultiTurnStreamItem, RequestPatch,
     },
     completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason, Usage},
-    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse},
+    streaming::{BlockId, CompletionStream, StreamEvent, StreamFinal},
 };
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
@@ -56,7 +56,7 @@ impl BudgetedModel {
 }
 
 impl CompletionModel for BudgetedModel {
-    async fn completion(
+    async fn complete(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
@@ -70,22 +70,19 @@ impl CompletionModel for BudgetedModel {
         .with_finish_reason(reason))
     }
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
         // Identical semantics on the streaming surface: the hook sees the same
         // reason and the same cap either way.
         let (text, reason) = Self::answer_under(request.max_tokens);
-        Ok(StreamingCompletionResponse::stream(
+        Ok(CompletionStream::new(
             "budgeted",
-            Box::pin(stream::iter([
+            stream::iter([
                 Ok(StreamEvent::text(BlockId::wire("text-1"), text)),
                 Ok(StreamEvent::Final(
                     StreamFinal::new("budgeted", Usage::default(), serde_json::json!({}))
                         .with_finish_reason(reason),
                 )),
-            ])),
+            ]),
         ))
     }
 }

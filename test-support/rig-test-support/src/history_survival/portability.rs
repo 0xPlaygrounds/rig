@@ -24,7 +24,7 @@ use rig_core::providers::anthropic::wire::Anthropic;
 use rig_core::providers::gemini::Gemini;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
-use rig_core::wire::{Fold, HasCompletion, Mode, Reply, Wire, WireFrame};
+use rig_core::wire::{Fold, Mode, Reply, Wire, WireFrame};
 
 use super::{Dialect, response_tokens, string_values, unpaired_tool_calls};
 use crate::reasoning::{TOOL_SYSTEM_PROMPT, TOOL_USER_PROMPT, WeatherTool};
@@ -40,7 +40,7 @@ pub const FOLLOW_UP: &str = "Using the weather you already retrieved, should I p
 /// without I/O: the exact normalization a live call would perform.
 pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, ProviderError>
 where
-    W: Wire<Op = Completion>,
+    W: Wire<Op = Completion, Frame = WireFrame>,
 {
     let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(body.to_owned()));

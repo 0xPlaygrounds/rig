@@ -21,7 +21,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let client = rig_bedrock::client::Client::from_env()?;
     let agent = client
-        .agent(AMAZON_NOVA_LITE)
+        .completion(AMAZON_NOVA_LITE)
+        .into_agent_builder()
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

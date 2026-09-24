@@ -18,7 +18,8 @@ async fn streaming() {
         let call_count = Arc::new(AtomicUsize::new(0));
         let agent = client
             .openai
-            .agent("gpt-5.2")
+            .endpoint(|provider_config| provider_config.completion("gpt-5.2"))
+            .into_agent_builder()
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))
@@ -55,7 +56,8 @@ async fn nonstreaming() {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
                 .openai
-                .agent("gpt-5.2")
+                .endpoint(|provider_config| provider_config.completion("gpt-5.2"))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))

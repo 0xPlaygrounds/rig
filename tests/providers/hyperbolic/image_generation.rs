@@ -14,7 +14,7 @@ async fn image_generation_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = provider.image_generation(hyperbolic::SDXL_TURBO);
+    let model = provider.endpoint(|provider_config| provider_config.images(hyperbolic::SDXL_TURBO));
 
     let response = model
         .image_generation_request(IMAGE_PROMPT)

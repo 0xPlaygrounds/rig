@@ -10,7 +10,8 @@ use crate::support::assert_nonempty_response;
 async fn completion_smoke() {
     let ollama = Ollama::new().bound().expect("transport should build");
     let agent = ollama
-        .agent("qwen3:4b")
+        .endpoint(|provider_config| provider_config.completion("qwen3:4b"))
+        .into_agent_builder()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

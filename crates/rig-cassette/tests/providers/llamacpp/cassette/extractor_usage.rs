@@ -60,7 +60,8 @@ async fn extract_backward_compatibility() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
             let extractor = client
-                .extractor::<Person>(model)
+                .endpoint(|provider_config| provider_config.completion(model))
+                .into_extractor_builder::<Person>()
                 .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
@@ -87,7 +88,8 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
             let extractor = client
-                .extractor::<Person>(model)
+                .endpoint(|provider_config| provider_config.completion(model))
+                .into_extractor_builder::<Person>()
                 .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
@@ -118,7 +120,8 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 
             let model = CASSETTE_MODEL;
             let extractor = client
-                .extractor::<Address>(model)
+                .endpoint(|provider_config| provider_config.completion(model))
+                .into_extractor_builder::<Address>()
                 .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
@@ -152,7 +155,8 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
             let extractor = client
-                .extractor::<Person>(model)
+                .endpoint(|provider_config| provider_config.completion(model))
+                .into_extractor_builder::<Person>()
                 .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
@@ -188,7 +192,8 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             let model = CASSETTE_MODEL;
 
             let person_extractor = client
-                .extractor::<Person>(model)
+                .endpoint(|provider_config| provider_config.completion(model))
+                .into_extractor_builder::<Person>()
                 .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
@@ -199,7 +204,8 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
             let address_extractor = client
-                .extractor::<Address>(model)
+                .endpoint(|provider_config| provider_config.completion(model))
+                .into_extractor_builder::<Address>()
                 .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();

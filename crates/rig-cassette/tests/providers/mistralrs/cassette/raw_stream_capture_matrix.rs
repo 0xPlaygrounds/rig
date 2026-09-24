@@ -77,9 +77,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.chat(model_name()), request, sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.endpoint(|provider_config| provider_config.chat(model_name())),
+                request,
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;
@@ -128,9 +132,13 @@ async fn stream_raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            capture_sole_terminal(client.chat(model_name()), request, sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.endpoint(|provider_config| provider_config.chat(model_name())),
+                request,
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;

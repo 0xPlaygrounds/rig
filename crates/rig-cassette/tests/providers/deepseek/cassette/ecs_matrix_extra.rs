@@ -16,8 +16,10 @@ use crate::ecs_matrix::{
 fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.completion("deepseek-chat"),
-        route: Some(client.completion("deepseek-reasoner")),
+        model: client.endpoint(|provider_config| provider_config.completion("deepseek-chat")),
+        route: Some(
+            client.endpoint(|provider_config| provider_config.completion("deepseek-reasoner")),
+        ),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -47,7 +49,9 @@ async fn error_facts_unary() {
             "wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body",
             |client| async move {
                 error_facts(
-                    client.completion("deepseek-v9-nonexistent"),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion("deepseek-v9-nonexistent")
+                    }),
                     ErrorProbe {
                         prompt: "hi",
                         max_tokens: Some(8),
@@ -79,7 +83,9 @@ async fn error_facts_streamed() {
     crate::goldens::capture_world_programs(async {
         with_deepseek_cassette("corpus_matrix/error_facts_streamed", |client| async move {
             error_facts(
-                client.completion("deepseek-v9-nonexistent"),
+                client.endpoint(|provider_config| {
+                    provider_config.completion("deepseek-v9-nonexistent")
+                }),
                 ErrorProbe {
                     prompt: "hi",
                     max_tokens: Some(8),

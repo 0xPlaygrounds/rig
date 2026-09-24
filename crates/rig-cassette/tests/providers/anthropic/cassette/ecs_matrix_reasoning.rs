@@ -6,16 +6,16 @@
 //! byte for byte (`tests/common/ecs_matrix/world.rs`).
 
 use rig::completion::CompletionModel;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::providers::anthropic::wire::Anthropic;
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn reasoning_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.completion("claude-haiku-4-5"),
+        model: client.endpoint(|provider_config| provider_config.completion("claude-haiku-4-5")),
         route: None,
         // Extended thinking requires the default temperature.
         temperature: None,

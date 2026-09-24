@@ -18,7 +18,7 @@ async fn audio_generation_smoke() {
         .expect("XAI_API_KEY")
         .bound()
         .expect("client should build");
-    let model = client.audio_generation(xai::TTS_1);
+    let model = client.endpoint(|provider_config| provider_config.speech(xai::TTS_1));
 
     let response = model
         .audio_generation_request(AUDIO_TEXT, "eve")

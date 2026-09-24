@@ -128,7 +128,8 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
     let mut builder = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -144,7 +145,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // terminal metadata — routed `provider`, `service_tier`, the
             // per-choice finish reason — so it observes the reply document
             // the driver keeps on `raw`, not the normalized projection.
-            model.completion(request).await?.raw
+            model.complete(request).await?.raw
         }
         Transport::Streaming => {
             let mut stream = model.stream(request).await?;

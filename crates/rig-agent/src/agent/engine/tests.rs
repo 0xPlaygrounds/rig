@@ -1080,11 +1080,11 @@ async fn message_id_is_promoted_into_history() {
 async fn streaming_completion_response_receives_canonical_fields() {
     let prompt = Message::user("canonical prompt");
     let hook = CanonicalResponseHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = AgentBuilder::new(Verbatim::script([
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-canonical"),
-    ]]))
+    ]))
     .add_hook(hook.clone())
     .build()
     .prompt(prompt.clone())
@@ -1127,11 +1127,11 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
 #[tokio::test]
 async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = AgentBuilder::new(Verbatim::script([
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-after-final"),
-    ]]))
+    ]))
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -1268,11 +1268,11 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
 #[tokio::test]
 async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = AgentBuilder::new(Verbatim::script([
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::error("post-final failure"),
-    ]]))
+    ]))
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -1322,11 +1322,11 @@ async fn visible_assistant_items_after_final_are_rejected() {
 
     for (case, visible_item) in cases {
         let hook = FinishLifecycleHook::default();
-        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+        let mut stream = AgentBuilder::new(Verbatim::script(vec![
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
             visible_item,
-        ]]))
+        ]))
         .add_hook(hook.clone())
         .build()
         .prompt("canonical prompt")
@@ -1366,11 +1366,11 @@ async fn visible_assistant_items_after_final_are_rejected() {
 #[tokio::test]
 async fn visible_item_after_non_emittable_final_is_rejected() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = AgentBuilder::new(Verbatim::script([
         MockStreamEvent::reasoning("think"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::text("late text"),
-    ]]))
+    ]))
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -2508,8 +2508,8 @@ mod span_safety_net {
     use crate::completion::{
         CompletionModel, CompletionRequest, CompletionResponse, PromptError, Usage,
     };
+    use crate::streaming::CompletionStream;
     use crate::streaming::StreamEvent;
-    use crate::streaming::StreamingCompletionResponse;
     use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
     use crate::tool::{ToolContext, ToolExecutionError};
     use rig_core::telemetry::{GenAiOperation, SpanBuilder};
@@ -2660,19 +2660,19 @@ mod span_safety_net {
     }
 
     impl CompletionModel for CompletionTelemetryModel {
-        async fn completion(
+        async fn complete(
             &self,
             request: CompletionRequest,
         ) -> Result<CompletionResponse, ProviderError> {
             let span =
                 SpanBuilder::new("fixture-provider", "fixture-model", GenAiOperation::Chat).build();
-            self.inner.completion(request).instrument(span).await
+            self.inner.complete(request).instrument(span).await
         }
 
         async fn stream(
             &self,
             request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse, ProviderError> {
+        ) -> Result<CompletionStream, ProviderError> {
             let span = SpanBuilder::new(
                 "fixture-provider",
                 "fixture-model",
@@ -6084,18 +6084,18 @@ impl PausingCompletionModel {
 }
 
 impl CompletionModel for PausingCompletionModel {
-    async fn completion(
+    async fn complete(
         &self,
         request: crate::completion::CompletionRequest,
     ) -> Result<crate::completion::CompletionResponse, rig_core::error::ProviderError> {
         self.inspect_and_pause(&request).await;
-        self.inner.completion(request).await
+        self.inner.complete(request).await
     }
 
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, rig_core::error::ProviderError> {
+    ) -> Result<crate::streaming::CompletionStream, rig_core::error::ProviderError> {
         self.inspect_and_pause(&request).await;
         self.inner.stream(request).await
     }
@@ -10166,5 +10166,39 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
             assert!(error.contains("terminal policy"), "{error}");
             assert_eq!(later.load(SeqCst), 0, "later hooks must not undo stop");
         }
+    }
+}
+
+/// A model that yields its script verbatim, after its terminal record too.
+/// No driven provider does that, so it is the misbehaving model the engine
+/// defends against.
+#[derive(Clone)]
+struct Verbatim(Vec<MockStreamEvent>);
+
+impl Verbatim {
+    fn script(events: impl IntoIterator<Item = MockStreamEvent>) -> Self {
+        Self(events.into_iter().collect())
+    }
+}
+
+impl CompletionModel for Verbatim {
+    async fn complete(
+        &self,
+        _request: crate::completion::CompletionRequest,
+    ) -> Result<crate::completion::CompletionResponse, ProviderError> {
+        Err(ProviderError::Provider(
+            "a verbatim script only streams".to_owned(),
+        ))
+    }
+
+    async fn stream(
+        &self,
+        _request: crate::completion::CompletionRequest,
+    ) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
+        let events = crate::test_utils::verbatim_events(self.0.clone());
+        Ok(rig_core::streaming::CompletionStream::new(
+            crate::test_utils::MOCK_PROVIDER,
+            futures::stream::iter(events),
+        ))
     }
 }

@@ -199,7 +199,8 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The provider-native surface: the gateway's own reply document,
@@ -208,7 +209,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // the same recorded bytes as the normalized surface, so the axis
             // is "provider document vs decoder's choice" rather than two
             // normalizers that could drift.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.complete(request(&model, cell)).await?;
             let wire = openrouter::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is OpenRouter's own completion response");
             Observation {
@@ -220,7 +221,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.complete(request(&model, cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,

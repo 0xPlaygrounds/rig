@@ -13,9 +13,12 @@ async fn context_smoke() {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(perplexity::SONAR), |builder, doc| {
-                builder.context(doc)
-            })
+            .fold(
+                client
+                    .endpoint(|provider_config| provider_config.completion(perplexity::SONAR))
+                    .into_agent_builder(),
+                |builder, doc| builder.context(doc),
+            )
             .preamble(
                 "Use the provided context documents as the authoritative source. Answer concisely.",
             )

@@ -11,7 +11,7 @@ use super::super::support::with_ollama_cassette;
 async fn list_models_smoke() {
     with_ollama_cassette("models/list_models_smoke", |client| async move {
         let models = client
-            .models()
+            .endpoint(|provider_config| provider_config.models())
             .list_all()
             .await
             .expect("listing Ollama models should succeed");

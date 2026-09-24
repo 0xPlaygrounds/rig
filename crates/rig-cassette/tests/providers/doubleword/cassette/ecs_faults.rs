@@ -10,7 +10,7 @@
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
 use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
 use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
@@ -27,10 +27,12 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire<H: Socket>(client: &Bound<OpenAI, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
+    client: &Model<OpenAI, H>,
+) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -38,10 +40,14 @@ fn wire<H: Socket>(client: &Bound<OpenAI, H>) -> Wire<impl CompletionModel + Clo
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing<H: Socket>(client: &Bound<OpenAI, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing<H: rig::http_client::HttpClientExt + Clone + Send + Sync + 'static>(
+    client: &Model<OpenAI, H>,
+) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion("rig/definitely-not-a-doubleword-model"),
+        model: client.endpoint(|provider_config| {
+            provider_config.completion("rig/definitely-not-a-doubleword-model")
+        }),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -97,11 +103,13 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 /// The wire over a transport that answers one streaming request with
 /// `frames`, then EOF.
 fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client =
-        OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY).bind(scripted(vec![sse_bytes(frames)]));
+    let client = rig::driver::Model::new(
+        OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY),
+        scripted(vec![sse_bytes(frames)]),
+    );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -111,11 +119,13 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
 fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client =
-        OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
+    let client = rig::driver::Model::new(
+        OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY),
+        SequencedHttpClient::new(replies),
+    );
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, CompletionRequestBuilder};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::interactions_api::{
@@ -104,16 +104,16 @@ fn print_interaction_result(interaction: &Interaction) {
 /// provider's own lifecycle fields — `status`, `steps` — are read back out of
 /// `raw` by deserializing Gemini's own type.
 async fn poll_until_terminal(
-    gemini: &Bound<Gemini>,
+    gemini: &Model<Gemini>,
     interaction_id: &str,
     request: &CompletionRequest,
 ) -> Result<Interaction> {
     let model = gemini
         .clone()
-        .map_wire(|gemini| gemini.interaction(interaction_id));
+        .endpoint(|gemini| gemini.clone().interaction(interaction_id));
 
     loop {
-        let response = model.completion(request.clone()).await?;
+        let response = model.complete(request.clone()).await?;
         let interaction: Interaction = serde_json::from_value(response.raw)?;
         if interaction.is_terminal() {
             return Ok(interaction);
@@ -212,13 +212,13 @@ async fn main() -> Result<()> {
             let opened = if attempt == 0 {
                 gemini
                     .clone()
-                    .map_wire(|gemini| gemini.interactions(agent.as_str()))
+                    .endpoint(|gemini| gemini.clone().interactions(agent.as_str()))
                     .stream(request.clone())
                     .await
             } else if let Some(interaction_id) = state.interaction_id.as_deref() {
                 gemini
                     .clone()
-                    .map_wire(|gemini| gemini.interaction_resumed(interaction_id, None))
+                    .endpoint(|gemini| gemini.clone().interaction_resumed(interaction_id, None))
                     .stream(request.clone())
                     .await
             } else {
@@ -260,9 +260,9 @@ async fn main() -> Result<()> {
             // interaction status before reconnecting a dropped/expired stream.
             let probe = gemini
                 .clone()
-                .map_wire(|gemini| gemini.interaction(interaction_id.as_str()));
+                .endpoint(|gemini| gemini.clone().interaction(interaction_id.as_str()));
             let interaction: Interaction =
-                serde_json::from_value(probe.completion(request.clone()).await?.raw)?;
+                serde_json::from_value(probe.complete(request.clone()).await?.raw)?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);
@@ -296,8 +296,8 @@ async fn main() -> Result<()> {
     println!("Agent: {agent}");
     let opened = gemini
         .clone()
-        .map_wire(|gemini| gemini.interactions(agent.as_str()))
-        .completion(request.clone())
+        .endpoint(|gemini| gemini.clone().interactions(agent.as_str()))
+        .complete(request.clone())
         .await?;
     // rig normalizes the interaction id onto `response_id`, so opening a
     // background run needs no reach into `raw`.

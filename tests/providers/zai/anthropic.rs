@@ -10,7 +10,8 @@ use crate::zai::anthropic_client;
 #[ignore = "requires ZAI_API_KEY"]
 async fn anthropic_compatible_completion_smoke() {
     let response = anthropic_client()
-        .agent(zai::GLM_4_6)
+        .endpoint(|provider_config| provider_config.completion(zai::GLM_4_6))
+        .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

@@ -1480,7 +1480,7 @@ pub const RERANK_KEY: &str = "host/rerank";
 pub const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
 
 /// A reranker that ranks by document length, longest first: a mock behind
-/// a `RerankAdapter`, since no keyed provider in the tree has a rerank
+/// a `ModelAdapter`, since no keyed provider in the tree has a rerank
 /// cassette suite.
 #[allow(dead_code)]
 pub struct MockRerank;

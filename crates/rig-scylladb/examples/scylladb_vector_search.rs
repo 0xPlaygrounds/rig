@@ -26,7 +26,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Bind the OpenAI embeddings endpoint and select an embedding model
     let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     // Create ScyllaDB vector store
     let vector_store = ScyllaDbVectorStore::new(

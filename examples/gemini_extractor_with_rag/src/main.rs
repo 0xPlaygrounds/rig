@@ -63,7 +63,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the Gemini provider
     let gemini_client = Gemini::from_env()?.bound()?;
-    let embedding_model = gemini_client.embedding(gemini::EMBEDDING_001, None);
+    let embedding_model = gemini_client
+        .endpoint(|provider_config| provider_config.embeddings(gemini::EMBEDDING_001, None));
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -93,7 +94,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store = InMemoryVectorStore::from_documents(embeddings);
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let rag_extractor = gemini_client.extractor::<QuestionnaireResponses>("gemini-2.5-flash")
+    let rag_extractor = gemini_client.endpoint(|provider_config| provider_config.completion("gemini-2.5-flash")).into_extractor_builder::<QuestionnaireResponses>()
         .append_preamble("
             You are a questionnaire assistant provided by the procurement department to assist the user in answering the questions.
             You are provided with the questions and based on the information available, you must answer the questions with the right format.

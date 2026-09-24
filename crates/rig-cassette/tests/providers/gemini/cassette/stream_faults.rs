@@ -7,7 +7,7 @@
 //! after it.
 
 use bytes::Bytes;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
@@ -53,8 +53,8 @@ pub(super) fn gemini_sse(frames: &[&str]) -> Bytes {
 
 /// A client over a transport that answers one streaming request with
 /// `chunks`, then EOF.
-pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<Gemini, SequencedStreamingHttpClient> {
-    Gemini::new(SCRIPTED_KEY).bind(scripted(chunks))
+pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Model<Gemini, SequencedStreamingHttpClient> {
+    rig::driver::Model::new(Gemini::new(SCRIPTED_KEY), scripted(chunks))
 }
 
 /// The model refuses the request before any frame: the run fails with the
@@ -68,7 +68,8 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
-                .agent(MISSING_MODEL)
+                .endpoint(|provider_config| provider_config.completion(MISSING_MODEL))
+                .into_agent_builder()
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_to(recorder.clone())
                 .build();
@@ -104,7 +105,8 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
     let client = scripted_client(vec![gemini_sse(&[BLOCKED_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .agent(GEMINI_2_5_FLASH)
+        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .into_agent_builder()
         .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();
@@ -145,7 +147,8 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     let client = scripted_client(vec![gemini_sse(&[CONTENT_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .agent(GEMINI_2_5_FLASH)
+        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .into_agent_builder()
         .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();
@@ -178,7 +181,8 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
     let client = scripted_client(vec![gemini_sse(&[CONTENT_FRAME, IN_BAND_ERROR_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .agent(GEMINI_2_5_FLASH)
+        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .into_agent_builder()
         .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();
@@ -228,7 +232,11 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
 async fn multi_frame_stream_recording() {
     with_gemini_cassette("stream_faults/multi_frame_stream", |client| async move {
         let agent = client
-            .agent(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            .endpoint(|provider_config| {
+                provider_config
+                    .completion(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            })
+            .into_agent_builder()
             .preamble(crate::support::STREAMING_PREAMBLE)
             .build();
         let mut stream = agent
@@ -264,7 +272,8 @@ async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
     let client = scripted_client(vec![crate::stream_faults::sse_bytes(&prefix)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
-        .agent(GEMINI_2_5_FLASH)
+        .endpoint(|provider_config| provider_config.completion(GEMINI_2_5_FLASH))
+        .into_agent_builder()
         .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();

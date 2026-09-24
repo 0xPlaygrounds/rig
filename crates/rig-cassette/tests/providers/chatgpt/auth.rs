@@ -1,7 +1,7 @@
 //! ChatGPT OAuth device flow and refresh smoke tests.
 
 use assert_fs::TempDir;
-use rig::driver::{Bind as _, Bound};
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -48,9 +48,9 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> O
 }
 
 /// [`oauth_provider_with_auth_file`], bound to a fresh bundled transport.
-async fn oauth_client_with_auth_file(path: &Path) -> Bound<OpenAI> {
+async fn oauth_client_with_auth_file(path: &Path) -> Model<OpenAI> {
     let http = bundled().expect("the bundled transport should build");
-    oauth_provider_with_auth_file(path, &http).await.bind(http)
+    rig::driver::Model::new(oauth_provider_with_auth_file(path, &http).await, http)
 }
 
 fn seed_refresh_auth_file(path: &Path) {
@@ -89,7 +89,11 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "device authorization should populate the auth cache"
     );
 
-    let agent = client.agent(LIVE_MODEL).preamble(BASIC_PREAMBLE).build();
+    let agent = client
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
+        .preamble(BASIC_PREAMBLE)
+        .build();
     let mut stream = agent.prompt(BASIC_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)
         .await
@@ -99,7 +103,10 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     let cached_client = oauth_client_with_auth_file(&auth_file).await;
 
-    let cached_agent = cached_client.agent(LIVE_MODEL).build();
+    let cached_agent = cached_client
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
+        .build();
     let mut cached_stream = cached_agent
         .prompt("Reply with the single word cached.")
         .stream();
@@ -137,7 +144,10 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
         "refresh should persist a refresh token"
     );
 
-    let agent = client.agent(LIVE_MODEL).build();
+    let agent = client
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
+        .build();
     let mut stream = agent
         .prompt("Reply with the single word refreshed.")
         .stream();

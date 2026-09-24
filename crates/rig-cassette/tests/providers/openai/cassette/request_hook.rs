@@ -77,7 +77,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         |client| async move {
             let agent = client
                 .openai
-                .agent(openai::GPT_4O)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+                .into_agent_builder()
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();
 

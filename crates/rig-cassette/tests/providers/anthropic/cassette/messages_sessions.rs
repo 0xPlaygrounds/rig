@@ -96,7 +96,10 @@ async fn sequential_tool_calls_nonstreaming() {
         "messages_sessions/sequential_tool_calls_nonstreaming",
         |client| async move {
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .max_tokens(2048)
                 .tool(Adder)
@@ -149,7 +152,10 @@ async fn sequential_tool_calls_streaming() {
         "messages_sessions/sequential_tool_calls_streaming",
         |client| async move {
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .max_tokens(2048)
                 .tool(Adder)
@@ -197,7 +203,10 @@ async fn parallel_tool_use_single_turn_nonstreaming() {
         "messages_sessions/parallel_tool_use_single_turn_nonstreaming",
         |client| async move {
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .max_tokens(2048)
                 .tool(AlphaSignal)
@@ -266,7 +275,9 @@ async fn long_history_replay_nonstreaming() {
     with_anthropic_cassette(
         "messages_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            });
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool_use so the follow-up can echo its
@@ -278,7 +289,7 @@ async fn long_history_replay_nonstreaming() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
             let first_response = model
-                .completion(first_request)
+                .complete(first_request)
                 .await
                 .expect("first turn should succeed");
             let tool_call = first_response
@@ -328,7 +339,7 @@ async fn long_history_replay_nonstreaming() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("long history replay should be accepted by the Messages API");
 
@@ -382,7 +393,10 @@ async fn usage_accumulates_across_streaming_multi_turn() {
         "messages_sessions/usage_accumulates_across_streaming_multi_turn",
         |client| async move {
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .max_tokens(2048)
                 .tool(AlphaSignal)

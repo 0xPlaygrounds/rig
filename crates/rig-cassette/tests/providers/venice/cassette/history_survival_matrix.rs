@@ -10,7 +10,7 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(client: BoundVenice, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+    client.endpoint(|provider_config| provider_config.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

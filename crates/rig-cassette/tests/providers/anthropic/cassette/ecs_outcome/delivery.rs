@@ -6,7 +6,7 @@ use futures::StreamExt;
 use rig::error::ProviderError;
 use rig::{
     completion::{CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities},
-    streaming::{Delta, StreamEvent, StreamEvents, StreamingCompletionResponse},
+    streaming::{CompletionStream, Delta, StreamEvent, StreamEvents},
 };
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -45,26 +45,20 @@ impl<M> FirstDelta<M> {
 }
 
 impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
-    async fn completion(
+    async fn complete(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, ProviderError> {
-        self.model.completion(request).await
+        self.model.complete(request).await
     }
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
         let stream = self.model.stream(request).await?;
         let provider = stream.provider().to_owned();
-        let message_id = stream.message_id.clone();
-        let mut gated = StreamingCompletionResponse::from_events(
+        Ok(CompletionStream::relay(
             provider,
             gate_events(Box::pin(stream), self.boundary, Arc::new(Semaphore::new(0))),
-        );
-        gated.message_id = message_id;
-        Ok(gated)
+        ))
     }
 
     fn capabilities(&self) -> ProviderCapabilities {

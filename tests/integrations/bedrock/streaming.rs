@@ -18,7 +18,8 @@ use super::{
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn streaming_tools_smoke() {
     let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+        .completion(BEDROCK_COMPLETION_MODEL)
+        .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(1024)
         .tool(Adder)

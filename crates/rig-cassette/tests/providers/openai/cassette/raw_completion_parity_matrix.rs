@@ -360,7 +360,15 @@ async fn chat_text_turn_parity() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_text_turn_parity",
-        |client| capture_completion_pair(client.openai.chat(MODEL), text_request, observed.clone()),
+        |client| {
+            capture_completion_pair(
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                text_request,
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("chat_text_turn_parity should replay from its cassette");
@@ -373,7 +381,15 @@ async fn chat_tool_turn_parity() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_tool_turn_parity",
-        |client| capture_completion_pair(client.openai.chat(MODEL), tool_request, observed.clone()),
+        |client| {
+            capture_completion_pair(
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                tool_request,
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("chat_tool_turn_parity should replay from its cassette");
@@ -391,7 +407,15 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
-        |client| capture_completion_pair(client.openai.chat(MODEL), text_request, observed.clone()),
+        |client| {
+            capture_completion_pair(
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.chat(MODEL)),
+                text_request,
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("chat_plain_raw_completion_lacks_request_id should replay from its cassette");
@@ -567,7 +591,9 @@ async fn responses_text_turn_parity() {
         "raw_completion_parity_matrix/responses_text_turn_parity",
         |client| {
             capture_completion_pair(
-                client.openai.completion(MODEL),
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.completion(MODEL)),
                 text_request,
                 observed.clone(),
             )
@@ -590,7 +616,9 @@ async fn responses_tool_turn_parity() {
         "raw_completion_parity_matrix/responses_tool_turn_parity",
         |client| {
             capture_completion_pair(
-                client.openai.completion(MODEL),
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.completion(MODEL)),
                 tool_request,
                 observed.clone(),
             )

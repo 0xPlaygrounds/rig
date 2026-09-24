@@ -26,7 +26,7 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
-use rig::driver::{Bind as _, Bound};
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
@@ -85,9 +85,9 @@ async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
     provider
 }
 
-pub(crate) async fn live_client() -> Bound<OpenAI> {
+pub(crate) async fn live_client() -> Model<OpenAI> {
     let http = bundled().expect("the bundled transport should build");
-    live_provider(&http).await.bind(http)
+    rig::driver::Model::new(live_provider(&http).await, http)
 }
 
 fn has_usable_oauth_cache() -> bool {

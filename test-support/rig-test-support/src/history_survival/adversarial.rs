@@ -19,7 +19,6 @@ use rig_core::providers::anthropic::wire::Anthropic;
 use rig_core::providers::gemini::Gemini;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::OpenAI;
-use rig_core::wire::HasCompletion;
 
 use super::portability::{FOLLOW_UP, Source, decode_whole_reply};
 use super::{Dialect, lost_tokens, response_tokens};
@@ -59,6 +58,7 @@ pub fn request(history: Vec<Message>, params: Option<Value>, max_tokens: u64) ->
         additional_params: params,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -116,7 +116,7 @@ pub async fn colliding_ids<M: CompletionModel>(model: &M, id: &str, params: Opti
         "Without calling any tool, reply exactly `alpha=<code> beta=<code>` using the lookups above.",
     ));
     let reply = model
-        .completion(request(history, params, 2048))
+        .complete(request(history, params, 2048))
         .await
         .expect("the provider accepts a history that reuses a call id across turns");
     let answer = text(&reply.choice);
@@ -162,7 +162,7 @@ pub async fn out_of_order_results<M: CompletionModel>(model: &M, params: Option<
         "Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.",
     );
     let first = model
-        .completion(request(vec![prompt.clone()], params.clone(), 4096))
+        .complete(request(vec![prompt.clone()], params.clone(), 4096))
         .await
         .expect("turn one");
     let calls: Vec<_> = first
@@ -193,7 +193,7 @@ pub async fn out_of_order_results<M: CompletionModel>(model: &M, params: Option<
         Message::user("Without calling any tool, reply exactly `alpha=<code> beta=<code>`."),
     ];
     let reply = model
-        .completion(request(history, params, 4096))
+        .complete(request(history, params, 4096))
         .await
         .expect("the provider accepts results in reverse order");
     let answer = text(&reply.choice);
@@ -233,7 +233,7 @@ async fn complete<M: CompletionModel>(
     streamed: bool,
 ) -> Result<CompletionResponse, rig_core::error::ProviderError> {
     if !streamed {
-        return model.completion(request).await;
+        return model.complete(request).await;
     }
     use futures::StreamExt;
     let mut stream = model.stream(request).await?;
@@ -377,7 +377,7 @@ impl Hop {
 /// Send one hop of the round trip.
 pub async fn round_trip_hop<M: CompletionModel>(model: &M, hop: Hop, params: Option<Value>) {
     let reply = model
-        .completion(request(hop.history(), params, 4096))
+        .complete(request(hop.history(), params, 4096))
         .await
         .unwrap_or_else(|error| panic!("{hop:?} accepts the carried history: {error}"));
     assert!(!text(&reply.choice).trim().is_empty(), "{hop:?} answers");

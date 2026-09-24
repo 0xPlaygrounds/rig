@@ -1,7 +1,6 @@
 //! Gemini completion and embedding models using the gRPC API.
 //!
 //! ```no_run
-//! use rig_core::driver::CompletionProvider;
 //! use rig_gemini_grpc::{Client, completion::GEMINI_2_0_FLASH};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

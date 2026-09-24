@@ -11,7 +11,8 @@ use crate::support::{
 async fn streaming_smoke() {
     with_venice_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .agent(DEFAULT_MODEL)
+            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();

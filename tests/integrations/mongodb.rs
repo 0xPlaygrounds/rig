@@ -9,7 +9,7 @@ use rig::mongodb::{MongoDbVectorIndex, SearchParams};
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
-    driver::Bound,
+    driver::Model,
     embeddings::EmbeddingsBuilder,
     providers::openai,
     vector_store::{InsertDocuments, VectorStoreIndex},
@@ -146,7 +146,9 @@ async fn vector_search_test() {
         .unwrap();
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
     let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
@@ -282,7 +284,9 @@ async fn insert_documents_test() {
         .bound()
         .unwrap();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     // Setup MongoDB container
     let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
@@ -470,7 +474,7 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
     collection
 }
 
-async fn create_embeddings(model: Bound<openai::wire::Embeddings>) -> Vec<bson::Document> {
+async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<bson::Document> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

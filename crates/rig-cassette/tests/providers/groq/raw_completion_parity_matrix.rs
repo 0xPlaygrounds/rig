@@ -135,7 +135,11 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
     with_groq_cassette_result(
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
         |client| {
-            capture_completion_pair(client.completion(RAW_CAPTURE_MODEL), request, sink.clone())
+            capture_completion_pair(
+                client.endpoint(|provider_config| provider_config.completion(RAW_CAPTURE_MODEL)),
+                request,
+                sink.clone(),
+            )
         },
     )
     .await
@@ -188,7 +192,13 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
     let sink = Observed::default();
     with_groq_cassette_result(
         "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id",
-        |client| capture_completion(client.completion(RAW_CAPTURE_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(RAW_CAPTURE_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("plain_raw_completion_lacks_request_id should replay from its cassette");

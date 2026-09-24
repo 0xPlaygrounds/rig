@@ -17,7 +17,9 @@ async fn embeddings_smoke() {
     super::super::support::with_gemini_cassette(
         "embeddings/embeddings_smoke",
         |client| async move {
-            let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+            let model = client.endpoint(|provider_config| {
+                provider_config.embeddings(gemini::embedding::EMBEDDING_001, None)
+            });
 
             let response = model
                 .embed_texts_response(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
@@ -43,8 +45,10 @@ async fn derive_document_embeddings() {
     super::super::support::with_gemini_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
-            let embeddings = client
-                .embeddings(gemini::embedding::EMBEDDING_001)
+            let embeddings =
+                rig::embeddings::EmbeddingsBuilder::new(client.endpoint(|provider_config| {
+                    provider_config.embeddings(gemini::embedding::EMBEDDING_001, None)
+                }))
                 .document(Greetings {
                     message: "Hello, world!".to_string(),
                 })

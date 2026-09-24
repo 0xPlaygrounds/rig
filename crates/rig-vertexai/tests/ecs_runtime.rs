@@ -10,9 +10,8 @@ mod support;
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::{
     completion::CompletionRequestBuilder,
-    driver::CompletionProvider,
     effect::{EffectKind, HandlerDescriptor},
-    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::CompletionAdapter},
+    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::ModelAdapter},
 };
 use rig_ecs::{
     bus::{EffectOutcome, Handlers, PendingEffect},
@@ -58,7 +57,7 @@ async fn assemble(endpoint: &LocalEndpoint, credentials: &SentinelCredentials) -
         .build()
         .unwrap();
     ErasedHandler::new(HostedVertex {
-        handler: ErasedHandler::new(CompletionAdapter::new(
+        handler: ErasedHandler::new(ModelAdapter::completion(
             "vertex",
             client.completion("gemini-test"),
         )),

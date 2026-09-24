@@ -12,7 +12,7 @@ use rig_core::{
     error::ErrorKind,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
-    serve::adapters::{CompletionAdapter, EmbedAdapter, MemoryAdapter, ToolAdapter},
+    serve::adapters::{MemoryAdapter, ModelAdapter, ToolAdapter},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolExecutionError},
 };
@@ -90,6 +90,7 @@ fn request() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -102,7 +103,7 @@ fn bus() -> (
     driver
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::completion(
                 "mock",
                 MockCompletionModel::from_turns([MockTurn::text("unary"), MockTurn::text("again")]),
             ),
@@ -111,7 +112,7 @@ fn bus() -> (
     driver
         .register(
             "streamer",
-            CompletionAdapter::new(
+            ModelAdapter::completion(
                 "mock-stream",
                 MockCompletionModel::from_stream_turns([vec![
                     MockStreamEvent::text("str"),
@@ -131,7 +132,7 @@ fn bus() -> (
         )
         .expect("register");
     driver
-        .register("embed", EmbedAdapter::new("tiny", Tiny))
+        .register("embed", ModelAdapter::embedding("tiny", Tiny))
         .expect("register");
     (dispatcher, registrar, tokio::spawn(driver))
 }
@@ -180,7 +181,7 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
         };
         let (dispatcher, _registrar, mut driver) = Bus::channel();
         driver
-            .register("model", CompletionAdapter::new("mock", provider.clone()))
+            .register("model", ModelAdapter::completion("mock", provider.clone()))
             .unwrap();
         let task = tokio::spawn(driver);
         let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
@@ -197,7 +198,7 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
             .collect();
         if streamed {
             let consume = |context| {
-                let mut stream = handle.stream_with_context(request(), context);
+                let mut stream = handle.stream(observed(request(), context));
                 async move {
                     while let Some(event) = within(stream.next()).await {
                         event.unwrap();
@@ -211,8 +212,8 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
             tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
         } else {
             let (a, b) = tokio::join!(
-                within(handle.complete_with_context(request(), contexts[0].clone())),
-                within(handle.complete_with_context(request(), contexts[1].clone()))
+                within(handle.complete(observed(request(), contexts[0].clone()))),
+                within(handle.complete(observed(request(), contexts[1].clone())))
             );
             assert_eq!(a.unwrap().choice, vec![AssistantContent::text("same")]);
             assert_eq!(b.unwrap().choice, vec![AssistantContent::text("same")]);
@@ -267,7 +268,7 @@ async fn handle_descriptor_follows_a_runtime_replacement() {
     registrar
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::completion(
                 "swapped",
                 MockCompletionModel::from_turns([MockTurn::text("swapped")]),
             ),
@@ -438,4 +439,15 @@ async fn handles_fail_closed_when_the_driver_is_gone() {
         .await
         .expect_err("closed");
     assert_eq!(report.kind, ErrorKind::BusClosed);
+}
+
+/// `request` observed by `context`, as a caller hands it to a model handle.
+fn observed(
+    mut request: rig_core::completion::CompletionRequest,
+    context: Option<rig_core::observe::AdapterContext>,
+) -> rig_core::completion::CompletionRequest {
+    if let Some(context) = context {
+        request.extensions.insert(context);
+    }
+    request
 }

@@ -51,14 +51,14 @@ mod xai {
     fn driver() -> conformance::WireDriver {
         conformance::WireDriver::new("xai", |chunks| {
             Box::pin(async move {
-                let model = rig_core::driver::Bind::bind(
+                let model = rig::driver::Model::new(
                     rig_core::providers::openai::OpenAI::with_key(
                         &rig_core::providers::xai::DIALECT,
                         "test-key",
-                    ),
+                    )
+                    .completion(rig_core::providers::xai::GROK_4),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
-                )
-                .completion(rig_core::providers::xai::GROK_4);
+                );
                 let request = model.completion_request("hello").build();
                 let stream = rig_core::completion::CompletionModel::stream(&model, request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -90,11 +90,11 @@ mod copilot {
                 // (`copilot::wire::routes_through_responses`), so naming the
                 // same two model ids keeps each fixture on the route it was
                 // recorded against.
-                let model = rig_core::driver::Bind::bind(
-                    rig_core::providers::copilot::wire::Copilot::new("copilot-token"),
+                let model = rig::driver::Model::new(
+                    rig_core::providers::copilot::wire::Copilot::new("copilot-token")
+                        .completion(model_name),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
-                )
-                .completion(model_name);
+                );
                 let request = model.completion_request("hello").build();
                 let stream = model.stream(request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -132,15 +132,15 @@ mod chatgpt {
     fn driver() -> conformance::WireDriver {
         conformance::WireDriver::new("chatgpt", |chunks| {
             Box::pin(async move {
-                let model = rig_core::driver::Bind::bind(
+                let model = rig::driver::Model::new(
                     rig_core::providers::openai::OpenAI::with_key(
                         &rig_core::providers::chatgpt::DIALECT,
                         "test-token",
                     )
-                    .with_account_id("account-id"),
+                    .with_account_id("account-id")
+                    .completion("gpt-5.4"),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
-                )
-                .completion("gpt-5.4");
+                );
                 let request = model.completion_request("hello").build();
                 let stream = model.stream(request).await?;
                 Ok(conformance::fixtures::drain(stream).await)

@@ -6,7 +6,7 @@
 //! ```
 
 use rig_core::client::ProviderClientError;
-use rig_core::driver::Bound;
+use rig_core::driver::Model;
 use rig_core::http_client::{self, BoxedHttpClient};
 
 /// Build a fresh bundled transport, returning a client-construction error if
@@ -45,12 +45,13 @@ impl std::error::Error for TransportBuildError {
     }
 }
 
-/// Bind a wire or provider configuration to the bundled, type-erased transport.
+/// Pair a wire or provider configuration with the bundled, type-erased
+/// transport.
 pub trait DefaultTransport: Sized {
-    /// Bind `self` to a fresh bundled transport, returning an error if transport
-    /// initialization fails.
-    fn bound(self) -> Result<Bound<Self, BoxedHttpClient>, ProviderClientError> {
-        Ok(Bound::new(self, bundled()?))
+    /// Pair `self` with a fresh bundled transport, returning an error if
+    /// transport initialization fails.
+    fn bound(self) -> Result<Model<Self, BoxedHttpClient>, ProviderClientError> {
+        Ok(Model::new(self, bundled()?))
     }
 }
 

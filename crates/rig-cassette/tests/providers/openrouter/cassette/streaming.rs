@@ -12,7 +12,8 @@ use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 async fn streaming_smoke() {
     with_openrouter_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .agent(DEFAULT_MODEL)
+            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -30,7 +31,8 @@ async fn streaming_smoke() {
 async fn example_streaming_prompt() {
     with_openrouter_cassette("streaming/example_streaming_prompt", |client| async move {
         let agent = client
-            .agent(DEFAULT_MODEL)
+            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .into_agent_builder()
             .preamble("Be precise and concise.")
             .temperature(0.5)
             .build();

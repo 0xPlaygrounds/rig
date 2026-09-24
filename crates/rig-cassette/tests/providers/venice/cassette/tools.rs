@@ -7,9 +7,12 @@ use super::super::{TOOL_MODEL, support::with_venice_cassette};
 #[tokio::test]
 async fn tool_with_optional_argument() {
     with_venice_cassette("tools/optional_argument", |client| async move {
-        optional_argument(client.completion(TOOL_MODEL), |builder| builder)
-            .await
-            .expect("optional-argument conformance scenario should succeed");
+        optional_argument(
+            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+            |builder| builder,
+        )
+        .await
+        .expect("optional-argument conformance scenario should succeed");
     })
     .await;
 }
@@ -17,9 +20,12 @@ async fn tool_with_optional_argument() {
 #[tokio::test]
 async fn two_tools_nonstreaming_chain() {
     with_venice_cassette("tools/two_tools_nonstreaming", |client| async move {
-        sequential_tools(client.completion(TOOL_MODEL), |builder| builder)
-            .await
-            .expect("sequential-tool conformance scenario should succeed");
+        sequential_tools(
+            client.endpoint(|provider_config| provider_config.completion(TOOL_MODEL)),
+            |builder| builder,
+        )
+        .await
+        .expect("sequential-tool conformance scenario should succeed");
     })
     .await;
 }

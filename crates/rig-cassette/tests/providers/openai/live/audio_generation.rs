@@ -14,7 +14,7 @@ async fn audio_generation_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = client.audio_generation(openai::TTS_1);
+    let model = client.endpoint(|provider_config| provider_config.speech(openai::TTS_1));
 
     let response = model
         .audio_generation_request(AUDIO_TEXT, "alloy")

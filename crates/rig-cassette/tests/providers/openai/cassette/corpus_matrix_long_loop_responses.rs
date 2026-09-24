@@ -11,7 +11,9 @@ use rig::completion::CompletionModel;
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion("gpt-4.1-mini"),
+        model: client
+            .openai
+            .endpoint(|provider_config| provider_config.completion("gpt-4.1-mini")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

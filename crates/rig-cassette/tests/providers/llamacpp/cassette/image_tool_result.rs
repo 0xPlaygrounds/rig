@@ -77,7 +77,7 @@ async fn a_tool_result_image_is_read_by_the_model() {
     with_llamacpp_vision_cassette(
         "image_tool_result/a_tool_result_image_is_read_by_the_model",
         |client| async move {
-            let model = client.completion(VISION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(VISION_MODEL));
             let request = model
                 .completion_request(
                     "Call view_file, then reply with ONLY the dominant colour name.",
@@ -93,7 +93,7 @@ async fn a_tool_result_image_is_read_by_the_model() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("llama.cpp accepts an image in a tool result");
 
@@ -117,7 +117,7 @@ async fn the_same_image_in_a_user_message_is_read_too() {
     with_llamacpp_vision_cassette(
         "image_tool_result/the_same_image_in_a_user_message_is_read_too",
         |client| async move {
-            let model = client.completion(VISION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(VISION_MODEL));
             let request = model
                 .completion_request(rig::message::Message::User {
                     content: vec![
@@ -136,7 +136,7 @@ async fn the_same_image_in_a_user_message_is_read_too() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("an image in a user message is ordinary and must work");
 

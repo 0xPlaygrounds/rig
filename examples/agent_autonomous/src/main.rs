@@ -3,7 +3,7 @@
 //! Run it to watch the extractor keep counting upward until the stop condition is met.
 
 use anyhow::Result;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -20,16 +20,18 @@ const TARGET_NUMBER: u32 = 2000;
 const STEP_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn build_counter_extractor(
-    openai: &Bound<OpenAI, BoxedHttpClient>,
+    openai: &Model<OpenAI, BoxedHttpClient>,
 ) -> rig::extractor::Extractor<Counter> {
-    rig::extractor::ExtractorBuilder::new(openai.completion(openai::GPT_4))
-        .append_preamble(
-            "
+    rig::extractor::ExtractorBuilder::new(
+        openai.endpoint(|provider_config| provider_config.completion(openai::GPT_4)),
+    )
+    .append_preamble(
+        "
             Add a random whole number between 1 and 64 to the number you receive.
             Return only the updated number.
         ",
-        )
-        .build()
+    )
+    .build()
 }
 
 #[tokio::main]

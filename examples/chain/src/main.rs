@@ -2,7 +2,7 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::vector_store::VectorStoreIndex;
@@ -19,9 +19,10 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(client: &Bound<OpenAI>) -> rig::agent::Agent {
+fn build_dictionary_agent(client: &Model<OpenAI>) -> rig::agent::Agent {
     client
-        .agent(openai::GPT_4)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .into_agent_builder()
         .preamble(
             "
             You are a dictionary assistant here to help the user understand non-standard words.
@@ -45,7 +46,9 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     let client = OpenAI::from_env()?.bound()?;
-    let embedding_model = client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let embedding_model = client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
     for definition in sample_definitions() {

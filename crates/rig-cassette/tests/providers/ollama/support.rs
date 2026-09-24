@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
@@ -10,7 +10,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 /// The Ollama config bound to the bundled transport — what a cassette test
 /// builds its models from, now that a model is a bound wire.
-pub(super) type BoundOllama = Bound<Ollama, BoxedHttpClient>;
+pub(super) type BoundOllama = Model<Ollama, BoxedHttpClient>;
 
 /// Start an Ollama cassette and bind a provider pointed at it.
 ///

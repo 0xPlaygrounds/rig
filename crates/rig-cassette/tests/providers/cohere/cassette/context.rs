@@ -13,7 +13,7 @@ async fn context_documents_are_accepted() {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(CASSETTE_MODEL), |builder, doc| {
+            .fold(client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)).into_agent_builder(), |builder, doc| {
                 builder.context(doc)
             })
             .preamble("Use the provided context documents as the authoritative source. Answer concisely.")
@@ -42,7 +42,8 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
     with_cohere_cassette(
         "context/document_metadata_and_multiple_documents_are_accepted",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL));
             let request = model
                 .completion_request("Which dock is assigned beacon code amber-73?")
                 .document(Document {
@@ -65,7 +66,7 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("documents with metadata should be accepted");
             let text = response

@@ -61,7 +61,7 @@ async fn required_forces_function_call() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -197,7 +197,8 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
         "tool_choice/none_nonstreaming_no_tools",
         |client| async move {
             let agent = client
-                .agent(bedrock::completion::AMAZON_NOVA_LITE)
+                .completion(bedrock::completion::AMAZON_NOVA_LITE)
+                .into_agent_builder()
                 .preamble("You are a deterministic calculator test. Answer directly in text.")
                 .temperature(0.0)
                 .tool(Adder)
@@ -226,7 +227,8 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
 async fn none_streaming_does_not_emit_tool_calls() {
     with_bedrock_cassette("tool_choice/none_streaming_no_tools", |client| async move {
         let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .completion(bedrock::completion::AMAZON_NOVA_LITE)
+            .into_agent_builder()
             .preamble("You are a deterministic calculator test. Answer directly in text.")
             .temperature(0.0)
             .tool(Adder)

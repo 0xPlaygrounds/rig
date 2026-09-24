@@ -25,9 +25,10 @@ fn models(
     impl CompletionModel + Clone + 'static,
 ) {
     (
-        client.completion("anthropic/claude-haiku-4.5"),
-        client.completion("anthropic/claude-haiku-4.5"),
-        client.completion("anthropic/claude-sonnet-4.6"),
+        client.endpoint(|provider_config| provider_config.completion("anthropic/claude-haiku-4.5")),
+        client.endpoint(|provider_config| provider_config.completion("anthropic/claude-haiku-4.5")),
+        client
+            .endpoint(|provider_config| provider_config.completion("anthropic/claude-sonnet-4.6")),
     )
 }
 

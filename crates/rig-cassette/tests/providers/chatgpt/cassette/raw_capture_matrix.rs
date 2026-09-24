@@ -37,7 +37,7 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_capture_matrix/`.
 
 use rig::completion::CompletionModel as _;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
@@ -55,7 +55,7 @@ const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-type ChatGptModel = Bound<OpenAiWire>;
+type ChatGptModel = Model<OpenAiWire>;
 
 fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
@@ -115,9 +115,13 @@ async fn raw_round_trips_provider_type() {
     with_chatgpt_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -165,9 +169,13 @@ async fn raw_exposes_response_envelope() {
     with_chatgpt_cassette(
         "raw_capture_matrix/raw_exposes_response_envelope",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -215,9 +223,13 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_chatgpt_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;

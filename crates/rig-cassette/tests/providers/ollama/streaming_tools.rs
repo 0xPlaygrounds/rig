@@ -14,7 +14,8 @@ async fn example_streaming_with_tools() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build")
-        .agent("llama3.2")
+        .endpoint(|provider_config| provider_config.completion("llama3.2"))
+        .into_agent_builder()
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question.",

@@ -15,8 +15,8 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
-        route: Some(client.completion(QWEN3_5_9B)),
+        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
+        route: Some(client.endpoint(|provider_config| provider_config.completion(QWEN3_5_9B))),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
     }
@@ -216,7 +216,8 @@ crate::matrix::native_matrix! {
 fn reasoning_wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Doubleword,
-        model: client.completion("Qwen/Qwen3.5-397B-A17B-FP8"),
+        model: client
+            .endpoint(|provider_config| provider_config.completion("Qwen/Qwen3.5-397B-A17B-FP8")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

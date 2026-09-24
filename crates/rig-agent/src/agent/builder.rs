@@ -12,7 +12,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::bus::{Bus, Dispatcher, Recording, Registrar};
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
+use rig_core::serve::adapters::{MemoryAdapter, ModelAdapter, RetrieveAdapter};
 use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
     completion::{CompletionModel, Document, ModelRef},
@@ -324,7 +324,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         self.routes.push(label.as_str().to_owned());
         self.pending.push((
             rig_core::effect::model_key(label.as_str()).to_string(),
-            ErasedHandler::new(CompletionAdapter::new(label, model)),
+            ErasedHandler::new(ModelAdapter::completion(label, model)),
         ));
         self
     }
@@ -538,7 +538,7 @@ impl AgentBuilder<NoToolConfig> {
         M: CompletionModel + 'static,
     {
         let label = label.into();
-        let handler = ErasedHandler::new(CompletionAdapter::new(label.clone(), model));
+        let handler = ErasedHandler::new(ModelAdapter::completion(label.clone(), model));
         Self::start(
             BusSource::Owned(ServingPolicy::default()),
             None,

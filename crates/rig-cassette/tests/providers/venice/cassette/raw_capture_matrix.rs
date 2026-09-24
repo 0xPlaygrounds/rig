@@ -69,7 +69,11 @@ async fn raw_round_trips_venice_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_venice_type";
     let sink = Observed::default();
     with_venice_cassette_result("raw_capture_matrix/raw_round_trips_venice_type", |client| {
-        capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone())
+        capture_completion(
+            client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+            request,
+            sink.clone(),
+        )
     })
     .await
     .expect("raw_round_trips_venice_type should replay from its cassette");
@@ -115,7 +119,13 @@ async fn raw_exposes_venice_parameters_and_cost() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_capture_matrix/raw_exposes_venice_parameters_and_cost",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_exposes_venice_parameters_and_cost should replay from its cassette");
@@ -156,7 +166,13 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");

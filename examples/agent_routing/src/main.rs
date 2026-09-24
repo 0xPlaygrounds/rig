@@ -3,7 +3,7 @@
 //! Run it to see a classifier agent choose which second prompt should run.
 
 use anyhow::{Result, bail};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -14,15 +14,19 @@ const ROUTER_PREAMBLE: &str = "
     Return only the category.
 ";
 
-fn build_router_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
+fn build_router_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
     openai
-        .agent(openai::GPT_4)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .into_agent_builder()
         .preamble(ROUTER_PREAMBLE)
         .build()
 }
 
-fn build_response_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
-    openai.agent(openai::GPT_4).build()
+fn build_response_agent(openai: &Model<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
+    openai
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+        .into_agent_builder()
+        .build()
 }
 
 fn follow_up_prompt(category: &str) -> Result<&'static str> {

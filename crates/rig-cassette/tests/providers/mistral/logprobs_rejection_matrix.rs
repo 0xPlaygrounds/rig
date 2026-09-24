@@ -61,7 +61,8 @@ fn model_name(model: Model) -> &'static str {
 }
 
 async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
     let request = model
         .completion_request("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
@@ -72,7 +73,7 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Re
     // fails in-band with the `ErrorReport` it was mapped to. Both display the
     // preserved Mistral body, which is what the matrix asserts on.
     let error = match cell.transport {
-        Transport::Blocking => match model.completion(request).await {
+        Transport::Blocking => match model.complete(request).await {
             Ok(_) => bail!("Mistral unexpectedly accepted blocking logprobs"),
             Err(error) => error.to_string(),
         },

@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, VENICE};
@@ -20,11 +20,11 @@ const VENICE_BASE_URL: &str = venice::VENICE_API_BASE_URL;
 /// The Venice dialect of the OpenAI config bound to the bundled transport —
 /// what a cassette test builds its models from, now that a model is a bound
 /// wire.
-pub(super) type BoundVenice = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundVenice = Model<OpenAI, BoxedHttpClient>;
 
 /// The same config on the direct-recording transport, for the suites whose
 /// response bodies are binary.
-pub(super) type DirectVenice = Bound<OpenAI, DirectRecordingHttpClient>;
+pub(super) type DirectVenice = Model<OpenAI, DirectRecordingHttpClient>;
 
 /// The Venice config pointed at `cassette`.
 fn venice_config(cassette: &ProviderCassette) -> OpenAI {
@@ -73,8 +73,10 @@ where
         VENICE_BASE_URL,
     )
     .await;
-    let client =
-        venice_config(&cassette).bind(DirectRecordingHttpClient::new(cassette.direct_recorder()));
+    let client = rig::driver::Model::new(
+        venice_config(&cassette),
+        DirectRecordingHttpClient::new(cassette.direct_recorder()),
+    );
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;

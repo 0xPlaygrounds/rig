@@ -105,7 +105,7 @@ async fn whisper_reports_duration_usage() {
         |client| async move {
             let response = client
                 .openai
-                .transcription(openai::WHISPER_1)
+                .endpoint(|provider_config| provider_config.transcriptions(openai::WHISPER_1))
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .send()
@@ -129,7 +129,7 @@ async fn gpt_4o_transcribe_reports_token_usage() {
         |client| async move {
             let response = client
                 .openai
-                .transcription("gpt-4o-transcribe")
+                .endpoint(|provider_config| provider_config.transcriptions("gpt-4o-transcribe"))
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .send()
@@ -166,7 +166,9 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
         |client| async move {
             let response = client
                 .openai
-                .transcription("gpt-4o-mini-transcribe")
+                .endpoint(|provider_config| {
+                    provider_config.transcriptions("gpt-4o-mini-transcribe")
+                })
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .send()
@@ -192,7 +194,7 @@ async fn completions_client_reports_duration_usage() {
         |client| async move {
             let response = client
                 .openai
-                .transcription(openai::WHISPER_1)
+                .endpoint(|provider_config| provider_config.transcriptions(openai::WHISPER_1))
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .send()
@@ -216,7 +218,7 @@ async fn completions_client_reports_token_usage() {
         |client| async move {
             let response = client
                 .openai
-                .transcription("gpt-4o-transcribe")
+                .endpoint(|provider_config| provider_config.transcriptions("gpt-4o-transcribe"))
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .send()
@@ -244,7 +246,7 @@ async fn verbose_json_still_reports_duration_usage() {
         |client| async move {
             let response = client
                 .openai
-                .transcription(openai::WHISPER_1)
+                .endpoint(|provider_config| provider_config.transcriptions(openai::WHISPER_1))
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .additional_params(json!({ "response_format": "verbose_json" }))
@@ -278,7 +280,7 @@ async fn transcript_still_reaches_the_normalized_response() {
         |client| async move {
             let response = client
                 .openai
-                .transcription(openai::WHISPER_1)
+                .endpoint(|provider_config| provider_config.transcriptions(openai::WHISPER_1))
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .send()
@@ -304,7 +306,7 @@ async fn rejected_request_surfaces_the_provider_body() {
         |client| async move {
             let Err(error) = client
                 .openai
-                .transcription(openai::WHISPER_1)
+                .endpoint(|provider_config| provider_config.transcriptions(openai::WHISPER_1))
                 .transcription_request(audio())
                 .filename(Some("audio.mp3".to_owned()))
                 .additional_params(json!({ "response_format": "rig-invalid" }))

@@ -25,11 +25,13 @@ impl Debater {
 
         Ok(Self {
             gpt_4: openai_client
-                .agent(openai::GPT_4)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4))
+                .into_agent_builder()
                 .preamble(position_a)
                 .build(),
             coral: cohere_client
-                .agent(cohere::COMMAND_A_03_2025)
+                .endpoint(|provider_config| provider_config.completion(cohere::COMMAND_A_03_2025))
+                .into_agent_builder()
                 .preamble(position_b)
                 .build(),
         })

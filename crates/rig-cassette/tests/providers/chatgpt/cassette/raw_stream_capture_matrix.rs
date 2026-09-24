@@ -32,7 +32,7 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_stream_capture_matrix/`.
 
 use rig::completion::CompletionModel as _;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
@@ -49,7 +49,7 @@ const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-type ChatGptModel = Bound<OpenAiWire>;
+type ChatGptModel = Model<OpenAiWire>;
 
 fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
@@ -100,9 +100,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request, sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;
@@ -141,9 +145,13 @@ async fn stream_raw_exposes_terminal_status() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request, sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;

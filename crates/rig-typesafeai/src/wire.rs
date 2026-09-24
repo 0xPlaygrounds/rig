@@ -1,11 +1,11 @@
-//! Typesafe's unary evaluation operation, using Rig's shared HTTP driver.
+//! Typesafe's unary evaluation operation, driven by a Rig [`Model`](rig_core::driver::Model).
 
 use rig_core::client::{EnvError, env};
-use rig_core::error::EncodeError;
-use rig_core::operation::{One, Take};
+use rig_core::error::{EncodeError, ProviderError};
+use rig_core::operation::One;
 use rig_core::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Fold, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire,
+    WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -20,19 +20,32 @@ impl Operation for Evaluation {
     type Response = Response;
     type Capabilities = ();
     type Output = One<Self>;
-    type Fold = Take<Self>;
-    type Telemetry = ();
+    type Fold = Answered;
     const NAME: &'static str = "evaluation";
 
     fn is_terminal(_event: &Response) -> bool {
         true
     }
-    fn telemetry(_streaming: bool) {}
-    fn stamp_request_id(event: &mut Response, request_id: &Option<String>) {
-        event.provider_request_id.clone_from(request_id);
+}
+
+/// The evaluation's one answer, carrying the reply's transport request id.
+#[derive(Default)]
+pub struct Answered(Option<Response>);
+
+impl Fold<Evaluation> for Answered {
+    fn absorb(&mut self, response: Response) -> Result<(), ProviderError> {
+        if self.0.is_none() {
+            self.0 = Some(response);
+        }
+        Ok(())
     }
-    fn stamp_reply(response: &mut Response, reply: Reply) {
+
+    fn finish(self, reply: Reply) -> Result<Response, ProviderError> {
+        let mut response = self.0.ok_or_else(|| {
+            ProviderError::Response("evaluation reply carried no payload".to_owned())
+        })?;
         response.provider_request_id = reply.provider_request_id;
+        Ok(response)
     }
 }
 
@@ -93,10 +106,6 @@ impl Wire for Jev {
     fn model(&self) -> Option<&str> {
         Some(&self.model)
     }
-    fn route(&self) -> Option<&str> {
-        Some("/v1/systemone")
-    }
-
     fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, EncodeError> {
         if self.token.is_empty() || self.model.trim().is_empty() {
             return Err(EncodeError::request(
@@ -121,9 +130,9 @@ impl Wire for Jev {
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(http::header::AUTHORIZATION, authorization)
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
-        let mut encoded = Encoded::new(request, Framing::Whole);
-        encoded.request_id_header = Some("x-typesafe-request-id");
-        Ok(encoded)
+        Ok(Encoded::new(request, Framing::Whole)
+            .with_request_id_header(Some("x-typesafe-request-id"))
+            .with_route("/v1/systemone"))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

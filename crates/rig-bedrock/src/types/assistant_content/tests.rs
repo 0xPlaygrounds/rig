@@ -742,6 +742,7 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         };
         request = crate::types::completion_request::AwsCompletionRequest::for_model(
             request, model, false,
@@ -825,6 +826,7 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
     let scoped =
         crate::types::completion_request::AwsCompletionRequest::for_model(request, claude, false);

@@ -19,7 +19,8 @@ async fn auth_rejection_carries_identity() {
     with_anthropic_cassette_bogus_key(
         "error_identity_edge/auth_rejection_carries_identity",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
             let error = model
                 .completion_request("Never authenticated")
                 .max_tokens(16)
@@ -53,7 +54,8 @@ async fn validation_error_carries_identity() {
     with_anthropic_cassette(
         "error_identity_edge/validation_error_carries_identity",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
             let error = model
                 .completion_request("Never validated")
                 .max_tokens(1)
@@ -97,7 +99,9 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     with_anthropic_cassette(
         "error_identity_edge/streaming_connect_4xx_matches_blocking_richness",
         |client| async move {
-            let model = client.completion("claude-nonexistent-model-for-error-edge");
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion("claude-nonexistent-model-for-error-edge")
+            });
             let result = model
                 .completion_request("Never streamed")
                 .max_tokens(16)
@@ -146,7 +150,8 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
     with_anthropic_cassette_bogus_key(
         "error_identity_edge/streaming_connect_auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
             let result = model
                 .completion_request("Never streamed")
                 .max_tokens(16)
@@ -191,7 +196,8 @@ async fn streamed_agent_run_failure_exposes_error_identity_accessors() {
         "error_identity_edge/streamed_agent_run_failure_exposes_error_identity_accessors",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .preamble("You are a terse assistant.")
                 .max_tokens(16)
                 .build();

@@ -47,7 +47,8 @@ async fn rejected_response_is_retried_with_feedback() {
         |client| async move {
             let response = client
                 .openai
-                .agent(openai::GPT_4O_MINI)
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                .into_agent_builder()
                 .preamble(
                     "Follow this protocol exactly. For the initial request, reply exactly \
                  `RETRY: incomplete draft`. If the latest user message asks you to \

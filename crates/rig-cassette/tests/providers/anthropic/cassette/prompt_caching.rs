@@ -5,7 +5,7 @@ use rig::completion::{
     AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, ToolDefinition,
     Usage,
 };
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -38,8 +38,10 @@ async fn manual_prompt_caching_reuses_tool_cache() {
         "prompt_caching/manual_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_prompt_caching());
             let tools = cache_probe_tools();
 
             let first = send_cache_probe(
@@ -71,8 +73,10 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
         "prompt_caching/streaming_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_prompt_caching());
             let tools = cache_probe_tools_for("streaming prompt caching");
 
             let first = send_streaming_cache_probe(
@@ -109,8 +113,10 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
         "prompt_caching/prompt_and_automatic_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching().with_automatic_caching());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_prompt_caching().with_automatic_caching());
             let tools = cache_probe_tools_for("manual plus automatic prompt caching");
 
             let first = send_cache_probe(
@@ -169,25 +175,27 @@ impl CachingMode {
 }
 
 fn matrix_model(
-    client: &Bound<Anthropic>,
+    client: &Model<Anthropic>,
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
-) -> Bound<Messages> {
-    let mut model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+) -> Model<Messages> {
+    let mut model = client.endpoint(|provider_config| {
+        provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+    });
     if mode.manual() {
-        model = model.map_wire(|wire| wire.with_prompt_caching());
+        model = model.endpoint(|wire| wire.clone().with_prompt_caching());
     }
     model = match mode {
         CachingMode::Automatic | CachingMode::ManualAutomatic => {
-            model.map_wire(|wire| wire.with_automatic_caching())
+            model.endpoint(|wire| wire.clone().with_automatic_caching())
         }
         CachingMode::Automatic1h | CachingMode::ManualAutomatic1h => {
-            model.map_wire(|wire| wire.with_automatic_caching_1h())
+            model.endpoint(|wire| wire.clone().with_automatic_caching_1h())
         }
         CachingMode::Manual => model,
     };
     if let Some(ttl) = prefix_ttl {
-        model = model.map_wire(|wire| wire.with_static_prefix_cache_ttl(ttl));
+        model = model.endpoint(|wire| wire.clone().with_static_prefix_cache_ttl(ttl));
     }
     model
 }
@@ -238,7 +246,7 @@ fn assert_cache_creation_split(
 }
 
 async fn run_matrix_body(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     name: &'static str,
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
@@ -284,7 +292,7 @@ async fn run_matrix_body(
 /// A client whose requests would fail: the client-side error tests below must
 /// error before any HTTP happens, so a reachable endpoint would mask a
 /// regression that starts sending requests.
-fn unreachable_anthropic_client() -> Bound<Anthropic> {
+fn unreachable_anthropic_client() -> Model<Anthropic> {
     Anthropic::new("client-side-error-test-key")
         .with_base_url("http://127.0.0.1:9")
         .bound()
@@ -292,7 +300,7 @@ fn unreachable_anthropic_client() -> Bound<Anthropic> {
 }
 
 async fn send_matrix_raw_probe(
-    model: &Bound<Messages>,
+    model: &Model<Messages>,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> anthropic::completion::CompletionResponse {
@@ -305,7 +313,7 @@ async fn send_matrix_raw_probe(
         builder = builder.tools(tools).tool_choice(ToolChoice::None);
     }
     let response = model
-        .completion(builder.build())
+        .complete(builder.build())
         .await
         .expect("matrix Anthropic request should succeed");
     anthropic::completion::CompletionResponse::deserialize(&response.raw)
@@ -331,7 +339,7 @@ fn assert_matrix_raw_response(
 }
 
 async fn send_matrix_streaming_probe(
-    model: &Bound<Messages>,
+    model: &Model<Messages>,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> StreamingCacheProbeResponse {
@@ -1358,7 +1366,7 @@ async fn static_prefix_with_excess_explicit_tool_markers_errors_client_side() {
 }
 
 async fn send_cache_probe(
-    model: Bound<Messages>,
+    model: Model<Messages>,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
@@ -1381,7 +1389,7 @@ struct StreamingCacheProbeResponse {
 }
 
 async fn send_streaming_cache_probe(
-    model: Bound<Messages>,
+    model: Model<Messages>,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
@@ -1609,8 +1617,10 @@ async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
         "prompt_caching/conformance_blocking_probe",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_prompt_caching());
             let observation = run_cache_probe(&model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -1633,8 +1643,10 @@ async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
         "prompt_caching/conformance_streaming_probe",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_prompt_caching());
             let observation = run_cache_probe_streaming(&model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -1670,8 +1682,10 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
             // busts the cache" result (zero cached tokens on every turn) that
             // was really just caching switched off.
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_prompt_caching());
             let response = rig::agent::AgentBuilder::new(model)
                 .preamble(&conformance_probe().preamble)
                 .tool(CacheProbeLookupTool)

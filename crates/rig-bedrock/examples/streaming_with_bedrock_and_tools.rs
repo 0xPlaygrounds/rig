@@ -7,7 +7,8 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
     let agent = Client::from_env()?
-        .agent(AMAZON_NOVA_LITE)
+        .completion(AMAZON_NOVA_LITE)
+        .into_agent_builder()
         .preamble(
             "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.

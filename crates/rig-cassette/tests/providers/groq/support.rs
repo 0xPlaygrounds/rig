@@ -2,7 +2,7 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
@@ -11,7 +11,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 /// The Groq dialect bound to the bundled transport — what a cassette test
 /// builds its models from, now that a model is a bound wire.
-pub(super) type BoundGroq = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundGroq = Model<OpenAI, BoxedHttpClient>;
 
 async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundGroq) {
     let cassette = ProviderCassette::start(

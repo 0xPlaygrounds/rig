@@ -87,13 +87,17 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_cell(
-    client: Bound<openai::wire::OpenAI>,
+    client: rig::driver::Model<openai::wire::OpenAI>,
     cell: Cell,
     observed: SharedObservation,
 ) -> Result<()> {
     assert_eq!(cell.surface, Surface::Agent);
     let invocations = InvocationLog::default();
-    let mut ecs = EcsAgent::new(client.chat(model_name(cell.model)), PREAMBLE, 1);
+    let mut ecs = EcsAgent::new(
+        client.endpoint(|provider_config| provider_config.chat(model_name(cell.model))),
+        PREAMBLE,
+        1,
+    );
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         MaxTokens(Some(128)),
         AdditionalParams(Some(

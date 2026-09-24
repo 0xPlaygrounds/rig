@@ -10,11 +10,10 @@ use rig_cassette::{
 };
 use rig_core::{
     completion::CompletionRequestBuilder,
-    driver::Bind,
     effect::EffectKind,
     error::{ErrorKind, ErrorReport},
     providers::openai::wire::OpenAI,
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
 use rig_ecs::{
@@ -34,11 +33,13 @@ fn app() -> App {
 }
 
 fn assemble() -> ErasedHandler {
-    let model = OpenAI::new("demonstration-only")
-        .with_base_url("http://offline.invalid/v1")
-        .bind(RecordingHttpClient::new(BODY))
-        .chat("demo");
-    ErasedHandler::new(CompletionAdapter::new("demo", model))
+    let model = rig_core::driver::Model::new(
+        OpenAI::new("demonstration-only")
+            .with_base_url("http://offline.invalid/v1")
+            .chat("demo"),
+        RecordingHttpClient::new(BODY),
+    );
+    ErasedHandler::new(ModelAdapter::completion("demo", model))
 }
 
 fn finish(app: &mut App) -> Result<EffectLog, ErrorReport> {

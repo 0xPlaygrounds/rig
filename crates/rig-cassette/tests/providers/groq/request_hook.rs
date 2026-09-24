@@ -78,7 +78,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         .expect("GROQ_API_KEY should be set")
         .bound()
         .expect("transport should build")
-        .agent(REQUEST_HOOK_MODEL)
+        .endpoint(|provider_config| provider_config.completion(REQUEST_HOOK_MODEL))
+        .into_agent_builder()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

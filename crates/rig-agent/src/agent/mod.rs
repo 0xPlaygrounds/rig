@@ -6,10 +6,10 @@
 //! ```no_run
 //! use rig_agent::prelude::*;
 //! use rig_core::providers::openai::{self, OpenAI};
-//! use rig_reqwest::prelude::*;
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = OpenAI::from_env()?.bound()?;
-//! let agent = provider.agent(openai::GPT_5_2).preamble("Be concise.").build();
+//! let wire = OpenAI::from_env()?.completion(openai::GPT_5_2);
+//! let model = Model::new(wire, rig_reqwest::client::bundled()?);
+//! let agent = model.into_agent_builder().preamble("Be concise.").build();
 //! let response = agent.prompt("Explain ownership.").await?;
 //! # Ok(())
 //! # }

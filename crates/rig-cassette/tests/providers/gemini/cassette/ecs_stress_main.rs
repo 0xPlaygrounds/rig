@@ -29,7 +29,7 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
         "hook_stress/lifecycle_and_scratchpad_thread_across_multi_turn_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 CHAIN_PREAMBLE,
                 "stress-agent",
                 Some(0.0),
@@ -131,7 +131,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
         "hook_stress/request_patch_injects_context_and_narrows_active_tools_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 "You are a helpful assistant. Use a tool for any arithmetic. Consult the \
                      provided context for any facts you are asked about.",
                 "stress-agent",
@@ -196,7 +196,7 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
         "hook_stress/chained_arg_rewrite_then_result_redaction_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 "You are a calculator assistant. You MUST use the add tool for the addition. \
                      After the tool result is available, report the exact tool result text \
                      verbatim as your final answer.",
@@ -271,7 +271,9 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                 "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         CHAIN_PREAMBLE,
                         "stress-agent",
                         Some(0.0),
@@ -358,7 +360,7 @@ async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
             "hook_stress/multi_tool_workflow_pairs_calls_and_results_per_turn_blocking",
             |client| async move {
                 let mut ecs = runtime::agent(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                    client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                     "You are a calculator assistant. You MUST use the provided tools for every \
                      arithmetic operation. These two computations are independent — you may request \
                      them together. Once you have both results, report both numbers.",
@@ -423,7 +425,7 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
             "hook_stress/skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking",
             |client| async move {
                 let mut ecs = runtime::agent(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                    client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                     "You are a calculator assistant. You MUST use the provided tools for every \
                      arithmetic operation. If a tool reports it is unavailable, acknowledge that in \
                      your answer and still report any results you do have.",
@@ -472,7 +474,9 @@ async fn tool_call_turns_effect_log() {
             "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
             |client| async move {
                 let (saw_final, log) = super::ecs_stress_main_golden::run(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                    }),
                     CHAIN_PREAMBLE,
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",

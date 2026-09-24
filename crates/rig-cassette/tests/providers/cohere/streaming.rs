@@ -15,7 +15,8 @@ async fn streaming_smoke() {
         .bound()
         .expect("transport should build");
     let agent = cohere
-        .agent(cohere::COMMAND_A_03_2025)
+        .endpoint(|provider_config| provider_config.completion(cohere::COMMAND_A_03_2025))
+        .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .build();
 

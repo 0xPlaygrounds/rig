@@ -14,7 +14,8 @@ async fn streaming_smoke() {
         // Capped so the recorded SSE body stays reviewable; uncapped, the model can
         // run to its 8k output limit and the fixture balloons past 800 KB.
         let agent = client
-            .agent(CASSETTE_MODEL)
+            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL))
+            .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .max_tokens(64)
             .build();

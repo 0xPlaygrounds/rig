@@ -11,7 +11,8 @@ use super::super::support::with_perplexity_cassette;
 async fn completion_smoke() {
     with_perplexity_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .agent(perplexity::SONAR)
+            .endpoint(|provider_config| provider_config.completion(perplexity::SONAR))
+            .into_agent_builder()
             .preamble(BASIC_PREAMBLE)
             .temperature(0.2)
             .build();
@@ -33,7 +34,8 @@ async fn completion_with_perplexity_options() {
         "agent/completion_with_perplexity_options",
         |client| async move {
             let agent = client
-                .agent(perplexity::SONAR)
+                .endpoint(|provider_config| provider_config.completion(perplexity::SONAR))
+                .into_agent_builder()
                 .preamble("Answer briefly and include the date or time context if relevant.")
                 .additional_params(serde_json::json!({
                     "return_related_questions": true,

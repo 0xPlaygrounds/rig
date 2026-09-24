@@ -50,7 +50,7 @@ where
     M: CompletionModel,
 {
     let request = build(&model);
-    sink.put(model.completion(request).await?);
+    sink.put(model.complete(request).await?);
     Ok(())
 }
 
@@ -69,8 +69,8 @@ pub async fn capture_completion_pair<M>(
 where
     M: CompletionModel,
 {
-    let first = model.completion(build(&model)).await?;
-    let second = model.completion(build(&model)).await?;
+    let first = model.complete(build(&model)).await?;
+    let second = model.complete(build(&model)).await?;
     sink.put((first, second));
     Ok(())
 }

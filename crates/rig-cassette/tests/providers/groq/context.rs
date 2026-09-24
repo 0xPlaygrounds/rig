@@ -17,9 +17,11 @@ async fn context_smoke() {
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(groq.agent(CONTEXT_MODEL), |builder, doc| {
-            builder.context(doc)
-        })
+        .fold(
+            groq.endpoint(|provider_config| provider_config.completion(CONTEXT_MODEL))
+                .into_agent_builder(),
+            |builder, doc| builder.context(doc),
+        )
         .build();
 
     let response = agent

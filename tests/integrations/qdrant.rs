@@ -16,7 +16,7 @@ use qdrant_client::{
 use rig::qdrant::QdrantVectorStore;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    Embed, driver::Bound, embeddings::EmbeddingsBuilder, providers::openai,
+    Embed, driver::Model, embeddings::EmbeddingsBuilder, providers::openai,
     vector_store::VectorStoreIndex,
 };
 
@@ -163,7 +163,9 @@ async fn vector_search_test() {
         .bound()
         .unwrap();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     let points = create_points(model.clone()).await;
 
@@ -194,7 +196,7 @@ async fn vector_search_test() {
     );
 }
 
-async fn create_points(model: Bound<openai::wire::Embeddings>) -> Vec<PointStruct> {
+async fn create_points(model: Model<openai::wire::Embeddings>) -> Vec<PointStruct> {
     let words = vec![
         Word {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),

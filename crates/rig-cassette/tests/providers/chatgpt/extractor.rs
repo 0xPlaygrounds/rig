@@ -10,7 +10,8 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 async fn extractor_smoke() {
     let extractor = live_client()
         .await
-        .extractor::<SmokePerson>(LIVE_MODEL)
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_extractor_builder::<SmokePerson>()
         .build();
 
     let response = extractor

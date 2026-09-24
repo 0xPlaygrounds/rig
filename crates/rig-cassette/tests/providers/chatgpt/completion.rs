@@ -28,11 +28,15 @@ async fn default_instructions_fill_required_instructions() {
     // The instructions merged ahead of every preamble live on the provider
     // config, so they are set by mapping the bound config, not by rebuilding
     // the transport.
-    let client = live_client().await.map_wire(|provider| {
+    let client = live_client().await.endpoint(|provider| {
+        let provider = provider.clone();
         provider.with_instructions("Always answer with the single word cedar.")
     });
 
-    let agent = client.agent(LIVE_MODEL).build();
+    let agent = client
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
+        .build();
     let mut stream = agent
         .prompt("Reply with the exact word from the instructions.")
         .stream();
@@ -46,7 +50,9 @@ async fn default_instructions_fill_required_instructions() {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn system_messages_are_lifted_into_instructions() {
-    let model = live_client().await.completion(LIVE_MODEL);
+    let model = live_client()
+        .await
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL));
 
     let request = model
         .completion_request("Reply with the exact word from the system message.")

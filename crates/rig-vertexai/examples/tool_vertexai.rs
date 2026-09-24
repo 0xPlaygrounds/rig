@@ -53,7 +53,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a calculator tool
     let calculator_agent = client
-        .agent(GEMINI_2_5_FLASH_LITE)
+        .completion(GEMINI_2_5_FLASH_LITE)
+        .into_agent_builder()
         .tool(Adder)
         .max_tokens(1024)
         .build();

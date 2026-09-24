@@ -10,12 +10,13 @@ use crate::{
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_core::driver::run_wire_stream;
+use futures::StreamExt;
+use rig_core::driver::{TriagedFrame, triage_frame};
 use rig_core::error::ProviderError;
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::AdapterOutput;
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
-use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
+use rig_core::providers::internal::wire::{self, TypedEvent};
+use rig_core::streaming::{CompletionStream, StreamEvent, StreamFinal};
 use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use rig_core::{
     message::ReasoningContent, streaming::UnparseableToolInput, wasm_compat::WasmCompatSend,
@@ -291,43 +292,60 @@ fn process_event(
     }
 }
 
-impl rig_core::wire::Decoder<Completion, aws_bedrock::ConverseStreamOutput> for StreamState {
-    type Event = aws_bedrock::ConverseStreamOutput;
-
-    fn classify(&self, frame: aws_bedrock::ConverseStreamOutput) -> WireEvent<Self::Event> {
-        // The SDK handles byte decoding; only unknown union variants need
-        // classification here.
-        wire::classify_typed_event(if frame.is_unknown() {
-            TypedEvent::Unrecognized {
-                event_type: "unknown".to_string(),
-                detail: format!("{frame:?}"),
+/// Translate typed Converse events into stream events, until Bedrock's
+/// terminal or the first transport error. EOF without the terminal is
+/// truncation: in-flight blocks drop and no terminal record is synthesized.
+fn translate(
+    events: impl futures::Stream<Item = Result<aws_bedrock::ConverseStreamOutput, ProviderError>>
+    + WasmCompatSend
+    + 'static,
+    mut state: StreamState,
+) -> impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + WasmCompatSend + 'static {
+    stream! {
+        let mut events = std::pin::pin!(events);
+        let mut out = AdapterOutput::new();
+        while let Some(event) = events.next().await {
+            let event = match event {
+                Ok(event) => event,
+                Err(error) => {
+                    yield Err(error);
+                    return;
+                }
+            };
+            // The SDK handles byte decoding; only unknown union variants
+            // need classification here.
+            let classified = wire::classify_typed_event(if event.is_unknown() {
+                TypedEvent::Unrecognized {
+                    event_type: "unknown".to_string(),
+                    detail: format!("{event:?}"),
+                }
+            } else {
+                TypedEvent::Modeled(event)
+            });
+            match triage_frame(classified) {
+                Ok(TriagedFrame::Event(event)) => process_event(&mut state, event, &mut out),
+                Ok(TriagedFrame::Unknown(payload)) => out.unknown(payload),
+                Err(error) => out.error(error),
             }
-        } else {
-            TypedEvent::Modeled(frame)
-        })
-    }
-
-    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
-        process_event(self, event, out);
-    }
-
-    fn finish(&mut self, _out: &mut AdapterOutput) {
-        // EOF without Bedrock's `Metadata` terminal is truncation: in-flight
-        // blocks drop and no terminal record may be synthesized.
+            for item in out.drain() {
+                let terminal = matches!(item, Ok(StreamEvent::Final(_)));
+                yield item;
+                if terminal {
+                    return;
+                }
+            }
+        }
     }
 }
 
-/// Normalizes typed Converse events through the shared streaming driver.
-/// No AWS transport is required; input errors propagate through the stream.
+/// Normalizes typed Converse events as the model's stream does. No AWS
+/// transport is required; input errors propagate through the stream.
 pub fn stream_from_events(
     events: impl futures::Stream<Item = Result<aws_bedrock::ConverseStreamOutput, ProviderError>>
     + WasmCompatSend
     + 'static,
-) -> StreamingCompletionResponse {
-    StreamingCompletionResponse::stream(
-        PROVIDER_NAME,
-        run_wire_stream(events, StreamState::default()),
-    )
+) -> CompletionStream {
+    CompletionStream::new(PROVIDER_NAME, translate(events, StreamState::default()))
 }
 
 impl CompletionModel {
@@ -336,7 +354,7 @@ impl CompletionModel {
     pub(crate) async fn stream(
         &self,
         completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    ) -> Result<CompletionStream, ProviderError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let issuer = reasoning_issuer(&request_model);
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
@@ -405,8 +423,8 @@ impl CompletionModel {
             reasoning_issuer: (issuer != PROVIDER_NAME).then_some(issuer),
             ..StreamState::default()
         };
-        let stream = run_wire_stream(transport, state).instrument(span);
-        let response = StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(stream));
+        let stream = translate(transport, state).instrument(span);
+        let response = CompletionStream::new(PROVIDER_NAME, stream);
         Ok(if issuer == PROVIDER_NAME {
             response
         } else {

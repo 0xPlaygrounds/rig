@@ -11,7 +11,7 @@ async fn rerank_smoke() {
         .expect("config should build from VOYAGE_API_KEY env var")
         .bound()
         .expect("transport should build");
-    let model = provider.rerank(voyageai::RERANK_2_5);
+    let model = provider.endpoint(|provider_config| provider_config.rerank(voyageai::RERANK_2_5));
 
     let response = model
         .rerank(

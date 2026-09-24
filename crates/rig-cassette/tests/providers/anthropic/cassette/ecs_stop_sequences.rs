@@ -25,7 +25,9 @@ async fn agent_stream_single_sequence() {
                 "stop_sequence_terminal_matrix/agent_stream_single_sequence",
                 |client| async move {
                     let mut ecs = agent(
-                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        }),
                         64,
                         "charlie",
                     );
@@ -60,7 +62,9 @@ async fn agent_prompt_empty_stop_sequence() {
                 "empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence",
                 |client| async move {
                     let mut ecs = agent(
-                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        }),
                         32,
                         "alpha",
                     );
@@ -94,7 +98,9 @@ async fn agent_stream_empty_stop_sequence() {
                 "empty_stop_sequence_matrix/agent_stream_empty_stop_sequence",
                 |client| async move {
                     let mut ecs = agent(
-                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        }),
                         32,
                         "alpha",
                     );

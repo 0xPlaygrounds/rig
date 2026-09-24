@@ -20,12 +20,21 @@ async fn generated_image_as_user_content() {
         "image_input_matrix/generated_image_as_user_content",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.openai.image_generation(GENERATOR),
+                &client
+                    .openai
+                    .endpoint(|provider_config| provider_config.images(GENERATOR)),
                 Some(1024),
                 quality(),
             )
             .await;
-            image_inputs::as_user_content(&client.openai.chat("gpt-4.1-mini"), &bytes, None).await;
+            image_inputs::as_user_content(
+                &client
+                    .openai
+                    .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
+                &bytes,
+                None,
+            )
+            .await;
         },
     )
     .await;
@@ -40,13 +49,17 @@ async fn generated_image_as_tool_result() {
         "image_input_matrix/generated_image_as_tool_result",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.openai.image_generation(GENERATOR),
+                &client
+                    .openai
+                    .endpoint(|provider_config| provider_config.images(GENERATOR)),
                 Some(1024),
                 quality(),
             )
             .await;
             image_inputs::as_tool_result(
-                &client.openai.responses(openai::GPT_5_6),
+                &client
+                    .openai
+                    .endpoint(|provider_config| provider_config.responses(openai::GPT_5_6)),
                 &bytes,
                 Some(json!({ "reasoning": { "effort": "low" }, "store": false })),
             )

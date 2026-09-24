@@ -8,7 +8,7 @@ struct BuilderHook;
 impl AgentHook for BuilderHook {}
 
 /// A model without any `Clone` impl must pass through the builder's
-/// erasure seam (`AgentBuilder::new` → the bus's `CompletionAdapter`
+/// erasure seam (`AgentBuilder::new` → the bus's `ModelAdapter`
 /// registered under the agent's model key). The bound is the test: a
 /// regression is a compile error.
 #[test]
@@ -16,7 +16,7 @@ fn builder_accepts_non_clone_model() {
     struct NonCloneModel;
 
     impl rig_core::completion::CompletionModel for NonCloneModel {
-        fn completion(
+        fn complete(
             &self,
             _request: rig_core::completion::CompletionRequest,
         ) -> impl Future<
@@ -34,10 +34,7 @@ fn builder_accepts_non_clone_model() {
             &self,
             _request: rig_core::completion::CompletionRequest,
         ) -> impl Future<
-            Output = Result<
-                rig_core::streaming::StreamingCompletionResponse,
-                rig_core::error::ProviderError,
-            >,
+            Output = Result<rig_core::streaming::CompletionStream, rig_core::error::ProviderError>,
         > + rig_core::wasm_compat::WasmCompatSend {
             std::future::ready(Err(rig_core::error::ProviderError::Provider(
                 "compile-time probe".to_string(),

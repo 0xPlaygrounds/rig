@@ -9,7 +9,8 @@ use rig::prelude::*;
 async fn chat_models_route_through_chat_completions() {
     let response = live_client()
         .await
-        .agent(LIVE_MODEL)
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -25,7 +26,8 @@ async fn codex_models_route_through_responses() {
         "routing/codex_models_route_through_responses",
         |client| async move {
             let response = client
-                .agent(live_responses_model())
+                .endpoint(|provider_config| provider_config.completion(live_responses_model()))
+                .into_agent_builder()
                 .preamble(BASIC_PREAMBLE)
                 .build()
                 .prompt("In one short sentence, explain what refactoring is.")

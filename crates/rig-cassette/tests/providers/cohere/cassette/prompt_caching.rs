@@ -74,7 +74,7 @@ async fn blocking_probe_warms_to_a_full_cache_hit_over_three_turns() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_cohere_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_warms_over_turns(&observation, &COHERE_CACHE_SUPPORT, "blocking probe");
     })
@@ -89,7 +89,7 @@ async fn streaming_probe_warms_to_a_full_cache_hit_over_three_turns() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_cohere_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_warms_over_turns(&observation, &COHERE_CACHE_SUPPORT, "streaming probe");
     })
@@ -117,7 +117,8 @@ async fn agent_loop_does_not_move_its_own_prefix() {
 
     with_cohere_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
         let response = client
-            .agent(CACHE_MODEL)
+            .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+            .into_agent_builder()
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)

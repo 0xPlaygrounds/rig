@@ -7,7 +7,7 @@
 //! recording's last tool result and proves the strict matcher refuses it.
 
 use rig::completion::CompletionModel;
-use rig::driver::{Bind, Bound};
+use rig::driver::Model;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
@@ -16,46 +16,48 @@ use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::Anthropic;
 
-fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.completion("claude-haiku-4-5-20251001"),
+        model: client
+            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
     }
 }
 
-fn task_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn task_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: THINKING,
         model: client
-            .completion("claude-haiku-4-5-20251001")
-            .map_wire(|wire| wire.with_prompt_caching()),
+            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001"))
+            .endpoint(|wire| wire.clone().with_prompt_caching()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
     }
 }
 
-fn automatic_task_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn automatic_task_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: THINKING,
         model: client
-            .completion("claude-haiku-4-5-20251001")
-            .map_wire(|wire| wire.with_automatic_caching_1h()),
+            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001"))
+            .endpoint(|wire| wire.clone().with_automatic_caching_1h()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
     }
 }
 
-fn mixed_task_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn mixed_task_wire(client: &Model<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: THINKING,
         model: client
-            .completion("claude-haiku-4-5-20251001")
-            .map_wire(|wire| {
+            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001"))
+            .endpoint(|wire| {
+                let wire = wire.clone();
                 wire.with_automatic_caching().with_static_prefix_cache_ttl(
                     rig::providers::anthropic::completion::CacheTtl::OneHour,
                 )
@@ -104,10 +106,14 @@ const SCRIPTED_KEY: &str = "sk-ant-scripted-fault-key-7f3a9c";
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
 fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = Anthropic::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
+    let client = rig::driver::Model::new(
+        Anthropic::new(SCRIPTED_KEY),
+        SequencedHttpClient::new(replies),
+    );
     Wire {
         thinking: THINKING,
-        model: client.completion("claude-haiku-4-5-20251001"),
+        model: client
+            .endpoint(|provider_config| provider_config.completion("claude-haiku-4-5-20251001")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

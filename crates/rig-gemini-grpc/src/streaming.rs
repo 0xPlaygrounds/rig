@@ -11,11 +11,10 @@ use futures::StreamExt;
 use serde_json::{Map, Value};
 
 use rig_core::completion::CompletionRequest;
-use rig_core::driver::{run_wire_stream, warn_unmodeled};
+use rig_core::driver::warn_unmodeled;
 use rig_core::error::ProviderError;
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::AdapterOutput;
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming;
 use rig_core::wasm_compat::WasmCompatSend;
 
@@ -23,10 +22,9 @@ use super::Client;
 use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
 use super::proto;
 
-/// The Gemini gRPC typed wire as a [`Decoder`](rig_core::wire::Decoder) over
-/// protobuf frames: the chunk carrying a finish reason is the terminal, and
-/// the per-stream state is the thought block's lifecycle plus the tool-key
-/// minter.
+/// Translates Gemini protobuf chunks into stream events: the chunk carrying a
+/// finish reason is the terminal, and the per-stream state is the thought
+/// block's lifecycle plus the tool-key minter.
 struct GrpcAdapter {
     /// Derives signed reasoning boundaries for thought parts without wire IDs.
     reasoning: MintedReasoningLifecycle,
@@ -46,16 +44,10 @@ impl Default for GrpcAdapter {
     }
 }
 
-impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for GrpcAdapter {
-    type Event = proto::GenerateContentResponse;
-
-    fn classify(&self, frame: proto::GenerateContentResponse) -> WireEvent<Self::Event> {
-        // Tonic handles frame decoding; unknown oneof values are handled per
-        // part during interpretation.
-        wire::classify_typed_event(TypedEvent::Modeled(frame))
-    }
-
-    fn interpret(&mut self, resp: Self::Event, out: &mut AdapterOutput) {
+impl GrpcAdapter {
+    /// Translate one chunk. Tonic handles frame decoding; unknown oneof
+    /// values are handled per part.
+    fn interpret(&mut self, resp: proto::GenerateContentResponse, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
@@ -111,17 +103,6 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {
-        // EOF without a finish reason is truncation: no terminal record.
-    }
-
-    fn is_finished(&self) -> bool {
-        // Stop reading after an emitted protocol failure rather than drain the transport.
-        self.failed
-    }
-}
-
-impl GrpcAdapter {
     /// Converts a protobuf part into content for shared lifecycle derivation.
     fn interpret_part(&mut self, part: &proto::Part) -> ChunkParts {
         match &part.data {
@@ -214,18 +195,52 @@ fn terminal_record(
     .with_reasoning_issuer(super::completion::REASONING_ISSUER))
 }
 
-/// Normalizes typed protobuf events through the shared completion driver.
-/// No gRPC transport is required; input errors propagate through the stream.
+/// Translate protobuf chunks into stream events, until the terminal record,
+/// an emitted protocol failure, or the first transport error. EOF without a
+/// finish reason is truncation: no terminal record.
+fn translate(
+    events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, ProviderError>>
+    + WasmCompatSend
+    + 'static,
+) -> impl futures::Stream<Item = Result<streaming::StreamEvent, ProviderError>> + WasmCompatSend + 'static
+{
+    stream! {
+        let mut events = std::pin::pin!(events);
+        let mut adapter = GrpcAdapter::default();
+        let mut out = AdapterOutput::new();
+        while let Some(event) = events.next().await {
+            match event {
+                Ok(resp) => adapter.interpret(resp, &mut out),
+                Err(error) => {
+                    yield Err(error);
+                    return;
+                }
+            }
+            for item in out.drain() {
+                let terminal = matches!(item, Ok(streaming::StreamEvent::Final(_)));
+                yield item;
+                if terminal {
+                    return;
+                }
+            }
+            // Stop reading after an emitted protocol failure rather than
+            // drain the transport.
+            if adapter.failed {
+                return;
+            }
+        }
+    }
+}
+
+/// Normalizes typed protobuf events as the model's stream does. No gRPC
+/// transport is required; input errors propagate through the stream.
 pub fn stream_from_events(
     events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, ProviderError>>
     + WasmCompatSend
     + 'static,
-) -> streaming::StreamingCompletionResponse {
-    streaming::StreamingCompletionResponse::stream(
-        super::completion::PROVIDER_NAME,
-        run_wire_stream(events, GrpcAdapter::default()),
-    )
-    .with_reasoning_issuer(super::completion::REASONING_ISSUER)
+) -> streaming::CompletionStream {
+    streaming::CompletionStream::new(super::completion::PROVIDER_NAME, translate(events))
+        .with_reasoning_issuer(super::completion::REASONING_ISSUER)
 }
 
 /// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
@@ -235,7 +250,7 @@ pub(crate) async fn stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse, ProviderError> {
+) -> Result<streaming::CompletionStream, ProviderError> {
     let request = super::completion::create_grpc_request(&model, completion_request)?;
 
     let mut grpc_client = client
@@ -262,11 +277,7 @@ pub(crate) async fn stream(
         }
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(
-        super::completion::PROVIDER_NAME,
-        run_wire_stream(transport, GrpcAdapter::default()),
-    )
-    .with_reasoning_issuer(super::completion::REASONING_ISSUER))
+    Ok(stream_from_events(transport))
 }
 
 #[cfg(test)]

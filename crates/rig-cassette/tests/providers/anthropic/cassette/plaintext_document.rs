@@ -98,7 +98,8 @@ async fn plaintext_document_prompt() {
         "plaintext_document/plaintext_document_prompt",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .preamble("You are a helpful assistant that analyzes documents.")
                 .temperature(0.5)
                 .build();
@@ -127,7 +128,8 @@ async fn plaintext_document_with_instruction() {
         "plaintext_document/plaintext_document_with_instruction",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .preamble("You are a helpful assistant that analyzes documents.")
                 .temperature(0.5)
                 .build();
@@ -157,7 +159,8 @@ async fn streaming_document_citations_accepts_null_citation_start() {
         "plaintext_document/streaming_document_citations_accepts_null_citation_start",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .preamble("Answer using the supplied document and citation metadata.")
                 .temperature(0.0)
                 .build();
@@ -178,7 +181,8 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/document_citations_followup_preserves_history",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6));
             let prompt = citation_prompt();
 
             let first_request = model
@@ -194,7 +198,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             // call yields rig's normalized response and, in `raw`,
             // Anthropic's own reply.
             let first_turn = model
-                .completion(first_request)
+                .complete(first_request)
                 .await
                 .expect("first document citation turn should succeed");
             let first_turn_raw_text = provider_text(&first_turn);

@@ -33,7 +33,7 @@
 //! reply — is [`crate::raw_capture::responses`].
 
 use rig::completion::{CompletionModel, CompletionRequest};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
@@ -52,7 +52,7 @@ const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
+fn request(model: &Model<OpenAiWire>) -> CompletionRequest {
     model.completion_request(PROMPT).build()
 }
 
@@ -71,7 +71,13 @@ async fn raw_round_trips_responses_type() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/raw_round_trips_responses_type",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_round_trips_responses_type should replay from its cassette");
@@ -107,7 +113,13 @@ async fn raw_exposes_status_and_service_tier() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/raw_exposes_status_and_service_tier",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_exposes_status_and_service_tier should replay from its cassette");
@@ -150,7 +162,13 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");

@@ -96,7 +96,8 @@ async fn main() -> Result<()> {
     let agent = OpenAI::from_env()?
         .with_route(Route::Chat)
         .bound()?
-        .agent(model)
+        .endpoint(|provider_config| provider_config.completion(model))
+        .into_agent_builder()
         .preamble(
             "You are a concise release assistant. The user will ask about an \
              internal ticket. Call `lookup_project_status` exactly once before \

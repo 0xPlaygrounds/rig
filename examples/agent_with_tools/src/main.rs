@@ -50,7 +50,8 @@ fn runtime_tools() -> Vec<DynamicTool> {
 async fn main() -> Result<()> {
     let agent = OpenAI::from_env()?
         .bound()?
-        .agent(openai::GPT_4O)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .into_agent_builder()
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",

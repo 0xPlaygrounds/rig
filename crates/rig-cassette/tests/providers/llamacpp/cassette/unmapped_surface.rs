@@ -70,7 +70,7 @@ use super::super::cassette_support::*;
 async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
         let models = client
-            .models()
+            .endpoint(|provider_config| provider_config.models())
             .list_all()
             .await
             .expect("listing llama.cpp models should succeed");
@@ -152,6 +152,7 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
         // accessor, which is itself part of the exclude decision for the
         // operational routes.
         client
+            .endpoint(|provider_config| provider_config.verify())
             .verify()
             .await
             .expect("an unkeyed server verifies successfully");
@@ -212,9 +213,9 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
         // The wrapper hands out the plain OpenAI configuration; the Responses
         // surface is a *different* wire over the same socket and the same
         // base URL, which is the whole shape of the exclusion.
-        let model = client.responses(CASSETTE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.responses(CASSETTE_MODEL));
         let response = model
-            .completion(
+            .complete(
                 model
                     .completion_request("/no_think Reply with the single word: ok")
                     .max_tokens(256)

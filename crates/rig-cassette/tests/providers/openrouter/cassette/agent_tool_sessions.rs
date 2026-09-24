@@ -409,7 +409,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
             let agent = client
-                .agent(SESSION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .into_agent_builder()
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -472,7 +473,8 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
             let agent = client
-                .agent(SESSION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -519,7 +521,8 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
             let agent = client
-                .agent(SESSION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -546,7 +549,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -587,7 +590,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
@@ -622,7 +625,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             // reasons — which the normalized response collapses into one — are
             // read off OpenRouter's own response type rather than from a
             // second call.
-            let response = model.completion(request).await?;
+            let response = model.complete(request).await?;
             let wire = openrouter::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is OpenRouter's own completion response");
             let text = response
@@ -683,7 +686,7 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
         "agent_tool_sessions/nested_structured_output_schema_roundtrip",
         |client| async move {
             let agent = client
-                .agent(STRUCTURED_MODEL)
+                .endpoint(|provider_config| provider_config.completion(STRUCTURED_MODEL)).into_agent_builder()
                 .preamble(
                     "Return only data that satisfies the requested schema. Use lane canary, risk low, \
                      and checks compile=true and replay=true.",

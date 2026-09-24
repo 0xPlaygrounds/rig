@@ -10,7 +10,8 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 async fn extractor_smoke() {
     with_deepseek_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
-            .extractor::<SmokePerson>(deepseek::DEEPSEEK_V4_FLASH)
+            .endpoint(|provider_config| provider_config.completion(deepseek::DEEPSEEK_V4_FLASH))
+            .into_extractor_builder::<SmokePerson>()
             .build();
 
         let person = extractor

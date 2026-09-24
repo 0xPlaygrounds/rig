@@ -461,7 +461,7 @@ async fn raw_and_normalized_completion(
     mistral::CompletionResponse,
     rig::completion::CompletionResponse,
 )> {
-    let normalized = model.completion(request).await?;
+    let normalized = model.complete(request).await?;
     let raw = mistral::CompletionResponse::deserialize(&normalized.raw)?;
     Ok((raw, normalized))
 }
@@ -518,7 +518,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -554,10 +554,10 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/tool_choice_auto_any_specific_and_none",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
 
             let auto = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -576,7 +576,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let any = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -595,7 +595,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -620,7 +620,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -649,7 +649,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.completion(STRUCTURED_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(STRUCTURED_MODEL));
             let request = model
                 .completion_request(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
@@ -691,7 +691,8 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model = client.completion(STRUCTURED_MODEL);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(STRUCTURED_MODEL));
             let request = model
                 .completion_request(
                     "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",

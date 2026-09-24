@@ -465,7 +465,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
             let agent = client
-                .agent(SESSION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(SESSION_MODEL))
+                .into_agent_builder()
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -524,7 +525,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -565,7 +566,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
@@ -596,7 +597,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.complete(request).await?;
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);
@@ -622,10 +623,10 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
 
             let required = model
-                .completion(
+                .complete(
                     model
                         .completion_request(
                             "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
@@ -646,7 +647,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
+                .complete(
                     model
                         .completion_request(
                             "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
@@ -673,7 +674,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
+                .complete(
                     model
                         .completion_request(
                             "Do not call tools. Reply with exactly this phrase: no-tool-answer",
@@ -704,7 +705,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
     with_xai_cassette_result(
         "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
         |client| async move {
-            let model = client.completion(REASONING_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(REASONING_MODEL));
             let request = model
                 .completion_request(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
@@ -715,7 +716,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 }))
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.complete(request).await?;
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
 
@@ -762,7 +763,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(SESSION_MODEL));
             let request = model
                 .completion_request(
                     "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
@@ -807,7 +808,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 }))
                 .build();
 
-            let response = model.completion(request).await?;
+            let response = model.complete(request).await?;
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);
@@ -846,7 +847,8 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
         "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
         |client| async move {
             let agent = client
-                .agent(VISION_MODEL)
+                .endpoint(|provider_config| provider_config.completion(VISION_MODEL))
+                .into_agent_builder()
                 .preamble("You answer image questions concisely and directly.")
                 .build();
 

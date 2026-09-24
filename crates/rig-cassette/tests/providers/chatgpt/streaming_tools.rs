@@ -13,7 +13,8 @@ use crate::support::{
 async fn streaming_tools_smoke() {
     let agent = live_client()
         .await
-        .agent(LIVE_MODEL)
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -32,7 +33,8 @@ async fn streaming_tools_smoke() {
 async fn example_streaming_with_tools() {
     let agent = live_client()
         .await
-        .agent(LIVE_MODEL)
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",

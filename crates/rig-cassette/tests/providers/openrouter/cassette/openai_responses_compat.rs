@@ -17,7 +17,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata",
         |client| async move {
-            let model = client.completion(DEFAULT_OPENAI_COMPAT_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(DEFAULT_OPENAI_COMPAT_MODEL));
             let request = model
                 .completion_request("Reply with exactly: openrouter responses service tier ok")
                 .preamble(
@@ -29,7 +29,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
             // so it is read off the provider's own reply document, which the
             // driver keeps verbatim on `raw`. One interaction either way.
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 
@@ -56,7 +56,8 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
+                .endpoint(|provider_config| provider_config.completion(DEFAULT_OPENAI_COMPAT_MODEL))
+                .into_agent_builder()
                 .preamble("You are concise. Answer with one short sentence.")
                 .build();
 
@@ -77,7 +78,8 @@ async fn openai_responses_stream_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_stream_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
+                .endpoint(|provider_config| provider_config.completion(DEFAULT_OPENAI_COMPAT_MODEL))
+                .into_agent_builder()
                 .preamble("You are concise. Answer directly.")
                 .build();
 

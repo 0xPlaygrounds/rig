@@ -22,7 +22,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let client = Client::from_env()?;
     let agent = client
-        .agent(AMAZON_NOVA_LITE)
+        .completion(AMAZON_NOVA_LITE)
+        .into_agent_builder()
         .preamble("Describe this document")
         .temperature(0.5)
         .build();

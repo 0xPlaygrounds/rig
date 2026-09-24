@@ -46,7 +46,7 @@
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition,
 };
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
@@ -76,7 +76,7 @@ fn weather_tool() -> ToolDefinition {
     }
 }
 
-type ChatGptModel = Bound<OpenAiWire>;
+type ChatGptModel = Model<OpenAiWire>;
 
 fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
@@ -161,9 +161,13 @@ async fn raw_normalize_reproduces_completion() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -218,9 +222,13 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call",
         |client| async move {
-            capture_completion(client.completion(MODEL), tool_request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                tool_request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -318,9 +326,13 @@ async fn empty_output_fallback_still_carries_raw() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/empty_output_fallback_still_carries_raw",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("the fallback rebuilds the response from the event stream");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("the fallback rebuilds the response from the event stream");
         },
     )
     .await;

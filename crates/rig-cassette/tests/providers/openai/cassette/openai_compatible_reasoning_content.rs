@@ -15,7 +15,7 @@ use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::completion::Message;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use serde::Deserialize;
@@ -38,7 +38,8 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .agent("llama-cpp-reasoning-model")
+                .endpoint(|provider_config| provider_config.completion("llama-cpp-reasoning-model"))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(json!({
@@ -63,7 +64,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
 
 async fn with_local_reasoning_content_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(Model<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let server = LocalReasoningContentServer::start().await;

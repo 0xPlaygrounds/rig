@@ -108,7 +108,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_gemini_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "blocking probe");
     })
@@ -123,7 +123,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_gemini_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "streaming probe");
     })
@@ -139,7 +139,8 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 
     with_gemini_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
         let response = client
-            .agent(CACHE_MODEL)
+            .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+            .into_agent_builder()
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)
@@ -172,7 +173,7 @@ async fn live_cache_economics() {
         .expect("GEMINI_API_KEY")
         .bound()
         .expect("transport should build");
-    let model = client.completion(CACHE_MODEL);
+    let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
 
     // Two passes, asserting on the second — the same procedure the module docs
     // prescribe for re-recording. Gemini's implicit cache only serves a prefix
@@ -223,7 +224,7 @@ async fn create_probe_cache(
     display_name: &str,
 ) -> rig::providers::gemini::cached_content::CachedContent {
     client
-        .cached_contents()
+        .endpoint(|provider_config| provider_config.cached_contents())
         .create(
             NewCachedContent::new(CACHE_MODEL)
                 .system_instruction(format!(
@@ -248,7 +249,7 @@ async fn explicit_cache_lifecycle() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/explicit_cache_lifecycle",
         |client| async move {
-            let caches = client.cached_contents();
+            let caches = client.endpoint(|provider_config| provider_config.cached_contents());
             let created = create_probe_cache(&client, "rig-lifecycle").await;
 
             let handles = [created.name.clone()];
@@ -309,8 +310,8 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
+                    .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                    .endpoint(|wire| wire.clone().with_cached_content(cache.name.clone()));
 
                 // `bare()`: the cache owns the system instruction and tools, and a
                 // request that also sends its own is rejected — by rig, before it
@@ -360,8 +361,8 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
+                    .endpoint(|provider_config| provider_config.completion(CACHE_MODEL))
+                    .endpoint(|wire| wire.clone().with_cached_content(cache.name.clone()));
 
                 let mut reads = Vec::new();
                 for prompt in [
@@ -383,8 +384,9 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                         model: None,
                         output_schema: None,
                         record_telemetry_content: false,
+                        extensions: Default::default(),
                     };
-                    let response = rig::completion::CompletionModel::completion(&model, request)
+                    let response = rig::completion::CompletionModel::complete(&model, request)
                         .await
                         .expect("a cached-content request should succeed");
                     reads.push((
@@ -495,6 +497,7 @@ fn mutation_request(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -514,7 +517,7 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/below_minimum_does_not_cache",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
             let small = crate::cache_conformance::cache_padding(8);
             let request = || {
                 mutation_request(
@@ -525,10 +528,10 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
                 )
             };
 
-            let first = rig::completion::CompletionModel::completion(&model, request())
+            let first = rig::completion::CompletionModel::complete(&model, request())
                 .await
                 .expect("first small request should succeed");
-            let second = rig::completion::CompletionModel::completion(&model, request())
+            let second = rig::completion::CompletionModel::complete(&model, request())
                 .await
                 .expect("second small request should succeed");
 
@@ -563,18 +566,18 @@ async fn changing_temperature_still_hits() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/temperature_change_still_hits",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
             let preamble = probe().preamble;
             let history = vec![user("Reply with exactly: temp")];
 
-            let warm = rig::completion::CompletionModel::completion(
+            let warm = rig::completion::CompletionModel::complete(
                 &model,
                 mutation_request(Some(&preamble), vec![], history.clone(), 0.0),
             )
             .await
             .expect("warming request should succeed");
 
-            let hotter = rig::completion::CompletionModel::completion(
+            let hotter = rig::completion::CompletionModel::complete(
                 &model,
                 mutation_request(Some(&preamble), vec![], history, 0.7),
             )
@@ -609,11 +612,11 @@ async fn changing_the_system_instruction_misses() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/changed_system_instruction_miss",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(CACHE_MODEL));
             let base = probe().preamble;
             let history = vec![user("Reply with exactly: sysinstr")];
 
-            let _warm = rig::completion::CompletionModel::completion(
+            let _warm = rig::completion::CompletionModel::complete(
                 &model,
                 mutation_request(Some(&base), vec![], history.clone(), 0.0),
             )
@@ -627,7 +630,7 @@ async fn changing_the_system_instruction_misses() {
                 "the mutation should actually change the text"
             );
 
-            let after = rig::completion::CompletionModel::completion(
+            let after = rig::completion::CompletionModel::complete(
                 &model,
                 mutation_request(Some(&mutated), vec![], history, 0.0),
             )
@@ -662,7 +665,7 @@ async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/explicit_cache_expired",
         |client| async move {
-            let caches = client.cached_contents();
+            let caches = client.endpoint(|provider_config| provider_config.cached_contents());
             let cache = create_probe_cache(&client, "rig-expired").await;
             caches
                 .delete(&cache.name)

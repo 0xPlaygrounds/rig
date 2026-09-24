@@ -18,7 +18,9 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
     with_anthropic_cassette(
         "messages_behaviors/max_tokens_truncation_preserves_stop_reason_and_partial_text",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            });
             let request = model
                 .completion_request(
                     "Write a story of at least 150 words about a lighthouse keeper.",
@@ -28,7 +30,7 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("a truncated response should still convert, not error");
 

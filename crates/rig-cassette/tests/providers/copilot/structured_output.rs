@@ -48,7 +48,10 @@ async fn structured_output_smoke() {
     with_copilot_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = client.agent(LIVE_MODEL).build();
+            let agent = client
+                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .into_agent_builder()
+                .build();
 
             let response: SmokeStructuredOutput = agent
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
@@ -68,7 +71,8 @@ async fn prompt_typed_and_output_schema() {
         "structured_output/prompt_typed_and_output_schema",
         |client| async move {
             let agent = client
-                .agent(LIVE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .into_agent_builder()
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",
                 )
@@ -92,7 +96,8 @@ async fn prompt_typed_and_output_schema() {
             );
 
             let agent_with_schema = client
-                .agent(LIVE_MODEL)
+                .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+                .into_agent_builder()
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",
                 )

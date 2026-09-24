@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, PERPLEXITY};
@@ -11,7 +11,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 /// The Perplexity dialect of the OpenAI config bound to the bundled
 /// transport — what a cassette test builds its models from, now that a model
 /// is a bound wire.
-pub(super) type BoundPerplexity = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundPerplexity = Model<OpenAI, BoxedHttpClient>;
 
 async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundPerplexity) {
     let cassette = ProviderCassette::start(

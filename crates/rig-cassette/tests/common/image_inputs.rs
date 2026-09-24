@@ -53,6 +53,7 @@ fn request(
         additional_params: params,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -82,7 +83,7 @@ pub async fn as_user_content<M: CompletionModel>(vision: &M, bytes: &[u8], param
         ],
     };
     let reply = vision
-        .completion(request(vec![message], vec![], params))
+        .complete(request(vec![message], vec![], params))
         .await
         .expect("the vision model reads the generated image");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);
@@ -97,7 +98,7 @@ pub async fn as_tool_result<M: CompletionModel>(model: &M, bytes: &[u8], params:
     };
     let prompt = Message::user(format!("Call render_swatch, then answer: {QUESTION}"));
     let first = model
-        .completion(request(
+        .complete(request(
             vec![prompt.clone()],
             vec![tool.clone()],
             params.clone(),
@@ -132,7 +133,7 @@ pub async fn as_tool_result<M: CompletionModel>(model: &M, bytes: &[u8], params:
         },
     ];
     let reply = model
-        .completion(request(history, vec![tool], params))
+        .complete(request(history, vec![tool], params))
         .await
         .expect("the model reads the image tool result");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);

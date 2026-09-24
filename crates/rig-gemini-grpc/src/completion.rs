@@ -120,7 +120,7 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    async fn completion(
+    async fn complete(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, ProviderError> {
@@ -130,7 +130,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<rig_core::streaming::StreamingCompletionResponse, ProviderError> {
+    ) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
 }
@@ -199,6 +199,7 @@ pub(crate) fn create_grpc_request(
         additional_params: _,
         output_schema: _,
         record_telemetry_content: _,
+        extensions: _,
     } = completion_request;
 
     let mut chat_history = chat_history;

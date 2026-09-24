@@ -16,7 +16,8 @@ const MODEL: &str = "qwen3:4b";
 async fn streaming_smoke() {
     with_ollama_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .agent(MODEL)
+            .endpoint(|provider_config| provider_config.completion(MODEL))
+            .into_agent_builder()
             .preamble(STREAMING_PREAMBLE)
             .additional_params(serde_json::json!({ "think": false }))
             .build();

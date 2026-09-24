@@ -3,7 +3,7 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
@@ -15,7 +15,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 /// DeepSeek is the [`DEEPSEEK`] dialect of the shared OpenAI chat wire, so
 /// the provider is that configuration bound to the bundled transport; the
 /// alias keeps every wrapper's `FnOnce` bound readable.
-pub(super) type BoundDeepSeek = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundDeepSeek = Model<OpenAI, BoxedHttpClient>;
 
 async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDeepSeek) {
     let cassette = ProviderCassette::start(
@@ -281,7 +281,7 @@ impl RawStreamOutcome {
 }
 
 pub(super) async fn collect_raw_stream_outcome(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> RawStreamOutcome {
     use futures::StreamExt as _;
     use rig::streaming::{Delta, StreamEvent};

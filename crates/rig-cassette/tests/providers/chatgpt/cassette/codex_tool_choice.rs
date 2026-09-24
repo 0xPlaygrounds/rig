@@ -31,7 +31,8 @@ async fn required_forces_a_tool_call() {
     with_chatgpt_cassette(
         "codex_tool_choice/required_forces_a_tool_call",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4));
             let request = model
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -40,7 +41,7 @@ async fn required_forces_a_tool_call() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -64,7 +65,8 @@ async fn none_suppresses_tool_calls() {
     with_chatgpt_cassette(
         "codex_tool_choice/none_suppresses_tool_calls",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4));
             let request = model
                 .completion_request("What is 2 plus 3? Reply with just the number.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -73,7 +75,7 @@ async fn none_suppresses_tool_calls() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("none tool choice completion should succeed");
 
@@ -104,7 +106,8 @@ async fn specific_single_function_targets_named_tool() {
     with_chatgpt_cassette(
         "codex_tool_choice/specific_single_function_targets_named_tool",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4));
             let request = model
                 .completion_request("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -116,7 +119,7 @@ async fn specific_single_function_targets_named_tool() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("specific tool choice completion should succeed");
 
@@ -163,7 +166,8 @@ async fn specific_multiple_functions_use_allowed_tools() {
     with_chatgpt_cassette(
         "codex_tool_choice/specific_multiple_functions_use_allowed_tools",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model =
+                client.endpoint(|provider_config| provider_config.completion(chatgpt::GPT_5_4));
             let request = model
                 .completion_request("What is 2 plus 3? Use exactly one tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -176,7 +180,7 @@ async fn specific_multiple_functions_use_allowed_tools() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("allowed-tools tool choice completion should succeed");
 

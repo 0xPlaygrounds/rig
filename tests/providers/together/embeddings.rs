@@ -14,7 +14,9 @@ async fn embeddings_smoke() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = provider.embedding(together::embedding::M2_BERT_80M_8K_RETRIEVAL, None);
+    let model = provider.endpoint(|provider_config| {
+        provider_config.embeddings(together::embedding::M2_BERT_80M_8K_RETRIEVAL, None)
+    });
 
     let embeddings = model
         .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))

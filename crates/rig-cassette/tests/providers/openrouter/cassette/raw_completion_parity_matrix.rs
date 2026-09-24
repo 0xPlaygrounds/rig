@@ -79,7 +79,13 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
-        |client| capture_completion_pair(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion_pair(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_with_request_id_reproduces_completion should replay from its cassette");
@@ -141,7 +147,13 @@ async fn no_request_id_contract_holds_on_both_turns() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_completion_parity_matrix/plain_raw_completion_matches_completion_without_id",
-        |client| capture_completion_pair(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion_pair(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("plain_raw_completion_matches_completion_without_id should replay from its cassette");

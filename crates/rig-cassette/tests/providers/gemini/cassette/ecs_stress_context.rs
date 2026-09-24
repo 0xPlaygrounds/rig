@@ -17,7 +17,9 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
                 "hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         CHAIN_PREAMBLE,
                         Some("stress-agent"),
                         Some(0.0),
@@ -71,7 +73,9 @@ async fn agent_name_absent_when_unconfigured_blocking() {
                 "hook_stress_context/agent_name_absent_when_unconfigured_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         CHAIN_PREAMBLE,
                         None,
                         Some(0.0),
@@ -120,7 +124,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
             "hook_stress_context/scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking",
             |client| async move {
                 let mut ecs = runtime::agent(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                    client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                     CHAIN_PREAMBLE,
                     Some("stress-agent"),
                     Some(0.0),
@@ -177,7 +181,9 @@ async fn block_id_correlates_tool_call_and_result_blocking() {
                 "hook_stress_context/block_id_correlates_tool_call_and_result_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         CHAIN_PREAMBLE,
                         Some("stress-agent"),
                         Some(0.0),
@@ -231,7 +237,9 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
                 "hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         CHAIN_PREAMBLE,
                         Some("stress-agent"),
                         Some(0.0),
@@ -285,7 +293,9 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
                 "hook_stress_context/add_hook_appends_across_builder_and_request_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client.endpoint(|provider_config| {
+                            provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)
+                        }),
                         CHAIN_PREAMBLE,
                         Some("stress-agent"),
                         Some(0.0),
@@ -336,7 +346,7 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
         "hook_stress_context/completion_call_patches_accumulate_from_two_hooks_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 "You are a helpful assistant. Consult the provided context for any facts you \
                      are asked about; use a tool for arithmetic.",
                 Some("stress-agent"),
@@ -404,7 +414,7 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
         "hook_stress_context/two_hooks_narrow_active_tools_to_intersection_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.endpoint(|provider_config| provider_config.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 "You are a calculator assistant. Use a provided tool for any arithmetic you \
                      can. If a needed tool is unavailable, say so and move on.",
                 Some("stress-agent"),

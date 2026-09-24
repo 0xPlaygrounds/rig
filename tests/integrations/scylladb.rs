@@ -79,7 +79,9 @@ async fn vector_search_test() {
         .bound()
         .unwrap();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     // Create test documents with mocked embeddings
     let words = vec![
@@ -350,7 +352,9 @@ async fn test_mock_server_setup() {
         .bound()
         .unwrap();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.endpoint(|provider_config| {
+        provider_config.embeddings(openai::TEXT_EMBEDDING_ADA_002, None)
+    });
 
     // Test that we can create embeddings with the mock
     let words = vec![Word {

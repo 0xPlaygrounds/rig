@@ -12,7 +12,8 @@ use crate::support::{
 async fn streaming_smoke() {
     let agent = live_client()
         .await
-        .agent(LIVE_MODEL)
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -29,7 +30,8 @@ async fn streaming_smoke() {
 async fn example_streaming_prompt() {
     let agent = live_client()
         .await
-        .agent(LIVE_MODEL)
+        .endpoint(|provider_config| provider_config.completion(LIVE_MODEL))
+        .into_agent_builder()
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

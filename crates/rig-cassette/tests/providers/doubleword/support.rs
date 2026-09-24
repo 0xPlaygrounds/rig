@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
@@ -13,7 +13,7 @@ const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 /// The Doubleword dialect of the OpenAI config bound to the bundled
 /// transport — what a cassette test builds its models from, now that a model
 /// is a bound wire.
-pub(super) type BoundDoubleword = Bound<OpenAI, BoxedHttpClient>;
+pub(super) type BoundDoubleword = Model<OpenAI, BoxedHttpClient>;
 
 async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDoubleword) {
     let cassette = ProviderCassette::start(

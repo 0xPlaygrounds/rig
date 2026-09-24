@@ -12,7 +12,8 @@ async fn example_streaming_prompt() {
         .expect("config should build from env")
         .bound()
         .expect("transport should build")
-        .agent("llama3.2")
+        .endpoint(|provider_config| provider_config.completion("llama3.2"))
+        .into_agent_builder()
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

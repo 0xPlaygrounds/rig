@@ -17,8 +17,10 @@ use crate::ecs_matrix::{
 fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion(MISTRAL_SMALL_3_2_24B),
-        route: Some(client.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client.endpoint(|provider_config| provider_config.completion(MISTRAL_SMALL_3_2_24B)),
+        route: Some(
+            client.endpoint(|provider_config| provider_config.completion(MISTRAL_SMALL_3_2_24B)),
+        ),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -48,7 +50,9 @@ async fn error_facts_unary() {
             "error_envelope/nonexistent_model_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.completion("venice-nonexistent-rig-test"),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion("venice-nonexistent-rig-test")
+                    }),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),
@@ -80,7 +84,9 @@ async fn error_facts_streamed() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.completion("venice-nonexistent-rig-test"),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion("venice-nonexistent-rig-test")
+                    }),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),

@@ -18,16 +18,16 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: rig::driver::Bound<rig::providers::anthropic::wire::Anthropic>,
+    client: rig::driver::Model<rig::providers::anthropic::wire::Anthropic>,
 ) -> (
     impl CompletionModel + Clone + 'static,
     impl CompletionModel + Clone + 'static,
     impl CompletionModel + Clone + 'static,
 ) {
     (
-        client.completion("claude-haiku-4-5"),
-        client.completion("claude-haiku-4-5"),
-        client.completion("claude-sonnet-4-6"),
+        client.endpoint(|provider_config| provider_config.completion("claude-haiku-4-5")),
+        client.endpoint(|provider_config| provider_config.completion("claude-haiku-4-5")),
+        client.endpoint(|provider_config| provider_config.completion("claude-sonnet-4-6")),
     )
 }
 

@@ -11,7 +11,9 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(client: OpenAiCassette, cell: Cell) -> impl CompletionModel + 'static {
-    client.openai.responses(cell.model)
+    client
+        .openai
+        .endpoint(|provider_config| provider_config.responses(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

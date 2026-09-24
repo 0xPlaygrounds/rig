@@ -14,7 +14,11 @@ async fn completion_smoke() {
         .expect("GROQ_API_KEY should be set")
         .bound()
         .expect("transport should build");
-    let agent = groq.agent(AGENT_MODEL).preamble(BASIC_PREAMBLE).build();
+    let agent = groq
+        .endpoint(|provider_config| provider_config.completion(AGENT_MODEL))
+        .into_agent_builder()
+        .preamble(BASIC_PREAMBLE)
+        .build();
 
     let response = agent
         .prompt(BASIC_PROMPT)

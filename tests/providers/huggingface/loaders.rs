@@ -21,7 +21,11 @@ async fn loaders_smoke() {
 
     let agent = examples
         .fold(
-            provider.agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
+            provider
+                .endpoint(|provider_config| {
+                    provider_config.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+                })
+                .into_agent_builder(),
             |builder, (path, content)| {
                 builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
             },

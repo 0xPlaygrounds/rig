@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI Responses API,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
+//! [`CompletionStream::choice`], the terminal [`StreamFinal`]
 //! record, usage, IDs, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -48,7 +48,7 @@ struct StreamRun {
     message_id: Option<String>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_blocks: Vec::new(),
@@ -96,8 +96,8 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
-    run.message_id = stream.message_id.clone();
+    run.response = stream.terminal().cloned();
+    run.message_id = stream.message_id().map(str::to_owned);
     run
 }
 
@@ -166,7 +166,9 @@ async fn reasoning_summary_stream_aggregates_each_part_once() {
     with_openai_cassette(
         "streaming_grammar/reasoning_summary_stream",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 // Low-effort turns skip the reasoning item entirely on the
                 // wire; a multi-step problem at high effort reliably yields
@@ -260,7 +262,7 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
     with_openai_cassette(
         "streaming_grammar/encrypted_reasoning_multi_part",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client.openai.endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 // Well-known riddles are answered without reasoning; a
                 // multi-step count at high effort reliably yields a reasoning
@@ -344,7 +346,9 @@ async fn parallel_tool_calls_both_survive_aggregation() {
     with_openai_cassette(
         "streaming_grammar/parallel_tool_calls",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -402,7 +406,9 @@ async fn tool_call_then_followup_text_across_turns() {
     with_openai_cassette(
         "streaming_grammar/tool_then_followup_text",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
@@ -482,7 +488,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
     with_openai_cassette(
         "streaming_grammar/three_turn_tool_session",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client.openai.endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             // A trivial tool turn skips the reasoning item entirely on the
             // wire (verified via a direct probe, even at medium effort); a
             // math sub-task at high effort reliably yields the `rs_*`
@@ -643,7 +649,9 @@ async fn incomplete_mid_tool_call_normalizes_to_length() {
     with_openai_cassette(
         "streaming_grammar/incomplete_mid_tool_call",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 .completion_request(
                     "Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.",
@@ -686,7 +694,9 @@ async fn structured_output_stream_yields_schema_conformant_text() {
     with_openai_cassette(
         "streaming_grammar/structured_output_stream",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 .completion_request(
                     "Return a concise event object for a local Rust meetup in Seattle.",
@@ -754,7 +764,9 @@ async fn previous_response_id_chains_server_side_state() {
     with_openai_cassette(
         "streaming_grammar/previous_response_id_chain",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 .completion_request("Reply with exactly one word: quartz")
                 .additional_params(json!({
@@ -826,7 +838,9 @@ async fn incomplete_max_output_tokens_normalizes_to_length() {
     with_openai_cassette(
         "streaming_grammar/incomplete_max_output_tokens",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 .completion_request("Write a 300-word essay about the history of lighthouses.")
                 .max_tokens(32)
@@ -873,7 +887,9 @@ async fn reasoning_and_answer_text_aggregate_as_discrete_parts() {
     with_openai_cassette(
         "streaming_grammar/reasoning_then_text",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(openai::GPT_5_6));
             let request = model
                 .completion_request(
                     "How many positive integers n < 200 are divisible by 6 but not by 4? \

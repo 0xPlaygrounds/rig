@@ -68,6 +68,7 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -104,10 +105,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
         }),
     }];
 
-    let response = model
-        .completion(request)
-        .await
-        .expect("completion succeeds");
+    let response = model.complete(request).await.expect("completion succeeds");
 
     let captured = endpoint.requests();
     let [captured] = captured.as_slice() else {
@@ -193,8 +191,8 @@ async fn rotated_credentials_are_presented_per_request() {
     let credentials = SentinelCredentials::rotating("rotating-token");
     let model = hosted_model(&endpoint, &credentials).await;
 
-    model.completion(request("one")).await.expect("first call");
-    model.completion(request("two")).await.expect("second call");
+    model.complete(request("one")).await.expect("first call");
+    model.complete(request("two")).await.expect("second call");
 
     let captured = endpoint.requests();
     let tokens: Vec<_> = captured
@@ -222,7 +220,7 @@ async fn a_credential_failure_keeps_the_request_off_the_wire() {
     let model = hosted_model(&endpoint, &credentials).await;
 
     let error = model
-        .completion(request("hello"))
+        .complete(request("hello"))
         .await
         .expect_err("the credentials refuse to issue a token");
 
@@ -252,7 +250,7 @@ async fn a_provider_error_preserves_the_reply_and_carries_no_request_credentials
     let model = hosted_model(&endpoint, &credentials).await;
 
     let error = model
-        .completion(request("hello"))
+        .complete(request("hello"))
         .await
         .expect_err("the endpoint refuses the request");
 
@@ -286,7 +284,7 @@ async fn a_cancelled_completion_releases_its_rpc_and_leaves_the_client_usable() 
 
     // Arrival, not elapsed time, establishes that there is real work to cancel.
     {
-        let completion = model.completion(request("abandoned"));
+        let completion = model.complete(request("abandoned"));
         tokio::pin!(completion);
         tokio::select! {
             result = &mut completion => panic!("held RPC completed before cancellation: {result:?}"),
@@ -301,7 +299,7 @@ async fn a_cancelled_completion_releases_its_rpc_and_leaves_the_client_usable() 
         "the abandoned RPC's connection was actually closed, not left dangling"
     );
 
-    let response = tokio::time::timeout(Duration::from_secs(10), model.completion(request("next")))
+    let response = tokio::time::timeout(Duration::from_secs(10), model.complete(request("next")))
         .await
         .expect("subsequent completion deadline")
         .expect("the shared client and its credentials survived the cancellation");
@@ -378,7 +376,7 @@ async fn deferred_client_initialization_failure_surfaces_on_first_use() {
 
     for attempt in 1..=2 {
         let error = model
-            .completion(request("hello"))
+            .complete(request("hello"))
             .await
             .expect_err("the SDK client cannot be built");
         assert!(

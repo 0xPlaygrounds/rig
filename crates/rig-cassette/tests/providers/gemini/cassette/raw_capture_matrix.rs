@@ -230,9 +230,13 @@ async fn raw_roundtrips_generate_content_response() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_roundtrips_generate_content_response",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -304,9 +308,13 @@ async fn raw_exposes_prompt_tokens_details() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_prompt_tokens_details",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -355,9 +363,13 @@ async fn raw_exposes_forced_function_call() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_forced_function_call",
         |client| async move {
-            capture_completion(client.completion(MODEL), forced_tool_request, sink)
-                .await
-                .expect("forced tool completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                forced_tool_request,
+                sink,
+            )
+            .await
+            .expect("forced tool completion should succeed");
         },
     )
     .await;
@@ -466,9 +478,13 @@ async fn raw_exposes_structured_output_turn() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_structured_output_turn",
         |client| async move {
-            capture_completion(client.completion(MODEL), structured_output_request, sink)
-                .await
-                .expect("structured output completion should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                structured_output_request,
+                sink,
+            )
+            .await
+            .expect("structured output completion should succeed");
         },
     )
     .await;

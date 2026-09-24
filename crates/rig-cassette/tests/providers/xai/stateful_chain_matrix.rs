@@ -28,6 +28,7 @@ fn request(history: Vec<Message>) -> CompletionRequest {
         additional_params: Some(json!({ "store": false })),
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -84,9 +85,9 @@ async fn file_id_chain() {
                     UserContent::text("How many pages does this PDF have? Answer with a number."),
                 ],
             };
-            let model = client.completion(xai::GROK_4);
+            let model = client.endpoint(|provider_config| provider_config.completion(xai::GROK_4));
             let first = model
-                .completion(request(vec![document.clone()]))
+                .complete(request(vec![document.clone()]))
                 .await
                 .expect("turn one reads the file by id");
             assert!(text(&first.choice).contains('3'), "{:?}", first.choice);
@@ -99,7 +100,7 @@ async fn file_id_chain() {
                 Message::user("Is the attached PDF longer than two pages? Answer yes or no."),
             ];
             let second = model
-                .completion(request(history))
+                .complete(request(history))
                 .await
                 .expect("turn two still reads the file by id");
             assert!(

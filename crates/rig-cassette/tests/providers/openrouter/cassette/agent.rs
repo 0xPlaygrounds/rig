@@ -9,7 +9,11 @@ use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 #[tokio::test]
 async fn completion_smoke() {
     with_openrouter_cassette("agent/completion_smoke", |client| async move {
-        let agent = client.agent(DEFAULT_MODEL).preamble(BASIC_PREAMBLE).build();
+        let agent = client
+            .endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL))
+            .into_agent_builder()
+            .preamble(BASIC_PREAMBLE)
+            .build();
 
         let response = agent
             .prompt(BASIC_PROMPT)

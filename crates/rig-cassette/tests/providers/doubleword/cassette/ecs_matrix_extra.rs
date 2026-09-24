@@ -17,8 +17,8 @@ use crate::ecs_matrix::{
 fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
-        route: Some(client.completion(QWEN3_5_9B)),
+        model: client.endpoint(|provider_config| provider_config.completion(QWEN3_5_397B_A17B)),
+        route: Some(client.endpoint(|provider_config| provider_config.completion(QWEN3_5_9B))),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
     }
@@ -46,7 +46,9 @@ async fn error_facts_unary() {
     crate::goldens::capture_world_programs(async {
         with_doubleword_cassette("error_matrix/unknown_model_blocking", |client| async move {
             error_facts(
-                client.completion("rig/definitely-not-a-doubleword-model"),
+                client.endpoint(|provider_config| {
+                    provider_config.completion("rig/definitely-not-a-doubleword-model")
+                }),
                 ErrorProbe {
                     prompt: "Reply with error-probe.",
                     max_tokens: Some(8),
@@ -77,7 +79,9 @@ async fn error_facts_streamed() {
             "error_matrix/unknown_model_streaming",
             |client| async move {
                 error_facts(
-                    client.completion("rig/definitely-not-a-doubleword-model"),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion("rig/definitely-not-a-doubleword-model")
+                    }),
                     ErrorProbe {
                         prompt: "Reply with error-probe.",
                         max_tokens: Some(8),

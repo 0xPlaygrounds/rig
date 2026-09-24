@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::gemini::Gemini;
@@ -290,9 +290,9 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
 /// The Gemini config bound to the bundled transport — what a cassette test
 /// builds its models from, now that a model is a bound wire. One config
 /// serves both Gemini surfaces: `bound.completion(m)` is GenerateContent and
-/// `bound.map_wire(|gemini| gemini.interactions(m))` is the Interactions API,
+/// `bound.endpoint(|gemini| gemini.clone().interactions(m))` is the Interactions API,
 /// which is why the interactions wrapper hands out the same type.
-pub(super) type BoundGemini = Bound<Gemini, BoxedHttpClient>;
+pub(super) type BoundGemini = Model<Gemini, BoxedHttpClient>;
 
 async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundGemini) {
     let cassette = ProviderCassette::start(
@@ -331,13 +331,12 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
         "https://generativelanguage.googleapis.com",
     )
     .await;
-    let client = Gemini::new(cassette.api_key("GEMINI_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bind(
-            rig::http_client::ReqwestClient::default()
-                .boxed()
-                .with_middleware(middleware),
-        );
+    let client = rig::driver::Model::new(
+        Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url()),
+        rig::http_client::ReqwestClient::default()
+            .boxed()
+            .with_middleware(middleware),
+    );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -554,7 +553,7 @@ async fn always_deleting_cached_contents_reporting<Fut, R>(
 {
     let outcome = AssertUnwindSafe(body).catch_unwind().await;
 
-    let caches = client.cached_contents();
+    let caches = client.endpoint(|provider_config| provider_config.cached_contents());
     let mut failures = Vec::new();
     for handle in handles {
         if let Err(error) = caches.delete(handle).await {

@@ -1,7 +1,7 @@
 //! Live-recorded coverage for the strict-schema transformation matrix.
 
 use rig::completion::{CompletionModel, ToolDefinition};
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
@@ -11,14 +11,16 @@ use super::super::support::with_anthropic_cassette;
 use super::messages_strict_tools::{assert_strict_tool_call, strict_tool_call_arguments};
 
 async fn assert_strict_schema_rejected(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     tool_name: &str,
     prompt: &str,
     parameters: Value,
 ) {
     let model = client
-        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        .map_wire(|wire| wire.with_strict_tools());
+        .endpoint(|provider_config| {
+            provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        })
+        .endpoint(|wire| wire.clone().with_strict_tools());
     let request = model
         .completion_request(prompt)
         .max_tokens(64)
@@ -30,7 +32,7 @@ async fn assert_strict_schema_rejected(
         })
         .build();
     let error = model
-        .completion(request)
+        .complete(request)
         .await
         .expect_err("Anthropic's strict compiler should reject this schema");
     assert_eq!(
@@ -1085,8 +1087,10 @@ async fn required_and_optional_property_order_schema_is_accepted() {
         "strict_schema_matrix/required_and_optional_property_order_schema_is_accepted",
         |client| async move {
             let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .endpoint(|wire| wire.clone().with_strict_tools());
             let request = model
                 .completion_request(
                     "Call record_order with required_first = yes and optional_last = included.",
@@ -1109,7 +1113,7 @@ async fn required_and_optional_property_order_schema_is_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .complete(request)
                 .await
                 .expect("strict property-order request should succeed");
             let arguments = response

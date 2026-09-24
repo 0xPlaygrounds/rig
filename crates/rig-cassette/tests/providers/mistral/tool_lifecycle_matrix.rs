@@ -261,9 +261,10 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
-    let model = client.completion(model_name(cell.model));
+    let model =
+        client.endpoint(|provider_config| provider_config.completion(model_name(cell.model)));
     match cell.transport {
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.complete(request(&model, cell)).await {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
@@ -316,7 +317,8 @@ async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
 async fn run_agent(client: BoundMistral, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
     let builder = client
-        .agent(model_name(cell.model))
+        .endpoint(|provider_config| provider_config.completion(model_name(cell.model)))
+        .into_agent_builder()
         .preamble(PREAMBLE)
         .additional_params(
             json!({ "tool_choice": "any", "parallel_tool_calls": cell.shape == Shape::Parallel }),

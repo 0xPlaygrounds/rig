@@ -29,7 +29,7 @@ use rig_core::error::ErrorReport;
 
 use rig_core::serve::ErasedHandler;
 
-use rig_core::serve::adapters::CompletionAdapter;
+use rig_core::serve::adapters::ModelAdapter;
 
 use super::cells::{Bus, Cell, Memory, ToolKind};
 use super::corpus::{self, Ending, LayerAt, Lookup, Nesting, Program};
@@ -413,7 +413,7 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
         driver
             .register_erased(
                 model_key.clone(),
-                ErasedHandler::new(CompletionAdapter::new("default", wire.model.clone())),
+                ErasedHandler::new(ModelAdapter::completion("default", wire.model.clone())),
             )
             .expect("a fresh key");
         if cell.notes {

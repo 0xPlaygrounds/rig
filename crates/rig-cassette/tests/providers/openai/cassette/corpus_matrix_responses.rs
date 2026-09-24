@@ -18,8 +18,14 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_5_MINI),
-        route: Some(client.openai.completion(GPT_5_NANO)),
+        model: client
+            .openai
+            .endpoint(|provider_config| provider_config.completion(GPT_5_MINI)),
+        route: Some(
+            client
+                .openai
+                .endpoint(|provider_config| provider_config.completion(GPT_5_NANO)),
+        ),
         temperature: None,
         additional_params: None,
     }
@@ -254,7 +260,9 @@ async fn causal_completion_streamed() {
 fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(rig::providers::openai::GPT_5_MINI),
+        model: client.openai.endpoint(|provider_config| {
+            provider_config.completion(rig::providers::openai::GPT_5_MINI)
+        }),
         route: None,
         temperature: None,
         additional_params: None,

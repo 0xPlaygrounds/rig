@@ -8,7 +8,9 @@ use rig::completion::CompletionModel;
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat("gpt-4.1-mini"),
+        model: client
+            .openai
+            .endpoint(|provider_config| provider_config.chat("gpt-4.1-mini")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

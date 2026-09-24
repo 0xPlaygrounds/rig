@@ -244,6 +244,7 @@ fn request(messages: Vec<Message>) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     }
 }
 
@@ -264,7 +265,8 @@ async fn collect_stream(
         }
     }
     let terminal = response
-        .response
+        .terminal()
+        .cloned()
         .ok_or("stream did not emit a final response")?;
     // The local record rides the terminal's `raw`, typed back here.
     let raw: CandleCompletionResponse = serde_json::from_value(terminal.raw)?;
@@ -1185,7 +1187,7 @@ async fn closed_admission_controller_fails_public_operations()
     let loaded = &model.state;
     loaded.concurrency.close();
     let completion_error = model
-        .completion(request(vec![Message::user("hello")]))
+        .complete(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("closed completion admission unexpectedly succeeded")?;
@@ -1215,7 +1217,7 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     let first_model = model.clone();
     let first = tokio::spawn(async move {
         first_model
-            .completion(request(vec![Message::user("hello")]))
+            .complete(request(vec![Message::user("hello")]))
             .await
     });
     control.wait_until_entered().await;
@@ -1257,14 +1259,13 @@ async fn dropping_stream_cancels_worker_before_queued_request_runs()
 
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test(flavor = "current_thread")]
-async fn public_stream_cancel_stops_worker_without_dropping_response()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn dropping_a_stream_stops_its_worker() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+{
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let stream = model.stream(request(vec![Message::user("hello")])).await?;
     control.wait_until_entered().await;
 
-    stream.cancel();
-    assert!(stream.next().await.is_none());
+    drop(stream);
     let queued = model.raw_completion(request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
@@ -1273,7 +1274,6 @@ async fn public_stream_cancel_stops_worker_without_dropping_response()
     control.release()?;
     let queued = queued.await?;
     assert_eq!(queued.generated_tokens, 2);
-    assert!(stream.next().await.is_none());
     Ok(())
 }
 
@@ -1304,7 +1304,7 @@ async fn blocking_task_panic_maps_to_typed_completion_error()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, _, _) = controlled_model(false, true, 1)?;
     let error = model
-        .completion(request(vec![Message::user("hello")]))
+        .complete(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("blocking task panic unexpectedly succeeded")?;
@@ -1606,7 +1606,8 @@ async fn stream_from_events_terminal_carries_raw()
         item?;
     }
     let terminal = stream
-        .response
+        .terminal()
+        .cloned()
         .ok_or("stream did not emit a terminal record")?;
 
     assert!(
@@ -1637,7 +1638,7 @@ async fn completion_raw_round_trips_into_the_local_record()
         .build()?;
 
     let response = model
-        .completion(request(vec![Message::user("hello")]))
+        .complete(request(vec![Message::user("hello")]))
         .await?;
     let escape_hatch = model
         .raw_completion(request(vec![Message::user("hello")]))
@@ -1686,7 +1687,8 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
         item?;
     }
     let terminal = stream
-        .response
+        .terminal()
+        .cloned()
         .ok_or("stream did not emit a terminal record")?;
     let (_, streamed) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
 
@@ -1713,7 +1715,8 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
         item?;
     }
     let renormalized = renormalized
-        .response
+        .terminal()
+        .cloned()
         .ok_or("re-normalizing the capture did not emit a terminal record")?;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);

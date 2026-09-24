@@ -2,7 +2,6 @@ use crate::completion::CompletionModel;
 use google_cloud_aiplatform_v1 as vertexai;
 use google_cloud_auth::credentials;
 use google_cloud_auth::credentials::Credentials;
-use rig_core::driver::CompletionProvider;
 use rig_core::error::ProviderError;
 use std::sync::Arc;
 use thiserror::Error;
@@ -279,10 +278,9 @@ impl Client {
     }
 }
 
-impl CompletionProvider for Client {
-    type Model = CompletionModel;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Model {
+impl Client {
+    /// This provider's completion model for `model`.
+    pub fn completion(&self, model: impl Into<String>) -> CompletionModel {
         CompletionModel::new(self.clone(), model.into())
     }
 }

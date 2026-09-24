@@ -278,6 +278,7 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         },
     )
     .expect("request build");
@@ -330,6 +331,7 @@ fn create_grpc_request_populates_tool_parameters() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         },
     )
     .expect("request build");
@@ -455,6 +457,7 @@ fn a_signature_on_answer_text_stays_on_that_text() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         },
     )
     .expect("request build");
@@ -689,6 +692,7 @@ fn only_gemini_reasoning_is_replayed() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            extensions: Default::default(),
         },
     )
     .expect("request build");

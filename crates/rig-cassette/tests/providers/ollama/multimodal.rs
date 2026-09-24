@@ -19,7 +19,8 @@ async fn multimodal_image_prompt() {
         .bound()
         .expect("transport should build");
     let agent = ollama
-        .agent("llava")
+        .endpoint(|provider_config| provider_config.completion("llava"))
+        .into_agent_builder()
         .preamble("Describe this image and include anything notable about it.")
         .temperature(0.5)
         .build();

@@ -18,7 +18,8 @@ async fn streaming() {
     with_anthropic_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
         let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .into_agent_builder()
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(16384)
             .tool(WeatherTool::new(call_count.clone()))
@@ -59,7 +60,8 @@ async fn nonstreaming() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(16384)
                 .tool(WeatherTool::new(call_count.clone()))

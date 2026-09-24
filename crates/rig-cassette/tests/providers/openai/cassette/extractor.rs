@@ -12,7 +12,8 @@ async fn extractor_smoke() {
     with_openai_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
             .openai
-            .extractor::<SmokePerson>(openai::GPT_4O)
+            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .into_extractor_builder::<SmokePerson>()
             .build();
 
         let response = extractor

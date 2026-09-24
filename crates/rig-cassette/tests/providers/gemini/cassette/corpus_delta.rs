@@ -23,7 +23,11 @@ async fn interactions_baseline_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_delta_cassette("corpus_delta/interactions_baseline", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
-            .map_wire(|config| config.interactions(gemini::completion::GEMINI_2_5_FLASH))
+            .endpoint(|config| {
+                config
+                    .clone()
+                    .interactions(gemini::completion::GEMINI_2_5_FLASH)
+            })
             .into_agent_builder()
             .name("golden")
             .preamble(TOOLS_PREAMBLE)

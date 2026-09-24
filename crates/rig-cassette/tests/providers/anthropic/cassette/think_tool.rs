@@ -11,7 +11,10 @@ use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_respo
 async fn think_tool_menu_planning() {
     with_anthropic_cassette("think_tool/think_tool_menu_planning", |client| async move {
         let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| {
+                provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            })
+            .into_agent_builder()
             .name("Anthropic Thinker")
             .preamble(
                 "You are a helpful assistant that can solve complex problems. \

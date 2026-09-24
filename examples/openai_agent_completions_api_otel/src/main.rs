@@ -45,7 +45,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent = OpenAI::from_env()?
         .with_route(Route::Chat)
         .bound()?
-        .agent(openai::GPT_4O)
+        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+        .into_agent_builder()
         .preamble("You are a helpful assistant")
         .build();
 

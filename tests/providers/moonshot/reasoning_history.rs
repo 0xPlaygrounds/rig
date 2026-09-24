@@ -24,7 +24,7 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
         .expect("MOONSHOT_API_KEY should be set")
         .bound()
         .expect("moonshot client should build")
-        .completion(moonshot::KIMI_K3);
+        .endpoint(|provider_config| provider_config.completion(moonshot::KIMI_K3));
     let assistant = Message::Assistant {
         id: None,
         content: vec![
@@ -34,7 +34,7 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
     };
 
     let response = model
-        .completion(
+        .complete(
             model
                 .completion_request("What color was I asked to remember? Reply with one word.")
                 .message(Message::user("Remember the secret color is teal."))

@@ -1,7 +1,6 @@
 use super::*;
 use crate::decode::DecodeAnswer;
 use anyhow::ensure;
-use rig_core::driver::Bind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -75,9 +74,10 @@ async fn recorded_mixed_batch() -> anyhow::Result<()> {
         ["No deadline", "Within a week", "Today"],
     )?;
     let refund = Noul::new("Does the customer explicitly request a refund?")?;
-    let client = Jev::new("test-token")
-        .with_endpoint(server.url("/v1/systemone"))
-        .bind(rig_reqwest::ReqwestClient::default());
+    let client = rig_core::driver::Model::new(
+        Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
+        rig_reqwest::ReqwestClient::default(),
+    );
     let result = client
         .evaluate(
             &fixture
@@ -242,9 +242,10 @@ async fn recorded_structured_batch_into_named_answers() -> anyhow::Result<()> {
         urgency: answer.urgency,
         refund: answer.refund,
     });
-    let client = Jev::new("test-token")
-        .with_endpoint(server.url("/v1/systemone"))
-        .bind(rig_reqwest::ReqwestClient::default());
+    let client = rig_core::driver::Model::new(
+        Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
+        rig_reqwest::ReqwestClient::default(),
+    );
     let state = fixture
         .request
         .get("state")
@@ -306,9 +307,10 @@ async fn recorded_rounded_probability_matrix() -> anyhow::Result<()> {
                 .json_body(fixture.response.clone());
         })
         .await;
-    let client = Jev::new("test-token")
-        .with_endpoint(server.url("/v1/systemone"))
-        .bind(rig_reqwest::ReqwestClient::default());
+    let client = rig_core::driver::Model::new(
+        Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
+        rig_reqwest::ReqwestClient::default(),
+    );
     let state = fixture
         .request
         .get("state")
@@ -399,9 +401,10 @@ async fn preserves_http_error_metadata() -> anyhow::Result<()> {
                     .body(r#"{"error":"overloaded"}"#);
             })
             .await;
-        let client = Jev::new("test-token")
-            .with_endpoint(server.url("/v1/systemone"))
-            .bind(rig_reqwest::ReqwestClient::default());
+        let client = rig_core::driver::Model::new(
+            Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
+            rig_reqwest::ReqwestClient::default(),
+        );
         let error = client
             .evaluate(&"state", Noul::new("Ready?")?.named("ready")?)
             .await
@@ -434,9 +437,10 @@ async fn rejects_missing_and_extra_response_ids() -> anyhow::Result<()> {
                     .json_body(json!({"model":"test", "answers": answers}));
             })
             .await;
-        let client = Jev::new("test-token")
-            .with_endpoint(server.url("/v1/systemone"))
-            .bind(rig_reqwest::ReqwestClient::default());
+        let client = rig_core::driver::Model::new(
+            Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
+            rig_reqwest::ReqwestClient::default(),
+        );
         ensure!(
             matches!(client.evaluate(&"state", Noul::new("Ready?")?.named("ready")?).await,
             Err(ProviderError::Response(message)) if message == "response question IDs differ from request")

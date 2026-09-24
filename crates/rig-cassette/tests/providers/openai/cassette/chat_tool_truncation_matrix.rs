@@ -45,7 +45,6 @@ use std::sync::{
 use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::driver::Bound;
 use rig::prelude::*;
 use rig::providers::openai::wire::Chat;
 use rig::streaming::StreamEvent;
@@ -137,7 +136,7 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(model: &rig::driver::Model<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .preamble(PREAMBLE.to_owned())
@@ -195,12 +194,14 @@ impl Tool for FileReport {
 }
 
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = client
+        .openai
+        .endpoint(|provider_config| provider_config.chat(model_name(cell.model)));
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
         // normalization, keeping the native value on `CompletionResponse::raw`.
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.complete(request(&model, cell)).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -246,7 +247,8 @@ async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
     let agent = client
         .chat
-        .agent(model_name(cell.model))
+        .endpoint(|provider_config| provider_config.completion(model_name(cell.model)))
+        .into_agent_builder()
         .preamble(PREAMBLE)
         .tool(FileReport {
             invocations: Arc::clone(&invocations),

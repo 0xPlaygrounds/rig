@@ -103,7 +103,7 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
         |client| async move {
             let error = client
                 .openai
-                .responses("gpt-4o-mini")
+                .endpoint(|provider_config| provider_config.responses("gpt-4o-mini"))
                 .responses_websocket()
                 .await
                 .err()
@@ -143,7 +143,9 @@ async fn handshake_rejection_matches_the_http_twin() {
     with_openai_websocket_cassette(
         "websocket_error_identity_matrix/handshake_rejection_matches_the_http_twin",
         |client| async move {
-            let model = client.openai.responses("gpt-4o-mini");
+            let model = client
+                .openai
+                .endpoint(|provider_config| provider_config.responses("gpt-4o-mini"));
             let websocket_error = model
                 .responses_websocket()
                 .await
@@ -151,7 +153,7 @@ async fn handshake_rejection_matches_the_http_twin() {
                 .expect("an invalid key must fail the upgrade");
 
             let http_error = model
-                .completion(model.completion_request("Never authenticated").build())
+                .complete(model.completion_request("Never authenticated").build())
                 .await
                 .expect_err("the same key must fail the unary request");
 

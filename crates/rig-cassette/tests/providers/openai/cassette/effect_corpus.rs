@@ -64,7 +64,8 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .openai
-            .agent(openai::GPT_4O)
+            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .into_agent_builder()
             .name("golden")
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -113,7 +114,8 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .openai
-            .agent(openai::GPT_4O)
+            .endpoint(|provider_config| provider_config.completion(openai::GPT_4O))
+            .into_agent_builder()
             .name("golden")
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)

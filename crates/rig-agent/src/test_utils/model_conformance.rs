@@ -1247,7 +1247,7 @@ where
             .max_tokens(32)
             .build()
     };
-    let buffered = model.completion(request()).await?;
+    let buffered = model.complete(request()).await?;
     let buffered_text = buffered
         .choice
         .iter()
@@ -1939,7 +1939,7 @@ where
     let tools = vec![definition("alpha"), definition("beta")];
     let started = Instant::now();
     let none = model
-        .completion(
+        .complete(
             model
                 .completion_request("Answer with only the number 4. Do not call a function.")
                 .tools(tools.clone())
@@ -1961,7 +1961,7 @@ where
     }
 
     let required = model
-        .completion(
+        .complete(
             model
                 .completion_request("Call alpha with value 7.")
                 .tools(tools.clone())
@@ -1984,7 +1984,7 @@ where
     }
 
     let specific = model
-        .completion(
+        .complete(
             model
                 .completion_request("Call beta with value 9.")
                 .tools(tools)

@@ -146,7 +146,10 @@ async fn tool_result_redacted_by_hook_blocking() {
         move |client| async move {
             let execution_probe = tool.clone();
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(PREAMBLE)
                 .tool(tool)
                 .add_hook(RedactSsnFromResult)
@@ -180,7 +183,10 @@ async fn tool_result_redacted_by_hook_streaming() {
         move |client| async move {
             let execution_probe = tool.clone();
             let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                })
+                .into_agent_builder()
                 .preamble(PREAMBLE)
                 .tool(tool)
                 .add_hook(RedactSsnFromResult)

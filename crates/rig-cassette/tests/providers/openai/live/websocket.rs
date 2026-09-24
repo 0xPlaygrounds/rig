@@ -29,7 +29,7 @@ async fn websocket_session_roundtrip() -> Result<()> {
         .expect("config should build from env")
         .bound()
         .expect("transport should build");
-    let model = client.responses(openai::GPT_4O_MINI);
+    let model = client.endpoint(|provider_config| provider_config.responses(openai::GPT_4O_MINI));
     let mut session = model.responses_websocket().await?;
 
     let warmup_request = model

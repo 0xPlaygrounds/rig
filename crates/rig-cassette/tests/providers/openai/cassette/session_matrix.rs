@@ -27,9 +27,15 @@ fn models(
     impl CompletionModel + Clone + 'static,
 ) {
     (
-        client.openai.responses("gpt-5-mini"),
-        client.openai.responses("gpt-5-mini"),
-        client.openai.responses("gpt-5.2"),
+        client
+            .openai
+            .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
+        client
+            .openai
+            .endpoint(|provider_config| provider_config.responses("gpt-5-mini")),
+        client
+            .openai
+            .endpoint(|provider_config| provider_config.responses("gpt-5.2")),
     )
 }
 

@@ -67,9 +67,13 @@ async fn raw_is_the_verbatim_response_body() {
     with_perplexity_cassette(
         "raw_capture_matrix/raw_round_trips_openai_type",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("the turn should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("the turn should succeed");
         },
     )
     .await;
@@ -110,9 +114,13 @@ async fn raw_exposes_object_and_citations() {
     with_perplexity_cassette(
         "raw_capture_matrix/raw_exposes_object_not_citations",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("the turn should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("the turn should succeed");
         },
     )
     .await;
@@ -160,9 +168,13 @@ async fn normalized_fields_match_raw_renormalized() {
     with_perplexity_cassette(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("the turn should succeed");
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("the turn should succeed");
         },
     )
     .await;

@@ -10,7 +10,8 @@ use super::super::support::with_venice_cassette;
 #[tokio::test]
 async fn transcription_smoke() {
     with_venice_cassette("transcription/transcription_smoke", |client| async move {
-        let model = client.transcription(venice::WHISPER_LARGE_V3);
+        let model = client
+            .endpoint(|provider_config| provider_config.transcriptions(venice::WHISPER_LARGE_V3));
         let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
             .expect("should be able to load audio fixture")
             .send()

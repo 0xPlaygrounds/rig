@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model
-    let model = client.embedding("bge-m3", None);
+    let model = client.endpoint(|provider_config| provider_config.embeddings("bge-m3", None));
 
     // Create embeddings builder
     let mut builder = EmbeddingsBuilder::new(model.clone());
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
 
     // Create RAG agent
     let rag_agent = client
-        .agent("deepseek-r1")
+        .endpoint(|provider_config| provider_config.completion("deepseek-r1")).into_agent_builder()
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
         .dynamic_context(1, index)
         .build();

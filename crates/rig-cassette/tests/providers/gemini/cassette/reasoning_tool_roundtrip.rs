@@ -18,7 +18,8 @@ async fn streaming() {
         "reasoning_tool_roundtrip/streaming",
         |client| async move {
             let agent = client
-                .agent("gemini-2.5-flash")
+                .endpoint(|provider_config| provider_config.completion("gemini-2.5-flash"))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
@@ -49,7 +50,8 @@ async fn nonstreaming() {
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
             let agent = client
-                .agent("gemini-2.5-flash")
+                .endpoint(|provider_config| provider_config.completion("gemini-2.5-flash"))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))

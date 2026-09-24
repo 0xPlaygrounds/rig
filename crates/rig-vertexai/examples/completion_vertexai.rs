@@ -1,6 +1,5 @@
 use anyhow::Context;
 use rig_core::completion::CompletionModel;
-use rig_core::driver::CompletionProvider;
 use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 
 #[tokio::main]
@@ -18,7 +17,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let response = model
-        .completion(request)
+        .complete(request)
         .await
         .context("Failed to get completion")?;
 

@@ -14,7 +14,8 @@ use super::{
 #[ignore = "requires AWS credentials and Bedrock vision model access"]
 async fn image_prompt_from_fixture() {
     let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+        .completion(BEDROCK_COMPLETION_MODEL)
+        .into_agent_builder()
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

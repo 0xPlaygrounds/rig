@@ -8,7 +8,7 @@
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, MemoryOp};
 use rig::message::Message;
 use rig::prelude::*;
@@ -104,13 +104,14 @@ async fn run_prompts(agent: &rig::agent::Agent, prompts: &[&str], streamed: bool
 
 /// A memory program on the agent's own bus.
 async fn remembers(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     clears: Clears,
     prompts: &[&str],
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let builder = client
-        .agent(CLAUDE_SONNET_4_6)
+        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .into_agent_builder()
         .name("golden")
         .preamble(BASIC_PREAMBLE)
         .temperature(0.0)
@@ -236,7 +237,8 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/history_bypass", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .into_agent_builder()
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)
@@ -275,9 +277,10 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
         driver
             .register_erased(
                 model_key.clone(),
-                rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+                rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::completion(
                     "default",
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client
+                        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6)),
                 )),
             )
             .expect("a fresh key");
@@ -315,7 +318,8 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/serial_two_tools", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+            .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+            .into_agent_builder()
             .name("golden")
             .configure_bus(ServingPolicy {
                 serial_per_handler: true,
@@ -358,11 +362,12 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
 /// An `Append` that fails: the record holds the error and the run ends
 /// in its answer regardless.
 async fn append_fails(
-    client: Bound<Anthropic>,
+    client: Model<Anthropic>,
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let builder = client
-        .agent(CLAUDE_SONNET_4_6)
+        .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+        .into_agent_builder()
         .name("golden")
         .preamble(BASIC_PREAMBLE)
         .temperature(0.0)

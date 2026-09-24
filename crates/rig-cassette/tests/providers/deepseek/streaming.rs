@@ -10,7 +10,8 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 async fn streaming_prompt_smoke() {
     with_deepseek_cassette("streaming/streaming_prompt_smoke", |client| async move {
         let agent = client
-            .agent(DEEPSEEK_V4_FLASH)
+            .endpoint(|provider_config| provider_config.completion(DEEPSEEK_V4_FLASH))
+            .into_agent_builder()
             .preamble("You are a helpful assistant.")
             .build();
 

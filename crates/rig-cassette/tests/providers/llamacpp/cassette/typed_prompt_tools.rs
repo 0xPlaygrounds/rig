@@ -170,7 +170,7 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
         let call_count = Arc::new(AtomicUsize::new(0));
 
         let agent = client
-            .agent(model)
+            .endpoint(|provider_config| provider_config.completion(model)).into_agent_builder()
             .tool(WeatherTool::new(call_count.clone()))
             .preamble(
                 "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result.",
@@ -211,7 +211,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
 
         let call_count = Arc::new(AtomicUsize::new(0));
         let agent = client
-            .agent(CASSETTE_MODEL)
+            .endpoint(|provider_config| provider_config.completion(CASSETTE_MODEL)).into_agent_builder()
             .preamble(
                 "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
                  The only valid tool name is `weather`; never invent or call any other tool. \

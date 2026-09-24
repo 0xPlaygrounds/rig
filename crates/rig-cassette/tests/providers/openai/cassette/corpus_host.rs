@@ -1,5 +1,5 @@
 //! Matrix I of the effect corpus, the embedding cells: a hook embeds the
-//! prompt through the host's `EmbedAdapter` (`text-embedding-3-small`)
+//! prompt through the host's `ModelAdapter` (`text-embedding-3-small`)
 //! before the completion (`gpt-4o`, temperature 0). Both are on the wire;
 //! each cell is a new recording under `crates/rig-cassette/fixtures/cassettes/openai/corpus_host/`.
 
@@ -35,20 +35,22 @@ async fn embeds_over_host(
     driver
         .register_erased(
             model_key.clone(),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::completion(
                 "default",
-                client.openai.completion(openai::GPT_4O),
+                client
+                    .openai
+                    .endpoint(|provider_config| provider_config.completion(openai::GPT_4O)),
             )),
         )
         .expect("a fresh key");
     driver
         .register_erased(
             HandlerKey::from(EMBED_KEY),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::embedding(
                 "host",
-                client
-                    .openai
-                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+                client.openai.endpoint(|provider_config| {
+                    provider_config.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None)
+                }),
             )),
         )
         .expect("a fresh key");

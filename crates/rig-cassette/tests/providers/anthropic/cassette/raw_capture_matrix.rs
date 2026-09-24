@@ -51,7 +51,7 @@
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition,
 };
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{CompletionResponse, Content};
@@ -84,7 +84,7 @@ const RENORMALIZED_SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_
 const THINKING_SCENARIO: &str = "raw_capture_matrix/raw_exposes_thinking_block_and_signature";
 const TOOL_USE_SCENARIO: &str = "raw_capture_matrix/raw_exposes_tool_use_block";
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages>;
 
 fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(32).build()
@@ -236,7 +236,9 @@ async fn raw_round_trips_into_provider_type() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                }),
                 probe_request,
                 sink,
             )
@@ -299,7 +301,9 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                }),
                 |model| {
                     model
                         .completion_request(IMMEDIATE_PROMPT)
@@ -374,7 +378,9 @@ async fn normalized_fields_match_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_completion(
-                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    }),
                     probe_request,
                     sink,
                 )
@@ -453,7 +459,9 @@ async fn raw_exposes_thinking_block_and_signature() {
             let sink = sink.clone();
             move |client| async move {
                 capture_completion(
-                    client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                    client.endpoint(|provider_config| {
+                        provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    }),
                     thinking_request,
                     sink,
                 )
@@ -591,7 +599,9 @@ async fn raw_exposes_tool_use_block() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.endpoint(|provider_config| {
+                    provider_config.completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                }),
                 tool_request,
                 sink,
             )

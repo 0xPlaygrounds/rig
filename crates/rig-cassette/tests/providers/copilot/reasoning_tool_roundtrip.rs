@@ -15,7 +15,8 @@ async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = live_client()
         .await
-        .agent(live_responses_model())
+        .endpoint(|provider_config| provider_config.completion(live_responses_model()))
+        .into_agent_builder()
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -49,7 +50,8 @@ async fn nonstreaming() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .agent(live_responses_model())
+                .endpoint(|provider_config| provider_config.completion(live_responses_model()))
+                .into_agent_builder()
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))

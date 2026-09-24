@@ -57,12 +57,14 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         }]
     });
     let http_client = RecordingHttpClient::new(response.to_string());
-    let client = OpenAI::new("test-key")
-        .with_base_url("http://localhost:8000/v1")
-        .bind(http_client.clone());
+    let client = rig::driver::Model::new(
+        OpenAI::new("test-key").with_base_url("http://localhost:8000/v1"),
+        http_client.clone(),
+    );
 
     let extracted = client
-        .extractor::<KeywordPayload>("gpt-oss-120b")
+        .endpoint(|provider_config| provider_config.completion("gpt-oss-120b"))
+        .into_extractor_builder::<KeywordPayload>()
         .build()
         .extract("What fruit is mentioned in the database?")
         .await

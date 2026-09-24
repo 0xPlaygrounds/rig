@@ -399,7 +399,7 @@ async fn messages_document_file_id_roundtrip_live() {
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
                 let agent = client
-                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .endpoint(|provider_config| provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)).into_agent_builder()
                     .preamble(DOCUMENT_PREAMBLE)
                     .build();
                 let mut history = Vec::new();
@@ -461,7 +461,10 @@ async fn streaming_document_file_id_roundtrip_live() {
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
                 let agent = client
-                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .endpoint(|provider_config| {
+                        provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    })
+                    .into_agent_builder()
                     .preamble(DOCUMENT_PREAMBLE)
                     .build();
 
@@ -497,7 +500,7 @@ async fn file_id_chain() {
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
                 let agent = client
-                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .endpoint(|provider_config| provider_config.completion(anthropic::completion::CLAUDE_SONNET_4_6)).into_agent_builder()
                     .preamble(DOCUMENT_PREAMBLE)
                     .build();
                 let mut history = Vec::new();

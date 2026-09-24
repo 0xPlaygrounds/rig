@@ -21,7 +21,7 @@ use crate::{
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::completion::{self, CompletionRequest};
 use rig_core::error::ProviderError;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 use rig_core::telemetry::ProviderResponseExt;
 use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use tracing::Instrument;
@@ -256,7 +256,7 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    async fn completion(
+    async fn complete(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, ProviderError> {
@@ -264,10 +264,7 @@ impl completion::CompletionModel for CompletionModel {
         completion_response(self.raw_completion(completion_request).await?, &model)
     }
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
+    async fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
         CompletionModel::stream(self, request).await
     }
 }

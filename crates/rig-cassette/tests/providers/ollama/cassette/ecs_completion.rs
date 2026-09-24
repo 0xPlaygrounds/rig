@@ -9,7 +9,11 @@ async fn completion_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_ollama_cassette("agent/completion_smoke", |client| async move {
-                let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(
+                    client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                    BASIC_PREAMBLE,
+                    1,
+                );
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -51,7 +55,11 @@ async fn completion_respects_max_tokens() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_ollama_cassette("agent/max_tokens", |client| async move {
-                let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(
+                    client.endpoint(|provider_config| provider_config.completion(MODEL)),
+                    BASIC_PREAMBLE,
+                    1,
+                );
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)

@@ -1,7 +1,7 @@
 //! Hello, model: the bus in a `World` in under thirty lines of user code.
 //! Add the plugin, register a handler, spawn an effect, observe the answer.
 //! The model is a scripted mock, so no provider feature and no key: the
-//! shape is the same with a real `CompletionAdapter` registered under the
+//! shape is the same with a real `ModelAdapter` registered under the
 //! key.
 
 #![allow(
@@ -55,6 +55,7 @@ fn ask(mut commands: Commands) {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        extensions: Default::default(),
     };
     commands.spawn(PendingEffect::new(
         "model",

@@ -102,7 +102,8 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
                 {
                     client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(TINY_CAP)
@@ -152,7 +153,8 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
                 {
                     let agent = client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(TINY_CAP)
@@ -194,7 +196,8 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
                 {
                     client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -235,7 +238,8 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
                 {
                     let agent = client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -273,7 +277,8 @@ async fn blocking_tool_turn_reports_tool_calls() {
                 {
                     client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(TOOL_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -319,7 +324,8 @@ async fn streaming_tool_turn_reports_tool_calls() {
                 {
                     let agent = client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(TOOL_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -368,7 +374,8 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
                 {
                     client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         // The agent baseline. Neither attempt should report it: the
@@ -426,7 +433,8 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
                 {
                     let agent = client
                         .chat
-                        .agent(openai::GPT_4O_MINI)
+                        .endpoint(|provider_config| provider_config.completion(openai::GPT_4O_MINI))
+                        .into_agent_builder()
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         // The agent baseline. Neither attempt should report it: the

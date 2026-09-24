@@ -110,7 +110,13 @@ async fn raw_round_trips_mistral_type() {
     let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_capture_matrix/raw_round_trips_mistral_type",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("raw_round_trips_mistral_type should replay from its cassette");
@@ -147,7 +153,13 @@ async fn raw_exposes_object_and_service_tier() {
     let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_capture_matrix/raw_exposes_object_and_service_tier",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("raw_exposes_object_and_service_tier should replay from its cassette");
@@ -182,7 +194,13 @@ async fn normalized_fields_match_raw_renormalized() {
     let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
+                request,
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
@@ -256,7 +274,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
         "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call",
         |client| {
             capture_completion(
-                client.completion(DEFAULT_MODEL),
+                client.endpoint(|provider_config| provider_config.completion(DEFAULT_MODEL)),
                 tool_request,
                 observed.clone(),
             )

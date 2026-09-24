@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Ollama's native chat wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`CompletionStream::snapshot`], the terminal [`StreamFinal`]
 //! record, usage, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -38,7 +38,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_blocks: Vec::new(),
@@ -83,7 +83,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.terminal().cloned();
     run
 }
 
@@ -116,7 +116,7 @@ async fn thinking_and_tool_call_in_one_stream() {
     with_ollama_cassette(
         "streaming_grammar/thinking_and_tool_call",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
@@ -181,7 +181,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
     with_ollama_cassette(
         "streaming_grammar/parallel_tool_calls",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let request = model
                 .completion_request(
                     "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
@@ -265,7 +265,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
 #[tokio::test]
 async fn same_tool_called_twice_in_one_turn_stays_distinct() {
     with_ollama_cassette("streaming_grammar/same_tool_twice", |client| async move {
-        let model = client.completion(MODEL);
+        let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
         let request = model
             .completion_request(
                 "/no_think Use the `add` tool twice in this single reply, before any text: \
@@ -350,7 +350,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
     with_ollama_cassette(
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let history = vec![
                 rig::message::Message::user(
                     "/no_think Use the add tool to compute 2 + 3, then state the result.",

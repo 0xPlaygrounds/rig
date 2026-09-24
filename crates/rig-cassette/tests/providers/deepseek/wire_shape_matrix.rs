@@ -115,9 +115,9 @@ async fn blocking_image_base64_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_base64_part_reaches_the_wire",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request(multimodal_prompt(red_png()))
                         .additional_params(non_thinking_params())
@@ -146,9 +146,9 @@ async fn blocking_image_url_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_url_part_reaches_the_wire",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request(multimodal_prompt(UserContent::image_url(
                             "https://example.invalid/red.png",
@@ -180,9 +180,9 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request(multimodal_prompt(UserContent::Document(
                             rig::message::Document {
@@ -216,9 +216,9 @@ async fn blocking_audio_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_audio_part_reaches_the_wire",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request(multimodal_prompt(UserContent::audio(
                             "aGVsbG8=",
@@ -249,9 +249,9 @@ async fn blocking_video_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_video_part_reaches_the_wire",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request(multimodal_prompt(UserContent::Video(
                             rig::message::Video {
@@ -291,9 +291,9 @@ async fn blocking_image_only_message_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_only_message_reaches_the_wire",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request(Message::User {
                             content: vec![red_png()],
@@ -324,7 +324,7 @@ async fn streaming_image_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/streaming_image_part_reaches_the_wire",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             // The SSE connect may surface the rejection as a connect error or
             // as the stream's first item, depending on how the transport
             // reports a 400 on an event-stream request; both are the provider
@@ -376,9 +376,9 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request(Message::User {
                             content: vec![
@@ -421,9 +421,9 @@ async fn blocking_text_document_still_flattens_to_a_string() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_text_document_still_flattens_to_a_string",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("What is the code word? Answer with just the word.")
                         .document(Document {
@@ -458,9 +458,9 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_assistant_and_tool_history_still_flattens",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("Now say: history-ok")
                         .message(Message::Assistant {
@@ -599,9 +599,9 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/rig_suppresses_a_forced_tool_choice_while_thinking_is_on",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("ping")
                         .tool(crate::support::zero_arg_tool_definition("ping"))
@@ -634,9 +634,9 @@ async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/rig_keeps_a_forced_tool_choice_when_thinking_is_disabled",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let response = model
-                .completion(
+                .complete(
                     model
                         .completion_request("ping")
                         .tool(crate::support::zero_arg_tool_definition("ping"))
@@ -671,9 +671,9 @@ async fn chat_completion_rejects_an_unknown_model_with_the_provider_body() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body",
         |client| async move {
-            let model = client.completion("deepseek-v9-nonexistent");
+            let model = client.endpoint(|provider_config| provider_config.completion("deepseek-v9-nonexistent"));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request("hi")
                         .additional_params(non_thinking_params())
@@ -699,9 +699,9 @@ async fn chat_completion_rejects_a_bogus_key_with_the_provider_body() {
     with_deepseek_cassette_bogus_key_result(
         "wire_shape_matrix/chat_completion_rejects_a_bogus_key_with_the_provider_body",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let error = model
-                .completion(
+                .complete(
                     model
                         .completion_request("hi")
                         .additional_params(non_thinking_params())
@@ -739,7 +739,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_repeated_prompt_reports_the_cache_split",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let build = || {
                 model
                     .completion_request(cache_probe_prompt())
@@ -750,7 +750,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
 
             // DeepSeek's own split is on the reply document; only the hit
             // half has a normalized slot.
-            let first = model.completion(build()).await?;
+            let first = model.complete(build()).await?;
             let first_usage = first.raw["usage"].clone();
             let hit = first_usage["prompt_cache_hit_tokens"]
                 .as_u64()
@@ -766,7 +766,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
                 "hit + miss accounts for the whole prompt: {first_usage}"
             );
 
-            let second = model.completion(build()).await?;
+            let second = model.complete(build()).await?;
             let second_usage = second.raw["usage"].clone();
             let second_hit = second_usage["prompt_cache_hit_tokens"]
                 .as_u64()
@@ -798,7 +798,7 @@ async fn streaming_repeated_prompt_reports_the_cache_split() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/streaming_repeated_prompt_reports_the_cache_split",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.endpoint(|provider_config| provider_config.completion(MODEL));
             let build = || {
                 model
                     .completion_request(cache_probe_prompt())

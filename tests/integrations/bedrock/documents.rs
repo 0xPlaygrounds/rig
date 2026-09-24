@@ -28,7 +28,8 @@ Key Features:
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn plaintext_document_prompt() {
     let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+        .completion(BEDROCK_COMPLETION_MODEL)
+        .into_agent_builder()
         .preamble("Summarize the provided document.")
         .temperature(0.5)
         .build();
@@ -52,7 +53,8 @@ async fn plaintext_document_prompt() {
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn plaintext_document_with_instruction() {
     let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+        .completion(BEDROCK_COMPLETION_MODEL)
+        .into_agent_builder()
         .preamble("Answer from the provided document.")
         .temperature(0.5)
         .build();

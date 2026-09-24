@@ -19,7 +19,8 @@ async fn url_pdf_document_prompt() {
         "url_pdf_document/url_pdf_document_prompt",
         |client| async move {
             let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+                .endpoint(|provider_config| provider_config.completion(CLAUDE_SONNET_4_6))
+                .into_agent_builder()
                 .preamble("You are a helpful assistant that analyzes documents.")
                 .temperature(0.0)
                 .build();

@@ -113,7 +113,7 @@ async fn adapted<M: CompletionModel + Clone + 'static>(model: M, direct: bool) -
         Box::pin(model.stream(request).await.unwrap())
     } else {
         let handler = rig_core::serve::ErasedHandler::new(
-            rig_core::serve::adapters::CompletionAdapter::new("probe", model),
+            rig_core::serve::adapters::ModelAdapter::completion("probe", model),
         );
         handler
             .handle(
@@ -132,27 +132,30 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
     match provider {
         "openai" => {
             adapted(
-                OpenAI::with_key(&OPENAI, "test-not-a-key")
-                    .bind(http)
-                    .chat("gpt-4o"),
+                rig::driver::Model::new(
+                    OpenAI::with_key(&OPENAI, "test-not-a-key").chat("gpt-4o"),
+                    http,
+                ),
                 direct,
             )
             .await
         }
         "deepseek" => {
             adapted(
-                OpenAI::with_key(&DEEPSEEK, "test-not-a-key")
-                    .bind(http)
-                    .completion("deepseek-reasoner"),
+                rig::driver::Model::new(
+                    OpenAI::with_key(&DEEPSEEK, "test-not-a-key").completion("deepseek-reasoner"),
+                    http,
+                ),
                 direct,
             )
             .await
         }
         "anthropic" => {
             adapted(
-                Anthropic::new("test-not-a-key")
-                    .bind(http)
-                    .completion("claude-sonnet-4-5"),
+                rig::driver::Model::new(
+                    Anthropic::new("test-not-a-key").completion("claude-sonnet-4-5"),
+                    http,
+                ),
                 direct,
             )
             .await
