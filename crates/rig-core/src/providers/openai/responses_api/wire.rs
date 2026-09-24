@@ -219,11 +219,11 @@ impl Wire for Responses {
         Some(&self.model)
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
-        crate::providers::openai::wire::replay_issuers(
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
+        Some(crate::providers::openai::wire::replay_issuers(
             &self.provider.dialect,
             model.unwrap_or(&self.model),
-        )
+        ))
     }
 
     fn encode(

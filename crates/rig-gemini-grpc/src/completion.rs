@@ -82,8 +82,8 @@ impl Wire for GenerateContent {
 
     /// The Gemini service issues this wire's reasoning, over gRPC or REST, so
     /// that is the reasoning a request may replay.
-    fn replay_issuers(&self, _model: Option<&str>) -> Vec<String> {
-        vec![REASONING_ISSUER.to_owned()]
+    fn replay_issuers(&self, _model: Option<&str>) -> Option<Vec<String>> {
+        Some(vec![REASONING_ISSUER.to_owned()])
     }
 
     fn encode(

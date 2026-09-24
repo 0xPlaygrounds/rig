@@ -704,7 +704,9 @@ fn stamped<W: Wire>(
 /// can interpret.
 fn scope_to_wire<W: Wire>(wire: &W, request: &mut Request<W>) {
     let model = <W::Op as Operation>::request_model(request).or(wire.model());
-    let issuers = wire.replay_issuers(model);
+    let Some(issuers) = wire.replay_issuers(model) else {
+        return;
+    };
     let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
     <W::Op as Operation>::scope_to_wire(request, &issuers);
 }

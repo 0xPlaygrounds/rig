@@ -327,7 +327,7 @@ impl Wire for CopilotWire {
         self.wire.model()
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
         self.wire.replay_issuers(model)
     }
 

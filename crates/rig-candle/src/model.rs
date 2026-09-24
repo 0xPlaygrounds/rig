@@ -347,6 +347,12 @@ impl rig_core::wire::Wire for Generation {
         crate::types::PROVIDER_NAME
     }
 
+    /// The prompt protocol decides which reasoning a local model can render
+    /// and refuses the rest, so the driver scopes nothing.
+    fn replay_issuers(&self, _model: Option<&str>) -> Option<Vec<String>> {
+        None
+    }
+
     fn encode(
         &self,
         request: CompletionRequest,

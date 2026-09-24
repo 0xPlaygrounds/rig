@@ -219,8 +219,8 @@ impl Wire for Converse {
     }
 
     /// Claude reasoning on Bedrock is Anthropic's; other models' is Bedrock's.
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
-        vec![reasoning_issuer(self.request_model(model)).to_owned()]
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
+        Some(vec![reasoning_issuer(self.request_model(model)).to_owned()])
     }
 
     fn reasoning_issuer(&self, model: Option<&str>) -> Option<&str> {

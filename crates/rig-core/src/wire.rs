@@ -457,8 +457,9 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// The issuers whose provider state (reasoning signatures, ciphertext,
     /// ids) a request to `model` may replay. The default is this wire alone;
     /// a gateway whose state depends on the upstream model narrows it.
-    fn replay_issuers(&self, _model: Option<&str>) -> Vec<String> {
-        vec![self.name().to_owned()]
+    /// `None` scopes nothing: the backend checks the history it is given.
+    fn replay_issuers(&self, _model: Option<&str>) -> Option<Vec<String>> {
+        Some(vec![self.name().to_owned()])
     }
 
     /// The canonical telemetry operation this wire performs. Override when

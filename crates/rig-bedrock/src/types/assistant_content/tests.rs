@@ -743,7 +743,9 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             output_schema: None,
             record_telemetry_content: false,
         };
-        let issuers = Converse::new(model).replay_issuers(None);
+        let issuers = Converse::new(model)
+            .replay_issuers(None)
+            .expect("Converse scopes its history");
         let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
         rig_core::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
         match &request.chat_history[1] {
@@ -826,7 +828,9 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
         record_telemetry_content: false,
     };
     let mut scoped = request;
-    let issuers = Converse::new(claude).replay_issuers(None);
+    let issuers = Converse::new(claude)
+        .replay_issuers(None)
+        .expect("Converse scopes its history");
     let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
     rig_core::message::retain_replayable_reasoning(&mut scoped.chat_history, &issuers);
     let Message::Assistant { content, .. } = &scoped.chat_history[1] else {

@@ -905,6 +905,38 @@ fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
+/// The driver scopes no history for a local model: reasoning another
+/// provider issued reaches the prompt protocol, which refuses what the model
+/// cannot render, up front, instead of the reasoning vanishing.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn foreign_reasoning_in_history_is_refused_not_dropped()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let model = CandleModel::builder(model_data()?).max_tokens(1).build()?;
+    let history = vec![
+        Message::user("hello"),
+        Message::Assistant {
+            id: None,
+            content: vec![
+                rig_core::message::AssistantContent::Reasoning(
+                    rig_core::message::Reasoning::new("elsewhere").with_provider("anthropic"),
+                ),
+                rig_core::message::AssistantContent::text("hi"),
+            ],
+        },
+        Message::user("again"),
+    ];
+    let error = generation(&model)
+        .call(request(history), None)
+        .await
+        .expect_err("the local prompt cannot render foreign reasoning");
+    assert!(
+        error.to_string().contains("structured reasoning"),
+        "the prompt protocol refuses it: {error}"
+    );
+    Ok(())
+}
+
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test(flavor = "current_thread")]
 async fn buffered_and_streaming_generation_are_equivalent()

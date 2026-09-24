@@ -764,8 +764,11 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
-        super::replay_issuers(&self.provider.dialect, model.unwrap_or(&self.model))
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
+        Some(super::replay_issuers(
+            &self.provider.dialect,
+            model.unwrap_or(&self.model),
+        ))
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
