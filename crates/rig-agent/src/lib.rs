@@ -19,8 +19,13 @@
 //! is provided by the native-only `rig-rmcp` crate.
 //!
 //! ```
-//! use rig_agent::{Agent, AgentBuilder, core::completion::CompletionModel};
-//! fn assistant(model: impl CompletionModel + 'static) -> Agent {
+//! use rig_agent::core::{Model, driver::Transport, operation::Completion, wire::Wire};
+//! use rig_agent::{Agent, AgentBuilder};
+//! fn assistant<W, T>(model: Model<W, T>) -> Agent
+//! where
+//!     W: Wire<Op = Completion> + Clone,
+//!     T: Transport<W>,
+//! {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```

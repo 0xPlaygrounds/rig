@@ -1,6 +1,7 @@
 //! OpenAI-compatible configurations, dialect policies, and endpoint wires.
 //! A [`Dialect`](crate::providers::openai::wire::Dialect) selects request and response policies; [`OpenAI`] holds
-//! credentials and overrides. Bind an endpoint wire to a transport to execute it.
+//! credentials and overrides. Pair an endpoint wire with a transport in a
+//! [`Model`](crate::Model) to execute it.
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, Route, wire::OpenAiWire};
@@ -262,7 +263,7 @@ pub struct ModelWidth {
     /// The model identifier, as the `model` field spells it.
     pub model: &'static str,
     /// Default width reported when no width is requested, or `None` if unknown.
-    /// Unknown widths report zero through [`crate::embeddings::EmbeddingModel::ndims`].
+    /// Unknown widths report zero as the embedding model's `ndims`.
     pub default: Option<usize>,
     /// The widths a request may name.
     pub accepted: AcceptedWidths,
@@ -707,7 +708,8 @@ impl<'de> Deserialize<'de> for Dialect {
 
 /// Serializable provider configuration without a transport.
 /// Credentials are redacted and omitted from serialization. Construct endpoint
-/// wires and bind them through [`Bound`] to execute requests.
+/// wires and pair them with a transport in a [`Model`](crate::Model) to
+/// execute requests.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenAI {

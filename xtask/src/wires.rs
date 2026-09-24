@@ -11,7 +11,7 @@
 //! | no `.await`, `async fn`, or `async` block | a provider owning its transport |
 //! | no `Arc`, `Box<dyn`, or `impl Future` in an `impl Wire` block | a wire that is not data |
 //! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `BoxedHttpClient` | the transport parameter returning |
-//! | no consumer-trait impl | a second way to be a model |
+//! | no `Transport` impl | a provider owning how its payloads are sent |
 //!
 //! `openai/responses_api/websocket.rs` is exempt because a session spans many
 //! turns over one connection rather than a single exchange. The credential
@@ -54,19 +54,6 @@ const CREDENTIAL_EXCHANGES: &[&str] = &[
     "chatgpt/auth/wasm.rs",
     // The request/send helpers both exchanges round-trip through.
     "internal/auth.rs",
-];
-
-/// The traits a consumer calls a model through. `driver::Bound` is the only
-/// implementation of each; providers contribute wires instead.
-const CONSUMER_TRAITS: &[&str] = &[
-    "CompletionModel",
-    "EmbeddingModel",
-    "ImageEmbeddingModel",
-    "TranscriptionModel",
-    "ImageGenerationModel",
-    "AudioGenerationModel",
-    "RerankModel",
-    "ModelLister",
 ];
 
 /// Run the check over `crates/rig-core/src/providers/`.
@@ -294,9 +281,10 @@ impl<'ast> Visit<'ast> for Wires {
             .map(|segment| segment.ident.to_string());
 
         if let Some(name) = &implemented {
-            if CONSUMER_TRAITS.contains(&name.as_str()) {
+            if name == "Transport" {
                 self.report(&format!(
-                    "`impl {name} for {}` — the one implementation is `driver::Bound`",
+                    "`impl Transport for {}` — providers are wires; the HTTP transport is \
+                     `driver::http_transport`",
                     source_text(&item.self_ty)
                 ));
             }

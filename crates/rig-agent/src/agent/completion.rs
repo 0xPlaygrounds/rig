@@ -166,14 +166,12 @@ pub(crate) async fn build_prepared_completion_request(
 /// # Example
 /// ```no_run
 /// use rig_agent::prelude::*;
-/// use rig_core::providers::openai::{self, OpenAI};
-/// use rig_reqwest::prelude::*;
+/// use rig_core::{Model, providers::openai::{self, OpenAI}};
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = rig_core::Model::new(OpenAI::from_env()?, rig_reqwest::bundled()?);
+/// let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_5_2), rig_reqwest::bundled()?);
 ///
-/// let comedian_agent = openai
-///     .agent(openai::GPT_5_2)
+/// let comedian_agent = AgentBuilder::new(model)
 ///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
 ///     .temperature(0.9)
 ///     .build();

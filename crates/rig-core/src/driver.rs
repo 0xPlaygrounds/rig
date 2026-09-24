@@ -47,7 +47,7 @@ pub struct Model<W, T> {
 }
 
 impl<W, T> Model<W, T> {
-    /// Bind `wire` to `transport`.
+    /// Pair `wire` with the `transport` that sends it.
     pub fn new(wire: W, transport: T) -> Self {
         Self { wire, transport }
     }

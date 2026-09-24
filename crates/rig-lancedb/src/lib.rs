@@ -371,11 +371,11 @@ where
     /// use rig_core::vector_store::VectorStoreIndex;
     /// use rig_core::vector_store::request::VectorSearchRequest;
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig_reqwest::prelude::*;
     ///
     /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
-    /// let openai_client = rig_core::Model::new(OpenAI::from_env()?, rig_reqwest::bundled()?);
-    /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    /// let openai_client = OpenAI::from_env()?;
+/// let http = rig_reqwest::bundled()?;
+    /// let model = rig_core::Model::new(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None), http);
     /// let vector_store_index =
     ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///

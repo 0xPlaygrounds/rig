@@ -118,13 +118,13 @@ impl HelixDBClient for HelixDB {
 ///
 /// ```no_run
 /// use rig_core::providers::openai::wire::OpenAI;
-/// use rig_reqwest::prelude::*;
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
 /// # fn example() -> anyhow::Result<()> {
-/// let openai_model = OpenAI::from_env()?
-///     .bound()?
-///     .embedding("text-embedding-ada-002", None);
+/// let openai_model = rig_core::Model::new(
+///     OpenAI::from_env()?.embedding("text-embedding-ada-002", None),
+///     rig_reqwest::bundled()?,
+/// );
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
 /// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());

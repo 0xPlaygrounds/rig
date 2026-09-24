@@ -14,9 +14,8 @@
 //! # }
 //! ```
 //!
-//! A wire says what to send and how to read the reply; `.bind(transport)`
-//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
-//! implements the consumer-facing model traits.
+//! A wire says what to send and how to read the reply; a
+//! [`Model`](crate::Model) pairs it with the transport that sends it.
 
 pub mod completion;
 pub mod embedding;

@@ -3,7 +3,7 @@
 //! The streaming sibling of `rig-agent`'s `model_conformance`: each scenario
 //! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
 //! streaming path — bytes → decode → normalize → aggregated
-//! [`StreamingCompletionResponse`](crate::streaming::CompletionStream)
+//! [`CompletionStream`](crate::streaming::CompletionStream)
 //! — and asserts the [`StreamFinal`] contract
 //! table documented on that type. Scenarios state the contract; a per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
@@ -681,7 +681,7 @@ type DriveFn = Box<
 /// One provider's full streaming pipeline over scripted wire chunks.
 ///
 /// The closure builds a fresh provider client over a scripted HTTP double
-/// (`SequencedStreamingHttpClient`), opens `CompletionModel::stream`, drains
+/// (`SequencedStreamingHttpClient`), opens `Model::stream`, drains
 /// it, and returns everything the consumer observed.
 pub struct WireDriver {
     /// Stable descriptor name of the provider under test.
@@ -2138,7 +2138,7 @@ pub mod fixtures {
         /// is re-parsed after the fact and merged with the terminal response
         /// body, per content kind.
         ///
-        /// Drives the *real* entry — `CompletionModel::completion` on the
+        /// Drives the *real* entry — `Model::call` on the
         /// ChatGPT wire whose HTTP double answers the `/responses` POST with
         /// the scripted SSE body — so the scenario exercises the buffered
         /// fold itself rather than a mirrored copy of it (#2258 review, F8

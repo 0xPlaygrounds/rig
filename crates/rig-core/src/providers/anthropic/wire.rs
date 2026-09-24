@@ -370,9 +370,6 @@ impl Messages {
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// On a [`Bound`](crate::driver::Bound) the same option is forwarded
-    /// with `bound.map_wire(|wire| wire.with_automatic_caching())`.
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self

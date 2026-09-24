@@ -1,4 +1,4 @@
-//! Demonstrates manual tool-call handling with a raw `CompletionModel` request.
+//! Demonstrates manual tool-call handling with a raw `Model` request.
 //! Requires `OPENAI_API_KEY`.
 //!
 //! Unlike `agent.prompt(...)`, this example never lets Rig execute tools automatically.

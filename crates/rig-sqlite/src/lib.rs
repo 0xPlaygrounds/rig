@@ -1468,7 +1468,6 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
-/// use rig_reqwest::prelude::*;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
@@ -1503,8 +1502,9 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// }
 ///
 /// let conn = Connection::open("vector_store.db").await?;
-/// let openai = rig_core::Model::new(OpenAI::new("YOUR_API_KEY"), rig_reqwest::bundled()?);
-/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None);
+/// let openai = OpenAI::new("YOUR_API_KEY");
+/// let http = rig_reqwest::bundled()?;
+/// let model = rig_core::Model::new(openai.embedding(TEXT_EMBEDDING_ADA_002, None), http);
 ///
 /// // Initialize vector store
 /// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(

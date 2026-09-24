@@ -384,9 +384,8 @@ pub enum ProviderError {
         response: ProviderResponseError,
     },
     /// The provider returned vectors of a width other than the one the caller
-    /// declared through
-    /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
-    /// argument. Raised only when the width was set explicitly.
+    /// declared through an embedding wire's `ndims` argument. Raised only
+    /// when the width was set explicitly.
     #[error(
         "{provider} embedding response returned {returned}-dimension vectors, but the model was \
          created with {requested} dimensions; this provider does not resize embeddings"

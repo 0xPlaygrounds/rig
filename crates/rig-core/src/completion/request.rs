@@ -467,8 +467,9 @@ impl CompletionRequest {
     /// including system messages, are allowed.
     ///
     /// Builder `send` and `stream` validate automatically. Call this before
-    /// invoking a [`CompletionModel`] directly. Response-content validation is
-    /// provider-specific and is not performed here.
+    /// [`Model::call`](crate::Model::call) or `stream` directly.
+    /// Response-content validation is provider-specific and is not performed
+    /// here.
     pub fn validate_message_content(&self) -> Result<(), ProviderError> {
         if self.chat_history.is_empty() {
             return Err(ProviderError::Request(
@@ -624,9 +625,10 @@ fn merge_provider_tools_into_additional_params(
 /// [`Self::build`] does not validate message content; `send` and `stream` do.
 ///
 /// ```no_run
-/// use rig_core::completion::{CompletionModel, CompletionRequestBuilder};
+/// use rig_core::{Model, completion::CompletionRequestBuilder, providers::openai::OpenAI};
 ///
-/// # async fn run(model: impl CompletionModel) -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn run(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+/// let model = Model::new(OpenAI::from_env()?.completion("gpt-4o"), http);
 /// let response = CompletionRequestBuilder::new(model, "Who are you?")
 ///     .temperature(0.5)
 ///     .send()

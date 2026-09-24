@@ -12,7 +12,7 @@
 //! # }
 //! ```
 //!
-//! Bind a wire to a transport to obtain a [`crate::driver::Bound`] model.
+//! Pair a wire with a transport in a [`crate::Model`] to send it.
 
 pub mod completion;
 pub mod embeddings;
