@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -78,13 +79,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -147,11 +146,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -178,9 +173,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -189,7 +182,6 @@
             "total_tokens": 543,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "cf724775-4729-4a85-a1da-6e420d4e945c",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -263,13 +255,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -286,7 +276,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -307,9 +296,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -383,11 +370,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -411,9 +394,7 @@
                   "category": "meetup",
                   "summary": "A Rust meetup in Seattle. The sum of 17 and 25 is 42."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -422,7 +403,6 @@
             "total_tokens": 649,
             "cached_input_tokens": 384
           },
-          "message_id": null,
           "response_id": "9771752e-4efb-4892-a583-297e12c87748",
           "finish_reason": "tool_calls",
           "provider": "deepseek",

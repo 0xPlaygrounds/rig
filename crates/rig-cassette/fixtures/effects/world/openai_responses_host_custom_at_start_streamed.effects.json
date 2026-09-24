@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 1,
@@ -84,7 +85,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "host/note",
       "kind": {
@@ -106,13 +106,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -129,12 +127,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": true
       },

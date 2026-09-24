@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -4629,13 +4630,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4652,12 +4651,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": true
       },
@@ -4677,7 +4671,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 3008
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDBQLhiNs1xQevVE0uReopznIGXa",
           "provider_request_id": "req_caee837b006241b3b7c0c6a101ce7317",
           "finish_reason": "stop",
@@ -10926,7 +10919,6 @@
             "reasoning_tokens": 3008
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-ERDBQLhiNs1xQevVE0uReopznIGXa",
           "provider_request_id": "req_caee837b006241b3b7c0c6a101ce7317",
           "provider": "openai",

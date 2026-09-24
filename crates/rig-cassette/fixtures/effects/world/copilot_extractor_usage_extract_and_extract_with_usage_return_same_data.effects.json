@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -107,11 +106,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -135,9 +130,7 @@
                   "name": "Bob Johnson",
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -147,7 +140,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",
           "finish_reason": "tool_calls",
           "provider": "copilot",
@@ -232,13 +224,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -289,11 +279,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -317,9 +303,7 @@
                   "name": "Bob Johnson",
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -329,7 +313,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",
           "finish_reason": "tool_calls",
           "provider": "copilot",

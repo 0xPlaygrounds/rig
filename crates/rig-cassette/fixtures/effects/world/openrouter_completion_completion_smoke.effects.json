@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -60,12 +59,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": false
       },
@@ -86,7 +80,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "gen-1790152479-GTmapTMKWlQ5vUgDrluv",
           "finish_reason": "stop",
           "provider": "openrouter",

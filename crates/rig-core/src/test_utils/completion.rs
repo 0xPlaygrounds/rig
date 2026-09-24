@@ -225,9 +225,8 @@ impl MockTurn {
     /// would serialize from its raw type. Attached to the response as-is, so
     /// agent tests can prove the payload reaches every observer of the turn
     /// without a live provider. A turn without a scripted payload carries
-    /// the scripted turn itself, serialized — the mock's own document, the
-    /// same capture every real adapter performs — so a scripted value in a
-    /// test is distinguishable from the mock's default by content.
+    /// the scripted turn in the mock's own document layout, so a scripted
+    /// value in a test is distinguishable from the mock's default by content.
     pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
         if let Ok(response) = &mut self.response {
             response.raw = Some(raw);
@@ -236,8 +235,8 @@ impl MockTurn {
     }
 
     /// The provider document the mock attaches to this turn's response: the
-    /// scripted payload when one was supplied, otherwise the turn itself,
-    /// serialized. Public so a test can state the expected `raw` of a
+    /// scripted payload when one was supplied, otherwise the turn in the
+    /// mock's document layout. Public so a test can state the expected `raw` of a
     /// recorded call without repeating the mock's serialization. An error
     /// turn has no document.
     pub fn raw(&self) -> Result<serde_json::Value, ProviderError> {
@@ -247,7 +246,14 @@ impl MockTurn {
             .map_err(|error| error.clone().into_completion_error())?;
         match &response.raw {
             Some(raw) => Ok(raw.clone()),
-            None => Ok(serde_json::to_value(response)?),
+            None => Ok(super::document::turn(
+                &response.choice,
+                &response.usage,
+                response.message_id.as_deref(),
+                response.response_id.as_deref(),
+                response.provider_request_id.as_deref(),
+                response.finish_reason.as_ref(),
+            )?),
         }
     }
 

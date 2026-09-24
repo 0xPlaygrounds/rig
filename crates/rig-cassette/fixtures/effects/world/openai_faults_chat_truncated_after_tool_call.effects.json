@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 2,
@@ -71,13 +72,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -116,12 +115,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -130,8 +124,6 @@
           "kind": "response",
           "retryable": true,
           "message": "the stream ended before its terminal record",
-          "code": null,
-          "http_status": null,
           "refusal": false,
           "source_chain": []
         }
@@ -240,9 +232,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         }
       ],

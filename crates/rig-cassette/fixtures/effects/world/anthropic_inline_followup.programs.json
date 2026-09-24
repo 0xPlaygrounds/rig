@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -167,7 +167,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -367,7 +367,6 @@
                 "cache_creation_input_tokens": 0
               },
               "message_id": "msg_011CfLcZQYGizyS5wVLcCVAo",
-              "response_id": null,
               "provider_request_id": "req_011CfLcZQ4V2tug7PHG73GAn",
               "finish_reason": "stop",
               "provider": "anthropic",

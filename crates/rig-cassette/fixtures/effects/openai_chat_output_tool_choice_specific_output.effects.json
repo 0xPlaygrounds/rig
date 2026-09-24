@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 6242651025112945013,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -76,17 +75,13 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "final_result"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -110,9 +105,7 @@
                   "category": "Tech Meetup",
                   "summary": "recurrence: Monthly (1st Tuesday); time: 18:00–20:30 PDT; location: Impact Hub Seattle (Capitol Hill), 220 12th Ave S, Seattle, WA; description: Community meetup for Rust developers—lightning talks, a main deep-dive talk/workshop, and networking; agenda: 18:00 doors/networking; 18:30 welcome; 18:40 lightning talks (3×10m); 19:20 main talk/workshop (45m); 20:05 Q&A & networking; organizer: Seattle Rust Community (organizer@seattlerust.org); RSVP: https://www.meetup.com/seattle-rust; cost: Free (donations welcome); capacity: ~80; accessibility: wheelchair accessible; notes: bring laptop; community talk slots available—contact organizer to propose a talk."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -122,7 +115,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 1472
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCKDhp8fBlXDKUJ9qw6thQSeUxF",
           "provider_request_id": "req_f359eaff7be943bdbf3d7c606b1fb488",
           "finish_reason": "tool_calls",

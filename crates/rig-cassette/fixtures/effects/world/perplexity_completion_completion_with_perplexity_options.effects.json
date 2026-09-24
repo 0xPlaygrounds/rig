@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -61,14 +60,10 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "return_related_questions": true,
             "search_context_size": "low"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -86,7 +81,6 @@
             "output_tokens": 51,
             "total_tokens": 75
           },
-          "message_id": null,
           "response_id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207",
           "finish_reason": "stop",
           "provider": "perplexity",

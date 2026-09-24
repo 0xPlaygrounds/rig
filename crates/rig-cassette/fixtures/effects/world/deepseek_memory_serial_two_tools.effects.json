@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 1,
@@ -238,7 +239,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/memory",
       "kind": {
@@ -258,13 +258,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -301,11 +299,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -329,9 +323,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -345,9 +337,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -356,7 +346,6 @@
             "total_tokens": 441,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "7d7e4976-43aa-46d9-8787-d32c3eda6a00",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -499,9 +488,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -524,9 +511,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -538,7 +523,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "7d7e4976-43aa-46d9-8787-d32c3eda6a00",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -617,13 +601,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -640,7 +622,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -658,9 +639,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -674,9 +653,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -741,11 +718,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -764,7 +737,6 @@
             "total_tokens": 488,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "d64a1f5f-1c87-46b0-9183-c841c2816064",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -944,7 +916,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "d64a1f5f-1c87-46b0-9183-c841c2816064",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -973,7 +944,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/memory",
       "kind": {
@@ -993,7 +963,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1011,9 +980,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1027,9 +994,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1074,7 +1039,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",

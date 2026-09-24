@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 1321309695476625513,
     "handlers": [
       {
@@ -58,13 +59,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -103,12 +102,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": false
       },
@@ -143,9 +137,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -155,7 +147,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
           "response_id": "resp_02d19738c36bcb9d006ab2b2fca4d487d090de9f32af57bf8c",
           "provider_request_id": "req_2e81e7a1a0dc46b5a3e72d6c6b09aa34",
           "finish_reason": "tool_calls",
@@ -308,13 +299,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -331,7 +320,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -360,9 +348,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -413,12 +399,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": false
       },

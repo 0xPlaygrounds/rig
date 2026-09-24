@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -66,13 +67,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -101,10 +100,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -124,9 +120,7 @@
               "function": {
                 "name": "checkpoint_large",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -137,7 +131,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZD4hzWcwMZ1QBNP9A",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZCbfqHNGqJ8mDhPna",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -205,13 +198,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -242,9 +233,7 @@
                   "function": {
                     "name": "checkpoint_large",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -284,10 +273,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -308,7 +294,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZGQcr6Wx8Q1LBaXVj",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZFxL9zBvdLwwd44sA",
           "finish_reason": "stop",
           "provider": "anthropic",

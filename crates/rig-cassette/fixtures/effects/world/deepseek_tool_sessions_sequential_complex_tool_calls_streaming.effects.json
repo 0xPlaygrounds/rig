@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -921,13 +922,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1046,16 +1045,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1079,9 +1074,7 @@
               "function": {
                 "name": "ping_empty",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1090,7 +1083,6 @@
             "total_tokens": 805,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "741c0e38-0101-4bef-97b4-03b203b25c56",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1345,9 +1337,7 @@
             "function": {
               "name": "ping_empty",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1359,7 +1349,6 @@
             "cached_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "741c0e38-0101-4bef-97b4-03b203b25c56",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -1413,13 +1402,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1436,7 +1423,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1454,9 +1440,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1586,16 +1570,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1632,9 +1612,7 @@
                   ],
                   "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1643,7 +1621,6 @@
             "total_tokens": 962,
             "cached_input_tokens": 640
           },
-          "message_id": null,
           "response_id": "33ffa23d-8e8b-4c10-89af-5e3f3f4ad5d7",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -2380,9 +2357,7 @@
                 ],
                 "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -2394,7 +2369,6 @@
             "cached_input_tokens": 640
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "33ffa23d-8e8b-4c10-89af-5e3f3f4ad5d7",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -2448,13 +2422,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2471,7 +2443,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2489,9 +2460,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2519,7 +2488,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2550,9 +2518,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2682,16 +2648,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -2719,9 +2681,7 @@
                   ],
                   "separator": "|"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2730,7 +2690,6 @@
             "total_tokens": 1065,
             "cached_input_tokens": 768
           },
-          "message_id": null,
           "response_id": "a5ab5882-42ad-4258-a200-99dfc15b1667",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -3074,9 +3033,7 @@
                 ],
                 "separator": "|"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -3088,7 +3045,6 @@
             "cached_input_tokens": 768
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "a5ab5882-42ad-4258-a200-99dfc15b1667",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -3142,13 +3098,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3165,7 +3119,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3183,9 +3136,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3213,7 +3164,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3244,9 +3194,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3274,7 +3222,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3296,9 +3243,7 @@
                       ],
                       "separator": "|"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3428,16 +3373,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -3459,9 +3400,7 @@
                 "arguments": {
                   "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3470,7 +3409,6 @@
             "total_tokens": 1150,
             "cached_input_tokens": 896
           },
-          "message_id": null,
           "response_id": "31ca8df8-c2b5-4a52-b824-cf7931b98025",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -3736,9 +3674,7 @@
               "arguments": {
                 "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -3750,7 +3686,6 @@
             "cached_input_tokens": 896
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "31ca8df8-c2b5-4a52-b824-cf7931b98025",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -3804,13 +3739,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3827,7 +3760,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3845,9 +3777,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3875,7 +3805,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3906,9 +3835,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3936,7 +3863,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3958,9 +3884,7 @@
                       ],
                       "separator": "|"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3988,7 +3912,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4004,9 +3927,7 @@
                     "arguments": {
                       "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4136,16 +4057,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -4164,7 +4081,6 @@
             "total_tokens": 1222,
             "cached_input_tokens": 1024
           },
-          "message_id": null,
           "response_id": "a16663c2-3fd0-4525-aa81-0d90a74a863c",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -4496,7 +4412,6 @@
             "cached_input_tokens": 1024
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "a16663c2-3fd0-4525-aa81-0d90a74a863c",
           "provider": "deepseek",
           "model": "deepseek-flash",

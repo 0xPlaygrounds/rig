@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -87,11 +86,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -101,7 +96,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -128,9 +122,7 @@
                   "job": "mathematician",
                   "last_name": "Lovelace"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -141,7 +133,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 99
           },
-          "message_id": null,
           "response_id": "resp_d4da397d-b4ce-46a4-9168-2e3ca5d47a59",
           "finish_reason": "tool_calls",
           "provider": "doubleword",

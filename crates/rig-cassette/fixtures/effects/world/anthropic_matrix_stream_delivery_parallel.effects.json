@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -152,13 +153,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -194,12 +193,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -223,9 +217,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -239,9 +231,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -252,7 +242,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcdtRRbcnA5HhPo9o2d",
-          "response_id": null,
           "provider_request_id": "req_011CfLcdsufJzdP85Jo9g2a9",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -356,9 +345,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -403,9 +390,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -419,7 +404,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcdtRRbcnA5HhPo9o2d",
-          "response_id": null,
           "provider_request_id": "req_011CfLcdsufJzdP85Jo9g2a9",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -493,13 +477,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -534,9 +516,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -550,9 +530,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -616,12 +594,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -642,7 +615,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLce7JpP3St1XS6Gy4BH",
-          "response_id": null,
           "provider_request_id": "req_011CfLce6q3Rue3tNwhCb9s6",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -739,7 +711,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLce7JpP3St1XS6Gy4BH",
-          "response_id": null,
           "provider_request_id": "req_011CfLce6q3Rue3tNwhCb9s6",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",

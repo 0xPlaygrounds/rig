@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -87,13 +86,10 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": "required",
           "additional_params": {
             "generationConfig": {}
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -115,8 +111,7 @@
                   "last_name": "Lovelace"
                 }
               },
-              "signature": "CtECAWkUfRPNbgdIrhQTb8VG+R4Vvo/R1ubAAKGJRj3w0HT0ByVyd7O66VUHI6uLIVLK8/v6n8hgDnq0Mvb0ERu4Ut69yG/QnHLxOeMefHGJMDgEoLKt018vS+/Ss2yT/zNT4EscCN3zZJoi1erAcQGQBueCyv+v+vgylNRuv2UiZzuysUMC7vkQWzm755pCrsWJpI4qAyCBrIxqVNU/OYAihJicq6WypwTFnvY/m7djQ8X6UuZqJ1hBdplnZHvwnR0RNoccBpOeWoXS0ygA4KLBrO/ewMRd6rqCX8hJI6gSGddEqSgYIlr6Sftyw/0i1VWgN8gUsiMkgPcb/YHuM6Uq7kDTj16hGqdEpGfyM+MbYiFMmNEePGLua6OsruL3AePLHmHYgxdcn+a5A/AH2oNNC8F+3ywm3ES2LjI4dzgC4rp8ZFDpaZj0E+NyX3MWYEjHzA==",
-              "additional_params": null
+              "signature": "CtECAWkUfRPNbgdIrhQTb8VG+R4Vvo/R1ubAAKGJRj3w0HT0ByVyd7O66VUHI6uLIVLK8/v6n8hgDnq0Mvb0ERu4Ut69yG/QnHLxOeMefHGJMDgEoLKt018vS+/Ss2yT/zNT4EscCN3zZJoi1erAcQGQBueCyv+v+vgylNRuv2UiZzuysUMC7vkQWzm755pCrsWJpI4qAyCBrIxqVNU/OYAihJicq6WypwTFnvY/m7djQ8X6UuZqJ1hBdplnZHvwnR0RNoccBpOeWoXS0ygA4KLBrO/ewMRd6rqCX8hJI6gSGddEqSgYIlr6Sftyw/0i1VWgN8gUsiMkgPcb/YHuM6Uq7kDTj16hGqdEpGfyM+MbYiFMmNEePGLua6OsruL3AePLHmHYgxdcn+a5A/AH2oNNC8F+3ywm3ES2LjI4dzgC4rp8ZFDpaZj0E+NyX3MWYEjHzA=="
             }
           ],
           "usage": {
@@ -125,7 +120,6 @@
             "total_tokens": 290,
             "reasoning_tokens": 91
           },
-          "message_id": null,
           "response_id": "9K2yavfuHYGhz7IPkZKquQQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",

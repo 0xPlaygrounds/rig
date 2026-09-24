@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 10,
@@ -280,13 +281,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -323,13 +322,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": true
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -361,9 +356,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -378,9 +371,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -390,7 +381,6 @@
             "cached_input_tokens": 384,
             "reasoning_tokens": 259
           },
-          "message_id": null,
           "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "finish_reason": "tool_calls",
@@ -533,9 +523,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -585,9 +573,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -600,7 +586,6 @@
             "reasoning_tokens": 259
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "provider": "xai",
@@ -680,13 +665,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -703,7 +686,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -729,9 +711,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -746,9 +726,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -815,13 +793,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": true
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },

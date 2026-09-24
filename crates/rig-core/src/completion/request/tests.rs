@@ -417,14 +417,18 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         encoded
     );
 
-    let without_raw = serde_json::json!({
-        "choice": [{"type": "text", "text": "hello"}],
-        "usage": serde_json::to_value(Usage::default()).unwrap(),
-        "provider": "example"
-    });
-    let error = serde_json::from_value::<CompletionResponse>(without_raw)
-        .expect_err("a response without `raw` is refused");
-    assert!(error.to_string().contains("raw"), "{error}");
+    // An absent document is omitted and reads back as absent.
+    let without_raw = CompletionResponse::new(
+        vec![AssistantContent::text("hello")],
+        Usage::default(),
+        "example",
+        serde_json::Value::Null,
+    );
+    let encoded = serde_json::to_value(&without_raw).expect("serialize response");
+    assert!(encoded.get("raw").is_none(), "{encoded}");
+    let decoded: CompletionResponse =
+        serde_json::from_value(encoded).expect("deserialize response");
+    assert!(decoded.raw.is_null());
 }
 
 fn test_document(id: &str, text: &str) -> Document {

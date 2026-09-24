@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 13216707040221315529,
     "handlers": [
       {
@@ -94,7 +95,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/retrieve:tools#0",
       "kind": {
@@ -103,10 +103,7 @@
           "query": "top_n_ids",
           "req": {
             "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
-            "samples": 1,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 1
           }
         }
       },
@@ -124,13 +121,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -189,11 +184,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -214,8 +205,7 @@
                   "y": 5
                 }
               },
-              "signature": "CskCAWkUfRNsAVJBUQQdtvOCOkMEBCdDKbrBDq0oUZ20W9gsZoANtiIYWsThlSMMeFhPUfaZq/Z3GQGBAVBkmonN02bFYXVYITA92mZIIO44DaBvibMD9hx6bGu98V4V5RAV7WC00B5IGqciK2KXeQ4dTsA6KaJ3/J45jyxxC7VE/HkT6UWhYP0j+vM8sZdNPmQI4y3o+S2RqHMHpcxcTkpV/7pmzXl8tWbEf2NANdXVTsrJATT7E4txt+/KMMhhuqDMShYQ3l6eroczeMEBOamikHn2hGe09OJr/X3na/nKB0uKw5wxbYyHUpxolnm4tkeQ2RsKvCUwRz6Boa0C7ckuC06CgPYIQeNFUehtk33b/Qzg5VWmCPJ9xmA4uD4ijcnHNmw8WNq/om5lXpmn0WZIaIk1oq0+dg55Eu6YMPqmbLxiX7RNWet1yl0=",
-              "additional_params": null
+              "signature": "CskCAWkUfRNsAVJBUQQdtvOCOkMEBCdDKbrBDq0oUZ20W9gsZoANtiIYWsThlSMMeFhPUfaZq/Z3GQGBAVBkmonN02bFYXVYITA92mZIIO44DaBvibMD9hx6bGu98V4V5RAV7WC00B5IGqciK2KXeQ4dTsA6KaJ3/J45jyxxC7VE/HkT6UWhYP0j+vM8sZdNPmQI4y3o+S2RqHMHpcxcTkpV/7pmzXl8tWbEf2NANdXVTsrJATT7E4txt+/KMMhhuqDMShYQ3l6eroczeMEBOamikHn2hGe09OJr/X3na/nKB0uKw5wxbYyHUpxolnm4tkeQ2RsKvCUwRz6Boa0C7ckuC06CgPYIQeNFUehtk33b/Qzg5VWmCPJ9xmA4uD4ijcnHNmw8WNq/om5lXpmn0WZIaIk1oq0+dg55Eu6YMPqmbLxiX7RNWet1yl0="
             }
           ],
           "usage": {
@@ -224,7 +214,6 @@
             "total_tokens": 248,
             "reasoning_tokens": 82
           },
-          "message_id": null,
           "response_id": "6K2yavKbKOPCqtsPj9ak6Ak",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -296,7 +285,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/retrieve:tools#0",
       "kind": {
@@ -305,10 +293,7 @@
           "query": "top_n_ids",
           "req": {
             "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
-            "samples": 1,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 1
           }
         }
       },
@@ -326,13 +311,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -349,7 +332,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -364,8 +346,7 @@
                       "y": 5
                     }
                   },
-                  "signature": "CskCAWkUfRNsAVJBUQQdtvOCOkMEBCdDKbrBDq0oUZ20W9gsZoANtiIYWsThlSMMeFhPUfaZq/Z3GQGBAVBkmonN02bFYXVYITA92mZIIO44DaBvibMD9hx6bGu98V4V5RAV7WC00B5IGqciK2KXeQ4dTsA6KaJ3/J45jyxxC7VE/HkT6UWhYP0j+vM8sZdNPmQI4y3o+S2RqHMHpcxcTkpV/7pmzXl8tWbEf2NANdXVTsrJATT7E4txt+/KMMhhuqDMShYQ3l6eroczeMEBOamikHn2hGe09OJr/X3na/nKB0uKw5wxbYyHUpxolnm4tkeQ2RsKvCUwRz6Boa0C7ckuC06CgPYIQeNFUehtk33b/Qzg5VWmCPJ9xmA4uD4ijcnHNmw8WNq/om5lXpmn0WZIaIk1oq0+dg55Eu6YMPqmbLxiX7RNWet1yl0=",
-                  "additional_params": null
+                  "signature": "CskCAWkUfRNsAVJBUQQdtvOCOkMEBCdDKbrBDq0oUZ20W9gsZoANtiIYWsThlSMMeFhPUfaZq/Z3GQGBAVBkmonN02bFYXVYITA92mZIIO44DaBvibMD9hx6bGu98V4V5RAV7WC00B5IGqciK2KXeQ4dTsA6KaJ3/J45jyxxC7VE/HkT6UWhYP0j+vM8sZdNPmQI4y3o+S2RqHMHpcxcTkpV/7pmzXl8tWbEf2NANdXVTsrJATT7E4txt+/KMMhhuqDMShYQ3l6eroczeMEBOamikHn2hGe09OJr/X3na/nKB0uKw5wxbYyHUpxolnm4tkeQ2RsKvCUwRz6Boa0C7ckuC06CgPYIQeNFUehtk33b/Qzg5VWmCPJ9xmA4uD4ijcnHNmw8WNq/om5lXpmn0WZIaIk1oq0+dg55Eu6YMPqmbLxiX7RNWet1yl0="
                 }
               ]
             },
@@ -432,11 +413,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -457,8 +434,7 @@
                   "y": 4
                 }
               },
-              "signature": "CqEBAWkUfROZAyLqB969puVDtVls5f5Roqo89SJUnpRet1B/0FDmuX0XdRzDoiEODKYB7Xqtlqxwm73Wq+cWfORP+yka4zYXWAw6GWvpkrhUCnuN4HwXMWo3O2oZatQiyTvXwmbx9rqNUJJhZmAYRW3aoiNN+I+JmCaFmYriaEBsvvq3nxBvyLiHgKCoP6xL7oo4tOIXqdNbizlRx7psyO2IHlk=",
-              "additional_params": null
+              "signature": "CqEBAWkUfROZAyLqB969puVDtVls5f5Roqo89SJUnpRet1B/0FDmuX0XdRzDoiEODKYB7Xqtlqxwm73Wq+cWfORP+yka4zYXWAw6GWvpkrhUCnuN4HwXMWo3O2oZatQiyTvXwmbx9rqNUJJhZmAYRW3aoiNN+I+JmCaFmYriaEBsvvq3nxBvyLiHgKCoP6xL7oo4tOIXqdNbizlRx7psyO2IHlk="
             }
           ],
           "usage": {
@@ -467,7 +443,6 @@
             "total_tokens": 240,
             "reasoning_tokens": 41
           },
-          "message_id": null,
           "response_id": "6q2yapmbA_7EqtsP3LOliQg",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -539,7 +514,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 7,
       "key": "golden/retrieve:tools#0",
       "kind": {
@@ -548,10 +522,7 @@
           "query": "top_n_ids",
           "req": {
             "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
-            "samples": 1,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 1
           }
         }
       },
@@ -569,13 +540,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -592,7 +561,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -607,8 +575,7 @@
                       "y": 5
                     }
                   },
-                  "signature": "CskCAWkUfRNsAVJBUQQdtvOCOkMEBCdDKbrBDq0oUZ20W9gsZoANtiIYWsThlSMMeFhPUfaZq/Z3GQGBAVBkmonN02bFYXVYITA92mZIIO44DaBvibMD9hx6bGu98V4V5RAV7WC00B5IGqciK2KXeQ4dTsA6KaJ3/J45jyxxC7VE/HkT6UWhYP0j+vM8sZdNPmQI4y3o+S2RqHMHpcxcTkpV/7pmzXl8tWbEf2NANdXVTsrJATT7E4txt+/KMMhhuqDMShYQ3l6eroczeMEBOamikHn2hGe09OJr/X3na/nKB0uKw5wxbYyHUpxolnm4tkeQ2RsKvCUwRz6Boa0C7ckuC06CgPYIQeNFUehtk33b/Qzg5VWmCPJ9xmA4uD4ijcnHNmw8WNq/om5lXpmn0WZIaIk1oq0+dg55Eu6YMPqmbLxiX7RNWet1yl0=",
-                  "additional_params": null
+                  "signature": "CskCAWkUfRNsAVJBUQQdtvOCOkMEBCdDKbrBDq0oUZ20W9gsZoANtiIYWsThlSMMeFhPUfaZq/Z3GQGBAVBkmonN02bFYXVYITA92mZIIO44DaBvibMD9hx6bGu98V4V5RAV7WC00B5IGqciK2KXeQ4dTsA6KaJ3/J45jyxxC7VE/HkT6UWhYP0j+vM8sZdNPmQI4y3o+S2RqHMHpcxcTkpV/7pmzXl8tWbEf2NANdXVTsrJATT7E4txt+/KMMhhuqDMShYQ3l6eroczeMEBOamikHn2hGe09OJr/X3na/nKB0uKw5wxbYyHUpxolnm4tkeQ2RsKvCUwRz6Boa0C7ckuC06CgPYIQeNFUehtk33b/Qzg5VWmCPJ9xmA4uD4ijcnHNmw8WNq/om5lXpmn0WZIaIk1oq0+dg55Eu6YMPqmbLxiX7RNWet1yl0="
                 }
               ]
             },
@@ -633,7 +600,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -648,8 +614,7 @@
                       "y": 4
                     }
                   },
-                  "signature": "CqEBAWkUfROZAyLqB969puVDtVls5f5Roqo89SJUnpRet1B/0FDmuX0XdRzDoiEODKYB7Xqtlqxwm73Wq+cWfORP+yka4zYXWAw6GWvpkrhUCnuN4HwXMWo3O2oZatQiyTvXwmbx9rqNUJJhZmAYRW3aoiNN+I+JmCaFmYriaEBsvvq3nxBvyLiHgKCoP6xL7oo4tOIXqdNbizlRx7psyO2IHlk=",
-                  "additional_params": null
+                  "signature": "CqEBAWkUfROZAyLqB969puVDtVls5f5Roqo89SJUnpRet1B/0FDmuX0XdRzDoiEODKYB7Xqtlqxwm73Wq+cWfORP+yka4zYXWAw6GWvpkrhUCnuN4HwXMWo3O2oZatQiyTvXwmbx9rqNUJJhZmAYRW3aoiNN+I+JmCaFmYriaEBsvvq3nxBvyLiHgKCoP6xL7oo4tOIXqdNbizlRx7psyO2IHlk="
                 }
               ]
             },
@@ -716,11 +681,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -744,7 +705,6 @@
             "total_tokens": 250,
             "reasoning_tokens": 29
           },
-          "message_id": null,
           "response_id": "662yarWuMPqDmtkPt8feoQQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

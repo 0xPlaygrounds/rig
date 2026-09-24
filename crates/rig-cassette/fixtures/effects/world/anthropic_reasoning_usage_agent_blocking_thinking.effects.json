@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -61,16 +60,13 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "enabled",
               "budget_tokens": 1024
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -80,7 +76,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -106,7 +101,6 @@
             "reasoning_tokens": 7
           },
           "message_id": "msg_011CfJrCGPfVTrPFFysmLTiB",
-          "response_id": null,
           "provider_request_id": "req_011CfJrCFwsA45yVgRCEx5ms",
           "finish_reason": "stop",
           "provider": "anthropic",

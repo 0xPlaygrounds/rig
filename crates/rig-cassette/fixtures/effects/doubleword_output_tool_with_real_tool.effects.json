@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 18077373387069078988,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -125,12 +124,9 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -153,9 +149,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -166,7 +160,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_7d556ffb-4822-46d8-85ef-52294a844579",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
@@ -248,13 +241,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -271,7 +262,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -288,9 +278,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -365,12 +353,9 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -394,9 +379,7 @@
                   "category": "Event",
                   "summary": "Rust meetup in Seattle with 42 attendees."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -407,7 +390,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_9463fb8b-f72c-4a15-a85c-61459e01df81",
           "finish_reason": "tool_calls",
           "provider": "doubleword",

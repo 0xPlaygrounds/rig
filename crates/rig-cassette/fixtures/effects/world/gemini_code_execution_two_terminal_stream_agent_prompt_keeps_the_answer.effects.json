@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 9,
@@ -53,13 +54,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -79,15 +78,13 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 2000,
-          "tool_choice": null,
           "additional_params": {
             "tools": [
               {
                 "codeExecution": {}
               }
             ]
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -107,7 +104,6 @@
             "tool_use_prompt_tokens": 574,
             "reasoning_tokens": 211
           },
-          "message_id": null,
           "response_id": "o3izaofSCeqb6dkP9J27sQk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -172,7 +168,6 @@
             "reasoning_tokens": 211
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "o3izaofSCeqb6dkP9J27sQk",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",

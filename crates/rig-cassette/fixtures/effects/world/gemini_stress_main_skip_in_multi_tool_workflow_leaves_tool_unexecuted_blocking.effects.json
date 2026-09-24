@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -104,13 +105,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -171,11 +170,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -196,8 +191,7 @@
                   "y": 6
                 }
               },
-              "signature": "CugBAWkUfRO+8sqWGeUTk8C+5vnnm8u+iIM69FKDl5jwZMxd64HEKbTXtZ/CtKfCpG3MVsIY0A1ciJMU3L7+XnrySkzt2uts1sx3EdGuSlUFVpjBVW5vmIdPcp+IND7STY/AVJPibKseX2QDIZie/cp4MeCrg3dq6IGKfY40drFrBwfXObEsWoLl4JFmgbLTOM05wcaWLOX8p8fu4Kw9F+B4WU6X9a7h7QCtoaFsmw4EeRkH+X/bV45iigh4v0NzBACBk8KqxMZvzYSem5uSS9EjNCxZBR6WgREWuuCuhYf1jn4LJ/Tjke53Cw==",
-              "additional_params": null
+              "signature": "CugBAWkUfRO+8sqWGeUTk8C+5vnnm8u+iIM69FKDl5jwZMxd64HEKbTXtZ/CtKfCpG3MVsIY0A1ciJMU3L7+XnrySkzt2uts1sx3EdGuSlUFVpjBVW5vmIdPcp+IND7STY/AVJPibKseX2QDIZie/cp4MeCrg3dq6IGKfY40drFrBwfXObEsWoLl4JFmgbLTOM05wcaWLOX8p8fu4Kw9F+B4WU6X9a7h7QCtoaFsmw4EeRkH+X/bV45iigh4v0NzBACBk8KqxMZvzYSem5uSS9EjNCxZBR6WgREWuuCuhYf1jn4LJ/Tjke53Cw=="
             },
             {
               "type": "toolcall",
@@ -211,9 +205,7 @@
                   "x": 40,
                   "y": 9
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -222,7 +214,6 @@
             "total_tokens": 275,
             "reasoning_tokens": 56
           },
-          "message_id": null,
           "response_id": "a66yatf6CLHVz7IP2J_OIA",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -305,13 +296,11 @@
       "scope": "stress-agent/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -328,7 +317,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -343,8 +331,7 @@
                       "y": 6
                     }
                   },
-                  "signature": "CugBAWkUfRO+8sqWGeUTk8C+5vnnm8u+iIM69FKDl5jwZMxd64HEKbTXtZ/CtKfCpG3MVsIY0A1ciJMU3L7+XnrySkzt2uts1sx3EdGuSlUFVpjBVW5vmIdPcp+IND7STY/AVJPibKseX2QDIZie/cp4MeCrg3dq6IGKfY40drFrBwfXObEsWoLl4JFmgbLTOM05wcaWLOX8p8fu4Kw9F+B4WU6X9a7h7QCtoaFsmw4EeRkH+X/bV45iigh4v0NzBACBk8KqxMZvzYSem5uSS9EjNCxZBR6WgREWuuCuhYf1jn4LJ/Tjke53Cw==",
-                  "additional_params": null
+                  "signature": "CugBAWkUfRO+8sqWGeUTk8C+5vnnm8u+iIM69FKDl5jwZMxd64HEKbTXtZ/CtKfCpG3MVsIY0A1ciJMU3L7+XnrySkzt2uts1sx3EdGuSlUFVpjBVW5vmIdPcp+IND7STY/AVJPibKseX2QDIZie/cp4MeCrg3dq6IGKfY40drFrBwfXObEsWoLl4JFmgbLTOM05wcaWLOX8p8fu4Kw9F+B4WU6X9a7h7QCtoaFsmw4EeRkH+X/bV45iigh4v0NzBACBk8KqxMZvzYSem5uSS9EjNCxZBR6WgREWuuCuhYf1jn4LJ/Tjke53Cw=="
                 },
                 {
                   "type": "toolcall",
@@ -358,9 +345,7 @@
                       "x": 40,
                       "y": 9
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -443,11 +428,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -471,7 +452,6 @@
             "total_tokens": 376,
             "reasoning_tokens": 84
           },
-          "message_id": null,
           "response_id": "bK6yarUGxdfPsg-4oZFA",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

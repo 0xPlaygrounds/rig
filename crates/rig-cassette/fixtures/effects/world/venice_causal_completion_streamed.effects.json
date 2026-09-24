@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -124,13 +125,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -169,11 +168,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -195,9 +190,7 @@
                 "arguments": {
                   "q": "What is the capital of France?"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -205,7 +198,6 @@
             "output_tokens": 16,
             "total_tokens": 1099
           },
-          "message_id": null,
           "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -270,9 +262,7 @@
               "arguments": {
                 "q": "What is the capital of France?"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -283,7 +273,6 @@
             "total_tokens": 1099
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -311,7 +300,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/tool:lookup#0",
       "kind": {
@@ -336,13 +324,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -360,11 +346,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -382,7 +364,6 @@
             "output_tokens": 2,
             "total_tokens": 972
           },
-          "message_id": null,
           "response_id": "chatcmpl-RP91VL6VS6Ie7dJNCseKpDbs",
           "finish_reason": "stop",
           "provider": "venice",
@@ -436,13 +417,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -459,7 +438,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -475,9 +453,7 @@
                     "arguments": {
                       "q": "What is the capital of France?"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -527,11 +503,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -549,7 +521,6 @@
             "output_tokens": 2,
             "total_tokens": 1124
           },
-          "message_id": null,
           "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
           "finish_reason": "stop",
           "provider": "venice",
@@ -599,7 +570,6 @@
             "total_tokens": 1124
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",

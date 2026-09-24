@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -85,13 +86,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -155,12 +154,9 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -183,9 +179,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -196,7 +190,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_2b46cb67-799b-4fbc-9ebe-67ad346081d9",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
@@ -280,13 +273,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -303,7 +294,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -320,9 +310,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -397,12 +385,10 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
           "tool_choice": "none",
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -424,9 +410,7 @@
                 "arguments": {
                   "result": "{\"summary\": \"Rust Meetup Seattle: 42\", \"location\": \"Seattle\", \"description\": \"A Rust meetup event in Seattle.\"}"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -437,7 +421,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_8f51d926-2153-4763-be34-2e1f141adf90",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
@@ -496,13 +479,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -519,7 +500,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -536,9 +516,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -566,7 +544,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -582,9 +559,7 @@
                     "arguments": {
                       "result": "{\"summary\": \"Rust Meetup Seattle: 42\", \"location\": \"Seattle\", \"description\": \"A Rust meetup event in Seattle.\"}"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -659,12 +634,9 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -688,9 +660,7 @@
                   "category": "Meetup",
                   "summary": "Rust Meetup Seattle: 42"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -701,7 +671,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_8ca237b1-7ae3-429c-80c5-8402e8efb279",
           "finish_reason": "tool_calls",
           "provider": "doubleword",

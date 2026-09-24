@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -387,13 +388,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -457,11 +456,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -486,9 +483,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -498,7 +493,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b92d288887d09d84c7b3f5d92f2d",
           "provider_request_id": "req_2b211a0eac914517a09315d196971d9d",
           "finish_reason": "tool_calls",
@@ -677,13 +671,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -700,7 +692,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -719,9 +710,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -807,11 +796,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -836,9 +823,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -848,7 +833,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b92e608c87d08bb88edf8c9f3899",
           "provider_request_id": "req_187b9762b882486288564dd9be91c2f2",
           "finish_reason": "tool_calls",
@@ -1023,13 +1007,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1046,7 +1028,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1065,9 +1046,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1106,7 +1085,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1125,9 +1103,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1209,11 +1185,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1238,9 +1212,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1250,7 +1222,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b92f54f487d083d4bf50bc495fb8",
           "provider_request_id": "req_b08f5718821b4e4db7a9c64a281a516e",
           "finish_reason": "tool_calls",
@@ -1425,13 +1396,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1448,7 +1417,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1467,9 +1435,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1508,7 +1474,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1527,9 +1492,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1564,7 +1527,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1583,9 +1545,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1667,11 +1627,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1696,9 +1654,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1708,7 +1664,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b930512c87d0bcb96b889e9bcbdf",
           "provider_request_id": "req_17c2620ba27e4b4d8a9472de5fdf030e",
           "finish_reason": "tool_calls",
@@ -1883,13 +1838,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1906,7 +1859,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1925,9 +1877,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1966,7 +1916,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1985,9 +1934,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2022,7 +1969,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2041,9 +1987,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2078,7 +2022,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2097,9 +2040,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2181,11 +2122,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2210,9 +2149,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2222,7 +2159,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b9315f8887d0860dbd8d3ed969f4",
           "provider_request_id": "req_c4011d1538454892b99807d71fd3c77b",
           "finish_reason": "tool_calls",
@@ -2397,13 +2333,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 10,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2420,7 +2354,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2439,9 +2372,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2480,7 +2411,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2499,9 +2429,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2536,7 +2464,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2555,9 +2482,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2592,7 +2517,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2611,9 +2535,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2648,7 +2570,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2667,9 +2588,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2751,11 +2670,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2780,9 +2697,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2792,7 +2707,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b9327e2487d0bfe13e35c4b0357b",
           "provider_request_id": "req_82ea9bbde7ad47ec83ac8cf3e5a5695b",
           "finish_reason": "tool_calls",
@@ -2967,13 +2881,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 12,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2990,7 +2902,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3009,9 +2920,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3050,7 +2959,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3069,9 +2977,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3106,7 +3012,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3125,9 +3030,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3162,7 +3065,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3181,9 +3083,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3218,7 +3118,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3237,9 +3136,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3274,7 +3171,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3293,9 +3189,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3377,11 +3271,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -3406,9 +3298,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3418,7 +3308,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b9338cf087d08c09dc72e5d9c49d",
           "provider_request_id": "req_8c7d29c2111d425293c0770e51c7ef91",
           "finish_reason": "tool_calls",
@@ -3593,13 +3482,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 14,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3616,7 +3503,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3635,9 +3521,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3676,7 +3560,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3695,9 +3578,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3732,7 +3613,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3751,9 +3631,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3788,7 +3666,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3807,9 +3684,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3844,7 +3719,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3863,9 +3737,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3900,7 +3772,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3919,9 +3790,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3956,7 +3825,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3975,9 +3843,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4059,11 +3925,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -4088,9 +3952,7 @@
                   "key": "depot/1",
                   "value": 11
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -4109,9 +3971,7 @@
                   "key": "depot/2",
                   "value": 22
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -4130,9 +3990,7 @@
                   "key": "depot/3",
                   "value": 33
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -4151,9 +4009,7 @@
                   "key": "depot/4",
                   "value": 44
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -4172,9 +4028,7 @@
                   "key": "depot/5",
                   "value": 55
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -4193,9 +4047,7 @@
                   "key": "depot/6",
                   "value": 66
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -4205,7 +4057,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b934a1d087d09998eb214584c490",
           "provider_request_id": "req_2026e418d9914af98ccd36497c7ebe29",
           "finish_reason": "tool_calls",
@@ -4557,13 +4408,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 21,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4580,7 +4429,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4599,9 +4447,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4640,7 +4486,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4659,9 +4504,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4696,7 +4539,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4715,9 +4557,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4752,7 +4592,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4771,9 +4610,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4808,7 +4645,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4827,9 +4663,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4864,7 +4698,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4883,9 +4716,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4920,7 +4751,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4939,9 +4769,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4976,7 +4804,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4995,9 +4822,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5016,9 +4841,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5037,9 +4860,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5058,9 +4879,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5079,9 +4898,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5100,9 +4917,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5286,11 +5101,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -5315,9 +5128,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -5327,7 +5138,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b936c0fc87d0b439836b6c76b115",
           "provider_request_id": "req_b01fba4d27f9419dbe4866657bce1347",
           "finish_reason": "tool_calls",
@@ -5500,13 +5310,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 23,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5523,7 +5331,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5542,9 +5349,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5583,7 +5388,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5602,9 +5406,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5639,7 +5441,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5658,9 +5459,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5695,7 +5494,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5714,9 +5512,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5751,7 +5547,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5770,9 +5565,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5807,7 +5600,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5826,9 +5618,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5863,7 +5653,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5882,9 +5671,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5919,7 +5706,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5938,9 +5724,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5959,9 +5743,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5980,9 +5762,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6001,9 +5781,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6022,9 +5800,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6043,9 +5819,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6182,7 +5956,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6201,9 +5974,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6283,11 +6054,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -6457,13 +6226,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 24,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -6480,7 +6247,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6499,9 +6265,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6540,7 +6304,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6559,9 +6322,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6596,7 +6357,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6615,9 +6375,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6652,7 +6410,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6671,9 +6428,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6708,7 +6463,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6727,9 +6481,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6764,7 +6516,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6783,9 +6534,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6820,7 +6569,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6839,9 +6587,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6876,7 +6622,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6895,9 +6640,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6916,9 +6659,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6937,9 +6678,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6958,9 +6697,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6979,9 +6716,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7000,9 +6735,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7139,7 +6872,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7158,9 +6890,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7259,11 +6989,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -7288,9 +7016,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -7300,7 +7026,6 @@
             "cached_input_tokens": 1024,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b938e39c87d096ea471dcd1f9d19",
           "provider_request_id": "req_5278a26336b74bafb1d4fd96b5d67609",
           "finish_reason": "tool_calls",
@@ -7471,13 +7196,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 26,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -7494,7 +7217,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7513,9 +7235,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7554,7 +7274,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7573,9 +7292,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7610,7 +7327,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7629,9 +7345,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7666,7 +7380,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7685,9 +7398,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7722,7 +7433,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7741,9 +7451,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7778,7 +7486,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7797,9 +7504,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7834,7 +7539,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7853,9 +7557,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7890,7 +7592,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7909,9 +7610,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7930,9 +7629,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7951,9 +7648,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7972,9 +7667,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7993,9 +7686,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -8014,9 +7705,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8153,7 +7842,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8172,9 +7860,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8226,7 +7912,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8245,9 +7930,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8325,11 +8008,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -8354,9 +8035,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -8375,9 +8054,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -8396,9 +8073,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -8417,9 +8092,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -8438,9 +8111,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -8459,9 +8130,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -8471,7 +8140,6 @@
             "cached_input_tokens": 1024,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b939fd5c87d08636413fae82b192",
           "provider_request_id": "req_1cd3b99ae7ff4ec19bc3053e8a425717",
           "finish_reason": "tool_calls",
@@ -8841,13 +8509,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 33,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -8864,7 +8530,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8883,9 +8548,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8924,7 +8587,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8943,9 +8605,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8980,7 +8640,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8999,9 +8658,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9036,7 +8693,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9055,9 +8711,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9092,7 +8746,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9111,9 +8764,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9148,7 +8799,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9167,9 +8817,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9204,7 +8852,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9223,9 +8870,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9260,7 +8905,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9279,9 +8923,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9300,9 +8942,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9321,9 +8961,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9342,9 +8980,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9363,9 +8999,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9384,9 +9018,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9523,7 +9155,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9542,9 +9173,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9596,7 +9225,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9615,9 +9243,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9648,7 +9274,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9667,9 +9292,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9688,9 +9311,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9709,9 +9330,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9730,9 +9349,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9751,9 +9368,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9772,9 +9387,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9976,11 +9589,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -10005,9 +9616,7 @@
                   "key": "depot/1",
                   "value": 6
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -10026,9 +9635,7 @@
                   "key": "depot/2",
                   "value": 17
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -10047,9 +9654,7 @@
                   "key": "depot/3",
                   "value": 28
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -10068,9 +9673,7 @@
                   "key": "depot/4",
                   "value": 39
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -10089,9 +9692,7 @@
                   "key": "depot/5",
                   "value": 50
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -10110,9 +9711,7 @@
                   "key": "depot/6",
                   "value": 61
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -10122,7 +9721,6 @@
             "cached_input_tokens": 1152,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b93cd48087d08cfba6b3ba1da8ff",
           "provider_request_id": "req_c1ec8e55d4ed4eda802385e7d2265fe7",
           "finish_reason": "tool_calls",
@@ -10474,13 +10072,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 40,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -10497,7 +10093,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10516,9 +10111,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10557,7 +10150,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10576,9 +10168,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10613,7 +10203,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10632,9 +10221,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10669,7 +10256,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10688,9 +10274,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10725,7 +10309,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10744,9 +10327,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10781,7 +10362,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10800,9 +10380,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10837,7 +10415,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10856,9 +10433,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10893,7 +10468,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10912,9 +10486,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10933,9 +10505,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10954,9 +10524,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10975,9 +10543,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10996,9 +10562,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11017,9 +10581,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11156,7 +10718,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11175,9 +10736,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11229,7 +10788,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11248,9 +10806,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11281,7 +10837,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11300,9 +10855,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11321,9 +10874,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11342,9 +10893,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11363,9 +10912,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11384,9 +10931,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11405,9 +10950,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11562,7 +11105,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11581,9 +11123,7 @@
                       "key": "depot/1",
                       "value": 6
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11602,9 +11142,7 @@
                       "key": "depot/2",
                       "value": 17
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11623,9 +11161,7 @@
                       "key": "depot/3",
                       "value": 28
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11644,9 +11180,7 @@
                       "key": "depot/4",
                       "value": 39
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11665,9 +11199,7 @@
                       "key": "depot/5",
                       "value": 50
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11686,9 +11218,7 @@
                       "key": "depot/6",
                       "value": 61
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11872,11 +11402,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -11901,9 +11429,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -11913,7 +11439,6 @@
             "cached_input_tokens": 1536,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_047afa2a97ee8a44006ab2b93f2c9887d0977d72d71b5bcc05",
           "provider_request_id": "req_744e50f7bf5b444686ae3a97867bc673",
           "finish_reason": "tool_calls",
@@ -12086,13 +11611,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 42,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -12109,7 +11632,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12128,9 +11650,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12169,7 +11689,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12188,9 +11707,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12225,7 +11742,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12244,9 +11760,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12281,7 +11795,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12300,9 +11813,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12337,7 +11848,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12356,9 +11866,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12393,7 +11901,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12412,9 +11919,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12449,7 +11954,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12468,9 +11972,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12505,7 +12007,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12524,9 +12025,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12545,9 +12044,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12566,9 +12063,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12587,9 +12082,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12608,9 +12101,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12629,9 +12120,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12768,7 +12257,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12787,9 +12275,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12841,7 +12327,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12860,9 +12345,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12893,7 +12376,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12912,9 +12394,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12933,9 +12413,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12954,9 +12432,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12975,9 +12451,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12996,9 +12470,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13017,9 +12489,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13174,7 +12644,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13193,9 +12662,7 @@
                       "key": "depot/1",
                       "value": 6
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13214,9 +12681,7 @@
                       "key": "depot/2",
                       "value": 17
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13235,9 +12700,7 @@
                       "key": "depot/3",
                       "value": 28
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13256,9 +12719,7 @@
                       "key": "depot/4",
                       "value": 39
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13277,9 +12738,7 @@
                       "key": "depot/5",
                       "value": 50
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13298,9 +12757,7 @@
                       "key": "depot/6",
                       "value": 61
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13437,7 +12894,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13456,9 +12912,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13538,11 +12992,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },

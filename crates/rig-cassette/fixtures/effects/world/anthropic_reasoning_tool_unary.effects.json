@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -78,13 +79,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -124,16 +123,13 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "enabled",
               "budget_tokens": 1024
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -143,7 +139,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -170,9 +165,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -184,7 +177,6 @@
             "reasoning_tokens": 51
           },
           "message_id": "msg_011CfKLH5qJuErfdA3VUKWGF",
-          "response_id": null,
           "provider_request_id": "req_011CfKLH4vyxqajAvWf5w93u",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -263,13 +255,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -290,7 +280,6 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -317,9 +306,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -370,16 +357,13 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "enabled",
               "budget_tokens": 1024
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -401,7 +385,6 @@
             "reasoning_tokens": 0
           },
           "message_id": "msg_011CfKLHBPwBJ1CoLRJesyvy",
-          "response_id": null,
           "provider_request_id": "req_011CfKLHAz7pb8YcePpxSJk7",
           "finish_reason": "stop",
           "provider": "anthropic",

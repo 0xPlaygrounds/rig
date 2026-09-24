@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -52,13 +53,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -77,12 +76,9 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -103,7 +99,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_df083b8a-2d70-4f6e-a16a-cb1a38e7faf8",
           "finish_reason": "stop",
           "provider": "doubleword",
@@ -153,7 +148,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "host/note",
       "kind": {

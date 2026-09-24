@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -224,13 +225,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -266,12 +265,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -295,9 +289,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -311,9 +303,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -322,7 +312,6 @@
             "total_tokens": 442,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "b76d1413-5b52-4088-8f97-43f525452ef7",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -402,13 +391,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -425,7 +412,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -443,9 +429,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -459,9 +443,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -525,12 +507,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -549,7 +526,6 @@
             "total_tokens": 489,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "35178ac5-afe4-4be7-a079-9baabf5ad0e7",
           "finish_reason": "stop",
           "provider": "deepseek",

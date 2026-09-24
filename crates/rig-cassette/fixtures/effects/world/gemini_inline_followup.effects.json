@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 1,
@@ -87,7 +88,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/memory",
       "kind": {
@@ -107,13 +107,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -140,10 +138,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -167,7 +162,6 @@
             "total_tokens": 1177,
             "reasoning_tokens": 53
           },
-          "message_id": null,
           "response_id": "W2GzavWdO4qsz7IP3-jl0Ac",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -213,7 +207,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/memory",
       "kind": {
@@ -241,7 +234,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -266,7 +258,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/memory",
       "kind": {
@@ -300,7 +291,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -319,13 +309,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -350,7 +338,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -376,10 +363,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -403,7 +387,6 @@
             "total_tokens": 1214,
             "reasoning_tokens": 65
           },
-          "message_id": null,
           "response_id": "XWGzaubYIp_jz7IP7qHS4AE",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -449,7 +432,6 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/memory",
       "kind": {
@@ -469,7 +451,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",

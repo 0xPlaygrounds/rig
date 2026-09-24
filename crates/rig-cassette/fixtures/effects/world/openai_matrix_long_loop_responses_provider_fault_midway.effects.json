@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 2,
@@ -265,13 +266,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -348,10 +347,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -372,9 +368,7 @@
               "function": {
                 "name": "list_files",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -384,7 +378,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab396807c9c87d0b494c329d7b23dcb",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -576,13 +569,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -599,7 +590,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -614,9 +604,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -705,10 +693,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -731,9 +716,7 @@
                 "arguments": {
                   "path": "README.md"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -743,7 +726,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab396815bd087d0b2dfacbc4b78c3c4",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -935,13 +917,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -958,7 +938,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -973,9 +952,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1004,7 +981,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1021,9 +997,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1112,10 +1086,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -1130,21 +1101,18 @@
           "source_chain": [],
           "provider_response": {
             "status": 503,
-            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-4o-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-4o-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}"
           }
         }
       },
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1161,7 +1129,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1176,9 +1143,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1207,7 +1172,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1224,9 +1188,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1315,10 +1277,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -1341,9 +1300,7 @@
                 "arguments": {
                   "path": "tests/basic.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1353,7 +1310,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab3968236b487d0a387cbc46de70340",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -1545,13 +1501,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 7,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1568,7 +1522,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1583,9 +1536,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1614,7 +1565,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1631,9 +1581,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1662,7 +1610,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1679,9 +1626,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1770,10 +1715,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -1796,9 +1738,7 @@
                 "arguments": {
                   "path": "src/lib.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1808,7 +1748,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab396832af887d0bcb509ac469109c5",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -2000,13 +1939,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 9,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2023,7 +1960,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2038,9 +1974,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2069,7 +2003,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2086,9 +2019,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2117,7 +2048,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2134,9 +2064,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2165,7 +2093,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2182,9 +2109,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2273,10 +2198,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -2297,9 +2219,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2309,7 +2229,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab396841f5c87d0aa4d19628abf4614",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -2501,13 +2420,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 11,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2524,7 +2441,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2539,9 +2455,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2570,7 +2484,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2587,9 +2500,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2618,7 +2529,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2635,9 +2545,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2666,7 +2574,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2683,9 +2590,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2714,7 +2619,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2729,9 +2633,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2820,10 +2722,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -2847,9 +2746,7 @@
                   "path": "src/lib.rs",
                   "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2859,7 +2756,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab39684efec87d0b686fbcc78dec975",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -3051,13 +2947,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 13,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3074,7 +2968,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3089,9 +2982,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3120,7 +3011,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3137,9 +3027,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3168,7 +3056,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3185,9 +3072,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3216,7 +3101,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3233,9 +3117,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3264,7 +3146,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3279,9 +3160,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3310,7 +3189,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3328,9 +3206,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3419,10 +3295,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -3443,9 +3316,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3455,7 +3326,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab396863d4c87d0a0e470dfb49ffe86",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -3647,13 +3517,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 15,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3670,7 +3538,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3685,9 +3552,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3716,7 +3581,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3733,9 +3597,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3764,7 +3626,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3781,9 +3642,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3812,7 +3671,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3829,9 +3687,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3860,7 +3716,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3875,9 +3730,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3906,7 +3759,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3924,9 +3776,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3955,7 +3805,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3970,9 +3819,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4061,10 +3908,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -4087,9 +3931,7 @@
                 "arguments": {
                   "path": "src/calendar.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -4099,7 +3941,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab39687fb1887d09c9baec5804ff152",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -4291,13 +4132,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 17,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4314,7 +4153,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4329,9 +4167,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4360,7 +4196,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4377,9 +4212,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4408,7 +4241,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4425,9 +4257,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4456,7 +4286,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4473,9 +4302,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4504,7 +4331,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4519,9 +4345,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4550,7 +4374,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4568,9 +4391,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4599,7 +4420,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4614,9 +4434,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4645,7 +4463,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4662,9 +4479,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4753,10 +4568,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -4780,9 +4592,7 @@
                   "path": "src/calendar.rs",
                   "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -4792,7 +4602,6 @@
             "cached_input_tokens": 1024,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab39688e96887d0a5dd0ceb34e44571",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -4984,13 +4793,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 19,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5007,7 +4814,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5022,9 +4828,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5053,7 +4857,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5070,9 +4873,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5101,7 +4902,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5118,9 +4918,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5149,7 +4947,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5166,9 +4963,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5197,7 +4992,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5212,9 +5006,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5243,7 +5035,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5261,9 +5052,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5292,7 +5081,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5307,9 +5095,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5338,7 +5124,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5355,9 +5140,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5386,7 +5169,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5404,9 +5186,7 @@
                       "path": "src/calendar.rs",
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5495,10 +5275,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -5519,9 +5296,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -5531,7 +5306,6 @@
             "cached_input_tokens": 1024,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0a479eced053123c006ab3968a0c6487d0909df08529d7e257",
           "finish_reason": "tool_calls",
           "provider": "openai",
@@ -5723,13 +5497,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 21,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5746,7 +5518,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5761,9 +5532,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5792,7 +5561,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5809,9 +5577,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5840,7 +5606,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5857,9 +5622,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5888,7 +5651,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5905,9 +5667,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5936,7 +5696,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5951,9 +5710,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5982,7 +5739,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6000,9 +5756,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6031,7 +5785,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6046,9 +5799,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6077,7 +5828,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6094,9 +5844,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6125,7 +5873,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6143,9 +5890,7 @@
                       "path": "src/calendar.rs",
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6174,7 +5919,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6189,9 +5933,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6280,10 +6022,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },

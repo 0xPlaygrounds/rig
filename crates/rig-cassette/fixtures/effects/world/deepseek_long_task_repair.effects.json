@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -384,13 +385,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -444,13 +443,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -478,9 +475,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -489,7 +484,6 @@
             "total_tokens": 604,
             "cached_input_tokens": 384
           },
-          "message_id": null,
           "response_id": "dd9abcab-60ea-4810-8df6-1d101e15d6e6",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -573,13 +567,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -596,7 +588,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -618,9 +609,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -695,13 +684,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -729,9 +716,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -740,7 +725,6 @@
             "total_tokens": 735,
             "cached_input_tokens": 512
           },
-          "message_id": null,
           "response_id": "b59e1181-9170-4572-ab85-929b219e7212",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -811,9 +795,6 @@
                   "text": "validation runner temporarily unavailable; retry check"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -822,13 +803,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -845,7 +824,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -867,9 +845,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -907,7 +883,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -929,9 +904,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -996,13 +969,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1030,9 +1001,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1041,7 +1010,6 @@
             "total_tokens": 836,
             "cached_input_tokens": 512
           },
-          "message_id": null,
           "response_id": "1c786606-0ea7-4031-b9e7-3722d815bd91",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1150,13 +1118,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1173,7 +1139,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1195,9 +1160,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1235,7 +1198,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1257,9 +1219,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1287,7 +1247,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1309,9 +1268,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1411,13 +1368,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1445,9 +1400,7 @@
                   "key": "days_per_week",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1456,7 +1409,6 @@
             "total_tokens": 1110,
             "cached_input_tokens": 768
           },
-          "message_id": null,
           "response_id": "bce25d46-919b-4458-b80e-82309e0d5ef1",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1535,13 +1487,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1558,7 +1508,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1580,9 +1529,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1620,7 +1567,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1642,9 +1588,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1672,7 +1616,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1694,9 +1637,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1759,7 +1700,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1781,9 +1721,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1853,13 +1791,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1883,9 +1819,7 @@
                   "key": "days_per_week",
                   "value": 7
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1894,7 +1828,6 @@
             "total_tokens": 1243,
             "cached_input_tokens": 1024
           },
-          "message_id": null,
           "response_id": "d6f43e6e-4234-451a-9ff7-6ad9ea51dfab",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1972,13 +1905,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 10,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1995,7 +1926,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2017,9 +1947,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2057,7 +1985,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2079,9 +2006,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2109,7 +2034,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2131,9 +2055,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2196,7 +2118,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2218,9 +2139,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2253,7 +2172,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2271,9 +2189,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2342,13 +2258,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2372,9 +2286,7 @@
                   "key": "days_per_week",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2383,7 +2295,6 @@
             "total_tokens": 1345,
             "cached_input_tokens": 1024
           },
-          "message_id": null,
           "response_id": "7a804bcd-abaf-4e1c-a666-2a2922c36817",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -2461,13 +2372,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 12,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2484,7 +2393,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2506,9 +2414,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2546,7 +2452,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2568,9 +2473,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2598,7 +2501,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2620,9 +2522,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2685,7 +2585,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2707,9 +2606,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2742,7 +2639,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2760,9 +2656,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2794,7 +2688,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2812,9 +2705,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2883,13 +2774,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2917,9 +2806,7 @@
                   "key": "hours_per_day",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2928,7 +2815,6 @@
             "total_tokens": 1447,
             "cached_input_tokens": 1152
           },
-          "message_id": null,
           "response_id": "e2c2d455-bc8d-4820-bd50-37ffa8193a23",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -3007,13 +2893,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 14,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3030,7 +2914,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3052,9 +2935,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3092,7 +2973,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3114,9 +2994,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3144,7 +3022,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3166,9 +3043,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3231,7 +3106,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3253,9 +3127,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3288,7 +3160,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3306,9 +3177,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3340,7 +3209,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3358,9 +3226,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3392,7 +3258,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3414,9 +3279,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3486,13 +3349,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -3516,9 +3377,7 @@
                   "key": "hours_per_day",
                   "value": 24
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3527,7 +3386,6 @@
             "total_tokens": 1580,
             "cached_input_tokens": 1280
           },
-          "message_id": null,
           "response_id": "7b6849d7-7384-4e1b-82a9-6c26f24affbf",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -3605,13 +3463,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 16,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3628,7 +3484,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3650,9 +3505,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3690,7 +3543,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3712,9 +3564,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3742,7 +3592,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3764,9 +3613,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3829,7 +3676,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3851,9 +3697,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3886,7 +3730,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3904,9 +3747,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3938,7 +3779,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3956,9 +3796,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3990,7 +3828,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4012,9 +3849,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4047,7 +3882,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4065,9 +3899,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4136,13 +3968,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -4166,9 +3996,7 @@
                   "key": "hours_per_day",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -4177,7 +4005,6 @@
             "total_tokens": 1680,
             "cached_input_tokens": 1408
           },
-          "message_id": null,
           "response_id": "db9c6618-da4a-4bd4-b42e-6211e3aaa6f0",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -4255,13 +4082,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 18,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4278,7 +4103,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4300,9 +4124,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4340,7 +4162,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4362,9 +4183,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4392,7 +4211,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4414,9 +4232,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4479,7 +4295,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4501,9 +4316,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4536,7 +4349,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4554,9 +4366,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4588,7 +4398,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4606,9 +4415,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4640,7 +4447,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4662,9 +4468,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4697,7 +4501,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4715,9 +4518,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4749,7 +4550,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4767,9 +4567,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4838,13 +4636,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -4872,9 +4668,7 @@
                   "key": "minutes_per_hour",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -4883,7 +4677,6 @@
             "total_tokens": 1783,
             "cached_input_tokens": 1536
           },
-          "message_id": null,
           "response_id": "fe6893b5-bb4c-4d01-90e3-6df414fa6e1a",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -4962,13 +4755,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 20,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4985,7 +4776,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5007,9 +4797,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5047,7 +4835,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5069,9 +4856,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5099,7 +4884,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5121,9 +4905,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5186,7 +4968,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5208,9 +4989,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5243,7 +5022,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5261,9 +5039,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5295,7 +5071,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5313,9 +5088,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5347,7 +5120,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5369,9 +5141,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5404,7 +5174,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5422,9 +5191,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5456,7 +5223,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5474,9 +5240,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5508,7 +5272,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5530,9 +5293,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5602,13 +5363,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -5632,9 +5391,7 @@
                   "key": "minutes_per_hour",
                   "value": 60
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -5643,7 +5400,6 @@
             "total_tokens": 1916,
             "cached_input_tokens": 1664
           },
-          "message_id": null,
           "response_id": "5fa2a382-cee3-4366-a77b-37460dc9ddaa",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -5721,13 +5477,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 22,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5744,7 +5498,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5766,9 +5519,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5806,7 +5557,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5828,9 +5578,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5858,7 +5606,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5880,9 +5627,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5945,7 +5690,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5967,9 +5711,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6002,7 +5744,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6020,9 +5761,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6054,7 +5793,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6072,9 +5810,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6106,7 +5842,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6128,9 +5863,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6163,7 +5896,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6181,9 +5913,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6215,7 +5945,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6233,9 +5962,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6267,7 +5994,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6289,9 +6015,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6324,7 +6048,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6342,9 +6065,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6413,13 +6134,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -6443,9 +6162,7 @@
                   "key": "minutes_per_hour",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -6454,7 +6171,6 @@
             "total_tokens": 2018,
             "cached_input_tokens": 1792
           },
-          "message_id": null,
           "response_id": "9cf50df9-cc2a-40ec-927c-c63630d3e290",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -6532,13 +6248,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 24,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -6555,7 +6269,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6577,9 +6290,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6617,7 +6328,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6639,9 +6349,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6669,7 +6377,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6691,9 +6398,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6756,7 +6461,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6778,9 +6482,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6813,7 +6515,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6831,9 +6532,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6865,7 +6564,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6883,9 +6581,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6917,7 +6613,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6939,9 +6634,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6974,7 +6667,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6992,9 +6684,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7026,7 +6716,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7044,9 +6733,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7078,7 +6765,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7100,9 +6786,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7135,7 +6819,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7153,9 +6836,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7187,7 +6868,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7205,9 +6885,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7276,13 +6954,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -7310,9 +6986,7 @@
                   "key": "seconds_per_minute",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -7321,7 +6995,6 @@
             "total_tokens": 2121,
             "cached_input_tokens": 1792
           },
-          "message_id": null,
           "response_id": "9c37c612-dd12-4525-bff6-aceef65242fe",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -7400,13 +7073,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 26,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -7423,7 +7094,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7445,9 +7115,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7485,7 +7153,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7507,9 +7174,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7537,7 +7202,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7559,9 +7223,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7624,7 +7286,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7646,9 +7307,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7681,7 +7340,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7699,9 +7357,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7733,7 +7389,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7751,9 +7406,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7785,7 +7438,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7807,9 +7459,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7842,7 +7492,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7860,9 +7509,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7894,7 +7541,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7912,9 +7558,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7946,7 +7590,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7968,9 +7611,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8003,7 +7644,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8021,9 +7661,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8055,7 +7693,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8073,9 +7710,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8107,7 +7742,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8129,9 +7763,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8201,13 +7833,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -8231,9 +7861,7 @@
                   "key": "seconds_per_minute",
                   "value": 60
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -8242,7 +7870,6 @@
             "total_tokens": 2254,
             "cached_input_tokens": 1920
           },
-          "message_id": null,
           "response_id": "f7bdf08e-d54a-42f8-af6a-c26a9222ec57",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -8320,13 +7947,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 28,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -8343,7 +7968,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8365,9 +7989,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8405,7 +8027,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8427,9 +8048,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8457,7 +8076,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8479,9 +8097,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8544,7 +8160,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8566,9 +8181,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8601,7 +8214,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8619,9 +8231,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8653,7 +8263,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8671,9 +8280,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8705,7 +8312,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8727,9 +8333,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8762,7 +8366,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8780,9 +8383,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8814,7 +8415,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8832,9 +8432,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8866,7 +8464,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8888,9 +8485,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8923,7 +8518,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8941,9 +8535,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8975,7 +8567,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8993,9 +8584,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9027,7 +8616,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9049,9 +8637,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9084,7 +8670,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9102,9 +8687,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9173,13 +8756,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -9203,9 +8784,7 @@
                   "key": "seconds_per_minute",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -9214,7 +8793,6 @@
             "total_tokens": 2356,
             "cached_input_tokens": 2048
           },
-          "message_id": null,
           "response_id": "573e32f0-7bd7-4f81-9dc9-d95af962119a",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -9292,13 +8870,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 30,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -9315,7 +8891,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9337,9 +8912,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9377,7 +8950,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9399,9 +8971,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9429,7 +8999,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9451,9 +9020,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9516,7 +9083,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9538,9 +9104,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9573,7 +9137,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9591,9 +9154,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9625,7 +9186,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9643,9 +9203,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9677,7 +9235,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9699,9 +9256,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9734,7 +9289,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9752,9 +9306,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9786,7 +9338,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9804,9 +9355,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9838,7 +9387,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9860,9 +9408,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9895,7 +9441,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9913,9 +9458,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9947,7 +9490,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9965,9 +9507,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9999,7 +9539,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10021,9 +9560,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10056,7 +9593,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10074,9 +9610,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10108,7 +9642,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10126,9 +9659,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10197,13 +9728,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -10231,9 +9760,7 @@
                   "key": "seconds_per_day",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -10242,7 +9769,6 @@
             "total_tokens": 2468,
             "cached_input_tokens": 2176
           },
-          "message_id": null,
           "response_id": "cbe963cc-9214-4a84-bbde-74c9ca8b5c46",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -10321,13 +9847,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 32,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -10344,7 +9868,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10366,9 +9889,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10406,7 +9927,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10428,9 +9948,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10458,7 +9976,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10480,9 +9997,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10545,7 +10060,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10567,9 +10081,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10602,7 +10114,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10620,9 +10131,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10654,7 +10163,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10672,9 +10180,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10706,7 +10212,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10728,9 +10233,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10763,7 +10266,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10781,9 +10283,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10815,7 +10315,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10833,9 +10332,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10867,7 +10364,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10889,9 +10385,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10924,7 +10418,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10942,9 +10435,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10976,7 +10467,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10994,9 +10484,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11028,7 +10516,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11050,9 +10537,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11085,7 +10570,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11103,9 +10587,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11137,7 +10619,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11155,9 +10636,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11189,7 +10668,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11211,9 +10689,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11283,13 +10759,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -11317,9 +10791,7 @@
                   "key": "seconds_per_day",
                   "value": 86400
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -11328,7 +10800,6 @@
             "total_tokens": 2625,
             "cached_input_tokens": 2304
           },
-          "message_id": null,
           "response_id": "74623ef7-6ebe-4725-a0a1-f7572fcb02ee",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -11406,13 +10877,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 34,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -11429,7 +10898,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11451,9 +10919,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11491,7 +10957,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11513,9 +10978,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11543,7 +11006,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11565,9 +11027,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11630,7 +11090,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11652,9 +11111,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11687,7 +11144,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11705,9 +11161,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11739,7 +11193,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11757,9 +11210,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11791,7 +11242,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11813,9 +11263,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11848,7 +11296,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11866,9 +11313,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11900,7 +11345,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11918,9 +11362,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11952,7 +11394,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11974,9 +11415,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12009,7 +11448,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12027,9 +11465,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12061,7 +11497,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12079,9 +11514,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12113,7 +11546,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12135,9 +11567,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12170,7 +11600,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12188,9 +11617,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12222,7 +11649,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12240,9 +11666,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12274,7 +11698,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12296,9 +11719,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12331,7 +11752,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12353,9 +11773,7 @@
                       "key": "seconds_per_day",
                       "value": 86400
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12424,13 +11842,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -12454,9 +11870,7 @@
                   "key": "seconds_per_day",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -12465,7 +11879,6 @@
             "total_tokens": 2726,
             "cached_input_tokens": 2432
           },
-          "message_id": null,
           "response_id": "9a0ab2ee-b2dc-4296-95b4-3fd00a74af73",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -12543,13 +11956,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 36,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -12566,7 +11977,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12588,9 +11998,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12628,7 +12036,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12650,9 +12057,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12680,7 +12085,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12702,9 +12106,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12767,7 +12169,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12789,9 +12190,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12824,7 +12223,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12842,9 +12240,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12876,7 +12272,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12894,9 +12289,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12928,7 +12321,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12950,9 +12342,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12985,7 +12375,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13003,9 +12392,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13037,7 +12424,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13055,9 +12441,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13089,7 +12473,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13111,9 +12494,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13146,7 +12527,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13164,9 +12544,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13198,7 +12576,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13216,9 +12593,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13250,7 +12625,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13272,9 +12646,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13307,7 +12679,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13325,9 +12696,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13359,7 +12728,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13377,9 +12745,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13411,7 +12777,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13433,9 +12798,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13468,7 +12831,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13490,9 +12852,7 @@
                       "key": "seconds_per_day",
                       "value": 86400
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13524,7 +12884,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13542,9 +12901,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13613,13 +12970,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -13647,9 +13002,7 @@
                   "key": "seconds_per_week",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -13658,7 +13011,6 @@
             "total_tokens": 2837,
             "cached_input_tokens": 2560
           },
-          "message_id": null,
           "response_id": "b169438c-c41b-459d-9971-5c5912abed01",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -13737,13 +13089,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 38,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -13760,7 +13110,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13782,9 +13131,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13822,7 +13169,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13844,9 +13190,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13874,7 +13218,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13896,9 +13239,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13961,7 +13302,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13983,9 +13323,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14018,7 +13356,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14036,9 +13373,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14070,7 +13405,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14088,9 +13422,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14122,7 +13454,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14144,9 +13475,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14179,7 +13508,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14197,9 +13525,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14231,7 +13557,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14249,9 +13574,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14283,7 +13606,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14305,9 +13627,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14340,7 +13660,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14358,9 +13677,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14392,7 +13709,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14410,9 +13726,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14444,7 +13758,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14466,9 +13779,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14501,7 +13812,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14519,9 +13829,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14553,7 +13861,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14571,9 +13878,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14605,7 +13910,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14627,9 +13931,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14662,7 +13964,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14684,9 +13985,7 @@
                       "key": "seconds_per_day",
                       "value": 86400
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14718,7 +14017,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14736,9 +14034,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14770,7 +14066,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14792,9 +14087,7 @@
                       "key": "seconds_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14864,13 +14157,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -14898,9 +14189,7 @@
                   "key": "seconds_per_week",
                   "value": 604800
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -14909,7 +14198,6 @@
             "total_tokens": 2996,
             "cached_input_tokens": 2688
           },
-          "message_id": null,
           "response_id": "4cc2c1ac-e0d6-468b-980d-33fc7bac0fb9",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -14987,13 +14275,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 40,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -15010,7 +14296,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15032,9 +14317,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15072,7 +14355,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15094,9 +14376,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15124,7 +14404,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15146,9 +14425,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15211,7 +14488,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15233,9 +14509,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15268,7 +14542,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15286,9 +14559,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15320,7 +14591,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15338,9 +14608,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15372,7 +14640,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15394,9 +14661,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15429,7 +14694,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15447,9 +14711,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15481,7 +14743,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15499,9 +14760,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15533,7 +14792,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15555,9 +14813,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15590,7 +14846,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15608,9 +14863,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15642,7 +14895,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15660,9 +14912,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15694,7 +14944,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15716,9 +14965,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15751,7 +14998,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15769,9 +15015,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15803,7 +15047,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15821,9 +15064,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15855,7 +15096,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15877,9 +15117,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15912,7 +15150,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15934,9 +15171,7 @@
                       "key": "seconds_per_day",
                       "value": 86400
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15968,7 +15203,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15986,9 +15220,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16020,7 +15252,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16042,9 +15273,7 @@
                       "key": "seconds_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16077,7 +15306,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16099,9 +15327,7 @@
                       "key": "seconds_per_week",
                       "value": 604800
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16170,13 +15396,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -16200,9 +15424,7 @@
                   "key": "seconds_per_week",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -16211,7 +15433,6 @@
             "total_tokens": 3099,
             "cached_input_tokens": 2816
           },
-          "message_id": null,
           "response_id": "f23a2e88-bb0c-4b7a-9c3e-176453cb9245",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -16289,13 +15510,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 42,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -16312,7 +15531,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16334,9 +15552,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16374,7 +15590,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16396,9 +15611,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16426,7 +15639,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16448,9 +15660,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16513,7 +15723,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16535,9 +15744,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16570,7 +15777,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16588,9 +15794,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16622,7 +15826,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16640,9 +15843,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16674,7 +15875,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16696,9 +15896,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16731,7 +15929,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16749,9 +15946,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16783,7 +15978,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16801,9 +15995,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16835,7 +16027,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16857,9 +16048,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16892,7 +16081,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16910,9 +16098,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16944,7 +16130,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16962,9 +16147,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16996,7 +16179,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17018,9 +16200,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17053,7 +16233,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17071,9 +16250,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17105,7 +16282,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17123,9 +16299,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17157,7 +16331,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17179,9 +16352,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17214,7 +16385,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17236,9 +16406,7 @@
                       "key": "seconds_per_day",
                       "value": 86400
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17270,7 +16438,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17288,9 +16455,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17322,7 +16487,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17344,9 +16508,7 @@
                       "key": "seconds_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17379,7 +16541,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17401,9 +16562,7 @@
                       "key": "seconds_per_week",
                       "value": 604800
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17435,7 +16594,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17453,9 +16611,7 @@
                       "key": "seconds_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17524,13 +16680,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -17558,9 +16712,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -17569,7 +16721,6 @@
             "total_tokens": 3206,
             "cached_input_tokens": 2944
           },
-          "message_id": null,
           "response_id": "58e18e10-ba62-4853-a55b-57603cb4e5cc",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -17647,13 +16798,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 44,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -17670,7 +16819,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17692,9 +16840,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17732,7 +16878,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17754,9 +16899,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17784,7 +16927,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17806,9 +16948,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17871,7 +17011,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17893,9 +17032,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17928,7 +17065,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17946,9 +17082,7 @@
                       "key": "days_per_week",
                       "value": 7
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17980,7 +17114,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17998,9 +17131,7 @@
                       "key": "days_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18032,7 +17163,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18054,9 +17184,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18089,7 +17217,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18107,9 +17234,7 @@
                       "key": "hours_per_day",
                       "value": 24
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18141,7 +17266,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18159,9 +17283,7 @@
                       "key": "hours_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18193,7 +17315,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18215,9 +17336,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18250,7 +17369,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18268,9 +17386,7 @@
                       "key": "minutes_per_hour",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18302,7 +17418,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18320,9 +17435,7 @@
                       "key": "minutes_per_hour",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18354,7 +17467,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18376,9 +17488,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18411,7 +17521,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18429,9 +17538,7 @@
                       "key": "seconds_per_minute",
                       "value": 60
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18463,7 +17570,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18481,9 +17587,7 @@
                       "key": "seconds_per_minute",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18515,7 +17619,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18537,9 +17640,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18572,7 +17673,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18594,9 +17694,7 @@
                       "key": "seconds_per_day",
                       "value": 86400
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18628,7 +17726,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18646,9 +17743,7 @@
                       "key": "seconds_per_day",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18680,7 +17775,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18702,9 +17796,7 @@
                       "key": "seconds_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18737,7 +17829,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18759,9 +17850,7 @@
                       "key": "seconds_per_week",
                       "value": 604800
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18793,7 +17882,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18811,9 +17899,7 @@
                       "key": "seconds_per_week",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18845,7 +17931,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18867,9 +17952,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18938,13 +18021,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -18963,7 +18044,6 @@
             "total_tokens": 3343,
             "cached_input_tokens": 3072
           },
-          "message_id": null,
           "response_id": "97944d18-0fe8-4ea9-a94f-94dad0a0c6d6",
           "finish_reason": "stop",
           "provider": "deepseek",

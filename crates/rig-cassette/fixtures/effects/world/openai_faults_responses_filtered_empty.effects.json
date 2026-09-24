@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 3,
@@ -45,13 +46,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -68,12 +67,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": true
       },
@@ -100,7 +94,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
           "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
           "finish_reason": "content_filter",
           "provider": "openai",
@@ -179,7 +172,6 @@
             "reasoning_tokens": 64
           },
           "finish_reason": "content_filter",
-          "message_id": null,
           "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",

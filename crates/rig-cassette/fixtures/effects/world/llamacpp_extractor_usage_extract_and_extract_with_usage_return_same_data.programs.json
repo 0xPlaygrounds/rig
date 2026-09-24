@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -117,7 +117,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -226,7 +226,6 @@
             "content": [
               {
                 "type": "reasoning",
-                "id": null,
                 "content": [
                   {
                     "type": "text",
@@ -253,9 +252,7 @@
                     "age": 55,
                     "profession": "retired teacher"
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -279,7 +276,6 @@
               "choice": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -306,9 +302,7 @@
                       "age": 55,
                       "profession": "retired teacher"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -317,7 +311,6 @@
                 "total_tokens": 633,
                 "cached_input_tokens": 79
               },
-              "message_id": null,
               "response_id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX",
               "finish_reason": "tool_calls",
               "provider": "llamacpp",
@@ -385,7 +378,6 @@
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
-              "id": null,
               "content": [
                 {
                   "type": "text",

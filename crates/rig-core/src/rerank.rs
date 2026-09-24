@@ -40,6 +40,7 @@ pub struct RerankResult {
     /// Index of the document in the original input list.
     pub index: usize,
     /// The document text, if requested via `return_documents`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub document: Option<String>,
     /// Relevance score, with higher values more relevant within this response.
     /// The range is provider-specific and may include negative values. Do not
@@ -54,7 +55,7 @@ pub struct RerankResponse {
     /// Reranked results sorted by relevance (highest first).
     pub results: Vec<RerankResult>,
     /// Provider-reported model identifier, or `None` when omitted.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Token usage for this rerank request; every counter is `None` when the
     /// provider reported none (see [`Usage`]).

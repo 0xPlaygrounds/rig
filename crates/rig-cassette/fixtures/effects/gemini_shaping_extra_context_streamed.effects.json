@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 10072942899351225430,
     "handlers": [
       {
@@ -30,13 +31,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -59,11 +58,7 @@
             }
           ],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -91,7 +86,6 @@
             "total_tokens": 167,
             "reasoning_tokens": 89
           },
-          "message_id": null,
           "response_id": "x62yasOCMcPXz7IP6fmsGQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -181,7 +175,6 @@
             "reasoning_tokens": 89
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "x62yasOCMcPXz7IP6fmsGQ",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",

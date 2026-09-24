@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -90,13 +89,10 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": "required",
           "additional_params": {
             "temperature": 0.0
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -106,7 +102,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -133,9 +128,7 @@
                   "age": 30,
                   "profession": "software engineer"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -144,7 +137,6 @@
             "total_tokens": 569,
             "cached_input_tokens": 332
           },
-          "message_id": null,
           "response_id": "chatcmpl-S3Fu9HncpQc2qt4oSTb5YWMCCXvfGXTp",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",

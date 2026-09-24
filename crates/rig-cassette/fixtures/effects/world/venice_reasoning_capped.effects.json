@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -63,13 +62,11 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 16,
-          "tool_choice": null,
           "additional_params": {
             "venice_parameters": {
               "strip_thinking_response": false
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -79,7 +76,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -96,7 +92,6 @@
             "output_tokens": 16,
             "total_tokens": 1022
           },
-          "message_id": null,
           "response_id": "chatcmpl-RqRBfGOV1gJZTR0fcgDZyFBj",
           "finish_reason": "length",
           "provider": "venice",

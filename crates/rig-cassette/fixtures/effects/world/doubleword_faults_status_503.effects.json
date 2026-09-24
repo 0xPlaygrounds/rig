@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 2,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -57,13 +56,10 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
           "max_tokens": 16,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -78,8 +74,7 @@
           "source_chain": [],
           "provider_response": {
             "status": 503,
-            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `rig/definitely-not-a-doubleword-model` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `rig/definitely-not-a-doubleword-model` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}"
           }
         }
       },

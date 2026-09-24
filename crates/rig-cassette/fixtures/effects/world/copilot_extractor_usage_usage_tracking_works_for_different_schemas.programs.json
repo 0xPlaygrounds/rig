@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -119,7 +119,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -248,9 +248,7 @@
                     "name": "Alice",
                     "profession": "developer"
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -288,9 +286,7 @@
                       "name": "Alice",
                       "profession": "developer"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -300,7 +296,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-REDACTED_1",
               "finish_reason": "tool_calls",
               "provider": "copilot",

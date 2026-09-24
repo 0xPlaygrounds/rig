@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -44,13 +45,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -69,10 +68,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": false
       },
@@ -91,7 +87,6 @@
             "total_tokens": 40,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "1a2812bc-6d7d-46ac-b737-806ddb331484",
           "finish_reason": "length",
           "provider": "deepseek",
@@ -129,13 +124,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -154,10 +147,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": false
       },
@@ -176,7 +166,6 @@
             "total_tokens": 50,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "ba206055-416b-46d2-8b06-4719ff0ff99c",
           "finish_reason": "stop",
           "provider": "deepseek",

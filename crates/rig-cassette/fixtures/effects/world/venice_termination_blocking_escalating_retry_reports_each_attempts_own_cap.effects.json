@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -44,13 +45,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -69,10 +68,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": false
       },
@@ -90,7 +86,6 @@
             "output_tokens": 16,
             "total_tokens": 994
           },
-          "message_id": null,
           "response_id": "chatcmpl-RksqIpS1YjkKzh20XFj5i27Y",
           "finish_reason": "length",
           "provider": "venice",
@@ -143,13 +138,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -168,10 +161,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": false
       },
@@ -189,7 +179,6 @@
             "output_tokens": 44,
             "total_tokens": 1022
           },
-          "message_id": null,
           "response_id": "chatcmpl-RfbejHKvIRtkt6XPwh9A9dJS",
           "finish_reason": "stop",
           "provider": "venice",

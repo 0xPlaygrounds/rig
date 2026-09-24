@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -419,13 +420,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -479,11 +478,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -507,9 +504,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -519,7 +514,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRMVX4w994XCaXo5kIeMBkQgjvc",
           "provider_request_id": "req_b819e3b2c628493297d2013c8e06a01b",
           "finish_reason": "tool_calls",
@@ -611,13 +605,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -634,7 +626,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -652,9 +643,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -729,11 +718,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -757,9 +744,7 @@
                   "key": "page/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -769,7 +754,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRNBgTITiOlPxyundLFtNx7soBr",
           "provider_request_id": "req_68b824e91fad428c8e2eaec167c29d70",
           "finish_reason": "tool_calls",
@@ -978,13 +962,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1001,7 +983,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1019,9 +1000,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1059,7 +1038,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1077,9 +1055,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1271,11 +1247,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1299,9 +1273,7 @@
                   "key": "page/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1311,7 +1283,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRO2UbUZSb4eKB4HVYZy0QiibCd",
           "provider_request_id": "req_804e3dbe69354e0495f98c11bf31c064",
           "finish_reason": "tool_calls",
@@ -1520,13 +1491,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1543,7 +1512,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1561,9 +1529,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1601,7 +1567,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1619,9 +1584,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1776,7 +1739,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1794,9 +1756,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1988,11 +1948,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2016,9 +1974,7 @@
                   "key": "page/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2028,7 +1984,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRPOvUKqMojA2LKWSQOTA8jYDy5",
           "provider_request_id": "req_66586b8746b4470eb5029943fcc00676",
           "finish_reason": "tool_calls",
@@ -2237,13 +2192,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2260,7 +2213,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2278,9 +2230,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2318,7 +2268,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2336,9 +2285,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2493,7 +2440,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2511,9 +2457,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2668,7 +2612,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2686,9 +2629,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2880,11 +2821,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2908,9 +2847,7 @@
                   "key": "page/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2920,7 +2857,6 @@
             "cached_input_tokens": 1152,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRQVr0FbKcIcnFCjdkz6eakhZL4",
           "provider_request_id": "req_8ffa357808654cd2a97c985040c5b8dd",
           "finish_reason": "tool_calls",
@@ -3129,13 +3065,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 10,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3152,7 +3086,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3170,9 +3103,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3210,7 +3141,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3228,9 +3158,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3385,7 +3313,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3403,9 +3330,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3560,7 +3485,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3578,9 +3502,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3735,7 +3657,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3753,9 +3674,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3947,11 +3866,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -3975,9 +3892,7 @@
                   "key": "page/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3987,7 +3902,6 @@
             "cached_input_tokens": 1536,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRQnC5d1CtS2GTRrLSmWe8RnK7S",
           "provider_request_id": "req_d7f980b7b4ac4ab6adbf6b6a8beb21d9",
           "finish_reason": "tool_calls",
@@ -4196,13 +4110,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 12,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4219,7 +4131,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4237,9 +4148,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4277,7 +4186,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4295,9 +4203,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4452,7 +4358,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4470,9 +4375,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4627,7 +4530,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4645,9 +4547,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4802,7 +4702,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4820,9 +4719,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4977,7 +4874,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4995,9 +4891,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5189,11 +5083,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -5217,9 +5109,7 @@
                   "key": "page/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -5229,7 +5119,6 @@
             "cached_input_tokens": 2048,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRRko7QXyT1iCAXYMkfAIHT3wkC",
           "provider_request_id": "req_c16cb238b4684adca757f42a33ad68d6",
           "finish_reason": "tool_calls",
@@ -5438,13 +5327,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 14,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5461,7 +5348,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5479,9 +5365,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5519,7 +5403,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5537,9 +5420,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5694,7 +5575,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5712,9 +5592,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5869,7 +5747,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5887,9 +5764,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6044,7 +5919,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6062,9 +5936,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6219,7 +6091,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6237,9 +6108,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6394,7 +6263,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6412,9 +6280,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6606,11 +6472,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -6634,9 +6498,7 @@
                   "key": "credit/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -6654,9 +6516,7 @@
                   "key": "credit/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -6666,7 +6526,6 @@
             "cached_input_tokens": 2432,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRS5frIBh4drlzEKbuF0cxODmT2",
           "provider_request_id": "req_34af7f4347db4bddb5a8a8765fe885f0",
           "finish_reason": "tool_calls",
@@ -6797,13 +6656,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 17,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -6820,7 +6677,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6838,9 +6694,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6878,7 +6732,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6896,9 +6749,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7053,7 +6904,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7071,9 +6921,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7228,7 +7076,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7246,9 +7093,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7403,7 +7248,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7421,9 +7265,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7578,7 +7420,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7596,9 +7437,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7753,7 +7592,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7771,9 +7609,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7928,7 +7764,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7946,9 +7781,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7966,9 +7799,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8066,11 +7897,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -8094,9 +7923,7 @@
                   "key": "credit/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -8114,9 +7941,7 @@
                   "key": "credit/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -8126,7 +7951,6 @@
             "cached_input_tokens": 2944,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRTwFtkPWXkteLUeo8zCwhWxr7X",
           "provider_request_id": "req_0f5efa74139e4964ae17c2d6553cc880",
           "finish_reason": "tool_calls",
@@ -8257,13 +8081,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 20,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -8280,7 +8102,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8298,9 +8119,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8338,7 +8157,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8356,9 +8174,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8513,7 +8329,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8531,9 +8346,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8688,7 +8501,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8706,9 +8518,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8863,7 +8673,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8881,9 +8690,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9038,7 +8845,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9056,9 +8862,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9213,7 +9017,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9231,9 +9034,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9388,7 +9189,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9406,9 +9206,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9426,9 +9224,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9489,7 +9285,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9507,9 +9302,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9527,9 +9320,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9627,11 +9418,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -9655,9 +9444,7 @@
                   "key": "credit/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -9675,9 +9462,7 @@
                   "key": "credit/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -9687,7 +9472,6 @@
             "cached_input_tokens": 3072,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRU7MEGI2manLajx7cpUNf3JBSP",
           "provider_request_id": "req_757c462325064e93aa0272ba3de83460",
           "finish_reason": "tool_calls",
@@ -9818,13 +9602,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 23,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -9841,7 +9623,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9859,9 +9640,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9899,7 +9678,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9917,9 +9695,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10074,7 +9850,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10092,9 +9867,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10249,7 +10022,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10267,9 +10039,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10424,7 +10194,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10442,9 +10211,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10599,7 +10366,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10617,9 +10383,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10774,7 +10538,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10792,9 +10555,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10949,7 +10710,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10967,9 +10727,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10987,9 +10745,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11050,7 +10806,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11068,9 +10823,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11088,9 +10841,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11151,7 +10902,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11169,9 +10919,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11189,9 +10937,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11289,11 +11035,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -11317,9 +11061,7 @@
                   "key": "page/1",
                   "value": 889
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -11329,7 +11071,6 @@
             "cached_input_tokens": 3200,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRVxZDkp5GV4EyTJwxXVLX5XCLM",
           "provider_request_id": "req_2155dfce64b64a039dad093610eabc08",
           "finish_reason": "tool_calls",
@@ -11415,13 +11156,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 25,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -11438,7 +11177,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11456,9 +11194,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11496,7 +11232,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11514,9 +11249,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11671,7 +11404,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11689,9 +11421,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11846,7 +11576,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11864,9 +11593,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12021,7 +11748,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12039,9 +11765,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12196,7 +11920,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12214,9 +11937,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12371,7 +12092,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12389,9 +12109,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12546,7 +12264,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12564,9 +12281,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12584,9 +12299,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12647,7 +12360,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12665,9 +12377,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12685,9 +12395,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12748,7 +12456,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12766,9 +12473,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12786,9 +12491,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12849,7 +12552,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12867,9 +12569,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12938,11 +12638,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -12966,9 +12664,7 @@
                   "key": "page/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -12978,7 +12674,6 @@
             "cached_input_tokens": 3328,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRWCgcyaW3WvJUxMyyWKOkIriMb",
           "provider_request_id": "req_c29edd4cfb174a6486a3939c501d2db3",
           "finish_reason": "tool_calls",
@@ -13064,13 +12759,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 27,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -13087,7 +12780,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13105,9 +12797,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13145,7 +12835,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13163,9 +12852,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13320,7 +13007,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13338,9 +13024,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13495,7 +13179,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13513,9 +13196,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13670,7 +13351,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13688,9 +13368,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13845,7 +13523,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13863,9 +13540,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14020,7 +13695,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14038,9 +13712,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14195,7 +13867,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14213,9 +13884,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -14233,9 +13902,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14296,7 +13963,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14314,9 +13980,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -14334,9 +13998,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14397,7 +14059,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14415,9 +14076,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -14435,9 +14094,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14498,7 +14155,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14516,9 +14172,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14550,7 +14204,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14568,9 +14221,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14639,11 +14290,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -14667,9 +14316,7 @@
                   "key": "page/2",
                   "value": 1178
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -14679,7 +14326,6 @@
             "cached_input_tokens": 3328,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRWzFBDbHIJ9LHYjuUzsVznSZH7",
           "provider_request_id": "req_3a9b258cb3ea40af8052def440688989",
           "finish_reason": "tool_calls",
@@ -14765,13 +14411,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 29,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -14788,7 +14432,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14806,9 +14449,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14846,7 +14487,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14864,9 +14504,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15021,7 +14659,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15039,9 +14676,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15196,7 +14831,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15214,9 +14848,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15371,7 +15003,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15389,9 +15020,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15546,7 +15175,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15564,9 +15192,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15721,7 +15347,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15739,9 +15364,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15896,7 +15519,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15914,9 +15536,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -15934,9 +15554,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15997,7 +15615,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16015,9 +15632,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -16035,9 +15650,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16098,7 +15711,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16116,9 +15728,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -16136,9 +15746,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16199,7 +15807,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16217,9 +15824,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16251,7 +15856,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16269,9 +15873,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16303,7 +15905,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16321,9 +15922,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16392,11 +15991,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -16420,9 +16017,7 @@
                   "key": "page/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -16432,7 +16027,6 @@
             "cached_input_tokens": 3456,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRXTvj5Fn4VSwUzcUeyuFEM92W8",
           "provider_request_id": "req_d4eccbd50c1a4d3b9afe51f7cddacaac",
           "finish_reason": "tool_calls",
@@ -16518,13 +16112,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 31,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -16541,7 +16133,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16559,9 +16150,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16599,7 +16188,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16617,9 +16205,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16774,7 +16360,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16792,9 +16377,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16949,7 +16532,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16967,9 +16549,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17124,7 +16704,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17142,9 +16721,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17299,7 +16876,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17317,9 +16893,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17474,7 +17048,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17492,9 +17065,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17649,7 +17220,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17667,9 +17237,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -17687,9 +17255,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17750,7 +17316,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17768,9 +17333,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -17788,9 +17351,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17851,7 +17412,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17869,9 +17429,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -17889,9 +17447,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17952,7 +17508,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17970,9 +17525,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18004,7 +17557,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18022,9 +17574,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18056,7 +17606,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18074,9 +17623,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18108,7 +17655,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18126,9 +17672,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18197,11 +17741,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -18225,9 +17767,7 @@
                   "key": "page/3",
                   "value": 1467
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -18237,7 +17777,6 @@
             "cached_input_tokens": 3456,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRYGCpSUakhltAyr4MNzoH9ZVAK",
           "provider_request_id": "req_45527bce706845d1a223e9226bcd91a8",
           "finish_reason": "tool_calls",
@@ -18323,13 +17862,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 33,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -18346,7 +17883,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18364,9 +17900,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18404,7 +17938,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18422,9 +17955,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18579,7 +18110,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18597,9 +18127,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18754,7 +18282,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18772,9 +18299,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18929,7 +18454,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18947,9 +18471,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19104,7 +18626,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19122,9 +18643,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19279,7 +18798,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19297,9 +18815,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19454,7 +18970,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19472,9 +18987,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -19492,9 +19005,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19555,7 +19066,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19573,9 +19083,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -19593,9 +19101,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19656,7 +19162,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19674,9 +19179,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -19694,9 +19197,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19757,7 +19258,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19775,9 +19275,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19809,7 +19307,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19827,9 +19324,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19861,7 +19356,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19879,9 +19373,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19913,7 +19405,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19931,9 +19422,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19965,7 +19454,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19983,9 +19471,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20054,11 +19540,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -20082,9 +19566,7 @@
                   "key": "page/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -20094,7 +19576,6 @@
             "cached_input_tokens": 3584,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRZeTAsSAAFa6CCf0CiXXN1mMd4",
           "provider_request_id": "req_e32963ab18f64f98b2440973a6a3fb45",
           "finish_reason": "tool_calls",
@@ -20180,13 +19661,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 35,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -20203,7 +19682,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20221,9 +19699,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20261,7 +19737,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20279,9 +19754,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20436,7 +19909,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20454,9 +19926,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20611,7 +20081,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20629,9 +20098,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20786,7 +20253,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20804,9 +20270,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20961,7 +20425,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20979,9 +20442,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21136,7 +20597,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21154,9 +20614,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21311,7 +20769,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21329,9 +20786,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -21349,9 +20804,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21412,7 +20865,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21430,9 +20882,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -21450,9 +20900,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21513,7 +20961,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21531,9 +20978,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -21551,9 +20996,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21614,7 +21057,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21632,9 +21074,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21666,7 +21106,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21684,9 +21123,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21718,7 +21155,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21736,9 +21172,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21770,7 +21204,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21788,9 +21221,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21822,7 +21253,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21840,9 +21270,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21874,7 +21302,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21892,9 +21319,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21963,11 +21388,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -21991,9 +21414,7 @@
                   "key": "page/4",
                   "value": 1756
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -22003,7 +21424,6 @@
             "cached_input_tokens": 3584,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRZKtypOXJHSvtKC6mMZQ9z47Wn",
           "provider_request_id": "req_a7e4c8f64bc34c9cab59a4d16c33a83d",
           "finish_reason": "tool_calls",
@@ -22089,13 +21509,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 37,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -22112,7 +21530,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -22130,9 +21547,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22170,7 +21585,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -22188,9 +21602,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22345,7 +21757,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -22363,9 +21774,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22520,7 +21929,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -22538,9 +21946,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22695,7 +22101,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -22713,9 +22118,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22870,7 +22273,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -22888,9 +22290,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23045,7 +22445,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23063,9 +22462,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23220,7 +22617,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23238,9 +22634,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -23258,9 +22652,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23321,7 +22713,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23339,9 +22730,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -23359,9 +22748,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23422,7 +22809,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23440,9 +22826,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -23460,9 +22844,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23523,7 +22905,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23541,9 +22922,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23575,7 +22954,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23593,9 +22971,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23627,7 +23003,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23645,9 +23020,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23679,7 +23052,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23697,9 +23069,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23731,7 +23101,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23749,9 +23118,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23783,7 +23150,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23801,9 +23167,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23835,7 +23199,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -23853,9 +23216,7 @@
                       "key": "page/4",
                       "value": 1756
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -23924,11 +23285,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -23952,9 +23311,7 @@
                   "key": "page/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -23964,7 +23321,6 @@
             "cached_input_tokens": 3584,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRafsyYKF5d03KC789ziCsOyt1R",
           "provider_request_id": "req_eb49141ac07b4eafb609749c0d1e6999",
           "finish_reason": "tool_calls",
@@ -24050,13 +23406,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 39,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -24073,7 +23427,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -24091,9 +23444,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -24131,7 +23482,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -24149,9 +23499,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -24306,7 +23654,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -24324,9 +23671,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -24481,7 +23826,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -24499,9 +23843,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -24656,7 +23998,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -24674,9 +24015,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -24831,7 +24170,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -24849,9 +24187,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25006,7 +24342,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25024,9 +24359,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25181,7 +24514,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25199,9 +24531,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -25219,9 +24549,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25282,7 +24610,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25300,9 +24627,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -25320,9 +24645,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25383,7 +24706,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25401,9 +24723,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -25421,9 +24741,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25484,7 +24802,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25502,9 +24819,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25536,7 +24851,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25554,9 +24868,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25588,7 +24900,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25606,9 +24917,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25640,7 +24949,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25658,9 +24966,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25692,7 +24998,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25710,9 +25015,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25744,7 +25047,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25762,9 +25064,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25796,7 +25096,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25814,9 +25113,7 @@
                       "key": "page/4",
                       "value": 1756
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25848,7 +25145,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -25866,9 +25162,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -25937,11 +25231,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -25965,9 +25257,7 @@
                   "key": "page/5",
                   "value": 2045
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -25977,7 +25267,6 @@
             "cached_input_tokens": 3712,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRbJC5DVCPxyxPUOEEQBJDbBwzM",
           "provider_request_id": "req_f745c9f225674e0cbdc78df686610912",
           "finish_reason": "tool_calls",
@@ -26063,13 +25352,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 41,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -26086,7 +25373,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -26104,9 +25390,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -26144,7 +25428,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -26162,9 +25445,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -26319,7 +25600,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -26337,9 +25617,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -26494,7 +25772,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -26512,9 +25789,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -26669,7 +25944,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -26687,9 +25961,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -26844,7 +26116,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -26862,9 +26133,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27019,7 +26288,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27037,9 +26305,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27194,7 +26460,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27212,9 +26477,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -27232,9 +26495,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27295,7 +26556,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27313,9 +26573,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -27333,9 +26591,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27396,7 +26652,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27414,9 +26669,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -27434,9 +26687,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27497,7 +26748,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27515,9 +26765,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27549,7 +26797,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27567,9 +26814,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27601,7 +26846,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27619,9 +26863,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27653,7 +26895,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27671,9 +26912,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27705,7 +26944,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27723,9 +26961,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27757,7 +26993,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27775,9 +27010,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27809,7 +27042,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27827,9 +27059,7 @@
                       "key": "page/4",
                       "value": 1756
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27861,7 +27091,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27879,9 +27108,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -27913,7 +27140,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -27931,9 +27157,7 @@
                       "key": "page/5",
                       "value": 2045
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -28002,11 +27226,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -28030,9 +27252,7 @@
                   "key": "page/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -28042,7 +27262,6 @@
             "cached_input_tokens": 3712,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRcjegx7PExxyuQhUT1I41SRntV",
           "provider_request_id": "req_d962aac82d1045c6ab9f83ad28932212",
           "finish_reason": "tool_calls",
@@ -28128,13 +27347,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 43,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -28151,7 +27368,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -28169,9 +27385,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -28209,7 +27423,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -28227,9 +27440,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -28384,7 +27595,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -28402,9 +27612,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -28559,7 +27767,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -28577,9 +27784,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -28734,7 +27939,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -28752,9 +27956,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -28909,7 +28111,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -28927,9 +28128,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29084,7 +28283,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29102,9 +28300,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29259,7 +28455,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29277,9 +28472,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -29297,9 +28490,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29360,7 +28551,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29378,9 +28568,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -29398,9 +28586,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29461,7 +28647,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29479,9 +28664,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -29499,9 +28682,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29562,7 +28743,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29580,9 +28760,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29614,7 +28792,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29632,9 +28809,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29666,7 +28841,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29684,9 +28858,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29718,7 +28890,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29736,9 +28907,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29770,7 +28939,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29788,9 +28956,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29822,7 +28988,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29840,9 +29005,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29874,7 +29037,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29892,9 +29054,7 @@
                       "key": "page/4",
                       "value": 1756
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29926,7 +29086,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29944,9 +29103,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -29978,7 +29135,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -29996,9 +29152,7 @@
                       "key": "page/5",
                       "value": 2045
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -30030,7 +29184,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -30048,9 +29201,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -30119,11 +29270,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -30147,9 +29296,7 @@
                   "key": "page/6",
                   "value": 2334
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -30159,7 +29306,6 @@
             "cached_input_tokens": 3712,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRcXwsRRzZi2TryPqJyR9jeYry9",
           "provider_request_id": "req_1f368e20a027439c97af30e62a6ec701",
           "finish_reason": "tool_calls",
@@ -30245,13 +29391,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 45,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -30268,7 +29412,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -30286,9 +29429,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -30326,7 +29467,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -30344,9 +29484,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -30501,7 +29639,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -30519,9 +29656,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -30676,7 +29811,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -30694,9 +29828,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -30851,7 +29983,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -30869,9 +30000,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31026,7 +30155,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31044,9 +30172,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31201,7 +30327,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31219,9 +30344,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31376,7 +30499,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31394,9 +30516,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -31414,9 +30534,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31477,7 +30595,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31495,9 +30612,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -31515,9 +30630,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31578,7 +30691,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31596,9 +30708,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -31616,9 +30726,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31679,7 +30787,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31697,9 +30804,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31731,7 +30836,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31749,9 +30853,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31783,7 +30885,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31801,9 +30902,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31835,7 +30934,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31853,9 +30951,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31887,7 +30983,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31905,9 +31000,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31939,7 +31032,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -31957,9 +31049,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -31991,7 +31081,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32009,9 +31098,7 @@
                       "key": "page/4",
                       "value": 1756
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32043,7 +31130,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32061,9 +31147,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32095,7 +31179,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32113,9 +31196,7 @@
                       "key": "page/5",
                       "value": 2045
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32147,7 +31228,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32165,9 +31245,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32199,7 +31277,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32217,9 +31294,7 @@
                       "key": "page/6",
                       "value": 2334
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32288,11 +31363,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -32316,9 +31389,7 @@
                   "key": "page/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -32328,7 +31399,6 @@
             "cached_input_tokens": 3840,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRdPqjxEu7pYIgpX0En9dRAQUpR",
           "provider_request_id": "req_6f42cf75d916489e97439d8fcadc35f8",
           "finish_reason": "tool_calls",
@@ -32414,13 +31484,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 47,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -32437,7 +31505,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32455,9 +31522,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32495,7 +31560,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32513,9 +31577,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32670,7 +31732,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32688,9 +31749,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -32845,7 +31904,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -32863,9 +31921,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33020,7 +32076,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33038,9 +32093,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33195,7 +32248,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33213,9 +32265,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33370,7 +32420,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33388,9 +32437,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33545,7 +32592,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33563,9 +32609,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -33583,9 +32627,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33646,7 +32688,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33664,9 +32705,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -33684,9 +32723,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33747,7 +32784,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33765,9 +32801,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -33785,9 +32819,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33848,7 +32880,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33866,9 +32897,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33900,7 +32929,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33918,9 +32946,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -33952,7 +32978,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -33970,9 +32995,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34004,7 +33027,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34022,9 +33044,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34056,7 +33076,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34074,9 +33093,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34108,7 +33125,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34126,9 +33142,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34160,7 +33174,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34178,9 +33191,7 @@
                       "key": "page/4",
                       "value": 1756
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34212,7 +33223,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34230,9 +33240,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34264,7 +33272,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34282,9 +33289,7 @@
                       "key": "page/5",
                       "value": 2045
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34316,7 +33321,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34334,9 +33338,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34368,7 +33370,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34386,9 +33387,7 @@
                       "key": "page/6",
                       "value": 2334
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34420,7 +33419,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34438,9 +33436,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34509,11 +33505,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -34537,9 +33531,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -34549,7 +33541,6 @@
             "cached_input_tokens": 3840,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRehm6wxlUvUukJzmFMpfOj3THt",
           "provider_request_id": "req_4f6df8fa287c4c2f8df68b1312ea60df",
           "finish_reason": "tool_calls",
@@ -34635,13 +33626,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 49,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -34658,7 +33647,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34676,9 +33664,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34716,7 +33702,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34734,9 +33719,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -34891,7 +33874,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -34909,9 +33891,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -35066,7 +34046,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -35084,9 +34063,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -35241,7 +34218,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -35259,9 +34235,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -35416,7 +34390,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -35434,9 +34407,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -35591,7 +34562,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -35609,9 +34579,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -35766,7 +34734,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -35784,9 +34751,7 @@
                       "key": "credit/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -35804,9 +34769,7 @@
                       "key": "credit/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -35867,7 +34830,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -35885,9 +34847,7 @@
                       "key": "credit/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -35905,9 +34865,7 @@
                       "key": "credit/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -35968,7 +34926,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -35986,9 +34943,7 @@
                       "key": "credit/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -36006,9 +34961,7 @@
                       "key": "credit/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36069,7 +35022,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36087,9 +35039,7 @@
                       "key": "page/1",
                       "value": 889
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36121,7 +35071,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36139,9 +35088,7 @@
                       "key": "page/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36173,7 +35120,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36191,9 +35137,7 @@
                       "key": "page/2",
                       "value": 1178
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36225,7 +35169,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36243,9 +35186,7 @@
                       "key": "page/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36277,7 +35218,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36295,9 +35235,7 @@
                       "key": "page/3",
                       "value": 1467
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36329,7 +35267,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36347,9 +35284,7 @@
                       "key": "page/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36381,7 +35316,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36399,9 +35333,7 @@
                       "key": "page/4",
                       "value": 1756
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36433,7 +35365,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36451,9 +35382,7 @@
                       "key": "page/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36485,7 +35414,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36503,9 +35431,7 @@
                       "key": "page/5",
                       "value": 2045
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36537,7 +35463,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36555,9 +35480,7 @@
                       "key": "page/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36589,7 +35512,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36607,9 +35529,7 @@
                       "key": "page/6",
                       "value": 2334
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36641,7 +35561,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36659,9 +35578,7 @@
                       "key": "page/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36693,7 +35610,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -36711,9 +35627,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -36782,11 +35696,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "prompt_cache_key": "rig-native-long-tasks"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -36806,7 +35718,6 @@
             "cached_input_tokens": 3840,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-EQyRf6364jz2Vvc42ohRnV7Q8yR0x",
           "provider_request_id": "req_68c76ce112ef44c8a9e0316791288481",
           "finish_reason": "stop",

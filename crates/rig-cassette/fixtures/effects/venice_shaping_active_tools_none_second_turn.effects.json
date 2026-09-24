@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 9072754608376111302,
     "handlers": [
       {
@@ -57,13 +58,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -103,11 +102,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -130,9 +125,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -140,7 +133,6 @@
             "output_tokens": 18,
             "total_tokens": 1111
           },
-          "message_id": null,
           "response_id": "chatcmpl-RQ6Ew4oiR5C8bSarGp43qyyh",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -225,13 +217,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -248,7 +238,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -265,9 +254,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -296,11 +283,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -318,7 +301,6 @@
             "output_tokens": 3,
             "total_tokens": 1044
           },
-          "message_id": null,
           "response_id": "chatcmpl-R7OSSkrw8JmWfNv2Y5Vk86X0",
           "finish_reason": "stop",
           "provider": "venice",

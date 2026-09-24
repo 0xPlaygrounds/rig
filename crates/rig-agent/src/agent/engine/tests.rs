@@ -728,7 +728,7 @@ fn stream_final_for_attempt(attempt: &str, total_tokens: u64) -> rig_core::strea
 
 /// What `raw` must be for a streamed attempt scripted with `terminal`.
 fn expected_stream_raw(terminal: &rig_core::streaming::StreamFinal) -> serde_json::Value {
-    serde_json::to_value(terminal).expect("scripted terminal serializes")
+    rig_core::test_utils::mock_terminal_document(terminal).expect("the mock's document")
 }
 
 /// The `raw` each recorded call carries, in call order.

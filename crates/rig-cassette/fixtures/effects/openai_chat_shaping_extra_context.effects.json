@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 171082663332529849,
     "handlers": [
       {
@@ -30,13 +31,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -58,12 +57,7 @@
               "text": "Definition of a glarb-glarb: an ancient farming tool from planet Jiro."
             }
           ],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": false
       },
@@ -83,7 +77,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj",
           "provider_request_id": "req_5de6de1e353243f29274ac5448845679",
           "finish_reason": "stop",

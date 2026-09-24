@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -222,13 +223,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -306,13 +305,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -338,9 +335,7 @@
                 "arguments": {
                   "path": "tests/basic.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -356,9 +351,7 @@
                 "arguments": {
                   "path": "src/lib.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -374,9 +367,7 @@
                 "arguments": {
                   "path": "src/calendar.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -392,9 +383,7 @@
                 "arguments": {
                   "path": "docs/DESIGN.md"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -403,7 +392,6 @@
             "total_tokens": 875,
             "cached_input_tokens": 384
           },
-          "message_id": null,
           "response_id": "877c6720-ccf0-4d90-827b-ea89ba4aeab8",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -577,8 +565,6 @@
                 }
               ],
               "retryable": false,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -587,13 +573,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -610,7 +594,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -630,9 +613,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -648,9 +629,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -666,9 +645,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -684,9 +661,7 @@
                     "arguments": {
                       "path": "docs/DESIGN.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -826,13 +801,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -852,9 +825,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -863,7 +834,6 @@
             "total_tokens": 1078,
             "cached_input_tokens": 768
           },
-          "message_id": null,
           "response_id": "8ce05b81-668b-47e5-badc-71b3c161db21",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -937,13 +907,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 7,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -960,7 +928,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -980,9 +947,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -998,9 +963,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1016,9 +979,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1034,9 +995,7 @@
                     "arguments": {
                       "path": "docs/DESIGN.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1115,7 +1074,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1129,9 +1087,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1220,13 +1176,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1253,9 +1207,7 @@
                   "path": "src/lib.rs",
                   "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1264,7 +1216,6 @@
             "total_tokens": 1335,
             "cached_input_tokens": 1024
           },
-          "message_id": null,
           "response_id": "ded92806-19aa-4046-aaaa-6c9a51bd6d81",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1338,13 +1289,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 9,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1361,7 +1310,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1381,9 +1329,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1399,9 +1345,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1417,9 +1361,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1435,9 +1377,7 @@
                     "arguments": {
                       "path": "docs/DESIGN.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1516,7 +1456,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1530,9 +1469,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1560,7 +1497,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1581,9 +1517,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1672,13 +1606,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1698,9 +1630,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1709,7 +1639,6 @@
             "total_tokens": 1378,
             "cached_input_tokens": 1152
           },
-          "message_id": null,
           "response_id": "d239b79b-adba-457e-82a9-eecc03288840",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1783,13 +1712,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 11,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1806,7 +1733,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1826,9 +1752,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1844,9 +1768,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1862,9 +1784,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1880,9 +1800,7 @@
                     "arguments": {
                       "path": "docs/DESIGN.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1961,7 +1879,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1975,9 +1892,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2005,7 +1920,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2026,9 +1940,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2056,7 +1968,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2070,9 +1981,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2161,13 +2070,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2190,9 +2097,7 @@
                   "path": "src/calendar.rs",
                   "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2201,7 +2106,6 @@
             "total_tokens": 1626,
             "cached_input_tokens": 1280
           },
-          "message_id": null,
           "response_id": "1b227431-5cd8-4ad2-af3d-c6dc4c7022bd",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -2275,13 +2179,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 13,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2298,7 +2200,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2318,9 +2219,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2336,9 +2235,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2354,9 +2251,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2372,9 +2267,7 @@
                     "arguments": {
                       "path": "docs/DESIGN.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2453,7 +2346,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2467,9 +2359,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2497,7 +2387,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2518,9 +2407,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2548,7 +2435,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2562,9 +2448,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2592,7 +2476,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2609,9 +2492,7 @@
                       "path": "src/calendar.rs",
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2700,13 +2581,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2726,9 +2605,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2737,7 +2614,6 @@
             "total_tokens": 1670,
             "cached_input_tokens": 1408
           },
-          "message_id": null,
           "response_id": "add642de-6900-4953-9d5c-277e015602f6",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -2811,13 +2687,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 15,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2834,7 +2708,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2854,9 +2727,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2872,9 +2743,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2890,9 +2759,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2908,9 +2775,7 @@
                     "arguments": {
                       "path": "docs/DESIGN.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2989,7 +2854,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3003,9 +2867,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3033,7 +2895,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3054,9 +2915,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3084,7 +2943,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3098,9 +2956,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3128,7 +2984,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3145,9 +3000,7 @@
                       "path": "src/calendar.rs",
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3175,7 +3028,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3189,9 +3041,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3280,13 +3130,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -3305,7 +3153,6 @@
             "total_tokens": 1738,
             "cached_input_tokens": 1536
           },
-          "message_id": null,
           "response_id": "179a2286-91f8-4d35-945b-5d46437d6cda",
           "finish_reason": "stop",
           "provider": "deepseek",

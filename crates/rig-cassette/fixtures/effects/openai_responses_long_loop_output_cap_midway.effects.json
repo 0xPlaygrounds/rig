@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 6264575847578669553,
     "handlers": [
       {
@@ -108,13 +109,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -191,10 +190,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -215,9 +211,7 @@
               "function": {
                 "name": "list_files",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -227,7 +221,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_055590d5914fdcd2006ab3968536b487d0abab714f1c7dfd36",
           "provider_request_id": "req_dee4b600398d4e4db307bab707bd601c",
           "finish_reason": "tool_calls",
@@ -418,13 +411,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -441,7 +432,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -456,9 +446,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -547,10 +535,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -573,9 +558,7 @@
                 "arguments": {
                   "path": "README.md"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -585,7 +568,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_055590d5914fdcd2006ab396862c3c87d0bba7742ec6b1118a",
           "provider_request_id": "req_198c6339d42d4549bfca384e2d68c1eb",
           "finish_reason": "tool_calls",
@@ -776,13 +758,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -799,7 +779,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -814,9 +793,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -845,7 +822,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -862,9 +838,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -953,10 +927,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -979,9 +950,7 @@
                 "arguments": {
                   "path": "tests/basic.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -991,7 +960,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_055590d5914fdcd2006ab3968738dc87d08a054a31fd1818c1",
           "provider_request_id": "req_2ba67a33301e405ea9d719ad58f31ba9",
           "finish_reason": "tool_calls",
@@ -1182,13 +1150,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 7,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1205,7 +1171,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1220,9 +1185,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1251,7 +1214,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1268,9 +1230,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1299,7 +1259,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1316,9 +1275,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1407,10 +1364,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -1433,9 +1387,7 @@
                 "arguments": {
                   "path": "src/lib.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1445,7 +1397,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_055590d5914fdcd2006ab396880b2487d0af39b42b673fbd55",
           "provider_request_id": "req_d53a98d0e8cf43899534e45b62f7759c",
           "finish_reason": "tool_calls",
@@ -1636,13 +1587,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 9,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1659,7 +1608,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1674,9 +1622,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1705,7 +1651,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1722,9 +1667,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1753,7 +1696,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1770,9 +1712,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1801,7 +1741,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1818,9 +1757,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1909,10 +1846,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -1933,9 +1867,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1945,7 +1877,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_055590d5914fdcd2006ab396899f6c87d09d413d9e8e9bcc1d",
           "provider_request_id": "req_56554c88e9494d148ed9a1f8ce1586ff",
           "finish_reason": "tool_calls",
@@ -2136,13 +2067,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 11,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2159,7 +2088,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2174,9 +2102,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2205,7 +2131,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2222,9 +2147,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2253,7 +2176,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2270,9 +2192,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2301,7 +2221,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2318,9 +2237,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2349,7 +2266,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2364,9 +2280,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2455,10 +2369,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -2473,7 +2384,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_055590d5914fdcd2006ab3968a940087d0ac7facf3e01b106a",
           "provider_request_id": "req_32c533da6e404e79b89f1da2495c080a",
           "finish_reason": "length",

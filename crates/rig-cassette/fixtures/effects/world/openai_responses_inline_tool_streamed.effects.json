@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 22,
@@ -286,13 +287,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -340,11 +339,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -379,9 +374,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -391,7 +384,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
-          "message_id": null,
           "response_id": "resp_0a5af62de1d3c4e1006ab2b45cb2ec87d0981ede9e4eff8b7e",
           "provider_request_id": "req_45dfe1197fa142058c9753758801e8f8",
           "finish_reason": "tool_calls",
@@ -575,9 +567,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -590,7 +580,6 @@
             "reasoning_tokens": 128
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "resp_0a5af62de1d3c4e1006ab2b45cb2ec87d0981ede9e4eff8b7e",
           "provider_request_id": "req_45dfe1197fa142058c9753758801e8f8",
           "provider": "openai",
@@ -648,13 +637,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -679,7 +666,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -708,9 +694,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -762,11 +746,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },

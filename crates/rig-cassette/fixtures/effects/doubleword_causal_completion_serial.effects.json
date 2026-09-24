@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 16690973828874601932,
     "handlers": [
       {
@@ -49,13 +50,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -95,12 +94,9 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -122,9 +118,7 @@
                 "arguments": {
                   "q": "What is the capital of France?"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -135,7 +129,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_f6c3a407-b0e5-44b0-addf-8ba740e8be66",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
@@ -193,7 +186,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/tool:lookup#0",
       "kind": {
@@ -217,13 +209,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -241,11 +231,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -255,7 +241,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -279,7 +264,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 119
           },
-          "message_id": null,
           "response_id": "resp_030919c4-8e0a-4ac8-a391-c11c283af062",
           "finish_reason": "stop",
           "provider": "doubleword",
@@ -338,13 +322,11 @@
       "parent": 2
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -361,7 +343,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -377,9 +358,7 @@
                     "arguments": {
                       "q": "What is the capital of France?"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -430,12 +409,9 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -456,7 +432,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_b682077a-7d81-4f0c-80d2-159fb5491fc8",
           "finish_reason": "stop",
           "provider": "doubleword",

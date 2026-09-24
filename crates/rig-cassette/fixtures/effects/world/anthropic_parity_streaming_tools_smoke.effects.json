@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 7,
@@ -168,13 +169,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -234,12 +233,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -262,9 +256,7 @@
                   "x": 2,
                   "y": 5
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -275,7 +267,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcfeMPTQ7hQGcs6RF7F",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfdwL8XPMZFgu8dcoE",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -367,9 +358,7 @@
                 "x": 2,
                 "y": 5
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -383,7 +372,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcfeMPTQ7hQGcs6RF7F",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfdwL8XPMZFgu8dcoE",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -432,13 +420,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -472,9 +458,7 @@
                       "x": 2,
                       "y": 5
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -545,12 +529,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -571,7 +550,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcfkpLD1jT3VsNfjqY3",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfkN3PSfnwN7HqgS8N",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -636,7 +614,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcfkpLD1jT3VsNfjqY3",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfkN3PSfnwN7HqgS8N",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",

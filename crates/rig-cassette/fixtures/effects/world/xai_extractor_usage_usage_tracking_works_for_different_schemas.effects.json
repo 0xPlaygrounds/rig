@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -107,11 +106,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -147,9 +142,7 @@
                   "age": 25,
                   "profession": "developer"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -159,7 +152,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 177
           },
-          "message_id": null,
           "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
           "provider_request_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
           "finish_reason": "tool_calls",
@@ -285,13 +277,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -345,11 +335,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -386,9 +372,7 @@
                   "state": "MA",
                   "zip_code": "02139"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -398,7 +382,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 155
           },
-          "message_id": null,
           "response_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
           "provider_request_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
           "finish_reason": "tool_calls",

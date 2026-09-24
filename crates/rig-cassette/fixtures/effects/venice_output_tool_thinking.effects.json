@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 12487697117740431557,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -76,15 +75,12 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "venice_parameters": {
               "strip_thinking_response": false
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -94,7 +90,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -121,9 +116,7 @@
                   "category": "local",
                   "summary": "Monthly gathering for Rust developers in the Seattle area. Topics include ecosystem updates, project showcases, and hands-on workshops. All skill levels welcome."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -131,7 +124,6 @@
             "output_tokens": 129,
             "total_tokens": 1475
           },
-          "message_id": null,
           "response_id": "chatcmpl-R3Ed76K5r6FJYM1PEpLJv1FF",
           "finish_reason": "tool_calls",
           "provider": "venice",

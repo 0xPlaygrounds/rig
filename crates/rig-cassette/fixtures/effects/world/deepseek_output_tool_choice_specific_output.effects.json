@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -86,16 +85,13 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "final_result"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -119,9 +115,7 @@
                   "category": "Local Tech Meetup",
                   "summary": "A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -130,7 +124,6 @@
             "total_tokens": 471,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "4aee34b1-6ad5-4221-a05b-6cb4f35a9f57",
           "finish_reason": "tool_calls",
           "provider": "deepseek",

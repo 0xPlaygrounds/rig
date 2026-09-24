@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -92,13 +93,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -139,10 +138,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -164,9 +160,7 @@
                 "arguments": {
                   "slot": 0
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -182,9 +176,7 @@
                 "arguments": {
                   "slot": 1
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -200,9 +192,7 @@
                 "arguments": {
                   "slot": 2
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -212,7 +202,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDD47KrjEVH7yJCGZSrKWZ2zMW4u",
           "provider_request_id": "req_ee9308ea26614f77982c1e8c8d4e57b6",
           "finish_reason": "tool_calls",
@@ -332,9 +321,6 @@
                   "text": "the tool failed"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -368,13 +354,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -391,7 +375,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -407,9 +390,7 @@
                     "arguments": {
                       "slot": 0
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -425,9 +406,7 @@
                     "arguments": {
                       "slot": 1
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -443,9 +422,7 @@
                     "arguments": {
                       "slot": 2
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -531,10 +508,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -554,7 +528,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDD5e1Ki3S2z4Xa9zLy7iff0xNGX",
           "provider_request_id": "req_2cfd844b9cba4f3cb4ca6b387e210d3f",
           "finish_reason": "stop",

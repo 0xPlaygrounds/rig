@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -108,7 +108,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -253,7 +253,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-ERDCC5lsfmUvkIExZhXeI2U4XsSvk",
               "provider_request_id": "req_a003ae30ec75435a9a441f2668e64c11",
               "finish_reason": "stop",

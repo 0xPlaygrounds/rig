@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -78,13 +79,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -126,11 +125,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "low"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -140,7 +137,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -166,9 +162,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -179,7 +173,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 37
           },
-          "message_id": null,
           "response_id": "resp_055a56a9-ab7b-4281-97a9-d2c6c374ce9d",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
@@ -272,13 +265,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -295,11 +286,9 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -325,9 +314,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -380,11 +367,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "low"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -394,7 +379,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -418,7 +402,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 35
           },
-          "message_id": null,
           "response_id": "resp_1795adc5-3d43-4315-a9e7-36f638d4b759",
           "finish_reason": "stop",
           "provider": "doubleword",

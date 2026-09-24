@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -88,13 +89,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -131,16 +130,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": true
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -164,9 +159,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -180,9 +173,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -191,7 +182,6 @@
             "total_tokens": 441,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "3b93a38b-9d73-4fc1-9b52-9ba85ce4710d",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -299,13 +289,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -322,7 +310,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -340,9 +327,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -356,9 +341,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -423,16 +406,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": true
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -451,7 +430,6 @@
             "total_tokens": 488,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "6df79f76-15ed-43ef-b041-d9d44ad1f655",
           "finish_reason": "stop",
           "provider": "deepseek",

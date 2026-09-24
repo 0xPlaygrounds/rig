@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -44,13 +45,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -68,11 +67,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -91,7 +86,6 @@
             "total_tokens": 89,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "768539cf-942e-4abc-9646-1e3f3db0c02e",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -129,13 +123,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -152,7 +144,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -172,11 +163,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -195,7 +182,6 @@
             "total_tokens": 159,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "92e957e0-aa71-4419-9f2b-1ddcf75cb30f",
           "finish_reason": "stop",
           "provider": "deepseek",

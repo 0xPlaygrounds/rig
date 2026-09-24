@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 12,
@@ -130,13 +131,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -163,12 +162,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -189,9 +183,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -201,7 +193,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
           "provider_request_id": "req_d100600fe26947fca8e5b372b931ec8f",
           "finish_reason": "tool_calls",
@@ -278,9 +269,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -293,7 +282,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
           "provider_request_id": "req_d100600fe26947fca8e5b372b931ec8f",
           "provider": "openai",
@@ -349,13 +337,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -372,7 +358,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -387,9 +372,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -428,12 +411,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },

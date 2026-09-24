@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -107,11 +106,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -136,9 +131,7 @@
                   "age": 25,
                   "profession": "developer"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -148,7 +141,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5",
           "provider_request_id": "req_0cd2d5104915470eab5bdbfa009d0e30",
           "finish_reason": "tool_calls",
@@ -282,13 +274,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -342,11 +332,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -372,9 +358,7 @@
                   "state": "MA",
                   "zip_code": "02139"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -384,7 +368,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_00f283ba31e27a1c006ab3969dc10887d098e85bc0643a5ef4",
           "provider_request_id": "req_345ea420c71a4b00a48aeb9dd904614b",
           "finish_reason": "tool_calls",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -450,13 +451,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -520,13 +519,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -554,9 +551,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -565,7 +560,6 @@
             "total_tokens": 644,
             "cached_input_tokens": 384
           },
-          "message_id": null,
           "response_id": "1606eb46-595e-4661-9c9a-aa6b6f227103",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -649,13 +643,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -672,7 +664,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -694,9 +685,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -781,13 +770,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -815,9 +802,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -826,7 +811,6 @@
             "total_tokens": 784,
             "cached_input_tokens": 512
           },
-          "message_id": null,
           "response_id": "746340dd-1c17-4156-bab0-ca44687afa84",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -906,13 +890,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -929,7 +911,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -951,9 +932,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -991,7 +970,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1013,9 +991,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1096,13 +1072,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1126,9 +1100,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1137,7 +1109,6 @@
             "total_tokens": 901,
             "cached_input_tokens": 640
           },
-          "message_id": null,
           "response_id": "23264afa-9e79-40eb-8b22-7c91fb108987",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1217,13 +1188,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1240,7 +1209,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1262,9 +1230,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1302,7 +1268,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1324,9 +1289,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1360,7 +1323,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1378,9 +1340,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1461,13 +1421,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1491,9 +1449,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1502,7 +1458,6 @@
             "total_tokens": 1018,
             "cached_input_tokens": 768
           },
-          "message_id": null,
           "response_id": "5a7953aa-8df4-4c58-8200-0ac3bf17d307",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1582,13 +1537,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1605,7 +1558,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1627,9 +1579,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1667,7 +1617,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1689,9 +1638,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1725,7 +1672,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1743,9 +1689,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1779,7 +1723,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1797,9 +1740,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1880,13 +1821,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1910,9 +1849,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1921,7 +1858,6 @@
             "total_tokens": 1135,
             "cached_input_tokens": 896
           },
-          "message_id": null,
           "response_id": "4460bb90-92e4-4915-8bbc-55c4b47e3e25",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -2001,13 +1937,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 10,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2024,7 +1958,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2046,9 +1979,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2086,7 +2017,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2108,9 +2038,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2144,7 +2072,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2162,9 +2089,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2198,7 +2123,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2216,9 +2140,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2252,7 +2174,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2270,9 +2191,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2353,13 +2272,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2383,9 +2300,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2394,7 +2309,6 @@
             "total_tokens": 1252,
             "cached_input_tokens": 1024
           },
-          "message_id": null,
           "response_id": "05313243-f43d-484d-8c33-baefb0231b1b",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -2474,13 +2388,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 12,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2497,7 +2409,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2519,9 +2430,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2559,7 +2468,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -2581,9 +2489,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2617,7 +2523,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2635,9 +2540,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2671,7 +2574,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2689,9 +2591,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2725,7 +2625,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2743,9 +2642,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2779,7 +2676,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2797,9 +2693,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2880,13 +2774,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -2910,9 +2802,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2921,7 +2811,6 @@
             "total_tokens": 1369,
             "cached_input_tokens": 1152
           },
-          "message_id": null,
           "response_id": "ab1359b6-c60e-49ab-ae70-5b425681f0ed",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -3001,13 +2890,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 14,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3024,7 +2911,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3046,9 +2932,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3086,7 +2970,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3108,9 +2991,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3144,7 +3025,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3162,9 +3042,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3198,7 +3076,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3216,9 +3093,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3252,7 +3127,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3270,9 +3144,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3306,7 +3178,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3324,9 +3195,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3360,7 +3229,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3378,9 +3246,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3461,13 +3327,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -3495,9 +3359,7 @@
                   "key": "depot/1",
                   "value": 11
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -3515,9 +3377,7 @@
                   "key": "depot/2",
                   "value": 22
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3526,7 +3386,6 @@
             "total_tokens": 1597,
             "cached_input_tokens": 1279
           },
-          "message_id": null,
           "response_id": "678636f2-82f9-4352-90e8-d21a79f0d875",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -3640,13 +3499,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 17,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3663,7 +3520,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3685,9 +3541,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3725,7 +3579,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -3747,9 +3600,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3783,7 +3634,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3801,9 +3651,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3837,7 +3685,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3855,9 +3702,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3891,7 +3736,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3909,9 +3753,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3945,7 +3787,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -3963,9 +3804,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3999,7 +3838,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4017,9 +3855,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4053,7 +3889,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4075,9 +3910,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -4095,9 +3928,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4195,13 +4026,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -4229,9 +4058,7 @@
                   "key": "depot/3",
                   "value": 33
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -4249,9 +4076,7 @@
                   "key": "depot/4",
                   "value": 44
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -4260,7 +4085,6 @@
             "total_tokens": 1806,
             "cached_input_tokens": 1408
           },
-          "message_id": null,
           "response_id": "590dd899-4a3a-4cf4-bf88-81d4f9e49281",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -4374,13 +4198,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 20,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4397,7 +4219,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4419,9 +4240,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4459,7 +4278,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4481,9 +4299,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4517,7 +4333,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4535,9 +4350,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4571,7 +4384,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4589,9 +4401,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4625,7 +4435,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4643,9 +4452,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4679,7 +4486,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4697,9 +4503,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4733,7 +4537,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -4751,9 +4554,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4787,7 +4588,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4809,9 +4609,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -4829,9 +4627,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4882,7 +4678,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -4904,9 +4699,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -4924,9 +4717,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5024,13 +4815,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -5058,9 +4847,7 @@
                   "key": "depot/5",
                   "value": 55
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -5078,9 +4865,7 @@
                   "key": "depot/6",
                   "value": 66
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -5089,7 +4874,6 @@
             "total_tokens": 2015,
             "cached_input_tokens": 1664
           },
-          "message_id": null,
           "response_id": "4f5b83df-96d2-4ddc-8768-6d5f4ff63da4",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -5203,13 +4987,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 23,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5226,7 +5008,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5248,9 +5029,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5288,7 +5067,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5310,9 +5088,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5346,7 +5122,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5364,9 +5139,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5400,7 +5173,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5418,9 +5190,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5454,7 +5224,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5472,9 +5241,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5508,7 +5275,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5526,9 +5292,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5562,7 +5326,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -5580,9 +5343,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5616,7 +5377,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5638,9 +5398,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5658,9 +5416,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5711,7 +5467,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5733,9 +5488,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5753,9 +5506,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5806,7 +5557,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5828,9 +5578,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -5848,9 +5596,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5948,13 +5694,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -5982,9 +5726,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -5993,7 +5735,6 @@
             "total_tokens": 2136,
             "cached_input_tokens": 1920
           },
-          "message_id": null,
           "response_id": "a1fe3d15-e090-4530-8c73-53016ac682ec",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -6071,13 +5812,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 25,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -6094,7 +5833,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6116,9 +5854,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6156,7 +5892,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6178,9 +5913,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6214,7 +5947,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6232,9 +5964,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6268,7 +5998,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6286,9 +6015,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6322,7 +6049,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6340,9 +6066,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6376,7 +6100,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6394,9 +6117,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6430,7 +6151,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -6448,9 +6168,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6484,7 +6202,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6506,9 +6223,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6526,9 +6241,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6579,7 +6292,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6601,9 +6313,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6621,9 +6331,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6674,7 +6382,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6696,9 +6403,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -6716,9 +6421,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6769,7 +6472,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6791,9 +6493,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6872,13 +6572,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -6897,7 +6595,6 @@
             "total_tokens": 2339,
             "cached_input_tokens": 1920
           },
-          "message_id": null,
           "response_id": "b2f68eb6-7ff6-4a56-af34-84902c6b9651",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -6935,13 +6632,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 26,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -6958,7 +6653,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -6980,9 +6674,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7020,7 +6712,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7042,9 +6733,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7078,7 +6767,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7096,9 +6784,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7132,7 +6818,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7150,9 +6835,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7186,7 +6869,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7204,9 +6886,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7240,7 +6920,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7258,9 +6937,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7294,7 +6971,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -7312,9 +6988,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7348,7 +7022,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7370,9 +7043,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7390,9 +7061,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7443,7 +7112,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7465,9 +7133,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7485,9 +7151,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7538,7 +7202,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7560,9 +7223,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -7580,9 +7241,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7633,7 +7292,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7655,9 +7313,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7689,7 +7345,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7755,13 +7410,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -7789,9 +7442,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -7800,7 +7451,6 @@
             "total_tokens": 2514,
             "cached_input_tokens": 2176
           },
-          "message_id": null,
           "response_id": "cad1dcd1-f0d1-4c85-afb6-fd2a3e2fcd02",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -7876,13 +7526,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 28,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -7899,7 +7547,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7921,9 +7568,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -7961,7 +7606,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -7983,9 +7627,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8019,7 +7661,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8037,9 +7678,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8073,7 +7712,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8091,9 +7729,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8127,7 +7763,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8145,9 +7780,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8181,7 +7814,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8199,9 +7831,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8235,7 +7865,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -8253,9 +7882,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8289,7 +7916,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8311,9 +7937,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -8331,9 +7955,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8384,7 +8006,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8406,9 +8027,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -8426,9 +8045,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8479,7 +8096,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8501,9 +8117,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -8521,9 +8135,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8574,7 +8186,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8596,9 +8207,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8630,7 +8239,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8649,7 +8257,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8671,9 +8278,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8750,13 +8355,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -8784,9 +8387,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -8795,7 +8396,6 @@
             "total_tokens": 2659,
             "cached_input_tokens": 2432
           },
-          "message_id": null,
           "response_id": "939bfad9-2db9-4822-ba3c-1dc85e3b26a6",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -8875,13 +8475,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 30,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -8898,7 +8496,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8920,9 +8517,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -8960,7 +8555,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -8982,9 +8576,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9018,7 +8610,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9036,9 +8627,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9072,7 +8661,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9090,9 +8678,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9126,7 +8712,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9144,9 +8729,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9180,7 +8763,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9198,9 +8780,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9234,7 +8814,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -9252,9 +8831,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9288,7 +8865,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9310,9 +8886,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9330,9 +8904,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9383,7 +8955,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9405,9 +8976,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9425,9 +8994,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9478,7 +9045,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9500,9 +9066,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -9520,9 +9084,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9573,7 +9135,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9595,9 +9156,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9629,7 +9188,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9648,7 +9206,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9670,9 +9227,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9702,7 +9257,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9724,9 +9278,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -9807,13 +9359,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -9837,9 +9387,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -9848,7 +9396,6 @@
             "total_tokens": 2776,
             "cached_input_tokens": 2560
           },
-          "message_id": null,
           "response_id": "94d0d7b5-f1e2-448e-acc5-a6ea22a6b649",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -9928,13 +9475,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 32,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -9951,7 +9496,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -9973,9 +9517,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10013,7 +9555,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10035,9 +9576,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10071,7 +9610,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10089,9 +9627,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10125,7 +9661,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10143,9 +9678,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10179,7 +9712,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10197,9 +9729,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10233,7 +9763,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10251,9 +9780,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10287,7 +9814,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10305,9 +9831,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10341,7 +9865,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10363,9 +9886,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10383,9 +9904,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10436,7 +9955,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10458,9 +9976,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10478,9 +9994,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10531,7 +10045,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10553,9 +10066,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -10573,9 +10084,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10626,7 +10135,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10648,9 +10156,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10682,7 +10188,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10701,7 +10206,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10723,9 +10227,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10755,7 +10257,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -10777,9 +10278,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10813,7 +10312,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -10831,9 +10329,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -10914,13 +10410,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -10944,9 +10438,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -10955,7 +10447,6 @@
             "total_tokens": 2893,
             "cached_input_tokens": 2686
           },
-          "message_id": null,
           "response_id": "af4c9ad8-7380-43eb-879e-e951dac179ab",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -11035,13 +10526,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 34,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -11058,7 +10547,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11080,9 +10568,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11120,7 +10606,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11142,9 +10627,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11178,7 +10661,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11196,9 +10678,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11232,7 +10712,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11250,9 +10729,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11286,7 +10763,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11304,9 +10780,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11340,7 +10814,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11358,9 +10831,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11394,7 +10865,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11412,9 +10882,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11448,7 +10916,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11470,9 +10937,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11490,9 +10955,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11543,7 +11006,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11565,9 +11027,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11585,9 +11045,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11638,7 +11096,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11660,9 +11117,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -11680,9 +11135,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11733,7 +11186,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11755,9 +11207,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11789,7 +11239,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11808,7 +11257,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11830,9 +11278,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11862,7 +11308,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -11884,9 +11329,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11920,7 +11363,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11938,9 +11380,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -11974,7 +11414,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -11992,9 +11431,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12075,13 +11512,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -12105,9 +11540,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -12116,7 +11549,6 @@
             "total_tokens": 3010,
             "cached_input_tokens": 2688
           },
-          "message_id": null,
           "response_id": "e2822f85-f04c-41e9-999a-3bec2ea0c659",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -12196,13 +11628,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 36,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -12219,7 +11649,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12241,9 +11670,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12281,7 +11708,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12303,9 +11729,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12339,7 +11763,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12357,9 +11780,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12393,7 +11814,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12411,9 +11831,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12447,7 +11865,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12465,9 +11882,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12501,7 +11916,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12519,9 +11933,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12555,7 +11967,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -12573,9 +11984,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12609,7 +12018,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12631,9 +12039,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12651,9 +12057,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12704,7 +12108,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12726,9 +12129,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12746,9 +12147,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12799,7 +12198,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12821,9 +12219,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -12841,9 +12237,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12894,7 +12288,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12916,9 +12309,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -12950,7 +12341,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12969,7 +12359,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -12991,9 +12380,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13023,7 +12410,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13045,9 +12431,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13081,7 +12465,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13099,9 +12482,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13135,7 +12516,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13153,9 +12533,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13189,7 +12567,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13207,9 +12584,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13290,13 +12665,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -13320,9 +12693,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -13331,7 +12702,6 @@
             "total_tokens": 3127,
             "cached_input_tokens": 2816
           },
-          "message_id": null,
           "response_id": "890f7766-7fbb-411d-afc6-2ae96592d4c1",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -13411,13 +12781,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 38,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -13434,7 +12802,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13456,9 +12823,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13496,7 +12861,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13518,9 +12882,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13554,7 +12916,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13572,9 +12933,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13608,7 +12967,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13626,9 +12984,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13662,7 +13018,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13680,9 +13035,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13716,7 +13069,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13734,9 +13086,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13770,7 +13120,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -13788,9 +13137,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13824,7 +13171,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13846,9 +13192,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13866,9 +13210,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -13919,7 +13261,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -13941,9 +13282,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -13961,9 +13300,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14014,7 +13351,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14036,9 +13372,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -14056,9 +13390,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14109,7 +13441,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14131,9 +13462,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14165,7 +13494,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14184,7 +13512,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14206,9 +13533,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14238,7 +13563,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14260,9 +13584,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14296,7 +13618,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14314,9 +13635,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14350,7 +13669,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14368,9 +13686,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14404,7 +13720,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14422,9 +13737,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14458,7 +13771,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14476,9 +13788,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14559,13 +13869,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -14589,9 +13897,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -14600,7 +13906,6 @@
             "total_tokens": 3244,
             "cached_input_tokens": 2944
           },
-          "message_id": null,
           "response_id": "d253c048-ad3a-4b4d-b1f5-f5e133f54138",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -14680,13 +13985,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 40,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -14703,7 +14006,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14725,9 +14027,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14765,7 +14065,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -14787,9 +14086,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14823,7 +14120,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14841,9 +14137,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14877,7 +14171,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14895,9 +14188,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14931,7 +14222,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -14949,9 +14239,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -14985,7 +14273,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15003,9 +14290,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15039,7 +14324,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15057,9 +14341,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15093,7 +14375,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15115,9 +14396,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -15135,9 +14414,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15188,7 +14465,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15210,9 +14486,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -15230,9 +14504,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15283,7 +14555,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15305,9 +14576,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -15325,9 +14594,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15378,7 +14645,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15400,9 +14666,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15434,7 +14698,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15453,7 +14716,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15475,9 +14737,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15507,7 +14767,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -15529,9 +14788,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15565,7 +14822,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15583,9 +14839,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15619,7 +14873,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15637,9 +14890,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15673,7 +14924,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15691,9 +14941,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15727,7 +14975,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15745,9 +14992,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15781,7 +15026,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -15799,9 +15043,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -15882,13 +15124,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -15916,9 +15156,7 @@
                   "key": "depot/1",
                   "value": 6
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -15936,9 +15174,7 @@
                   "key": "depot/2",
                   "value": 17
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -15947,7 +15183,6 @@
             "total_tokens": 3558,
             "cached_input_tokens": 3072
           },
-          "message_id": null,
           "response_id": "398458d3-da9a-4431-8c9b-d1436738b15d",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -16061,13 +15296,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 43,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -16084,7 +15317,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16106,9 +15338,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16146,7 +15376,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16168,9 +15397,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16204,7 +15431,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16222,9 +15448,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16258,7 +15482,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16276,9 +15499,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16312,7 +15533,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16330,9 +15550,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16366,7 +15584,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16384,9 +15601,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16420,7 +15635,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16438,9 +15652,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16474,7 +15686,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16496,9 +15707,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -16516,9 +15725,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16569,7 +15776,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16591,9 +15797,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -16611,9 +15815,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16664,7 +15866,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16686,9 +15887,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -16706,9 +15905,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16759,7 +15956,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16781,9 +15977,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16815,7 +16009,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16834,7 +16027,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16856,9 +16048,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16888,7 +16078,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -16910,9 +16099,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -16946,7 +16133,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -16964,9 +16150,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17000,7 +16184,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17018,9 +16201,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17054,7 +16235,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17072,9 +16252,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17108,7 +16286,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17126,9 +16303,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17162,7 +16337,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17180,9 +16354,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17216,7 +16388,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17238,9 +16409,7 @@
                       "key": "depot/1",
                       "value": 6
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -17258,9 +16427,7 @@
                       "key": "depot/2",
                       "value": 17
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17358,13 +16525,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -17392,9 +16557,7 @@
                   "key": "depot/3",
                   "value": 28
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -17412,9 +16575,7 @@
                   "key": "depot/4",
                   "value": 39
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -17423,7 +16584,6 @@
             "total_tokens": 3750,
             "cached_input_tokens": 3456
           },
-          "message_id": null,
           "response_id": "122ba3c3-6454-40e6-9ace-c593c27f13db",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -17537,13 +16697,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 46,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -17560,7 +16718,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17582,9 +16739,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17622,7 +16777,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17644,9 +16798,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17680,7 +16832,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17698,9 +16849,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17734,7 +16883,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17752,9 +16900,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17788,7 +16934,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17806,9 +16951,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17842,7 +16985,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17860,9 +17002,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17896,7 +17036,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -17914,9 +17053,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -17950,7 +17087,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -17972,9 +17108,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -17992,9 +17126,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18045,7 +17177,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18067,9 +17198,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -18087,9 +17216,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18140,7 +17267,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18162,9 +17288,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -18182,9 +17306,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18235,7 +17357,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18257,9 +17378,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18291,7 +17410,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18310,7 +17428,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18332,9 +17449,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18364,7 +17479,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18386,9 +17500,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18422,7 +17534,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18440,9 +17551,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18476,7 +17585,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18494,9 +17602,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18530,7 +17636,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18548,9 +17653,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18584,7 +17687,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18602,9 +17704,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18638,7 +17738,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -18656,9 +17755,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18692,7 +17789,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18714,9 +17810,7 @@
                       "key": "depot/1",
                       "value": 6
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -18734,9 +17828,7 @@
                       "key": "depot/2",
                       "value": 17
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18787,7 +17879,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -18809,9 +17900,7 @@
                       "key": "depot/3",
                       "value": 28
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -18829,9 +17918,7 @@
                       "key": "depot/4",
                       "value": 39
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -18929,13 +18016,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -18963,9 +18048,7 @@
                   "key": "depot/5",
                   "value": 50
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -18983,9 +18066,7 @@
                   "key": "depot/6",
                   "value": 61
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -18994,7 +18075,6 @@
             "total_tokens": 3942,
             "cached_input_tokens": 3584
           },
-          "message_id": null,
           "response_id": "860f08f8-ad66-478e-85ee-bb58401f6beb",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -19108,13 +18188,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 49,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -19131,7 +18209,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19153,9 +18230,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19193,7 +18268,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19215,9 +18289,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19251,7 +18323,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19269,9 +18340,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19305,7 +18374,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19323,9 +18391,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19359,7 +18425,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19377,9 +18442,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19413,7 +18476,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19431,9 +18493,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19467,7 +18527,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -19485,9 +18544,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19521,7 +18578,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19543,9 +18599,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -19563,9 +18617,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19616,7 +18668,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19638,9 +18689,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -19658,9 +18707,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19711,7 +18758,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19733,9 +18779,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -19753,9 +18797,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19806,7 +18848,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19828,9 +18869,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19862,7 +18901,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19881,7 +18919,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19903,9 +18940,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19935,7 +18970,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -19957,9 +18991,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -19993,7 +19025,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20011,9 +19042,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20047,7 +19076,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20065,9 +19093,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20101,7 +19127,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20119,9 +19144,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20155,7 +19178,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20173,9 +19195,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20209,7 +19229,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20227,9 +19246,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20263,7 +19280,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -20285,9 +19301,7 @@
                       "key": "depot/1",
                       "value": 6
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -20305,9 +19319,7 @@
                       "key": "depot/2",
                       "value": 17
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20358,7 +19370,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -20380,9 +19391,7 @@
                       "key": "depot/3",
                       "value": 28
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -20400,9 +19409,7 @@
                       "key": "depot/4",
                       "value": 39
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20453,7 +19460,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -20475,9 +19481,7 @@
                       "key": "depot/5",
                       "value": 50
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -20495,9 +19499,7 @@
                       "key": "depot/6",
                       "value": 61
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20595,13 +19597,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -20629,9 +19629,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -20640,7 +19638,6 @@
             "total_tokens": 4063,
             "cached_input_tokens": 3840
           },
-          "message_id": null,
           "response_id": "29b7340a-8e07-4fd2-9322-a14d01ca3619",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -20718,13 +19715,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 51,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -20741,7 +19736,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -20763,9 +19757,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20803,7 +19795,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -20825,9 +19816,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20861,7 +19850,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20879,9 +19867,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20915,7 +19901,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20933,9 +19918,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -20969,7 +19952,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -20987,9 +19969,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21023,7 +20003,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21041,9 +20020,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21077,7 +20054,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21095,9 +20071,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21131,7 +20105,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21153,9 +20126,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -21173,9 +20144,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21226,7 +20195,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21248,9 +20216,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -21268,9 +20234,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21321,7 +20285,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21343,9 +20306,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -21363,9 +20324,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21416,7 +20375,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21438,9 +20396,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21472,7 +20428,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21491,7 +20446,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21513,9 +20467,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21545,7 +20497,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21567,9 +20518,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21603,7 +20552,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21621,9 +20569,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21657,7 +20603,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21675,9 +20620,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21711,7 +20654,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21729,9 +20671,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21765,7 +20705,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21783,9 +20722,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21819,7 +20756,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -21837,9 +20773,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21873,7 +20807,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21895,9 +20828,7 @@
                       "key": "depot/1",
                       "value": 6
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -21915,9 +20846,7 @@
                       "key": "depot/2",
                       "value": 17
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -21968,7 +20897,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -21990,9 +20918,7 @@
                       "key": "depot/3",
                       "value": 28
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -22010,9 +20936,7 @@
                       "key": "depot/4",
                       "value": 39
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22063,7 +20987,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -22085,9 +21008,7 @@
                       "key": "depot/5",
                       "value": 50
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -22105,9 +21026,7 @@
                       "key": "depot/6",
                       "value": 61
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22158,7 +21077,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -22180,9 +21098,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -22261,13 +21177,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -22286,7 +21200,6 @@
             "total_tokens": 4321,
             "cached_input_tokens": 3840
           },
-          "message_id": null,
           "response_id": "064bd936-2de2-40d9-a790-97ba244fb0f0",
           "finish_reason": "stop",
           "provider": "deepseek",

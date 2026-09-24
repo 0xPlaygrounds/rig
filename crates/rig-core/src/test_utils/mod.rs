@@ -1,6 +1,7 @@
 //! Test utilities for deterministic completion-model tests.
 
 mod completion;
+mod document;
 mod embeddings;
 mod http;
 mod memory;
@@ -13,6 +14,7 @@ mod streaming_conformance_suite;
 mod tracing_isolation;
 
 pub use completion::{MockCompletionModel, MockError, MockTurn};
+pub use document::mock_terminal_document;
 pub use embeddings::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 pub use http::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,

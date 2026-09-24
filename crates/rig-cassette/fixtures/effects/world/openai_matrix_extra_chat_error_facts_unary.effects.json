@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -57,13 +56,9 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "temperature": 99.0
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },

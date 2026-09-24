@@ -94,7 +94,7 @@ pub struct EmbeddingResponse {
     /// for example `"openai"`. Always populated.
     pub provider: String,
     /// Provider-reported model identifier, when the wire response named one.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -160,7 +160,7 @@ pub struct ImageEmbeddingResponse {
     /// for example `"openai"`. Always populated.
     pub provider: String,
     /// Provider-reported model identifier, when the wire response named one.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 13467625088895359032,
     "handlers": [
       {
@@ -25,13 +26,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -50,12 +49,9 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -76,7 +72,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_a14f0eec-c913-41ce-9cc9-ddaaba1b2f21",
           "finish_reason": "stop",
           "provider": "doubleword",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 3,
@@ -71,13 +72,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -117,11 +116,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -130,8 +125,6 @@
           "kind": "response",
           "retryable": true,
           "message": "the stream ended before its terminal record",
-          "code": null,
-          "http_status": null,
           "refusal": false,
           "source_chain": []
         }
@@ -174,8 +167,7 @@
                 "y": 25
               }
             },
-            "signature": "EtICCs8CAWkUfRNiP0zoJFDQgiCZFFewpdgi1b3ZsXAF2avrYUSCJEGQ3kHVC7+QPAqhwgpOdsAfTzgw60QHnuqWXFfngH3RKOUtuXav+nF8fjRxuAHE5By+ryUUIoo9SYjcpk+T6wbl7vMuHpD6PQCBoZ+WZ4BAokQINjSZIy7wWll0QGI54x7lHKC7hjUOtX4swITByLdmzvqBRgz80ySUV2IYxWXQuHqUP13qscqIUxuByrkgm3NkdRJXE6d1/OI3JlItC1urKmt+8WncQl/sagnQOVPSOgrWdycxZ61svM99pXZ6yNuPBLTmDmOBUtgzVBb9pOD5VGh1PWLgX4uOnqH/vCBP3PMH8ExhJuXpSIdVk5gKB4MhnXmL2P5jFBr89bW6SndZILuD3HAc+7Jgnm6RUIZepbcJrkP3VdJv1AHwqAisc2nAN3DmBfMbgAs1W9E=",
-            "additional_params": null
+            "signature": "EtICCs8CAWkUfRNiP0zoJFDQgiCZFFewpdgi1b3ZsXAF2avrYUSCJEGQ3kHVC7+QPAqhwgpOdsAfTzgw60QHnuqWXFfngH3RKOUtuXav+nF8fjRxuAHE5By+ryUUIoo9SYjcpk+T6wbl7vMuHpD6PQCBoZ+WZ4BAokQINjSZIy7wWll0QGI54x7lHKC7hjUOtX4swITByLdmzvqBRgz80ySUV2IYxWXQuHqUP13qscqIUxuByrkgm3NkdRJXE6d1/OI3JlItC1urKmt+8WncQl/sagnQOVPSOgrWdycxZ61svM99pXZ6yNuPBLTmDmOBUtgzVBb9pOD5VGh1PWLgX4uOnqH/vCBP3PMH8ExhJuXpSIdVk5gKB4MhnXmL2P5jFBr89bW6SndZILuD3HAc+7Jgnm6RUIZepbcJrkP3VdJv1AHwqAisc2nAN3DmBfMbgAs1W9E="
           }
         }
       ],

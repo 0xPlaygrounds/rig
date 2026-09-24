@@ -30,6 +30,10 @@ autotests = false
 name = "cassette_tool"
 required-features = ["http"]
 
+[[bin]]
+name = "rig-migrate"
+required-features = ["migrate"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -54,6 +58,10 @@ http = [
     "serde_json/preserve_order",
 ]
 bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
+# The `rig-migrate` command. Keeps a rewritten file's key order and float
+# spelling, so a migrated document differs from its input only where the
+# format changed.
+migrate = ["serde_json/float_roundtrip", "serde_json/preserve_order"]
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
@@ -72,6 +80,7 @@ httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs"], optional = true }
 url = { workspace = true, optional = true }
 
@@ -133,6 +142,10 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 name = "verify"
 path = "tests/verify/main.rs"
 required-features = ["agent", "ecs"]
+
+[[test]]
+name = "migrate"
+required-features = ["migrate"]
 
 [[test]]
 name = "world_replay"

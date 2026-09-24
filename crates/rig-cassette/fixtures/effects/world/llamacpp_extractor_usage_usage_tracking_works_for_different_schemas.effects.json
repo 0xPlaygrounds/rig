@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -103,13 +102,10 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": "required",
           "additional_params": {
             "temperature": 0.0
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -119,7 +115,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -146,9 +141,7 @@
                   "age": 25,
                   "profession": "developer"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -157,7 +150,6 @@
             "total_tokens": 568,
             "cached_input_tokens": 332
           },
-          "message_id": null,
           "response_id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",
@@ -214,13 +206,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -268,13 +258,10 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": "required",
           "additional_params": {
             "temperature": 0.0
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -284,7 +271,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -312,9 +298,7 @@
                   "state": "MA",
                   "zip_code": "02139"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -323,7 +307,6 @@
             "total_tokens": 534,
             "cached_input_tokens": 325
           },
-          "message_id": null,
           "response_id": "chatcmpl-6RqvLx1P4enciq5xPKS3diTB1ABQhdnV",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 3815250667280501638,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -77,16 +76,13 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "final_result"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -110,9 +106,7 @@
                   "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share knowledge, discuss best practices, explore new features of Rust, and network with fellow developers passionate about systems programming and memory-safe software development.",
                   "title": "Seattle Rust Meetup"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -123,7 +117,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLccfFdVKZT1fMwzUEPH",
-          "response_id": null,
           "provider_request_id": "req_011CfLccenquircUxajdecuY",
           "finish_reason": "tool_calls",
           "provider": "anthropic",

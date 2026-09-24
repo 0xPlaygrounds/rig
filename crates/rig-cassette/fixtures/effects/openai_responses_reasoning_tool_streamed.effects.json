@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 7161406626212458529,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -101,9 +100,7 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning": {
               "effort": "low",
@@ -112,8 +109,7 @@
             "include": [
               "reasoning.encrypted_content"
             ]
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -148,9 +144,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -160,7 +154,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
           "response_id": "resp_0b4ccd6880bda668006ab2b4caa40c87d084d227f564df910a",
           "provider_request_id": "req_4db99d94d2164d9cbbe16b8b31c6a1fa",
           "finish_reason": "tool_calls",
@@ -344,9 +337,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -359,7 +350,6 @@
             "reasoning_tokens": 64
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "resp_0b4ccd6880bda668006ab2b4caa40c87d084d227f564df910a",
           "provider_request_id": "req_4db99d94d2164d9cbbe16b8b31c6a1fa",
           "provider": "openai",
@@ -415,13 +405,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -438,7 +426,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -467,9 +454,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -521,9 +506,7 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning": {
               "effort": "low",
@@ -532,8 +515,7 @@
             "include": [
               "reasoning.encrypted_content"
             ]
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },

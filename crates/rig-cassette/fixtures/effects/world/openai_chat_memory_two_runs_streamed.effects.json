@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 1,
@@ -119,7 +120,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/memory",
       "kind": {
@@ -139,13 +139,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -162,12 +160,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": true
       },
@@ -187,7 +180,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
           "provider_request_id": "req_2ad450a02e234492a82aaa35d4f9b86e",
           "finish_reason": "stop",
@@ -244,7 +236,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
           "provider_request_id": "req_2ad450a02e234492a82aaa35d4f9b86e",
           "provider": "openai",
@@ -277,7 +268,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/memory",
       "kind": {
@@ -297,7 +287,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -317,7 +306,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/memory",
       "kind": {
@@ -343,7 +331,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -357,13 +344,11 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -380,7 +365,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -399,12 +383,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": true
       },
@@ -424,7 +403,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCDC3s9qDOjqZ0uUHJbk8Dd42G9",
           "provider_request_id": "req_6a5dee8383e8431f886d56ac3679d2af",
           "finish_reason": "stop",
@@ -481,7 +459,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-ERDCDC3s9qDOjqZ0uUHJbk8Dd42G9",
           "provider_request_id": "req_6a5dee8383e8431f886d56ac3679d2af",
           "provider": "openai",
@@ -514,7 +491,6 @@
       "scope": "golden/run#1"
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/memory",
       "kind": {
@@ -534,7 +510,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",

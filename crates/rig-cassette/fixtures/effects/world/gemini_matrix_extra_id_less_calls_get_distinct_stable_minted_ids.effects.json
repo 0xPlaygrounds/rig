@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 7,
@@ -136,13 +137,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -178,12 +177,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -204,8 +198,7 @@
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "Eo0ECooEAWkUfRPs1JRi5sd8E/OslCIXRTXZM8nDO9wlOKz0353I8bOqVpWna5mvkt53qJZIqMU7+W8g17btuoEBGv/XqskjvOwuF8X0RB27KzW58i+/GUfum9MQJcSbVOtBYDU0tmgBVQznZSqP8vc0yisKXQjnhuqhYLjkSCLV8hIV5ST99bClpbJimbQ9QmQetTlkSaaX+3EV8ln6bJuKa/N5hevGgKYkoeKX/A1f57gSjdqag60Y2BaTOaRyeJ3ZGEihbNRw4z/FMTOhrJAKC3+NHY706EQSen2LmOvb/nPvtp26gsVX6jMrb5Q/ByESYm6xYJqD3rMw15Jea4BKAkB13AOtFoCntj4KxYbYVFqw23J6tTsnABgz8J1aVjmYRH0TZ7HcABE/HPlu+jieWaYNO3XAhm7TjAFH1mh71vTNLch+WBvNVMzR1jv70RoZUfObOYBbBeTPNelNWo6JrMKRzg6rPA7Pq7XkQdlyKcGIuVhS6mSUd2ULLW2cTttYILjuUYPl9PgL9ZJ8L2ZrOtRSLj0TsMFEODEN3eFsNc62l6MeC49133zuA0O7WB+6I8jMqeMVdYtbbv6P/XAjHyRiclKREaeqeDmQdLq20WtkIhyldCGzx2L71r/bvycCIXPl3xbUKrKEJ7bVVUMKNDhPdPOTL0S4A/kSfGYqE6s4Kh3wUUaj3c047KiR",
-              "additional_params": null
+              "signature": "Eo0ECooEAWkUfRPs1JRi5sd8E/OslCIXRTXZM8nDO9wlOKz0353I8bOqVpWna5mvkt53qJZIqMU7+W8g17btuoEBGv/XqskjvOwuF8X0RB27KzW58i+/GUfum9MQJcSbVOtBYDU0tmgBVQznZSqP8vc0yisKXQjnhuqhYLjkSCLV8hIV5ST99bClpbJimbQ9QmQetTlkSaaX+3EV8ln6bJuKa/N5hevGgKYkoeKX/A1f57gSjdqag60Y2BaTOaRyeJ3ZGEihbNRw4z/FMTOhrJAKC3+NHY706EQSen2LmOvb/nPvtp26gsVX6jMrb5Q/ByESYm6xYJqD3rMw15Jea4BKAkB13AOtFoCntj4KxYbYVFqw23J6tTsnABgz8J1aVjmYRH0TZ7HcABE/HPlu+jieWaYNO3XAhm7TjAFH1mh71vTNLch+WBvNVMzR1jv70RoZUfObOYBbBeTPNelNWo6JrMKRzg6rPA7Pq7XkQdlyKcGIuVhS6mSUd2ULLW2cTttYILjuUYPl9PgL9ZJ8L2ZrOtRSLj0TsMFEODEN3eFsNc62l6MeC49133zuA0O7WB+6I8jMqeMVdYtbbv6P/XAjHyRiclKREaeqeDmQdLq20WtkIhyldCGzx2L71r/bvycCIXPl3xbUKrKEJ7bVVUMKNDhPdPOTL0S4A/kSfGYqE6s4Kh3wUUaj3c047KiR"
             },
             {
               "type": "toolcall",
@@ -219,9 +212,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -230,7 +221,6 @@
             "total_tokens": 286,
             "reasoning_tokens": 94
           },
-          "message_id": null,
           "response_id": "rq2yaobaM7f9qtsP-_i36AQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -307,13 +297,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -330,7 +318,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -345,8 +332,7 @@
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "Eo0ECooEAWkUfRPs1JRi5sd8E/OslCIXRTXZM8nDO9wlOKz0353I8bOqVpWna5mvkt53qJZIqMU7+W8g17btuoEBGv/XqskjvOwuF8X0RB27KzW58i+/GUfum9MQJcSbVOtBYDU0tmgBVQznZSqP8vc0yisKXQjnhuqhYLjkSCLV8hIV5ST99bClpbJimbQ9QmQetTlkSaaX+3EV8ln6bJuKa/N5hevGgKYkoeKX/A1f57gSjdqag60Y2BaTOaRyeJ3ZGEihbNRw4z/FMTOhrJAKC3+NHY706EQSen2LmOvb/nPvtp26gsVX6jMrb5Q/ByESYm6xYJqD3rMw15Jea4BKAkB13AOtFoCntj4KxYbYVFqw23J6tTsnABgz8J1aVjmYRH0TZ7HcABE/HPlu+jieWaYNO3XAhm7TjAFH1mh71vTNLch+WBvNVMzR1jv70RoZUfObOYBbBeTPNelNWo6JrMKRzg6rPA7Pq7XkQdlyKcGIuVhS6mSUd2ULLW2cTttYILjuUYPl9PgL9ZJ8L2ZrOtRSLj0TsMFEODEN3eFsNc62l6MeC49133zuA0O7WB+6I8jMqeMVdYtbbv6P/XAjHyRiclKREaeqeDmQdLq20WtkIhyldCGzx2L71r/bvycCIXPl3xbUKrKEJ7bVVUMKNDhPdPOTL0S4A/kSfGYqE6s4Kh3wUUaj3c047KiR",
-                  "additional_params": null
+                  "signature": "Eo0ECooEAWkUfRPs1JRi5sd8E/OslCIXRTXZM8nDO9wlOKz0353I8bOqVpWna5mvkt53qJZIqMU7+W8g17btuoEBGv/XqskjvOwuF8X0RB27KzW58i+/GUfum9MQJcSbVOtBYDU0tmgBVQznZSqP8vc0yisKXQjnhuqhYLjkSCLV8hIV5ST99bClpbJimbQ9QmQetTlkSaaX+3EV8ln6bJuKa/N5hevGgKYkoeKX/A1f57gSjdqag60Y2BaTOaRyeJ3ZGEihbNRw4z/FMTOhrJAKC3+NHY706EQSen2LmOvb/nPvtp26gsVX6jMrb5Q/ByESYm6xYJqD3rMw15Jea4BKAkB13AOtFoCntj4KxYbYVFqw23J6tTsnABgz8J1aVjmYRH0TZ7HcABE/HPlu+jieWaYNO3XAhm7TjAFH1mh71vTNLch+WBvNVMzR1jv70RoZUfObOYBbBeTPNelNWo6JrMKRzg6rPA7Pq7XkQdlyKcGIuVhS6mSUd2ULLW2cTttYILjuUYPl9PgL9ZJ8L2ZrOtRSLj0TsMFEODEN3eFsNc62l6MeC49133zuA0O7WB+6I8jMqeMVdYtbbv6P/XAjHyRiclKREaeqeDmQdLq20WtkIhyldCGzx2L71r/bvycCIXPl3xbUKrKEJ7bVVUMKNDhPdPOTL0S4A/kSfGYqE6s4Kh3wUUaj3c047KiR"
                 },
                 {
                   "type": "toolcall",
@@ -360,9 +346,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -426,12 +410,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -449,7 +428,6 @@
             "output_tokens": 18,
             "total_tokens": 343
           },
-          "message_id": null,
           "response_id": "sK2yaqGrBo-JqtsPxeTc2Ac",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

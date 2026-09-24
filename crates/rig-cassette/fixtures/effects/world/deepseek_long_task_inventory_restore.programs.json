@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -153,7 +153,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -316,9 +316,7 @@
                     "key": "index",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -373,9 +371,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -384,7 +380,6 @@
                 "total_tokens": 644,
                 "cached_input_tokens": 384
               },
-              "message_id": null,
               "response_id": "1606eb46-595e-4661-9c9a-aa6b6f227103",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -509,9 +504,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -576,9 +569,7 @@
                     "key": "depot/1",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -633,9 +624,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -644,7 +633,6 @@
                 "total_tokens": 784,
                 "cached_input_tokens": 512
               },
-              "message_id": null,
               "response_id": "746340dd-1c17-4156-bab0-ca44687afa84",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -765,9 +753,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -824,9 +810,7 @@
                     "key": "depot/2",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -877,9 +861,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -888,7 +870,6 @@
                 "total_tokens": 901,
                 "cached_input_tokens": 640
               },
-              "message_id": null,
               "response_id": "23264afa-9e79-40eb-8b22-7c91fb108987",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -1001,9 +982,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1060,9 +1039,7 @@
                     "key": "depot/3",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1113,9 +1090,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -1124,7 +1099,6 @@
                 "total_tokens": 1018,
                 "cached_input_tokens": 768
               },
-              "message_id": null,
               "response_id": "5a7953aa-8df4-4c58-8200-0ac3bf17d307",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -1237,9 +1211,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1296,9 +1268,7 @@
                     "key": "depot/4",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1349,9 +1319,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -1360,7 +1328,6 @@
                 "total_tokens": 1135,
                 "cached_input_tokens": 896
               },
-              "message_id": null,
               "response_id": "4460bb90-92e4-4915-8bbc-55c4b47e3e25",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -1473,9 +1440,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1532,9 +1497,7 @@
                     "key": "depot/5",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1585,9 +1548,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -1596,7 +1557,6 @@
                 "total_tokens": 1252,
                 "cached_input_tokens": 1024
               },
-              "message_id": null,
               "response_id": "05313243-f43d-484d-8c33-baefb0231b1b",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -1709,9 +1669,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1768,9 +1726,7 @@
                     "key": "depot/6",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1821,9 +1777,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -1832,7 +1786,6 @@
                 "total_tokens": 1369,
                 "cached_input_tokens": 1152
               },
-              "message_id": null,
               "response_id": "ab1359b6-c60e-49ab-ae70-5b425681f0ed",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -1945,9 +1898,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2008,9 +1959,7 @@
                     "key": "depot/1",
                     "value": 11
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               },
               {
                 "type": "toolcall",
@@ -2028,9 +1977,7 @@
                     "key": "depot/2",
                     "value": 22
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -2085,9 +2032,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2105,9 +2050,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -2116,7 +2059,6 @@
                 "total_tokens": 1597,
                 "cached_input_tokens": 1279
               },
-              "message_id": null,
               "response_id": "678636f2-82f9-4352-90e8-d21a79f0d875",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -2279,9 +2221,7 @@
                   "key": "depot/1",
                   "value": 11
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2303,9 +2243,7 @@
                   "key": "depot/2",
                   "value": 22
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2388,9 +2326,7 @@
                     "key": "depot/3",
                     "value": 33
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               },
               {
                 "type": "toolcall",
@@ -2408,9 +2344,7 @@
                     "key": "depot/4",
                     "value": 44
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -2465,9 +2399,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2485,9 +2417,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -2496,7 +2426,6 @@
                 "total_tokens": 1806,
                 "cached_input_tokens": 1408
               },
-              "message_id": null,
               "response_id": "590dd899-4a3a-4cf4-bf88-81d4f9e49281",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -2659,9 +2588,7 @@
                   "key": "depot/3",
                   "value": 33
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2683,9 +2610,7 @@
                   "key": "depot/4",
                   "value": 44
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2768,9 +2693,7 @@
                     "key": "depot/5",
                     "value": 55
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               },
               {
                 "type": "toolcall",
@@ -2788,9 +2711,7 @@
                     "key": "depot/6",
                     "value": 66
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -2845,9 +2766,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2865,9 +2784,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -2876,7 +2793,6 @@
                 "total_tokens": 2015,
                 "cached_input_tokens": 1664
               },
-              "message_id": null,
               "response_id": "4f5b83df-96d2-4ddc-8768-6d5f4ff63da4",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -3039,9 +2955,7 @@
                   "key": "depot/5",
                   "value": 55
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3063,9 +2977,7 @@
                   "key": "depot/6",
                   "value": 66
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3148,9 +3060,7 @@
                     "key": "all",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -3205,9 +3115,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -3216,7 +3124,6 @@
                 "total_tokens": 2136,
                 "cached_input_tokens": 1920
               },
-              "message_id": null,
               "response_id": "a1fe3d15-e090-4530-8c73-53016ac682ec",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -3335,9 +3242,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3419,7 +3324,6 @@
                 "total_tokens": 2339,
                 "cached_input_tokens": 1920
               },
-              "message_id": null,
               "response_id": "b2f68eb6-7ff6-4a56-af34-84902c6b9651",
               "finish_reason": "stop",
               "provider": "deepseek",
@@ -3538,9 +3442,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3612,9 +3514,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3674,9 +3574,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3736,9 +3634,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3798,9 +3694,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3860,9 +3754,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3922,9 +3814,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3992,9 +3882,7 @@
                   "key": "depot/1",
                   "value": 11
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4016,9 +3904,7 @@
                   "key": "depot/2",
                   "value": 22
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4107,9 +3993,7 @@
                   "key": "depot/3",
                   "value": 33
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4131,9 +4015,7 @@
                   "key": "depot/4",
                   "value": 44
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4222,9 +4104,7 @@
                   "key": "depot/5",
                   "value": 55
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4246,9 +4126,7 @@
                   "key": "depot/6",
                   "value": 66
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4337,9 +4215,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },

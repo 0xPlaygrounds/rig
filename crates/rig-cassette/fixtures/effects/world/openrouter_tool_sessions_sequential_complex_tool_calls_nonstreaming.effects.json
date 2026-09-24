@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -217,13 +218,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -342,13 +341,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -368,9 +363,7 @@
               "function": {
                 "name": "ping_empty",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -381,7 +374,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "gen-1790152483-X0RaA3bVSthhPp9Yommm",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
@@ -473,13 +465,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -496,7 +486,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -510,9 +499,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -642,13 +629,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -685,9 +668,7 @@
                   ],
                   "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -698,7 +679,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "gen-1790152484-sjsNyy0LQgK9SBlT8DBL",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
@@ -790,13 +770,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -813,7 +791,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -827,9 +804,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -857,7 +832,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -888,9 +862,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1020,13 +992,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1054,9 +1022,7 @@
                   ],
                   "separator": "|"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1067,7 +1033,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "gen-1790152486-5vmOm1dZZxCH77Evla9L",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
@@ -1159,13 +1124,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1182,7 +1145,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1196,9 +1158,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1226,7 +1186,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1257,9 +1216,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1287,7 +1244,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1309,9 +1265,7 @@
                       ],
                       "separator": "|"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1441,13 +1395,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1469,9 +1419,7 @@
                 "arguments": {
                   "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1482,7 +1430,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "gen-1790152487-w7YQRbDCYaYesQr2dCJ9",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
@@ -1574,13 +1521,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1597,7 +1542,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1611,9 +1555,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1641,7 +1583,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1672,9 +1613,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1702,7 +1641,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1724,9 +1662,7 @@
                       ],
                       "separator": "|"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1754,7 +1690,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1770,9 +1705,7 @@
                     "arguments": {
                       "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1902,13 +1835,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -1929,7 +1858,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "gen-1790152488-mvkVIFyUNw6SNnE0OdhX",
           "finish_reason": "stop",
           "provider": "openrouter",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 17063702180001451641,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -75,12 +74,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -104,9 +98,7 @@
                   "category": "Meetup",
                   "summary": "Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -116,7 +108,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 448
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
           "provider_request_id": "req_54014dcf423e4d2b929bc3300f9eaf11",
           "finish_reason": "tool_calls",
@@ -972,9 +963,7 @@
                 "category": "Meetup",
                 "summary": "Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org."
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -987,7 +976,6 @@
             "reasoning_tokens": 448
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
           "provider_request_id": "req_54014dcf423e4d2b929bc3300f9eaf11",
           "provider": "openai",

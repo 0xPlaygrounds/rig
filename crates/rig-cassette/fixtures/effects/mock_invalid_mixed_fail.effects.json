@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 14178699323467550126,
     "handlers": [
       {
@@ -52,13 +53,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -95,12 +94,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": false
       },
@@ -123,9 +117,7 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -142,17 +134,11 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
-          "finish_reason": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "choice": [
               {

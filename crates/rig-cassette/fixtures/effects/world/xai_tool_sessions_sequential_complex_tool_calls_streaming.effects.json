@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 14,
@@ -577,13 +578,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -702,13 +701,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -740,9 +735,7 @@
               "function": {
                 "name": "ping_empty",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -752,7 +745,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 385
           },
-          "message_id": null,
           "response_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
           "provider_request_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
           "finish_reason": "tool_calls",
@@ -951,9 +943,7 @@
             "function": {
               "name": "ping_empty",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -966,7 +956,6 @@
             "reasoning_tokens": 385
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
           "provider_request_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
           "provider": "xai",
@@ -1021,13 +1010,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1044,7 +1031,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -1070,9 +1056,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1203,13 +1187,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1258,9 +1238,7 @@
                   ],
                   "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1270,7 +1248,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 291
           },
-          "message_id": null,
           "response_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
           "provider_request_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
           "finish_reason": "tool_calls",
@@ -1447,9 +1424,7 @@
                 ],
                 "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1462,7 +1437,6 @@
             "reasoning_tokens": 291
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
           "provider_request_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
           "provider": "xai",
@@ -1517,13 +1491,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1540,7 +1512,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -1566,9 +1537,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1597,7 +1566,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -1640,9 +1608,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1773,13 +1739,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1808,9 +1770,7 @@
                   ],
                   "separator": "|"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1820,7 +1780,6 @@
             "cached_input_tokens": 704,
             "reasoning_tokens": 25
           },
-          "message_id": null,
           "response_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
           "provider_request_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
           "finish_reason": "tool_calls",
@@ -1912,9 +1871,7 @@
                 ],
                 "separator": "|"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1927,7 +1884,6 @@
             "reasoning_tokens": 25
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
           "provider_request_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
           "provider": "xai",
@@ -1982,13 +1938,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2005,7 +1959,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -2031,9 +1984,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2062,7 +2013,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -2105,9 +2055,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2136,7 +2084,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2159,9 +2106,7 @@
                       ],
                       "separator": "|"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2292,13 +2237,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -2321,9 +2262,7 @@
                 "arguments": {
                   "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2333,7 +2272,6 @@
             "cached_input_tokens": 832,
             "reasoning_tokens": 97
           },
-          "message_id": null,
           "response_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
           "provider_request_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
           "finish_reason": "tool_calls",
@@ -2413,9 +2351,7 @@
               "arguments": {
                 "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -2428,7 +2364,6 @@
             "reasoning_tokens": 97
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
           "provider_request_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
           "provider": "xai",
@@ -2483,13 +2418,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2506,7 +2439,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -2532,9 +2464,7 @@
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2563,7 +2493,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
@@ -2606,9 +2535,7 @@
                       ],
                       "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2637,7 +2564,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2660,9 +2586,7 @@
                       ],
                       "separator": "|"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2691,7 +2615,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2708,9 +2631,7 @@
                     "arguments": {
                       "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2841,13 +2762,9 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },

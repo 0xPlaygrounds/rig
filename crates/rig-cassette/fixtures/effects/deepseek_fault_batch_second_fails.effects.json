@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 18413898460084818763,
     "handlers": [
       {
@@ -58,13 +59,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -100,12 +99,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -129,9 +123,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -145,9 +137,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -156,7 +146,6 @@
             "total_tokens": 455,
             "cached_input_tokens": 128
           },
-          "message_id": null,
           "response_id": "88582317-90ad-4d01-a1f3-e59887faa80c",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -299,9 +288,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -324,9 +311,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -338,7 +323,6 @@
             "cached_input_tokens": 128
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "88582317-90ad-4d01-a1f3-e59887faa80c",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -412,9 +396,6 @@
                   "text": "the orchard lookup is broken"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -422,13 +403,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -445,7 +424,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -463,9 +441,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -479,9 +455,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -545,12 +519,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -569,7 +538,6 @@
             "total_tokens": 507,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "f6a2f8e4-611d-4c11-a856-121e209f9da9",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -781,7 +749,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "f6a2f8e4-611d-4c11-a856-121e209f9da9",
           "provider": "deepseek",
           "model": "deepseek-flash",

@@ -584,7 +584,7 @@ fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
     CompletionCall::new(
         call_index,
         usage,
-        serde_json::to_value(&terminal).expect("mock terminal serializes"),
+        rig_core::test_utils::mock_terminal_document(&terminal).expect("the mock's document"),
     )
 }
 

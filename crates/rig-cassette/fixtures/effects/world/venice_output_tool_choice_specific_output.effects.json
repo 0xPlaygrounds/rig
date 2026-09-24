@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -86,16 +85,13 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "final_result"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -123,9 +119,7 @@
                   "category": "Technology/Software Development",
                   "summary": "Check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information on local Rust meetups in Seattle."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -133,7 +127,6 @@
             "output_tokens": 159,
             "total_tokens": 1290
           },
-          "message_id": null,
           "response_id": "chatcmpl-RXWHZNRCBDgEBIYl1r8kFVkm",
           "finish_reason": "tool_calls",
           "provider": "venice",

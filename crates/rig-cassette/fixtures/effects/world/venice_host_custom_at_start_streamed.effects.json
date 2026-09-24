@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 1,
@@ -68,7 +69,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "host/note",
       "kind": {
@@ -90,13 +90,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -114,11 +112,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -136,7 +130,6 @@
             "output_tokens": 2,
             "total_tokens": 977
           },
-          "message_id": null,
           "response_id": "chatcmpl-RdCF9gi0ew6x4n6yQ8miYJcM",
           "finish_reason": "stop",
           "provider": "venice",
@@ -186,7 +179,6 @@
             "total_tokens": 977
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-RdCF9gi0ew6x4n6yQ8miYJcM",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",

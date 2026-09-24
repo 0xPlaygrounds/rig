@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 15601792922881411894,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -102,10 +101,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -127,9 +123,7 @@
                 "arguments": {
                   "slot": 0
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -145,9 +139,7 @@
                 "arguments": {
                   "slot": 1
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -163,9 +155,7 @@
                 "arguments": {
                   "slot": 2
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -176,7 +166,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZN5vLEWqCbGZQTdoa",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -288,9 +277,6 @@
                   "text": "the tool failed"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -322,13 +308,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -361,9 +345,7 @@
                     "arguments": {
                       "slot": 0
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -379,9 +361,7 @@
                     "arguments": {
                       "slot": 1
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -397,9 +377,7 @@
                     "arguments": {
                       "slot": 2
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -485,10 +463,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -509,7 +484,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZT9mhs59LvJMutGFX",
           "finish_reason": "stop",
           "provider": "anthropic",

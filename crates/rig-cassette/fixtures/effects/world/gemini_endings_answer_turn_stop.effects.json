@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -78,13 +79,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -124,11 +123,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -152,8 +147,7 @@
                   "y": 25
                 }
               },
-              "signature": "EqMCCqACAWkUfRNHp0SU5dA6ogtB2RnoUGwVjs2FtOiAWgAfCKANvpUBU8k0SN4ZTwwFtc+eRKOTXf3/T5rvgH/TB5IMEj/OU9qMbWfGJgEhNSnxgtEyi9dd2NARnaibezrDJ4y1uj1cjKsEYc71tUpM0WfirWoiAkSzJAW3PFC0q2K8EopR7320SwUwP81/j3gencpNBjFjjuaenLIqvdBb0UJtBmsrRmLdf4ONNT9r1cBYt9wN0tsJ1yBaWCG3bpcB0baY9Bj4lgTO7nL/6o38STN8cM6/T6GxbQeh3mYHGHIFsmHI7d3deU7Y61cKDdPsFmJ0qi4nc45t/NNKuSyk28bdb5DaMJ8EL9BuNs6l4FA/nX5nVZBZnhqzVIHLTH1JIXf7",
-              "additional_params": null
+              "signature": "EqMCCqACAWkUfRNHp0SU5dA6ogtB2RnoUGwVjs2FtOiAWgAfCKANvpUBU8k0SN4ZTwwFtc+eRKOTXf3/T5rvgH/TB5IMEj/OU9qMbWfGJgEhNSnxgtEyi9dd2NARnaibezrDJ4y1uj1cjKsEYc71tUpM0WfirWoiAkSzJAW3PFC0q2K8EopR7320SwUwP81/j3gencpNBjFjjuaenLIqvdBb0UJtBmsrRmLdf4ONNT9r1cBYt9wN0tsJ1yBaWCG3bpcB0baY9Bj4lgTO7nL/6o38STN8cM6/T6GxbQeh3mYHGHIFsmHI7d3deU7Y61cKDdPsFmJ0qi4nc45t/NNKuSyk28bdb5DaMJ8EL9BuNs6l4FA/nX5nVZBZnhqzVIHLTH1JIXf7"
             }
           ],
           "usage": {
@@ -162,7 +156,6 @@
             "total_tokens": 198,
             "reasoning_tokens": 60
           },
-          "message_id": null,
           "response_id": "R6yyasWjCtnwqtsP2qHsmAk",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -237,13 +230,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -260,7 +251,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -278,8 +268,7 @@
                       "y": 25
                     }
                   },
-                  "signature": "EqMCCqACAWkUfRNHp0SU5dA6ogtB2RnoUGwVjs2FtOiAWgAfCKANvpUBU8k0SN4ZTwwFtc+eRKOTXf3/T5rvgH/TB5IMEj/OU9qMbWfGJgEhNSnxgtEyi9dd2NARnaibezrDJ4y1uj1cjKsEYc71tUpM0WfirWoiAkSzJAW3PFC0q2K8EopR7320SwUwP81/j3gencpNBjFjjuaenLIqvdBb0UJtBmsrRmLdf4ONNT9r1cBYt9wN0tsJ1yBaWCG3bpcB0baY9Bj4lgTO7nL/6o38STN8cM6/T6GxbQeh3mYHGHIFsmHI7d3deU7Y61cKDdPsFmJ0qi4nc45t/NNKuSyk28bdb5DaMJ8EL9BuNs6l4FA/nX5nVZBZnhqzVIHLTH1JIXf7",
-                  "additional_params": null
+                  "signature": "EqMCCqACAWkUfRNHp0SU5dA6ogtB2RnoUGwVjs2FtOiAWgAfCKANvpUBU8k0SN4ZTwwFtc+eRKOTXf3/T5rvgH/TB5IMEj/OU9qMbWfGJgEhNSnxgtEyi9dd2NARnaibezrDJ4y1uj1cjKsEYc71tUpM0WfirWoiAkSzJAW3PFC0q2K8EopR7320SwUwP81/j3gencpNBjFjjuaenLIqvdBb0UJtBmsrRmLdf4ONNT9r1cBYt9wN0tsJ1yBaWCG3bpcB0baY9Bj4lgTO7nL/6o38STN8cM6/T6GxbQeh3mYHGHIFsmHI7d3deU7Y61cKDdPsFmJ0qi4nc45t/NNKuSyk28bdb5DaMJ8EL9BuNs6l4FA/nX5nVZBZnhqzVIHLTH1JIXf7"
                 }
               ]
             },
@@ -330,11 +319,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -358,7 +343,6 @@
             "total_tokens": 228,
             "reasoning_tokens": 17
           },
-          "message_id": null,
           "response_id": "SKyyauD0DumfqtsPx4qjoAQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

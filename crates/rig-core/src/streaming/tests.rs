@@ -601,14 +601,12 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
     let decoded = serde_json::from_value::<StreamEvent>(encoded).expect("deserialize wrapped");
     assert_eq!(decoded, wrapped);
 
-    // No `raw` key: refused, never loaded with a document invented.
-    let without_raw = serde_json::json!({
-        "usage": serde_json::to_value(Usage::default()).unwrap(),
-        "provider": "example"
-    });
-    let error = serde_json::from_value::<StreamFinal>(without_raw)
-        .expect_err("a terminal record without `raw` is refused");
-    assert!(error.to_string().contains("raw"), "{error}");
+    // An absent document is omitted and reads back as absent.
+    let without_raw = StreamFinal::new("example", Usage::default(), serde_json::Value::Null);
+    let encoded = serde_json::to_value(&without_raw).expect("serialize");
+    assert!(encoded.get("raw").is_none(), "{encoded}");
+    let decoded = serde_json::from_value::<StreamFinal>(encoded).expect("deserialize");
+    assert!(decoded.raw.is_null());
 }
 
 /// The deserialization mirror must not change the wire format: a fully

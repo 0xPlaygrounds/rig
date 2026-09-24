@@ -6,7 +6,7 @@
       "serial_per_handler": true
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {

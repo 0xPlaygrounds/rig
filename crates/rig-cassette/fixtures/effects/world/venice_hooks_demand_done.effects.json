@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -44,13 +45,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -68,11 +67,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -90,7 +85,6 @@
             "output_tokens": 53,
             "total_tokens": 1038
           },
-          "message_id": null,
           "response_id": "chatcmpl-RHoUEzSUmXX5j29hRL5eRcnl",
           "finish_reason": "stop",
           "provider": "venice",
@@ -143,13 +137,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -166,7 +158,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -186,11 +177,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -208,7 +195,6 @@
             "output_tokens": 55,
             "total_tokens": 1104
           },
-          "message_id": null,
           "response_id": "chatcmpl-RquFJ3uiuZhGwbbCr7zpHnfl",
           "finish_reason": "stop",
           "provider": "venice",

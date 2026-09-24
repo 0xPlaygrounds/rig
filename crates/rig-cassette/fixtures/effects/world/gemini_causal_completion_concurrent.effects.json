@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -84,13 +85,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -129,11 +128,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -156,8 +151,7 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": "EukCCuYCAWkUfRMIpARX8b0fMuVZBKxrP/Qjle4dLc91tGbeminjTfa3fFZUEOswYi0qIaWAk1+rILIf6HKiHAc4y0txKYiackxMTVoWgjgGQY+b9JwNNIZsLBqVCVcCljUfC1YGKttzGRcA90qnV+Be3Nj0TbWfYOKyVBe1f5uV1alS7IFTI/FswKKEKjnk2cpumfsHAg/oEVMQtGV3IjShEoqvC+tKerDcTKrOyFa7YE/R3CgPxrpalUXP4mbyNRB659jRFa0p6k0sE9//ZafG75bmKbZbrtGR0IGUePCzj848U0AONuH0WSQbJBxIydejWaD38aEZmXXPUaBELf7XrJa0skwhY8KsNxBufVqwn6iJhPfhvH6RH1qzdODUAl2e4XmoL1GYtIYPA3lNvfvfzWEmfm0+KIliyDyWsL+EgqoBYV3NBkJMAX2xS8mXFe7y8qmaxpQYPNXj5Zdb9sonHN+wBmLxRpuvWA==",
-              "additional_params": null
+              "signature": "EukCCuYCAWkUfRMIpARX8b0fMuVZBKxrP/Qjle4dLc91tGbeminjTfa3fFZUEOswYi0qIaWAk1+rILIf6HKiHAc4y0txKYiackxMTVoWgjgGQY+b9JwNNIZsLBqVCVcCljUfC1YGKttzGRcA90qnV+Be3Nj0TbWfYOKyVBe1f5uV1alS7IFTI/FswKKEKjnk2cpumfsHAg/oEVMQtGV3IjShEoqvC+tKerDcTKrOyFa7YE/R3CgPxrpalUXP4mbyNRB659jRFa0p6k0sE9//ZafG75bmKbZbrtGR0IGUePCzj848U0AONuH0WSQbJBxIydejWaD38aEZmXXPUaBELf7XrJa0skwhY8KsNxBufVqwn6iJhPfhvH6RH1qzdODUAl2e4XmoL1GYtIYPA3lNvfvfzWEmfm0+KIliyDyWsL+EgqoBYV3NBkJMAX2xS8mXFe7y8qmaxpQYPNXj5Zdb9sonHN+wBmLxRpuvWA=="
             }
           ],
           "usage": {
@@ -166,7 +160,6 @@
             "total_tokens": 197,
             "reasoning_tokens": 68
           },
-          "message_id": null,
           "response_id": "OayyaoG6HfzmqtsPzZ3GuA0",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -215,7 +208,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/tool:lookup#0",
       "kind": {
@@ -240,13 +232,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -264,11 +254,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -292,7 +278,6 @@
             "total_tokens": 67,
             "reasoning_tokens": 52
           },
-          "message_id": null,
           "response_id": "Oqyyav-II_78qtsPttrCyQQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -335,13 +320,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -358,7 +341,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -375,8 +357,7 @@
                       "q": "What is the capital of France?"
                     }
                   },
-                  "signature": "EukCCuYCAWkUfRMIpARX8b0fMuVZBKxrP/Qjle4dLc91tGbeminjTfa3fFZUEOswYi0qIaWAk1+rILIf6HKiHAc4y0txKYiackxMTVoWgjgGQY+b9JwNNIZsLBqVCVcCljUfC1YGKttzGRcA90qnV+Be3Nj0TbWfYOKyVBe1f5uV1alS7IFTI/FswKKEKjnk2cpumfsHAg/oEVMQtGV3IjShEoqvC+tKerDcTKrOyFa7YE/R3CgPxrpalUXP4mbyNRB659jRFa0p6k0sE9//ZafG75bmKbZbrtGR0IGUePCzj848U0AONuH0WSQbJBxIydejWaD38aEZmXXPUaBELf7XrJa0skwhY8KsNxBufVqwn6iJhPfhvH6RH1qzdODUAl2e4XmoL1GYtIYPA3lNvfvfzWEmfm0+KIliyDyWsL+EgqoBYV3NBkJMAX2xS8mXFe7y8qmaxpQYPNXj5Zdb9sonHN+wBmLxRpuvWA==",
-                  "additional_params": null
+                  "signature": "EukCCuYCAWkUfRMIpARX8b0fMuVZBKxrP/Qjle4dLc91tGbeminjTfa3fFZUEOswYi0qIaWAk1+rILIf6HKiHAc4y0txKYiackxMTVoWgjgGQY+b9JwNNIZsLBqVCVcCljUfC1YGKttzGRcA90qnV+Be3Nj0TbWfYOKyVBe1f5uV1alS7IFTI/FswKKEKjnk2cpumfsHAg/oEVMQtGV3IjShEoqvC+tKerDcTKrOyFa7YE/R3CgPxrpalUXP4mbyNRB659jRFa0p6k0sE9//ZafG75bmKbZbrtGR0IGUePCzj848U0AONuH0WSQbJBxIydejWaD38aEZmXXPUaBELf7XrJa0skwhY8KsNxBufVqwn6iJhPfhvH6RH1qzdODUAl2e4XmoL1GYtIYPA3lNvfvfzWEmfm0+KIliyDyWsL+EgqoBYV3NBkJMAX2xS8mXFe7y8qmaxpQYPNXj5Zdb9sonHN+wBmLxRpuvWA=="
                 }
               ]
             },
@@ -426,11 +407,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -448,7 +425,6 @@
             "output_tokens": 1,
             "total_tokens": 210
           },
-          "message_id": null,
           "response_id": "O6yyar-zHrWjqtsPsMv8yAs",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

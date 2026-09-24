@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 7,
@@ -118,13 +119,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -163,12 +162,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -192,9 +186,7 @@
                   "x": 9,
                   "y": 16
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -204,7 +196,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
           "provider_request_id": "req_6c5028d7d7a24813ba8619ebd8b7406c",
           "finish_reason": "tool_calls",
@@ -351,9 +342,7 @@
                 "x": 9,
                 "y": 16
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -366,7 +355,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
           "provider_request_id": "req_6c5028d7d7a24813ba8619ebd8b7406c",
           "provider": "openai",
@@ -422,13 +410,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -445,7 +431,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -463,9 +448,7 @@
                       "x": 9,
                       "y": 16
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -516,12 +499,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },

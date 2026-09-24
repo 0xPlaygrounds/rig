@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 16853303954472180534,
     "handlers": [
       {
@@ -49,13 +50,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -94,11 +93,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -120,9 +115,7 @@
                 "arguments": {
                   "q": "What is the capital of France?"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -133,7 +126,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcVrizrhop5Zz2LnkDu",
-          "response_id": null,
           "provider_request_id": "req_011CfLcVrEydnQ3xxLK2id98",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -177,7 +169,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/tool:lookup#0",
       "kind": {
@@ -201,13 +192,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -225,11 +214,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -250,7 +235,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcWB9GhYexgtNWFt8xi",
-          "response_id": null,
           "provider_request_id": "req_011CfLcWAfkXJ7gcmuwaa3cs",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -288,13 +272,11 @@
       "parent": 2
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -327,9 +309,7 @@
                     "arguments": {
                       "q": "What is the capital of France?"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -379,11 +359,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -404,7 +380,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcWXpyud4hWTR8DtU7x",
-          "response_id": null,
           "provider_request_id": "req_011CfLcWXSewdLrQwMvnnZkz",
           "finish_reason": "stop",
           "provider": "anthropic",

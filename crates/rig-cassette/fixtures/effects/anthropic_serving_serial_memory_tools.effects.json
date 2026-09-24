@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 9072754608376111302,
     "handlers": [
       {
@@ -63,7 +64,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/memory",
       "kind": {
@@ -82,13 +82,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -128,11 +126,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -155,9 +149,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -168,7 +160,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcXuahMBP1i9hx3eRuP",
-          "response_id": null,
           "provider_request_id": "req_011CfLcXu7vF6oimeo7x7xXv",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -237,13 +228,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -277,9 +266,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -330,11 +317,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -355,7 +338,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcY3Rz3n57Zwfw94WU8",
-          "response_id": null,
           "provider_request_id": "req_011CfLcY2yCW6Aa1W8NWciV6",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -392,7 +374,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/memory",
       "kind": {
@@ -429,9 +410,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },

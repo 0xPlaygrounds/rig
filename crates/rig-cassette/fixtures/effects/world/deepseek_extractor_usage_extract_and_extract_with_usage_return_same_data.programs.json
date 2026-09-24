@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -119,7 +119,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -231,7 +231,6 @@
             "content": [
               {
                 "type": "reasoning",
-                "id": null,
                 "content": [
                   {
                     "type": "text",
@@ -258,9 +257,7 @@
                     "age": 55,
                     "profession": "retired teacher"
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -284,7 +281,6 @@
               "choice": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -311,9 +307,7 @@
                       "age": 55,
                       "profession": "retired teacher"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -323,7 +317,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 15
               },
-              "message_id": null,
               "response_id": "8100a836-9559-4369-9daa-854fa1e366ec",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
@@ -387,7 +380,6 @@
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
-              "id": null,
               "content": [
                 {
                   "type": "text",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -269,13 +270,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -317,11 +316,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -345,9 +340,7 @@
                   "category": "Meetup",
                   "summary": "A local gathering for Rust developers in Seattle to share projects, discuss the language, and network with the community."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -356,7 +349,6 @@
             "total_tokens": 470,
             "cached_input_tokens": 128
           },
-          "message_id": null,
           "response_id": "ea8cf6ce-fa49-43a5-a44a-536f33cfe5a9",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -824,9 +816,7 @@
                 "category": "Meetup",
                 "summary": "A local gathering for Rust developers in Seattle to share projects, discuss the language, and network with the community."
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -838,7 +828,6 @@
             "cached_input_tokens": 128
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "ea8cf6ce-fa49-43a5-a44a-536f33cfe5a9",
           "provider": "deepseek",
           "model": "deepseek-flash",

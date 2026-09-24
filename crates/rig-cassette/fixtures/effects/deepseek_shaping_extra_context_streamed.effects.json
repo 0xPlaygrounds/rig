@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 10072942899351225430,
     "handlers": [
       {
@@ -30,13 +31,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -59,11 +58,7 @@
             }
           ],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -82,7 +77,6 @@
             "total_tokens": 70,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -246,7 +240,6 @@
             "cached_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
           "provider": "deepseek",
           "model": "deepseek-flash",

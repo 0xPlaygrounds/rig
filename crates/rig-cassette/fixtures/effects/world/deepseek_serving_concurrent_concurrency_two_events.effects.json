@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -184,13 +185,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -226,12 +225,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -255,9 +249,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -271,9 +263,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -282,7 +272,6 @@
             "total_tokens": 441,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "6d675ef0-fa78-431a-b01f-9f2c7881af61",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -425,9 +414,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -450,9 +437,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -464,7 +449,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "6d675ef0-fa78-431a-b01f-9f2c7881af61",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -543,13 +527,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -566,7 +548,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -584,9 +565,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -600,9 +579,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -666,12 +643,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -690,7 +662,6 @@
             "total_tokens": 494,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "b658f0f2-f9ce-4325-9f00-40f0d2b5d03c",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -918,7 +889,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "b658f0f2-f9ce-4325-9f00-40f0d2b5d03c",
           "provider": "deepseek",
           "model": "deepseek-flash",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -61,13 +62,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -81,11 +80,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": true
       },
@@ -106,7 +101,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcfr6pTtkcwU7MrJuqy",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfqdnwT7Pj5P6nCH61",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -163,7 +157,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcfr6pTtkcwU7MrJuqy",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfqdnwT7Pj5P6nCH61",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",

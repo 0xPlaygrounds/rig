@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -107,11 +106,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -136,9 +131,7 @@
                   "age": 55,
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -148,7 +141,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 157
           },
-          "message_id": null,
           "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
           "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
           "finish_reason": "tool_calls",
@@ -263,13 +255,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -320,11 +310,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -360,9 +346,7 @@
                   "age": 55,
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -372,7 +356,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 198
           },
-          "message_id": null,
           "response_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
           "provider_request_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
           "finish_reason": "tool_calls",

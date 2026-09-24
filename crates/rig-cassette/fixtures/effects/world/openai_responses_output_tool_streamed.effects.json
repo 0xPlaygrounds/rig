@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 13,
@@ -325,13 +326,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -373,11 +372,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -402,9 +397,7 @@
                   "category": "Technology",
                   "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -414,7 +407,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
           "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
           "finish_reason": "tool_calls",
@@ -939,9 +931,7 @@
                 "category": "Technology",
                 "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -954,7 +944,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
           "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
           "provider": "openai",

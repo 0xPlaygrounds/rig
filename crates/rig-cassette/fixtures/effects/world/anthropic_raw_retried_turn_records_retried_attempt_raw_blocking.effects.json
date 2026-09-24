@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -44,13 +45,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -64,11 +63,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -89,7 +84,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcfwG8iGU5LVo6nafTg",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfvmroPcwdZQ6p6gF6",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -127,13 +121,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -147,11 +139,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": false
       },
@@ -172,7 +160,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcfyVppdhLFGtv3wHGL",
-          "response_id": null,
           "provider_request_id": "req_011CfLcfy61Y3HfhnZD6JFw6",
           "finish_reason": "stop",
           "provider": "anthropic",

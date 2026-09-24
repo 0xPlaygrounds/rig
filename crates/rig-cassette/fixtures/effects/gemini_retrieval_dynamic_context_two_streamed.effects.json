@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 10072942899351225430,
     "handlers": [
       {
@@ -38,7 +39,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/retrieve:context#0",
       "kind": {
@@ -47,10 +47,7 @@
           "query": "top_n",
           "req": {
             "query": "What is a glarb-glarb? Answer in one sentence.",
-            "samples": 2,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 2
           }
         }
       },
@@ -74,13 +71,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -107,11 +102,7 @@
             }
           ],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -130,7 +121,6 @@
             "total_tokens": 239,
             "reasoning_tokens": 117
           },
-          "message_id": null,
           "response_id": "onizapCoMaXnz7IPnNS20QE",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -179,7 +169,6 @@
             "reasoning_tokens": 117
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "onizapCoMaXnz7IPnNS20QE",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",

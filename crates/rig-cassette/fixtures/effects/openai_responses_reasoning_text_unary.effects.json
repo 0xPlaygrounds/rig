@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 15991439691162022817,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -52,9 +51,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning": {
               "effort": "low",
@@ -63,8 +60,7 @@
             "include": [
               "reasoning.encrypted_content"
             ]
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },

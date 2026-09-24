@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -119,7 +119,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -249,9 +249,7 @@
                     "age": 25,
                     "profession": "developer"
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -289,9 +287,7 @@
                       "age": 25,
                       "profession": "developer"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -302,7 +298,6 @@
                 "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
               "finish_reason": "tool_calls",
               "provider": "openrouter",

@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -119,7 +119,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -249,9 +249,7 @@
                     "age": 25,
                     "profession": "developer"
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -290,9 +288,7 @@
                       "age": 25,
                       "profession": "developer"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -302,7 +298,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5",
               "provider_request_id": "req_0cd2d5104915470eab5bdbfa009d0e30",
               "finish_reason": "tool_calls",

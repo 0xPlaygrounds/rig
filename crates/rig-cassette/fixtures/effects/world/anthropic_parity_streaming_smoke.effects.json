@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -229,13 +230,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -252,12 +251,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": true
       },
@@ -278,7 +272,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
-          "response_id": null,
           "provider_request_id": "req_011CfLcVWqAekSY78VPi9un1",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -679,7 +672,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcVXsgBjiBQr7rsawR4",
-          "response_id": null,
           "provider_request_id": "req_011CfLcVWqAekSY78VPi9un1",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",

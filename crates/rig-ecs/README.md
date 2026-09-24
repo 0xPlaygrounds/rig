@@ -40,8 +40,10 @@ changes, insert the replacement `ContentPart` and match variants in
 observe in-place edits. Previously disjoint mutable payload queries now access
 the same component: use one matching query, or a `ParamSet`.
 
-Checkpoint format 2 stores these enum components; format 1 checkpoints are
-refused, with no legacy component adapter.
+Checkpoints are format 3: enum content components, with rig-core values in
+their current serde form (absent optional fields omitted). Loading refuses
+every other format and names `rig-migrate` (rig-cassette, feature `migrate`),
+which upgrades a format 2 checkpoint offline; format 1 is not migrated.
 
 `rig_ecs::checkpoint::save_world` takes the world as reflected data: every
 entity with a registered reflected component, components by type path, an

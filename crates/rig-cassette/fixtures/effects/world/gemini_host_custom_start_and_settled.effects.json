@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 1,
@@ -59,7 +60,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "host/note",
       "kind": {
@@ -81,13 +81,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -105,11 +103,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -133,7 +127,6 @@
             "total_tokens": 76,
             "reasoning_tokens": 55
           },
-          "message_id": null,
           "response_id": "V62yar7QAt-eqtsP-7XRqAk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -175,7 +168,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "host/note",
       "kind": {

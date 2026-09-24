@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -76,15 +75,13 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 2000,
-          "tool_choice": null,
           "additional_params": {
             "tools": [
               {
                 "codeExecution": {}
               }
             ]
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -104,7 +101,6 @@
             "tool_use_prompt_tokens": 79,
             "reasoning_tokens": 35
           },
-          "message_id": null,
           "response_id": "kHizasKhO4DcqtsPz8-qwAY",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -164,13 +160,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -187,7 +181,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -209,15 +202,13 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 2000,
-          "tool_choice": null,
           "additional_params": {
             "tools": [
               {
                 "codeExecution": {}
               }
             ]
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -237,7 +228,6 @@
             "tool_use_prompt_tokens": 94,
             "reasoning_tokens": 41
           },
-          "message_id": null,
           "response_id": "knizauimBbC0qtsP5bHOkQc",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

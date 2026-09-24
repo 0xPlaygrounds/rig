@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -78,13 +79,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -126,15 +125,13 @@
           ],
           "temperature": 0.0,
           "max_tokens": 512,
-          "tool_choice": null,
           "additional_params": {
             "generationConfig": {
               "thinkingConfig": {
                 "thinkingBudget": 0
               }
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -154,9 +151,7 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -164,7 +159,6 @@
             "output_tokens": 18,
             "total_tokens": 90
           },
-          "message_id": null,
           "response_id": "p3izar7ZKLrVz7IP_6PO0Qc",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -236,13 +230,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -259,7 +251,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -273,9 +264,7 @@
                       "x": 2,
                       "y": 3
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -325,15 +314,13 @@
           ],
           "temperature": 0.0,
           "max_tokens": 512,
-          "tool_choice": null,
           "additional_params": {
             "generationConfig": {
               "thinkingConfig": {
                 "thinkingBudget": 0
               }
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -351,7 +338,6 @@
             "output_tokens": 12,
             "total_tokens": 115
           },
-          "message_id": null,
           "response_id": "qHizatjDEaWhz7IP7aXA-QY",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

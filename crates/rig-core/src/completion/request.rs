@@ -168,11 +168,11 @@ pub struct CompletionResponse {
     pub usage: Usage,
     /// Provider-issued assistant message ID suitable for replay in
     /// [`Message::Assistant`]. Response-wide IDs belong in [`Self::response_id`].
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// Provider-issued response ID for telemetry and diagnostics.
     /// Must not be replayed as an assistant message ID.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// Request identifier from HTTP headers or SDK metadata, not the body's
     /// message or response ID. `None` when the provider reports none.
@@ -180,7 +180,7 @@ pub struct CompletionResponse {
     pub provider_request_id: Option<String>,
     /// Reported finish reason, reconciled by the setters with tool-call output.
     /// Read through [`Self::finish_reason`].
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     finish_reason: Option<FinishReason>,
     /// Stable descriptor name of the provider that produced this response, for
     /// example `"openai"`. Always populated, including for responses derived
@@ -190,11 +190,12 @@ pub struct CompletionResponse {
     ///
     /// This is the model named by the wire response, not the model that was
     /// requested; it is `None` when the provider reports no identifier.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Provider response document for typed inspection through deserialization.
     /// Parsed wire types may omit unmodeled fields. This data does not override
     /// normalized fields; callers constructing responses must supply it.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
 
@@ -288,6 +289,7 @@ struct CompletionResponseRepr {
     provider: String,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
     raw: serde_json::Value,
 }
 
@@ -511,6 +513,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// Optional model override for this request.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Conversation ending with the prompt. Must contain at least one message;
     /// checked by [`Self::validate_message_content`].
@@ -520,15 +523,20 @@ pub struct CompletionRequest {
     /// The tools to be sent to the completion model provider
     pub tools: Vec<ToolDefinition>,
     /// The temperature to be sent to the completion model provider
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
     /// Whether tools are required to be used by the model provider or not before providing a response.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,
     /// Additional provider-specific parameters to be sent to the completion model provider
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<schemars::Schema>,
     /// Opt-in for sensitive request, response, and tool-content telemetry.
     /// Defaults to `false` and is excluded from serialization. Enabling it can

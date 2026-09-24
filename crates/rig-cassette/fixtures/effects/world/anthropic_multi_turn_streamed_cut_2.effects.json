@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -243,13 +244,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -285,10 +284,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -314,9 +310,7 @@
                 "arguments": {
                   "token": "start"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -327,7 +321,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -457,9 +450,7 @@
               "arguments": {
                 "token": "start"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -473,7 +464,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -526,13 +516,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -569,9 +557,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -622,10 +608,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -651,9 +634,7 @@
                 "arguments": {
                   "token": "cobalt-17"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -664,7 +645,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -794,9 +774,7 @@
               "arguments": {
                 "token": "cobalt-17"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -810,7 +788,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -863,13 +840,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -906,9 +881,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -960,9 +933,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1013,10 +984,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -1042,9 +1010,7 @@
                 "arguments": {
                   "token": "orchard-29"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1055,7 +1021,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -1193,9 +1158,7 @@
               "arguments": {
                 "token": "orchard-29"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1209,7 +1172,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1262,13 +1224,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1305,9 +1265,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1359,9 +1317,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1413,9 +1369,7 @@
                     "arguments": {
                       "token": "orchard-29"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1466,10 +1420,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -1495,9 +1446,7 @@
                 "arguments": {
                   "token": "harbor-43"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1508,7 +1457,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -1630,9 +1578,7 @@
               "arguments": {
                 "token": "harbor-43"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1646,7 +1592,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1699,13 +1644,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1742,9 +1685,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1796,9 +1737,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1850,9 +1789,7 @@
                     "arguments": {
                       "token": "orchard-29"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1904,9 +1841,7 @@
                     "arguments": {
                       "token": "harbor-43"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1957,10 +1892,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -1981,7 +1913,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -2110,7 +2041,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-          "response_id": null,
           "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",

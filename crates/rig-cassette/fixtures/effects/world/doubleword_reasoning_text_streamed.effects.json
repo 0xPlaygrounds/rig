@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -5053,13 +5054,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5079,11 +5078,9 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "low"
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -5093,7 +5090,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -5117,7 +5113,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 853
           },
-          "message_id": null,
           "response_id": "gen-1790146056-gLZV0daeKyRXjGI6CHCF",
           "finish_reason": "stop",
           "provider": "doubleword",
@@ -11042,7 +11037,6 @@
             "reasoning_tokens": 853
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "gen-1790146056-gLZV0daeKyRXjGI6CHCF",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 18413898460084818763,
     "handlers": [
       {
@@ -58,13 +59,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -100,12 +99,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -125,9 +119,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -141,9 +133,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -151,7 +141,6 @@
             "output_tokens": 16,
             "total_tokens": 1170
           },
-          "message_id": null,
           "response_id": "chatcmpl-RasQo3oqH3WLGpJoFnyTfKwA",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -230,9 +219,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -255,9 +242,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -268,7 +253,6 @@
             "total_tokens": 1170
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-RasQo3oqH3WLGpJoFnyTfKwA",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -343,13 +327,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -366,7 +348,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -380,9 +361,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -396,9 +375,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -462,12 +439,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -485,7 +457,6 @@
             "output_tokens": 20,
             "total_tokens": 1236
           },
-          "message_id": null,
           "response_id": "chatcmpl-RvxDShM8CE4a4txXY4NDy1BD",
           "finish_reason": "stop",
           "provider": "venice",
@@ -679,7 +650,6 @@
             "total_tokens": 1236
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-RvxDShM8CE4a4txXY4NDy1BD",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",

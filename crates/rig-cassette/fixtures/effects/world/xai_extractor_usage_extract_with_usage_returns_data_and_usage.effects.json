@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -94,11 +93,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -134,9 +129,7 @@
                   "age": 45,
                   "profession": "data scientist"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -146,7 +139,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 250
           },
-          "message_id": null,
           "response_id": "4d909b70-9a22-9434-8254-23a700f02443",
           "provider_request_id": "4d909b70-9a22-9434-8254-23a700f02443",
           "finish_reason": "tool_calls",

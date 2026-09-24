@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 6242651025112945013,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -76,17 +75,13 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "final_result"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -122,9 +117,7 @@
                   "category": "Tech Meetup (Rust)",
                   "summary": "Monthly Seattle Rust Meetup — 1st Wednesday, 6:30–8:30 PM. Location: central Seattle (Capitol Hill); exact venue posted on RSVP. Agenda: two short technical talks (20 min each), lightning demos, open help/office hours, and networking. Audience: Rust developers and enthusiasts of all levels. RSVP: meetup.com/seattle-rust or contact organizer@seattlerust.org."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -134,7 +127,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 704
           },
-          "message_id": null,
           "response_id": "resp_0a7d0e794d20778b006ab2b374a85087d09617ae800ee8126c",
           "provider_request_id": "req_3e60f3ac6a13402dadfdcabc8964db46",
           "finish_reason": "tool_calls",

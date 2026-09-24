@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 7,
@@ -256,13 +257,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -298,12 +297,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -323,9 +317,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -339,9 +331,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -351,7 +341,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 192
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDBE0rSdnyAelo8tU6D8I8DynBMu",
           "provider_request_id": "req_b96c0f19c78d401e9cd54cd9a481c363",
           "finish_reason": "tool_calls",
@@ -435,9 +424,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -460,9 +447,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -475,7 +460,6 @@
             "reasoning_tokens": 192
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-ERDBE0rSdnyAelo8tU6D8I8DynBMu",
           "provider_request_id": "req_b96c0f19c78d401e9cd54cd9a481c363",
           "provider": "openai",
@@ -555,9 +539,6 @@
                   "text": "the orchard lookup is broken"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -566,13 +547,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -589,7 +568,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -603,9 +581,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -619,9 +595,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -685,12 +659,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -710,7 +679,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 256
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDBHKzHJFfWqQJsFdsUq7FaINnCB",
           "provider_request_id": "req_58e49c44bac64933a6d9c6284785cdf1",
           "finish_reason": "stop",
@@ -903,7 +871,6 @@
             "reasoning_tokens": 256
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-ERDBHKzHJFfWqQJsFdsUq7FaINnCB",
           "provider_request_id": "req_58e49c44bac64933a6d9c6284785cdf1",
           "provider": "openai",

@@ -120,8 +120,10 @@ pub struct ErrorReport {
     /// for a provider's reply, the transport's own code when it gave one
     /// apart from the body, else the code the body names
     /// (`provider_response::body_code`).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
     /// The HTTP status, when the failure had one.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
     /// The failure was an intentional refusal rather than a fault.
     pub refusal: bool,

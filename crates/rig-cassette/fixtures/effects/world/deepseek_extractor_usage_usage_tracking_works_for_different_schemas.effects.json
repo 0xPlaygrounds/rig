@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -107,11 +106,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -121,7 +116,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -148,9 +142,7 @@
                   "age": 25,
                   "profession": "developer"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -160,7 +152,6 @@
             "cached_input_tokens": 256,
             "reasoning_tokens": 45
           },
-          "message_id": null,
           "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -213,13 +204,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -273,11 +262,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -287,7 +272,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -315,9 +299,7 @@
                   "state": "MA",
                   "zip_code": "02139"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -327,7 +309,6 @@
             "cached_input_tokens": 256,
             "reasoning_tokens": 47
           },
-          "message_id": null,
           "response_id": "7103b111-c895-4832-ab38-320440834d83",
           "finish_reason": "tool_calls",
           "provider": "deepseek",

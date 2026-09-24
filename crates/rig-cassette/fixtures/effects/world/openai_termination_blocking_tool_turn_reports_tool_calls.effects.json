@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -78,13 +79,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -125,10 +124,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": false
       },
@@ -151,9 +147,7 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -163,7 +157,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDE2i4Z59AsjA6RMaMEEu64D5s9g",
           "provider_request_id": "req_b8e316e844c3471c958b04f02b411cb6",
           "finish_reason": "tool_calls",
@@ -245,13 +238,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -268,7 +259,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -285,9 +275,7 @@
                       "x": 2,
                       "y": 3
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -339,10 +327,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": false
       },
@@ -362,7 +347,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDE3I0dt2WszpRaikM8iYwM2Hq5O",
           "provider_request_id": "req_f4c2cedffcd44220ae937cfc1fdd3106",
           "finish_reason": "stop",

@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -108,7 +108,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -261,7 +261,6 @@
                 "output_tokens": 2,
                 "total_tokens": 977
               },
-              "message_id": null,
               "response_id": "chatcmpl-RpRZ1Q9FC0ayWBS2E3i6jEKK",
               "finish_reason": "stop",
               "provider": "venice",

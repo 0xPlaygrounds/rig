@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -103,13 +102,10 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": "required",
           "additional_params": {
             "temperature": 0.0
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -119,7 +115,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -146,9 +141,7 @@
                   "age": 55,
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -157,7 +150,6 @@
             "total_tokens": 633,
             "cached_input_tokens": 79
           },
-          "message_id": null,
           "response_id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",
@@ -214,13 +206,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -267,13 +257,10 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": "required",
           "additional_params": {
             "temperature": 0.0
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -283,7 +270,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -310,9 +296,7 @@
                   "age": 55,
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -321,7 +305,6 @@
             "total_tokens": 633,
             "cached_input_tokens": 348
           },
-          "message_id": null,
           "response_id": "chatcmpl-MyqF9JjuBTke64d9LiKzUq2PYrloCg4J",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",

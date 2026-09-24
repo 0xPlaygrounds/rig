@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -108,7 +108,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -253,7 +253,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
               "provider_request_id": "req_2ad450a02e234492a82aaa35d4f9b86e",
               "finish_reason": "stop",
@@ -315,7 +314,6 @@
                   "reasoning_tokens": 0
                 },
                 "finish_reason": "stop",
-                "message_id": null,
                 "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
                 "provider_request_id": "req_2ad450a02e234492a82aaa35d4f9b86e",
                 "provider": "openai",
@@ -362,7 +360,6 @@
                   "cached_input_tokens": 0,
                   "reasoning_tokens": 0
                 },
-                "message_id": null,
                 "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
                 "provider_request_id": "req_2ad450a02e234492a82aaa35d4f9b86e",
                 "finish_reason": "stop",

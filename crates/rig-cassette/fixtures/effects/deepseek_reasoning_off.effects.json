@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 2247219599129197355,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -54,13 +53,11 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -79,7 +76,6 @@
             "total_tokens": 89,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "33341f7f-c049-4921-a0e7-992090b19060",
           "finish_reason": "stop",
           "provider": "deepseek",

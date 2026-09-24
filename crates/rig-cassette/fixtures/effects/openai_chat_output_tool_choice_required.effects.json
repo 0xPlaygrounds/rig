@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 3829646922318966747,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -76,11 +75,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -104,9 +99,7 @@
                   "category": "Tech / Programming / Meetup",
                   "summary": "Date: 2026-10-08; Time: 18:00–20:30 PDT; Location: Impact Hub Seattle, 220 2nd Ave S, Seattle, WA — Room B; Description: Monthly Seattle Rust meetup for developers of all levels: talks, lightning demos, code clinic, and networking; Agenda: 18:00 doors & networking; 18:30 lightning talks (3×10m); 19:15 featured talk: “Async Rust patterns” (Anna Lee); 20:00 Q&A & social; RSVP: https://www.meetup.com/seattle-rust/events/123456789; Organizer: Seattle Rust Collective (organizer@seattlerust.org); Capacity: 80; Cost: Free."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -116,7 +109,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 1408
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCG98SOMUxlkB2SKqcKtZXI3H4B",
           "provider_request_id": "req_85291502a0d44899a5e572661b9b5890",
           "finish_reason": "tool_calls",

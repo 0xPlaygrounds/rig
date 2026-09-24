@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -85,15 +84,12 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "enabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -103,7 +99,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -130,9 +125,7 @@
                   "category": "Meetup",
                   "summary": "A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -142,7 +135,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 41
           },
-          "message_id": null,
           "response_id": "f95f4256-70cd-4efc-bf3a-3e38d30a6a91",
           "finish_reason": "tool_calls",
           "provider": "deepseek",

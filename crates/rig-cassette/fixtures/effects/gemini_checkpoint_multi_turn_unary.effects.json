@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 15601792922881411894,
     "handlers": [
       {
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -92,10 +91,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -114,9 +110,7 @@
                 "arguments": {
                   "token": "start"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -124,7 +118,6 @@
             "output_tokens": 15,
             "total_tokens": 156
           },
-          "message_id": null,
           "response_id": "n3izatCCA8Hfz7IPzaqI-A8",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -197,13 +190,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -220,7 +211,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -233,9 +223,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -283,10 +271,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -305,9 +290,7 @@
                 "arguments": {
                   "token": "cobalt-17"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -315,7 +298,6 @@
             "output_tokens": 19,
             "total_tokens": 210
           },
-          "message_id": null,
           "response_id": "n3izaq7jGoqsz7IP3-jl0Ac",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -388,13 +370,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -411,7 +391,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -424,9 +403,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -455,7 +432,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -468,9 +444,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -518,10 +492,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -540,9 +511,7 @@
                 "arguments": {
                   "token": "orchard-29"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -550,7 +519,6 @@
             "output_tokens": 19,
             "total_tokens": 264
           },
-          "message_id": null,
           "response_id": "n3izaq2eLpasz7IPuuXM-AE",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -623,13 +591,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 7,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -646,7 +612,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -659,9 +624,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -690,7 +653,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -703,9 +665,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -734,7 +694,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -747,9 +706,7 @@
                     "arguments": {
                       "token": "orchard-29"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -797,10 +754,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -819,9 +773,7 @@
                 "arguments": {
                   "token": "harbor-43"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -829,7 +781,6 @@
             "output_tokens": 19,
             "total_tokens": 318
           },
-          "message_id": null,
           "response_id": "oHizaubWA9Tjz7IPwrvp4Ac",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -902,13 +853,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 9,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -925,7 +874,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -938,9 +886,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -969,7 +915,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -982,9 +927,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1013,7 +956,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1026,9 +968,7 @@
                     "arguments": {
                       "token": "orchard-29"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1057,7 +997,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1070,9 +1009,7 @@
                     "arguments": {
                       "token": "harbor-43"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1120,10 +1057,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -1141,7 +1075,6 @@
             "output_tokens": 3,
             "total_tokens": 351
           },
-          "message_id": null,
           "response_id": "oHizav-NGrKgz7IPu_6giAg",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

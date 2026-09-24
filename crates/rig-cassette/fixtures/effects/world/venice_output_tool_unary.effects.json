@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -85,11 +84,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -107,7 +102,6 @@
             "output_tokens": 48,
             "total_tokens": 1179
           },
-          "message_id": null,
           "response_id": "chatcmpl-Rygo0oRk1gT2ymeHCcViaQ7F",
           "finish_reason": "stop",
           "provider": "venice",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -61,13 +60,10 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
           "max_tokens": 24,
-          "tool_choice": null,
           "additional_params": {
             "think": false
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -85,8 +81,6 @@
             "output_tokens": 24,
             "total_tokens": 66
           },
-          "message_id": null,
-          "response_id": null,
           "finish_reason": "length",
           "provider": "ollama",
           "model": "qwen3:4b",

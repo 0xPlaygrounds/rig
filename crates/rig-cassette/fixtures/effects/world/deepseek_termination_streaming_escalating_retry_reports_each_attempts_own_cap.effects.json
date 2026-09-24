@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -124,13 +125,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -149,10 +148,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": true
       },
@@ -171,7 +167,6 @@
             "total_tokens": 40,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
           "finish_reason": "length",
           "provider": "deepseek",
@@ -343,7 +338,6 @@
             "cached_input_tokens": 0
           },
           "finish_reason": "length",
-          "message_id": null,
           "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -372,13 +366,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -397,10 +389,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": true
       },
@@ -419,7 +408,6 @@
             "total_tokens": 50,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -671,7 +659,6 @@
             "cached_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
           "provider": "deepseek",
           "model": "deepseek-flash",

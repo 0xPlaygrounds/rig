@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -50,13 +51,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -107,11 +106,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -121,7 +116,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -148,9 +142,7 @@
                   "age": 55,
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -160,7 +152,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 15
           },
-          "message_id": null,
           "response_id": "8100a836-9559-4369-9daa-854fa1e366ec",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -213,13 +204,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -270,11 +259,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -284,7 +269,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -311,9 +295,7 @@
                   "age": 55,
                   "profession": "retired teacher"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -323,7 +305,6 @@
             "cached_input_tokens": 256,
             "reasoning_tokens": 35
           },
-          "message_id": null,
           "response_id": "41bb4c5f-7fd8-44c2-953e-b28a1d1248a9",
           "finish_reason": "tool_calls",
           "provider": "deepseek",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 9072754608376111302,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -101,11 +100,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -115,7 +110,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -142,9 +136,7 @@
                   "y": 25,
                   "x": 17
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -155,7 +147,6 @@
             "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 75
           },
-          "message_id": null,
           "response_id": "v1_ChdMYXl5YXV5aEhaaVA2ZGtQd1l1VWlBURIXTGF5eWF1eWhIWmlQNmRrUHdZdVVpQVE",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -201,7 +192,6 @@
           },
           "block": {
             "type": "reasoning",
-            "id": null,
             "content": [
               {
                 "type": "text",
@@ -259,9 +249,7 @@
                 "y": 25,
                 "x": 17
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -275,7 +263,6 @@
             "reasoning_tokens": 75
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "v1_ChdMYXl5YXV5aEhaaVA2ZGtQd1l1VWlBURIXTGF5eWF1eWhIWmlQNmRrUHdZdVVpQVE",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -335,13 +322,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -358,11 +343,9 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -389,9 +372,7 @@
                       "y": 25,
                       "x": 17
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -442,11 +423,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -456,7 +433,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -481,7 +457,6 @@
             "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "v1_ChdMNnl5YXNHQUJ0aXBtdGtQX2RtNWtRdxIXTDZ5eWFzR0FCdGlwbXRrUF9kbTVrUXc",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
@@ -527,7 +502,6 @@
           },
           "block": {
             "type": "reasoning",
-            "id": null,
             "content": [
               {
                 "type": "text",
@@ -565,7 +539,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "v1_ChdMNnl5YXNHQUJ0aXBtdGtQX2RtNWtRdxIXTDZ5eWFzR0FCdGlwbXRrUF9kbTVrUXc",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",

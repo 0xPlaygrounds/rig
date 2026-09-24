@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -86,16 +85,13 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "final_result"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -120,8 +116,7 @@
                   "title": "Seattle Rust Meetup"
                 }
               },
-              "signature": "EtgGCtUGAWkUfRMRKMtNLfS/2P/v3sCYyV7mJdZPCIa87x3owmgHwpOAuSrdLMahc4GfRI5+6fu1hK0+WRh85I2KrYF9AhYf5rZDG/M/SLTzuw99jIMO8UVh8GMLAw/6Y7GW5vRz4kXK76zgwen2Rm8nCOm/g1WxzSnMQmichWz7M4LHMVodE+mHX6beA6eCKLV1EVogG2rVfkwtv6WIqfms7xSKSnVUX/zR/xRpI9dKJd9xSOK5Ym+Bc79xjJcq9yRlhWuCqdUTjFptb+bCYl0jlWMqZ59yN5VFIfalLLPntsqbS0rs2/6WT0IV69+7FZvSJcS2jn9bSeCaW9XN9gsuVKOge/X+cl+PbeXG8a8HOokSYHctJ2uQifTOjNZ/wVN2ZXiR+jizkP1f4mSZCCIRXrelWUGivMBcDfmVYBBkNmZd4sFeLyfqrvTMs11pLuOOC38I6steLfzC4xIXnn9JwZGE4CxnJwHSrxxkmtutGJKZKFDiT4s9yWtplsAfzoFJBnn7nM9dtndb4SWMTleIXkP1WElLphZP2NXfCgSzcV2J3o7liwcMaAIiQ06rg2ltVihuq3M/Al7RAAERp6qGLD3r3cksz86cvajBnayULzrNtvJlDqPvMjmZlqC1hVZoUco01XyELooL/0z6Bf1eooGS0rqZkH7OTzRFyeQnECZdVCy244NtRmfZ0qq/dNW/CICr3iMK0Twm2pPbc+08jIIpJmt9zKoJANf1FYXBFO8Y/mPrTGYSlkRwuSTyVP5iHfOD7NRm6fieZ1YBqv9zXAlcN0E4DFhxOgrBiFILj/+hYLiqU43Vbbd2BjWYUkTbEAE0yCU7tNtaTg5AnUWeQd6iYY/tbZYhxTLSDSWqBDuBhCtNZEwmVTzz6uor0xTl6Noc6N0zHKyU7QxAWyzaCH8fz6Epfpwj95me91taxykGhvaXHa2j95sPnSI4aouAUu6J4Ja+HNIrJ6fYXIxEigmrLxU0KLvMBUnEYVpJdrqMm1fCx4L3us9JCt5juxHHzAX9HeO6A+yBPXA/jlshes41tTy823n8IhIH95K6GCYejAmYUPg5JDHwV4MURKBeTIV7BMwfuE3PRffuoJWU3C0HmjfjUpFaMhLbcukugRYTi2zYcAEpGA==",
-              "additional_params": null
+              "signature": "EtgGCtUGAWkUfRMRKMtNLfS/2P/v3sCYyV7mJdZPCIa87x3owmgHwpOAuSrdLMahc4GfRI5+6fu1hK0+WRh85I2KrYF9AhYf5rZDG/M/SLTzuw99jIMO8UVh8GMLAw/6Y7GW5vRz4kXK76zgwen2Rm8nCOm/g1WxzSnMQmichWz7M4LHMVodE+mHX6beA6eCKLV1EVogG2rVfkwtv6WIqfms7xSKSnVUX/zR/xRpI9dKJd9xSOK5Ym+Bc79xjJcq9yRlhWuCqdUTjFptb+bCYl0jlWMqZ59yN5VFIfalLLPntsqbS0rs2/6WT0IV69+7FZvSJcS2jn9bSeCaW9XN9gsuVKOge/X+cl+PbeXG8a8HOokSYHctJ2uQifTOjNZ/wVN2ZXiR+jizkP1f4mSZCCIRXrelWUGivMBcDfmVYBBkNmZd4sFeLyfqrvTMs11pLuOOC38I6steLfzC4xIXnn9JwZGE4CxnJwHSrxxkmtutGJKZKFDiT4s9yWtplsAfzoFJBnn7nM9dtndb4SWMTleIXkP1WElLphZP2NXfCgSzcV2J3o7liwcMaAIiQ06rg2ltVihuq3M/Al7RAAERp6qGLD3r3cksz86cvajBnayULzrNtvJlDqPvMjmZlqC1hVZoUco01XyELooL/0z6Bf1eooGS0rqZkH7OTzRFyeQnECZdVCy244NtRmfZ0qq/dNW/CICr3iMK0Twm2pPbc+08jIIpJmt9zKoJANf1FYXBFO8Y/mPrTGYSlkRwuSTyVP5iHfOD7NRm6fieZ1YBqv9zXAlcN0E4DFhxOgrBiFILj/+hYLiqU43Vbbd2BjWYUkTbEAE0yCU7tNtaTg5AnUWeQd6iYY/tbZYhxTLSDSWqBDuBhCtNZEwmVTzz6uor0xTl6Noc6N0zHKyU7QxAWyzaCH8fz6Epfpwj95me91taxykGhvaXHa2j95sPnSI4aouAUu6J4Ja+HNIrJ6fYXIxEigmrLxU0KLvMBUnEYVpJdrqMm1fCx4L3us9JCt5juxHHzAX9HeO6A+yBPXA/jlshes41tTy823n8IhIH95K6GCYejAmYUPg5JDHwV4MURKBeTIV7BMwfuE3PRffuoJWU3C0HmjfjUpFaMhLbcukugRYTi2zYcAEpGA=="
             }
           ],
           "usage": {
@@ -130,7 +125,6 @@
             "total_tokens": 375,
             "reasoning_tokens": 166
           },
-          "message_id": null,
           "response_id": "nK2yatHpKIOVmtkPituHuQk",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",

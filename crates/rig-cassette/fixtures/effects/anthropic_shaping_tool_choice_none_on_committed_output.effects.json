@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 947379970989494918,
     "handlers": [
       {
@@ -57,13 +58,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -126,11 +125,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -157,9 +152,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -170,7 +163,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLceY1cGHJk9kSGWy11M",
-          "response_id": null,
           "provider_request_id": "req_011CfLceXaKVygHq2eAcqNWi",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -243,13 +235,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -287,9 +277,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -364,10 +352,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": "none",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "none"
         },
         "stream": false
       },
@@ -388,7 +373,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLceipVmcb1TE6DnDXSP",
-          "response_id": null,
           "provider_request_id": "req_011CfLceiND96YPnS8NXj55K",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -425,13 +409,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -469,9 +451,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -564,11 +544,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -592,9 +568,7 @@
                   "summary": "Join us for the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
                   "title": "Rust Meetup Seattle"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -605,7 +579,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcesWt3PYtRPsufNTUD",
-          "response_id": null,
           "provider_request_id": "req_011CfLces5pkjsJnVsSbrFHk",
           "finish_reason": "tool_calls",
           "provider": "anthropic",

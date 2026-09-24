@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 1,
@@ -90,13 +91,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -123,12 +122,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -152,17 +146,11 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
-          "finish_reason": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -221,19 +209,13 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
           "event": "final",
           "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -275,13 +257,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -298,7 +278,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -316,9 +295,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -356,12 +333,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -375,11 +347,7 @@
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
-          "finish_reason": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -412,11 +380,7 @@
         {
           "event": "final",
           "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,

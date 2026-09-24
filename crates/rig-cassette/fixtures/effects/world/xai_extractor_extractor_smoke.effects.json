@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -87,11 +86,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -127,9 +122,7 @@
                   "last_name": "Lovelace",
                   "job": "mathematician"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -139,7 +132,6 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 179
           },
-          "message_id": null,
           "response_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
           "provider_request_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
           "finish_reason": "tool_calls",

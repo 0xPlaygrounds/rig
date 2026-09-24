@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -92,13 +93,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -140,13 +139,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -168,9 +165,7 @@
                 "arguments": {
                   "slot": 0
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -186,9 +181,7 @@
                 "arguments": {
                   "slot": 1
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -204,9 +197,7 @@
                 "arguments": {
                   "slot": 2
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -215,7 +206,6 @@
             "total_tokens": 486,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "95ac7207-d0a7-4b54-a061-4a7478cc9824",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -329,9 +319,6 @@
                   "text": "the tool failed"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -365,13 +352,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -388,7 +373,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -404,9 +388,7 @@
                     "arguments": {
                       "slot": 0
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -422,9 +404,7 @@
                     "arguments": {
                       "slot": 1
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -440,9 +420,7 @@
                     "arguments": {
                       "slot": 2
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -529,13 +507,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -554,7 +530,6 @@
             "total_tokens": 531,
             "cached_input_tokens": 384
           },
-          "message_id": null,
           "response_id": "56c0aad0-e55c-4797-8cca-bc34240b14de",
           "finish_reason": "stop",
           "provider": "deepseek",

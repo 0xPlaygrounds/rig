@@ -716,7 +716,10 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
     );
     let json = serde_json::to_value(&log).expect("serializes");
     assert!(json.get("header").is_some() && json.get("records").is_some());
-    assert!(json["header"].get("format").is_none());
+    assert_eq!(
+        json["header"]["format"],
+        serde_json::json!(crate::effect_log::LOG_FORMAT)
+    );
     let back: EffectLog = serde_json::from_value(json).expect("restores");
     assert_eq!(back.header, log.header);
     assert_eq!(back.len(), 1);

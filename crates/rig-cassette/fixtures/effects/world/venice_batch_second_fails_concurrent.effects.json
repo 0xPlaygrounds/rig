@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -264,13 +265,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -306,12 +305,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -331,9 +325,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -347,9 +339,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -357,7 +347,6 @@
             "output_tokens": 16,
             "total_tokens": 1185
           },
-          "message_id": null,
           "response_id": "chatcmpl-RPsC3bqUwfjZHSfmpEwtI2ag",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -436,9 +425,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -461,9 +448,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -474,7 +459,6 @@
             "total_tokens": 1185
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-RPsC3bqUwfjZHSfmpEwtI2ag",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -549,9 +533,6 @@
                   "text": "the orchard lookup is broken"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -560,13 +541,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -583,7 +562,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -597,9 +575,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -613,9 +589,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -679,12 +653,7 @@
                 "required": []
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -702,7 +671,6 @@
             "output_tokens": 27,
             "total_tokens": 1260
           },
-          "message_id": null,
           "response_id": "chatcmpl-R3DwA5rUzWHKUjkA0SJ8AAt2",
           "finish_reason": "stop",
           "provider": "venice",
@@ -952,7 +920,6 @@
             "total_tokens": 1260
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-R3DwA5rUzWHKUjkA0SJ8AAt2",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",

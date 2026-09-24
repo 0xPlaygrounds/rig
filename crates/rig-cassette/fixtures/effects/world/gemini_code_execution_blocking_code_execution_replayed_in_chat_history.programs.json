@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -85,7 +85,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -197,7 +197,6 @@
                 "tool_use_prompt_tokens": 79,
                 "reasoning_tokens": 35
               },
-              "message_id": null,
               "response_id": "kHizasKhO4DcqtsPz8-qwAY",
               "finish_reason": "stop",
               "provider": "gcp.gemini",

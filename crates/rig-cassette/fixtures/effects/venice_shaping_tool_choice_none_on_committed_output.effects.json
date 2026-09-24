@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 947379970989494918,
     "handlers": [
       {
@@ -57,13 +58,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -126,11 +125,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -153,9 +148,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -163,7 +156,6 @@
             "output_tokens": 18,
             "total_tokens": 1270
           },
-          "message_id": null,
           "response_id": "chatcmpl-R3TBt3JrwG8HzR3b9gsCg3fv",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -248,13 +240,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -271,7 +261,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -288,9 +277,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -365,10 +352,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": "none",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "none"
         },
         "stream": false
       },
@@ -386,7 +370,6 @@
             "output_tokens": 74,
             "total_tokens": 1173
           },
-          "message_id": null,
           "response_id": "chatcmpl-RQjn5Tl7sLa8zTL6nLPo1qLC",
           "finish_reason": "stop",
           "provider": "venice",
@@ -438,13 +421,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -461,7 +442,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -478,9 +458,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -508,7 +486,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -573,11 +550,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -601,9 +574,7 @@
                   "category": "Tech Meetup",
                   "summary": "The sum of 17 and 25 is 42."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -611,7 +582,6 @@
             "output_tokens": 43,
             "total_tokens": 1435
           },
-          "message_id": null,
           "response_id": "chatcmpl-RBAB0jffPHZ93bMImGU2k6Mc",
           "finish_reason": "tool_calls",
           "provider": "venice",

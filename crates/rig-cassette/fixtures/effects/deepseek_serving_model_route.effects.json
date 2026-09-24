@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 9072754608376111302,
     "handlers": [
       {
@@ -69,13 +70,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -115,11 +114,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -142,9 +137,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -153,7 +146,6 @@
             "total_tokens": 388,
             "cached_input_tokens": 128
           },
-          "message_id": null,
           "response_id": "2665693e-57af-4fd3-bebb-d7055fe4b363",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -225,13 +217,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:fast",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -248,7 +238,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -265,9 +254,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -318,11 +305,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -342,7 +325,6 @@
             "cached_input_tokens": 256,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "a8899f05-dd49-4cf3-9f40-93ee5966c137",
           "finish_reason": "stop",
           "provider": "deepseek",

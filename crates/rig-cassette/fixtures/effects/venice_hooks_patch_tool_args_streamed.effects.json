@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 9072754608376111302,
     "handlers": [
       {
@@ -57,13 +58,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -103,11 +102,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -130,9 +125,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -140,7 +133,6 @@
             "output_tokens": 18,
             "total_tokens": 1111
           },
-          "message_id": null,
           "response_id": "chatcmpl-RlhdyOoKMkx5CNmpI6J5M0uB",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -206,9 +198,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -219,7 +209,6 @@
             "total_tokens": 1111
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-RlhdyOoKMkx5CNmpI6J5M0uB",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -270,13 +259,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -293,7 +280,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -310,9 +296,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -363,11 +347,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -385,7 +365,6 @@
             "output_tokens": 3,
             "total_tokens": 1132
           },
-          "message_id": null,
           "response_id": "chatcmpl-RK3UxpjTfoEVUxe5wsnJx8Lh",
           "finish_reason": "stop",
           "provider": "venice",
@@ -443,7 +422,6 @@
             "total_tokens": 1132
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-RK3UxpjTfoEVUxe5wsnJx8Lh",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",

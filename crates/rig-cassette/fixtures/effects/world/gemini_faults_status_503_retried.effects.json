@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 2,
@@ -58,13 +59,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -78,11 +77,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": false
       },
@@ -97,21 +92,18 @@
           "source_chain": [],
           "provider_response": {
             "status": 503,
-            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}"
           }
         }
       },
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -125,11 +117,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": false
       },
@@ -144,21 +132,18 @@
           "source_chain": [],
           "provider_response": {
             "status": 503,
-            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}"
           }
         }
       },
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -172,11 +157,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": false
       },
@@ -191,21 +172,18 @@
           "source_chain": [],
           "provider_response": {
             "status": 503,
-            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}"
           }
         }
       },
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -219,11 +197,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": false
       },
@@ -238,8 +212,7 @@
           "source_chain": [],
           "provider_response": {
             "status": 503,
-            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}"
           }
         }
       },

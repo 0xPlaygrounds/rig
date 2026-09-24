@@ -14,9 +14,10 @@ pub const MOCK_PROVIDER: &str = "mock";
 
 /// Build the terminal record the mock model yields, carrying `usage`.
 pub fn mock_final(usage: Usage) -> StreamFinal {
-    // The document is replaced with the whole scripted record, serialized,
-    // when the fixture is interpreted (see `apply`); until then it names
-    // the mock as its origin the way a real terminal names its provider.
+    // The document is replaced with the whole scripted record in the mock's
+    // document layout when the fixture is interpreted (see `apply`); until
+    // then it names the mock as its origin the way a real terminal names its
+    // provider.
     StreamFinal::new(
         MOCK_PROVIDER,
         usage,
@@ -330,10 +331,7 @@ impl MockStreamEvent {
             Self::MessageId(id) => out.message_id(id),
             Self::Unknown(value) => out.unknown(value.into()),
             Self::FinalResponse(mut response) => {
-                // The mock's terminal type is `StreamFinal` itself, so `raw`
-                // is the scripted terminal serialized — the same capture
-                // every real adapter performs.
-                response.raw = serde_json::to_value(&response)?;
+                response.raw = super::document::mock_terminal_document(&response)?;
                 out.final_record(response);
             }
             Self::Error(error) => out.error(error.into_completion_error()),

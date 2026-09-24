@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -84,12 +83,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": false
       },
@@ -113,9 +107,7 @@
                   "category": "Tech Meetup / Rust",
                   "summary": "Monthly Rust meetup in Seattle for developers of all levels. Regular schedule: 2nd Tuesday, 6:30–8:30 PM. Format: quick community announcements, two 20–30 minute talks (or one longer), lightning talks, followed by open Q&A and informal networking. Venue: central Seattle (venue announced per event). Suggested items to bring: laptop, a project to demo, and willingness to help others. RSVP required — contact organizer for time/room details."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -125,7 +117,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 320
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCQ22zQWqjh2pd0NEtVIbg6JjSD",
           "provider_request_id": "req_671d2f71edae47a482c681eb9c27f5b5",
           "finish_reason": "tool_calls",

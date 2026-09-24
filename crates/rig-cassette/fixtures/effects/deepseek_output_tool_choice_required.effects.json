@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 12938862389227305564,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -77,10 +76,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -104,9 +100,7 @@
                   "category": "Local Tech Meetup",
                   "summary": "A local Rust programming language meetup in Seattle, bringing together developers for talks, demos, and networking around Rust."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -115,7 +109,6 @@
             "total_tokens": 474,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "f634596e-2c46-40a2-bf10-f5c266b3122f",
           "finish_reason": "tool_calls",
           "provider": "deepseek",

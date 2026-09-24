@@ -12,7 +12,7 @@ use rig_core::{
 };
 use rig_ecs::{
     bus::{Bound, EffectOutcome, Handlers, PendingEffect},
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
+    checkpoint::{CHECKPOINT_FORMAT, Checkpoint, RestoreMode, load_world, save_world},
 };
 
 const KEY: &str = "host/model";
@@ -469,7 +469,7 @@ fn old_provider_bearing_checkpoints_are_refused_not_silently_stripped() {
         let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
         let error = checkpoint.validate(app.world()).unwrap_err().to_string();
         assert!(error.contains(path));
-        assert!(error.contains("format-2"));
+        assert!(error.contains(&format!("format-{CHECKPOINT_FORMAT}")));
         assert!(error.contains("migrate provider launch settings to the host"));
         for mode in [RestoreMode::Strict, RestoreMode::Replace] {
             let (live, http) = handler("saved", "new", "https://unused.invalid/v1");

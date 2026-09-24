@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 11344687576404215877,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -76,13 +75,10 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "low"
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -106,9 +102,7 @@
                   "category": "Tech Meetup",
                   "summary": "Monthly Rust meetup for Seattle developers. Happens first Tuesday of each month, 6:30–8:30 PM at Impact Hub Seattle (220 2nd Ave S). Agenda: lightning talks, demo/project show-and-tell, networking. Open to all experience levels; bring a laptop. RSVP via meetup.com/seattle-rust or email seattle.rust@example.org."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -118,7 +112,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDCMhSAMj85rHwQgnl1v8Bjlti4g",
           "provider_request_id": "req_53ad1d758afc4ce895cecc3bf99dc171",
           "finish_reason": "tool_calls",

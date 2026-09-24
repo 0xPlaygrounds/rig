@@ -13,15 +13,58 @@ use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
 /// The checkpoint envelope format this crate writes and reads. This versions
-/// [`Checkpoint`], not [`LogHeader`]; logs have no global format number.
+/// [`Checkpoint`]; the log itself is versioned by [`LOG_FORMAT`].
 pub const CHECKPOINT_FORMAT: u32 = 6;
 
+/// The effect-log format this crate writes and reads.
+pub const LOG_FORMAT: u32 = 1;
+
+/// The format a log's header names. Serialized as a number; a header without
+/// one is format 0. Deserialization refuses every format but [`LOG_FORMAT`]
+/// and names the migration command that upgrades an older log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct LogFormat(u32);
+
+impl LogFormat {
+    /// The format this crate writes.
+    pub const CURRENT: Self = Self(LOG_FORMAT);
+
+    /// The format number.
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl Default for LogFormat {
+    fn default() -> Self {
+        Self::CURRENT
+    }
+}
+
+impl<'de> Deserialize<'de> for LogFormat {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // A missing field reaches `deserialize_option` as `None`.
+        let format = Option::<u32>::deserialize(deserializer)?.unwrap_or(0);
+        if format == LOG_FORMAT {
+            Ok(Self(format))
+        } else {
+            Err(serde::de::Error::custom(format!(
+                "load refused: the effect log is format {format}, this rig reads format \
+                 {LOG_FORMAT}; upgrade it with `rig-migrate` (rig-cassette, feature `migrate`)"
+            )))
+        }
+    }
+}
+
 /// Recorded run identity, handler declarations, and optional delivery metadata
-/// used to validate replay compatibility. Deserialization rejects unknown fields;
-/// headers have no global format number.
+/// used to validate replay compatibility. Deserialization rejects unknown fields
+/// and every format but [`LOG_FORMAT`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogHeader {
+    /// The log's format.
+    pub format: LogFormat,
     /// Consumer-visible deliveries, in observation order, when the runtime
     /// records schedule boundaries. `None` supplies no delivery guarantee.
     /// A batch groups transitions observed in one pass; it is not a clock.
@@ -88,6 +131,7 @@ pub struct RecordedStreamError {
 impl Default for LogHeader {
     fn default() -> Self {
         Self {
+            format: LogFormat::CURRENT,
             deliveries: None,
             delivery_limitations: Vec::new(),
             stream_errors: BTreeMap::new(),

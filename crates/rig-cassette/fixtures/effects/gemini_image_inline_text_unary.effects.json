@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 10647386973881105715,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -61,10 +60,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -88,7 +84,6 @@
             "total_tokens": 1177,
             "reasoning_tokens": 53
           },
-          "message_id": null,
           "response_id": "q66yaqiBB9-eqtsP-7XRqAk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

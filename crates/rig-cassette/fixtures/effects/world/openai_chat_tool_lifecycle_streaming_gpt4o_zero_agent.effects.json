@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -91,13 +92,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -125,14 +124,11 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 128,
-          "tool_choice": null,
           "additional_params": {
             "tool_choice": "required",
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -152,9 +148,7 @@
               "function": {
                 "name": "ping",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -164,7 +158,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDB1WL3qI8CIkjwkc6ou6UCoQOKF",
           "provider_request_id": "req_0ed2ed96466948fbbc3f50d2f7eaa3f5",
           "finish_reason": "tool_calls",
@@ -232,9 +225,7 @@
             "function": {
               "name": "ping",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -247,7 +238,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-ERDB1WL3qI8CIkjwkc6ou6UCoQOKF",
           "provider_request_id": "req_0ed2ed96466948fbbc3f50d2f7eaa3f5",
           "provider": "openai",

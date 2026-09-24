@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -63,13 +62,11 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 16,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "enabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -79,7 +76,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -98,7 +94,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 16
           },
-          "message_id": null,
           "response_id": "d313630b-a376-4f20-be7e-76e1e3e7221b",
           "finish_reason": "length",
           "provider": "deepseek",

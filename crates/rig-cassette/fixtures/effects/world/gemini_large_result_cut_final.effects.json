@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -66,13 +67,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -101,10 +100,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -121,9 +117,7 @@
               "function": {
                 "name": "checkpoint_large",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -131,7 +125,6 @@
             "output_tokens": 10,
             "total_tokens": 116
           },
-          "message_id": null,
           "response_id": "nHizav_8MpusqtsPsf3xkAY",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -200,13 +193,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -223,7 +214,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -234,9 +224,7 @@
                   "function": {
                     "name": "checkpoint_large",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -273,10 +261,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -294,7 +279,6 @@
             "output_tokens": 3,
             "total_tokens": 33925
           },
-          "message_id": null,
           "response_id": "nXizavT6B9SDmtkP097woAk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

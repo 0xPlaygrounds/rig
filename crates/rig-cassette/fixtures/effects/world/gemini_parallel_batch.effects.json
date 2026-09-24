@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -92,13 +93,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -139,10 +138,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -161,9 +157,7 @@
                 "arguments": {
                   "slot": 0
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -176,9 +170,7 @@
                 "arguments": {
                   "slot": 1
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -191,9 +183,7 @@
                 "arguments": {
                   "slot": 2
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -201,7 +191,6 @@
             "output_tokens": 45,
             "total_tokens": 189
           },
-          "message_id": null,
           "response_id": "n3izaqH-JeSi6dkPv4mNmQk",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
@@ -310,9 +299,6 @@
                   "text": "the tool failed"
                 }
               ],
-              "retryable": null,
-              "code": null,
-              "http_status": null,
               "refusal": false
             }
           }
@@ -346,13 +332,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -369,7 +353,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -382,9 +365,7 @@
                     "arguments": {
                       "slot": 0
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -397,9 +378,7 @@
                     "arguments": {
                       "slot": 1
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -412,9 +391,7 @@
                     "arguments": {
                       "slot": 2
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -491,10 +468,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": false
       },
@@ -512,7 +486,6 @@
             "output_tokens": 3,
             "total_tokens": 243
           },
-          "message_id": null,
           "response_id": "n3izat_IO__jqtsP0Yzr8AY",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

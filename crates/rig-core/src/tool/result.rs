@@ -157,8 +157,11 @@ struct ToolExecutionErrorRepr {
     kind: ToolErrorKind,
     message: String,
     model_output: ToolOutput,
+    #[serde(skip_serializing_if = "Option::is_none")]
     retryable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     http_status: Option<u16>,
     refusal: bool,
 }

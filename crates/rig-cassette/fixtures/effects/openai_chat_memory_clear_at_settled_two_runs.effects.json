@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 171082663332529849,
     "handlers": [
       {
@@ -38,7 +39,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/memory",
       "kind": {
@@ -57,13 +57,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -80,12 +78,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": false
       },
@@ -105,7 +98,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDC5sS3otxM98bOfRtZuqfjPwRnB",
           "provider_request_id": "req_6764ffb4a8774849b8283cbed4987a3a",
           "finish_reason": "stop",
@@ -150,7 +142,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/memory",
       "kind": {
@@ -170,7 +161,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -189,7 +179,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/memory",
       "kind": {
@@ -207,7 +196,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/memory",
       "kind": {
@@ -226,13 +214,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -249,12 +235,7 @@
             }
           ],
           "documents": [],
-          "tools": [],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "tools": []
         },
         "stream": false
       },
@@ -274,7 +255,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDC6hWEUyLGKPVCBuFCWFvp2oWCd",
           "provider_request_id": "req_e9483f8550f2437abd583803ea4cb5b1",
           "finish_reason": "stop",
@@ -319,7 +299,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 7,
       "key": "golden/memory",
       "kind": {
@@ -339,7 +318,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -358,7 +336,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/memory",
       "kind": {

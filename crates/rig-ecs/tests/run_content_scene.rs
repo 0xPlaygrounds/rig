@@ -137,7 +137,8 @@ fn old_component_checkpoint_format_is_explicitly_refused() {
     checkpoint.format = 1;
     let error = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap_err();
     assert!(error.message.contains("format 1"));
-    assert!(error.message.contains("reads format 2"));
+    assert!(error.message.contains("reads format 3"));
+    assert!(error.message.contains("rig-migrate"));
     refused_without_touching_destination(&checkpoint, "the old component format");
 }
 

@@ -284,11 +284,10 @@ async fn a_policy_absent_on_one_side_is_accepted() {
 async fn a_log_header_refuses_an_unknown_key() {
     let log = corpus::golden(TOOLS.fixture);
     let mut json = serde_json::to_value(&log).expect("serializes");
-    assert!(json["header"].get("format").is_none());
-    json["header"]["format"] = serde_json::json!(999);
+    json["header"]["retired"] = serde_json::json!(999);
     let error = serde_json::from_value::<EffectLog>(json)
         .expect_err("a header key this rig does not know is refused");
-    assert!(error.to_string().contains("format"), "{error}");
+    assert!(error.to_string().contains("retired"), "{error}");
 }
 
 #[tokio::test]

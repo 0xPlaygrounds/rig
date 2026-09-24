@@ -254,14 +254,14 @@ pub struct StreamFinal {
     pub usage: Usage,
     /// Provider-reported finish reason. [`StreamingCompletionResponse`] reconciles
     /// it with the completed tool calls before yielding the terminal event.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned assistant message ID suitable for replay.
     /// Response-scoped identifiers belong in [`Self::response_id`].
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// Provider-assigned response ID. Must not be replayed as a message ID.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// Request identifier from the HTTP headers of the connection delivering
     /// this terminal record, including after reconnects. `None` if unreported;
@@ -277,12 +277,13 @@ pub struct StreamFinal {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_issuer: Option<String>,
     /// Provider-reported model identifier, when available.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Required provider terminal document serialized from the adapter's parsed
     /// wire type, not a transcript of frames. Unmodeled fields may be absent.
     /// This metadata does not override normalized fields and can be deserialized
     /// into the corresponding provider terminal type.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
 
@@ -361,6 +362,7 @@ struct StreamFinalRepr {
     reasoning_issuer: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
     raw: serde_json::Value,
 }
 

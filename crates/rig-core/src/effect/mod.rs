@@ -960,10 +960,8 @@ pub enum DeliveryKind {
 pub struct EffectRecord {
     /// Explicitly published tool-result metadata, including on errors. Never
     /// inbound authentication values or runtime scopes. `None` means the tool
-    /// did not publish a context before resolving. The wire field is required:
-    /// `null` explicitly records no publication; omission cannot establish
-    /// whether an older recorder lost output and is rejected when decoding.
-    #[serde(deserialize_with = "Option::deserialize")]
+    /// did not publish a context before resolving.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_output: Option<crate::tool::ToolResultContext>,
     /// The dispatch's id.
     pub id: EffectId,

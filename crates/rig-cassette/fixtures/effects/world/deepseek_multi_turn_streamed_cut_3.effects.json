@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -339,13 +340,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -382,13 +381,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -410,9 +407,7 @@
                 "arguments": {
                   "token": "start"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -421,7 +416,6 @@
             "total_tokens": 404,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "4c674f0e-e23f-4adb-91a1-2e1c3f79a5e2",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -551,9 +545,7 @@
               "arguments": {
                 "token": "start"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -565,7 +557,6 @@
             "cached_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "4c674f0e-e23f-4adb-91a1-2e1c3f79a5e2",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -623,13 +614,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -646,7 +635,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -662,9 +650,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -716,13 +702,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -744,9 +728,7 @@
                 "arguments": {
                   "token": "cobalt-17"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -755,7 +737,6 @@
             "total_tokens": 473,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "080bd43f-1861-4d46-b51f-a8d5eb930728",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -909,9 +890,7 @@
               "arguments": {
                 "token": "cobalt-17"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -923,7 +902,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "080bd43f-1861-4d46-b51f-a8d5eb930728",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -981,13 +959,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1004,7 +980,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1020,9 +995,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1054,7 +1027,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1070,9 +1042,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1124,13 +1094,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1152,9 +1120,7 @@
                 "arguments": {
                   "token": "orchard-29"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1163,7 +1129,6 @@
             "total_tokens": 542,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "c8479331-fc44-4e95-8c20-94937a999108",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1317,9 +1282,7 @@
               "arguments": {
                 "token": "orchard-29"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1331,7 +1294,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "c8479331-fc44-4e95-8c20-94937a999108",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -1389,13 +1351,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1412,7 +1372,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1428,9 +1387,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1462,7 +1419,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1478,9 +1434,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1512,7 +1466,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1528,9 +1481,7 @@
                     "arguments": {
                       "token": "orchard-29"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1582,13 +1533,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1610,9 +1559,7 @@
                 "arguments": {
                   "token": "harbor-43"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1621,7 +1568,6 @@
             "total_tokens": 613,
             "cached_input_tokens": 384
           },
-          "message_id": null,
           "response_id": "82d07fa3-bea6-4920-88de-0942cc7d250d",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -1783,9 +1729,7 @@
               "arguments": {
                 "token": "harbor-43"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1797,7 +1741,6 @@
             "cached_input_tokens": 384
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "82d07fa3-bea6-4920-88de-0942cc7d250d",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -1855,13 +1798,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1878,7 +1819,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1894,9 +1834,7 @@
                     "arguments": {
                       "token": "start"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1928,7 +1866,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1944,9 +1881,7 @@
                     "arguments": {
                       "token": "cobalt-17"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1978,7 +1913,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1994,9 +1928,7 @@
                     "arguments": {
                       "token": "orchard-29"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2028,7 +1960,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2044,9 +1975,7 @@
                     "arguments": {
                       "token": "harbor-43"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2098,13 +2027,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 2048,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -2123,7 +2050,6 @@
             "total_tokens": 642,
             "cached_input_tokens": 384
           },
-          "message_id": null,
           "response_id": "f53ed193-402e-4299-90e5-6064d1a1529c",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -2199,7 +2125,6 @@
             "cached_input_tokens": 384
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "f53ed193-402e-4299-90e5-6064d1a1529c",
           "provider": "deepseek",
           "model": "deepseek-flash",

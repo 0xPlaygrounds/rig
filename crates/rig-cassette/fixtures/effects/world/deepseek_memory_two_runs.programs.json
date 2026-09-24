@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -108,7 +108,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -251,7 +251,6 @@
                 "total_tokens": 23,
                 "cached_input_tokens": 0
               },
-              "message_id": null,
               "response_id": "eadb1be8-c9de-4615-95b4-cd28b782e96e",
               "finish_reason": "stop",
               "provider": "deepseek",

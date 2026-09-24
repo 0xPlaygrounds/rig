@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -85,16 +84,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "enabled",
               "budget_tokens": 1024
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -104,7 +99,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -132,9 +126,7 @@
                   "summary": "A local monthly gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss language features, and network with fellow Rustaceans of all skill levels.",
                   "title": "Seattle Rust Meetup"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -146,7 +138,6 @@
             "reasoning_tokens": 32
           },
           "message_id": "msg_011CfJqo3MwQnB7SEuZcwdiw",
-          "response_id": null,
           "provider_request_id": "req_011CfJqo2RP5ig5hXqvfBkuB",
           "finish_reason": "tool_calls",
           "provider": "anthropic",

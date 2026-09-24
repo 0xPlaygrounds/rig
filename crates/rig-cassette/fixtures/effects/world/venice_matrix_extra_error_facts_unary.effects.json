@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -57,11 +56,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": false
       },
@@ -70,14 +65,12 @@
           "kind": "provider_response",
           "retryable": false,
           "message": "ProviderResponseError: status 404 Not Found: {\"error\":\"Specified model not found: venice-nonexistent-rig-test. Did you mean: venice-uncensored-1-2, venice-uncensored-role-play?\"}",
-          "code": null,
           "http_status": 404,
           "refusal": false,
           "source_chain": [],
           "provider_response": {
             "status": 404,
-            "body": "{\"error\":\"Specified model not found: venice-nonexistent-rig-test. Did you mean: venice-uncensored-1-2, venice-uncensored-role-play?\"}",
-            "provider_request_id": null
+            "body": "{\"error\":\"Specified model not found: venice-nonexistent-rig-test. Did you mean: venice-uncensored-1-2, venice-uncensored-role-play?\"}"
           }
         }
       },

@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -110,7 +110,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -259,7 +259,6 @@
                 "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
               "finish_reason": "stop",
               "provider": "doubleword",
@@ -326,7 +325,6 @@
                   "reasoning_tokens": 0
                 },
                 "finish_reason": "stop",
-                "message_id": null,
                 "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -378,7 +376,6 @@
                   "cache_creation_input_tokens": 0,
                   "reasoning_tokens": 0
                 },
-                "message_id": null,
                 "response_id": "gen-1790146040-i6IkEzJBaDNKi3nSj7tF",
                 "finish_reason": "stop",
                 "provider": "doubleword",

@@ -323,30 +323,49 @@ fn effect_record_and_log_round_trip() {
 }
 
 #[test]
-fn headers_have_no_format_and_refuse_an_unknown_key() {
+fn headers_name_their_format_and_refuse_an_unknown_key() {
     let log = two_records();
     let mut json = serde_json::to_value(&log).expect("serializes");
-    assert!(json["header"].get("format").is_none());
-    // A header key this rig does not know — a retired `format` number
-    // included — is refused on load rather than ignored.
-    json["header"]["format"] = serde_json::json!(999);
+    assert_eq!(
+        json["header"]["format"],
+        serde_json::json!(super::LOG_FORMAT)
+    );
+    json["header"]["unknown"] = serde_json::json!(1);
     let error =
         serde_json::from_value::<EffectLog>(json).expect_err("an unknown header key is refused");
-    assert!(error.to_string().contains("format"), "{error}");
+    assert!(error.to_string().contains("unknown"), "{error}");
 }
 
 #[test]
-fn missing_published_output_is_unknown_not_explicitly_absent() {
+fn a_log_in_another_format_is_refused_with_the_migration_command() {
+    let mut json = serde_json::to_value(two_records()).expect("serializes");
+    for format in [None, Some(0), Some(super::LOG_FORMAT + 1)] {
+        match format {
+            Some(format) => json["header"]["format"] = serde_json::json!(format),
+            None => {
+                json["header"].as_object_mut().unwrap().remove("format");
+            }
+        }
+        let error = serde_json::from_value::<EffectLog>(json.clone())
+            .expect_err("another format is refused");
+        let found = format.unwrap_or(0);
+        assert!(
+            error.to_string().contains(&format!("is format {found}")),
+            "{error}"
+        );
+        assert!(error.to_string().contains("rig-migrate"), "{error}");
+    }
+}
+
+#[test]
+fn absent_published_output_is_omitted() {
     let mut json = serde_json::to_value(two_records()).unwrap();
-    assert!(json["records"][0].get("tool_output").is_some());
-    assert!(json["records"][0]["tool_output"].is_null());
-    serde_json::from_value::<EffectLog>(json.clone()).expect("explicit absence is valid");
-    json["records"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("tool_output");
-    let error = serde_json::from_value::<EffectLog>(json).expect_err("old recorder omitted output");
-    assert!(error.to_string().contains("tool_output"));
+    assert!(json["records"][0].get("tool_output").is_none());
+    let back = serde_json::from_value::<EffectLog>(json.clone()).expect("absence is valid");
+    assert_eq!(back[0].tool_output, None);
+    json["records"][0]["tool_output"] = serde_json::json!({});
+    let back = serde_json::from_value::<EffectLog>(json).expect("a publication is valid");
+    assert!(back[0].tool_output.is_some());
 }
 
 /// The recorder finds a slot from the back: the newest slot with an id is

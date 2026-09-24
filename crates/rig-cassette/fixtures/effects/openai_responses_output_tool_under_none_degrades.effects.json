@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 9907391144940774474,
     "handlers": [
       {
@@ -28,13 +29,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -52,10 +51,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": null,
           "tool_choice": "none",
-          "additional_params": null,
           "output_schema": {
             "type": "object",
             "properties": {

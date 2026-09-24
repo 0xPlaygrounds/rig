@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -69,13 +70,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -95,11 +94,9 @@
           "tools": [],
           "temperature": 0.0,
           "max_tokens": 16,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "none"
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -120,7 +117,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "gen-1790146094-3wghqpFNDjMd0XjQlfQf",
           "finish_reason": "length",
           "provider": "doubleword",
@@ -303,7 +299,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "length",
-          "message_id": null,
           "response_id": "gen-1790146094-3wghqpFNDjMd0XjQlfQf",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",

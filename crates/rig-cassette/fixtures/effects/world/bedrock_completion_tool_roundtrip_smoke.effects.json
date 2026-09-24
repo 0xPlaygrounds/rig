@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -104,13 +105,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -171,11 +170,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": 1024,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 1024
         },
         "stream": false
       },
@@ -202,9 +197,7 @@
                   "x": 2,
                   "y": 5
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -212,11 +205,8 @@
             "output_tokens": 70,
             "total_tokens": 584
           },
-          "message_id": null,
-          "response_id": null,
           "finish_reason": "tool_calls",
           "provider": "aws_bedrock",
-          "model": null,
           "raw": {
             "output": {
               "Message": {
@@ -279,13 +269,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -302,7 +290,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -323,9 +310,7 @@
                       "x": 2,
                       "y": 5
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -397,11 +382,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": 1024,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 1024
         },
         "stream": false
       },
@@ -419,11 +400,8 @@
             "output_tokens": 45,
             "total_tokens": 659
           },
-          "message_id": null,
-          "response_id": null,
           "finish_reason": "stop",
           "provider": "aws_bedrock",
-          "model": null,
           "raw": {
             "output": {
               "Message": {

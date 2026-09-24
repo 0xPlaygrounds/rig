@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -3893,13 +3894,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3917,11 +3916,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -3939,7 +3934,6 @@
             "output_tokens": 527,
             "total_tokens": 1511
           },
-          "message_id": null,
           "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
           "finish_reason": "stop",
           "provider": "venice",
@@ -8189,7 +8183,6 @@
             "total_tokens": 1511
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-RU2q8cJVfSkTVyWlm7UvS4aK",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",

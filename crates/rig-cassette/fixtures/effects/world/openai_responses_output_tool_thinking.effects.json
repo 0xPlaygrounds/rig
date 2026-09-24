@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -85,9 +84,7 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning": {
               "effort": "low",
@@ -96,8 +93,7 @@
             "include": [
               "reasoning.encrypted_content"
             ]
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -137,9 +133,7 @@
                   "category": "tech meetup",
                   "summary": "Monthly Seattle Rust Meetup for Rust developers and enthusiasts. Next session: Thursday, Oct 8, 2026, 6:30–8:30 PM at Impact Hub Seattle (220 2nd Ave S). Agenda: 6:30–7:00 PM networking, 7:00–7:45 PM lightning talks (3×10 min), 7:45–8:30 PM hands-on mini-workshop or open clinic. Bring laptop; beginner-friendly. RSVP: seattle-rust.org/rsvp (contact: meetup@seattle-rust.org). Free; donations welcome."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -149,7 +143,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
-          "message_id": null,
           "response_id": "resp_0ccc175f334a3c5c006ab2b37fdd8c87d0b33ce42fe7abc5ca",
           "provider_request_id": "req_4b705c18c3ac4e239478f08f59e91805",
           "finish_reason": "tool_calls",

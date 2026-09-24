@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -742,13 +743,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -790,11 +789,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "low"
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -804,7 +801,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -830,9 +826,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -843,7 +837,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 37
           },
-          "message_id": null,
           "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
@@ -1293,9 +1286,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1309,7 +1300,6 @@
             "reasoning_tokens": 37
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -1371,13 +1361,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1394,11 +1382,9 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -1424,9 +1410,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1479,11 +1463,9 @@
           ],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "reasoning_effort": "low"
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1493,7 +1475,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1517,7 +1498,6 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 37
           },
-          "message_id": null,
           "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
           "finish_reason": "stop",
           "provider": "doubleword",
@@ -1946,7 +1926,6 @@
             "reasoning_tokens": 37
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",

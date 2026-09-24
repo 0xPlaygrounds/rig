@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -108,7 +108,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -251,7 +251,6 @@
                 "total_tokens": 23,
                 "cached_input_tokens": 0
               },
-              "message_id": null,
               "response_id": "5adf7ba5-6ae1-4457-86cd-c3c412da1e5e",
               "finish_reason": "stop",
               "provider": "deepseek",
@@ -308,7 +307,6 @@
                   "cached_input_tokens": 0
                 },
                 "finish_reason": "stop",
-                "message_id": null,
                 "response_id": "5adf7ba5-6ae1-4457-86cd-c3c412da1e5e",
                 "provider": "deepseek",
                 "model": "deepseek-flash",
@@ -350,7 +348,6 @@
                   "total_tokens": 23,
                   "cached_input_tokens": 0
                 },
-                "message_id": null,
                 "response_id": "5adf7ba5-6ae1-4457-86cd-c3c412da1e5e",
                 "finish_reason": "stop",
                 "provider": "deepseek",

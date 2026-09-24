@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -78,13 +79,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -124,11 +123,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -155,9 +150,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -168,7 +161,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLdNTVAxdLtmNeKk5xHB",
-          "response_id": null,
           "provider_request_id": "req_011CfLdNSrirxD8s9mXizWd7",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -243,13 +235,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -287,9 +277,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -340,11 +328,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -365,7 +349,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLdNes3GEb7NB8bGPmGE",
-          "response_id": null,
           "provider_request_id": "req_011CfLdNeQ1QfJaK6EUCUwQ9",
           "finish_reason": "stop",
           "provider": "anthropic",

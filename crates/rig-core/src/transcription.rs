@@ -34,7 +34,7 @@ pub struct TranscriptionResponse {
     pub provider: String,
     /// Provider-reported model identifier, when the wire response named one.
     /// This is the model the provider says answered, not the model requested.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]

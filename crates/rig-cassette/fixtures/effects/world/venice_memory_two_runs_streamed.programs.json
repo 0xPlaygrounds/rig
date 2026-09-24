@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -108,7 +108,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -249,7 +249,6 @@
                 "output_tokens": 2,
                 "total_tokens": 977
               },
-              "message_id": null,
               "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
               "finish_reason": "stop",
               "provider": "venice",
@@ -304,7 +303,6 @@
                   "total_tokens": 977
                 },
                 "finish_reason": "stop",
-                "message_id": null,
                 "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
@@ -344,7 +342,6 @@
                   "output_tokens": 2,
                   "total_tokens": 977
                 },
-                "message_id": null,
                 "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
                 "finish_reason": "stop",
                 "provider": "venice",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -31,8 +32,7 @@
             "source_chain": [],
             "provider_response": {
               "status": 400,
-              "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
-              "provider_request_id": null
+              "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}"
             }
           }
         }
@@ -66,13 +66,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -86,15 +84,12 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
           "max_tokens": 8,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -109,8 +104,7 @@
           "source_chain": [],
           "provider_response": {
             "status": 400,
-            "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}"
           }
         }
       },

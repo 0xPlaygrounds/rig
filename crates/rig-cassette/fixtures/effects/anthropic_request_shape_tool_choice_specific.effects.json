@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 8449702089946067695,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -102,16 +101,13 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "add"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -134,9 +130,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -147,7 +141,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcddAejh7os1ETzinXR",
-          "response_id": null,
           "provider_request_id": "req_011CfLcdcgcpr1Q36qxvj9Wf",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -216,13 +209,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -256,9 +247,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -310,16 +299,13 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": null,
           "tool_choice": {
             "specific": {
               "function_names": [
                 "add"
               ]
             }
-          },
-          "additional_params": null,
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -342,9 +328,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -355,7 +339,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcdiKT58ff9BUWuQKWP",
-          "response_id": null,
           "provider_request_id": "req_011CfLcdi35xosdwXmCB5JYm",
           "finish_reason": "tool_calls",
           "provider": "anthropic",

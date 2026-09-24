@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -634,13 +635,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -717,10 +716,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -744,9 +740,7 @@
               "function": {
                 "name": "list_files",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -757,7 +751,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLca3FdPVnyNyAxZTTet",
-          "response_id": null,
           "provider_request_id": "req_011CfLca2p5bf3caVizaLWFT",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -885,9 +878,7 @@
             "function": {
               "name": "list_files",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -901,7 +892,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLca3FdPVnyNyAxZTTet",
-          "response_id": null,
           "provider_request_id": "req_011CfLca2p5bf3caVizaLWFT",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -950,13 +940,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -991,9 +979,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1081,10 +1067,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -1110,9 +1093,7 @@
                 "arguments": {
                   "path": "README.md"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1123,7 +1104,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLca7JT8o7bkT1ZwAU2o",
-          "response_id": null,
           "provider_request_id": "req_011CfLca6pRzEJJkfvwHhXUf",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -1261,9 +1241,7 @@
               "arguments": {
                 "path": "README.md"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1277,7 +1255,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLca7JT8o7bkT1ZwAU2o",
-          "response_id": null,
           "provider_request_id": "req_011CfLca6pRzEJJkfvwHhXUf",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1326,13 +1303,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1367,9 +1342,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1417,9 +1390,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1507,10 +1478,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -1536,9 +1504,7 @@
                 "arguments": {
                   "path": "tests/basic.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -1549,7 +1515,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcaBt2rWHevQzHDVn2v",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaBQ1czGGmNSNESRmu",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -1687,9 +1652,7 @@
               "arguments": {
                 "path": "tests/basic.rs"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1703,7 +1666,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcaBt2rWHevQzHDVn2v",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaBQ1czGGmNSNESRmu",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1752,13 +1714,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1793,9 +1753,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1843,9 +1801,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1893,9 +1849,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1983,10 +1937,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -2012,9 +1963,7 @@
                 "arguments": {
                   "path": "src/lib.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2025,7 +1974,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcaGPQTUspSqzuSFSjq",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaFoRtM2bd7eycb5ya",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -2147,9 +2095,7 @@
               "arguments": {
                 "path": "src/lib.rs"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -2163,7 +2109,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcaGPQTUspSqzuSFSjq",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaFoRtM2bd7eycb5ya",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -2212,13 +2157,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 8,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2253,9 +2196,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2303,9 +2244,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2353,9 +2292,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2403,9 +2340,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2493,10 +2428,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -2520,9 +2452,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -2533,7 +2463,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcaMunt3YG7LVop8WrH",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaKtjymQZNo5QoKrxG",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -2653,9 +2582,7 @@
             "function": {
               "name": "run_tests",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -2669,7 +2596,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcaMunt3YG7LVop8WrH",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaKtjymQZNo5QoKrxG",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -2718,13 +2644,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 10,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -2759,9 +2683,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2809,9 +2731,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2859,9 +2779,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2909,9 +2827,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -2957,9 +2873,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3047,10 +2961,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -3077,9 +2988,7 @@
                   "path": "src/lib.rs",
                   "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3090,7 +2999,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcaRqRPArW9tvMs8WGJ",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaRJRyy7eWXQ6Gyvd7",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -3429,9 +3337,7 @@
                 "path": "src/lib.rs",
                 "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -3445,7 +3351,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcaRqRPArW9tvMs8WGJ",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaRJRyy7eWXQ6Gyvd7",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -3494,13 +3399,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 12,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -3535,9 +3438,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3585,9 +3486,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3635,9 +3534,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3685,9 +3582,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3733,9 +3628,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3784,9 +3677,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -3874,10 +3765,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -3901,9 +3789,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -3914,7 +3800,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcaYbyf5Wtn5JCJkFqQ",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaY8h9L67KFNs8ioPo",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -4002,9 +3887,7 @@
             "function": {
               "name": "run_tests",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -4018,7 +3901,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcaYbyf5Wtn5JCJkFqQ",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaY8h9L67KFNs8ioPo",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -4067,13 +3949,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 14,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4108,9 +3988,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4158,9 +4036,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4208,9 +4084,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4258,9 +4132,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4306,9 +4178,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4357,9 +4227,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4405,9 +4273,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4495,10 +4361,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -4524,9 +4387,7 @@
                 "arguments": {
                   "path": "src/calendar.rs"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -4537,7 +4398,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcabwPMrv3wD8UqqWXF",
-          "response_id": null,
           "provider_request_id": "req_011CfLcabSdPnXvFBhWPzdFn",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -4755,9 +4615,7 @@
               "arguments": {
                 "path": "src/calendar.rs"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -4771,7 +4629,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcabwPMrv3wD8UqqWXF",
-          "response_id": null,
           "provider_request_id": "req_011CfLcabSdPnXvFBhWPzdFn",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -4820,13 +4677,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 16,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -4861,9 +4716,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4911,9 +4764,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -4961,9 +4812,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5011,9 +4860,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5059,9 +4906,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5110,9 +4955,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5158,9 +5001,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5208,9 +5049,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5298,10 +5137,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -5328,9 +5164,7 @@
                   "path": "src/calendar.rs",
                   "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -5341,7 +5175,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcahp7pYF5jK986KNka",
-          "response_id": null,
           "provider_request_id": "req_011CfLcahLLWJXKm6oXKjgDZ",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -5616,9 +5449,7 @@
                 "path": "src/calendar.rs",
                 "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -5632,7 +5463,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcahp7pYF5jK986KNka",
-          "response_id": null,
           "provider_request_id": "req_011CfLcahLLWJXKm6oXKjgDZ",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -5681,13 +5511,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 18,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -5722,9 +5550,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5772,9 +5598,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5822,9 +5646,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5872,9 +5694,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5920,9 +5740,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -5971,9 +5789,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6019,9 +5835,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6069,9 +5883,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6120,9 +5932,7 @@
                       "path": "src/calendar.rs",
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6210,10 +6020,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -6237,9 +6044,7 @@
               "function": {
                 "name": "run_tests",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -6250,7 +6055,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcaoe6jhcRtHWP4PZem",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaoLVE1tFjsT3cpHsJ",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -6346,9 +6150,7 @@
             "function": {
               "name": "run_tests",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -6362,7 +6164,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcaoe6jhcRtHWP4PZem",
-          "response_id": null,
           "provider_request_id": "req_011CfLcaoLVE1tFjsT3cpHsJ",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -6411,13 +6212,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 20,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -6452,9 +6251,7 @@
                   "function": {
                     "name": "list_files",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6502,9 +6299,7 @@
                     "arguments": {
                       "path": "README.md"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6552,9 +6347,7 @@
                     "arguments": {
                       "path": "tests/basic.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6602,9 +6395,7 @@
                     "arguments": {
                       "path": "src/lib.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6650,9 +6441,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6701,9 +6490,7 @@
                       "path": "src/lib.rs",
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6749,9 +6536,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6799,9 +6584,7 @@
                     "arguments": {
                       "path": "src/calendar.rs"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6850,9 +6633,7 @@
                       "path": "src/calendar.rs",
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6898,9 +6679,7 @@
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -6988,10 +6767,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 2048,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 2048
         },
         "stream": true
       },
@@ -7012,7 +6788,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcas3EUfGHVh8DJT2h7",
-          "response_id": null,
           "provider_request_id": "req_011CfLcarahujGFd1fW6hoF3",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -7093,7 +6868,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcas3EUfGHVh8DJT2h7",
-          "response_id": null,
           "provider_request_id": "req_011CfLcarahujGFd1fW6hoF3",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",

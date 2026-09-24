@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -254,13 +255,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -301,10 +300,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": true
       },
@@ -331,9 +327,7 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -342,7 +336,6 @@
             "total_tokens": 367,
             "cached_input_tokens": 128
           },
-          "message_id": null,
           "response_id": "35a2eef8-a320-48a3-a3c0-3d35ca906617",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -568,9 +561,7 @@
                 "x": 2,
                 "y": 3
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -582,7 +573,6 @@
             "cached_input_tokens": 128
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "35a2eef8-a320-48a3-a3c0-3d35ca906617",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -636,13 +626,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -659,7 +647,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -680,9 +667,7 @@
                       "x": 2,
                       "y": 3
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -734,10 +719,7 @@
             }
           ],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": true
       },
@@ -756,7 +738,6 @@
             "total_tokens": 388,
             "cached_input_tokens": 128
           },
-          "message_id": null,
           "response_id": "b1af49c9-a7ef-4fff-9528-48a67f3c204d",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -864,7 +845,6 @@
             "cached_input_tokens": 128
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "b1af49c9-a7ef-4fff-9528-48a67f3c204d",
           "provider": "deepseek",
           "model": "deepseek-flash",

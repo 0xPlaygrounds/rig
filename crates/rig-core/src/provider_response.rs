@@ -157,8 +157,10 @@ impl std::error::Error for ProviderResponseError {}
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProviderResponseErrorWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     status: Option<u16>,
     body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     provider_request_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     code: Option<String>,

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -100,13 +101,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -120,11 +119,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": true
       },
@@ -145,7 +140,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcg5JKuZueX1QmD4A5r",
-          "response_id": null,
           "provider_request_id": "req_011CfLcg4sGnerTaHDu3d7fJ",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -202,7 +196,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcg5JKuZueX1QmD4A5r",
-          "response_id": null,
           "provider_request_id": "req_011CfLcg4sGnerTaHDu3d7fJ",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -226,13 +219,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -246,11 +237,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 32,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 32
         },
         "stream": true
       },
@@ -271,7 +258,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcg7kuYVkLE5BmVcUz8",
-          "response_id": null,
           "provider_request_id": "req_011CfLcg7KMsrFfjNHuVXDdk",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -328,7 +314,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcg7kuYVkLE5BmVcUz8",
-          "response_id": null,
           "provider_request_id": "req_011CfLcg7KMsrFfjNHuVXDdk",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 14178699323467550126,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -98,12 +97,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -126,17 +120,11 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
-          "finish_reason": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -186,19 +174,13 @@
                 "x": 2,
                 "y": 3
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
           "event": "final",
           "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -214,13 +196,11 @@
       ]
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -237,7 +217,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -254,9 +233,7 @@
                       "x": 2,
                       "y": 3
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -304,12 +281,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -332,17 +304,11 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
-          "finish_reason": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -392,19 +358,13 @@
                 "x": 2,
                 "y": 3
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
           "event": "final",
           "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -444,13 +404,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -467,7 +425,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -484,9 +441,7 @@
                       "x": 2,
                       "y": 3
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -514,7 +469,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -531,9 +485,7 @@
                       "x": 2,
                       "y": 3
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -581,12 +533,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -600,11 +547,7 @@
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
-          "finish_reason": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,
@@ -637,11 +580,7 @@
         {
           "event": "final",
           "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
           "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
             "finish_reason": null,

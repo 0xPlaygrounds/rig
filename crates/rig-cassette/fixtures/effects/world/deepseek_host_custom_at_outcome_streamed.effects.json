@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -197,13 +198,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -243,11 +242,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -270,9 +265,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -281,7 +274,6 @@
             "total_tokens": 388,
             "cached_input_tokens": 128
           },
-          "message_id": null,
           "response_id": "bbaacc47-c3a0-4405-8a6f-a3ace4eda8ec",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -444,9 +436,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -458,7 +448,6 @@
             "cached_input_tokens": 128
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "bbaacc47-c3a0-4405-8a6f-a3ace4eda8ec",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -512,7 +501,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "host/note",
       "kind": {
@@ -534,13 +522,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -557,7 +543,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -574,9 +559,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -627,11 +610,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -650,7 +629,6 @@
             "total_tokens": 402,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "002d91fd-7e74-4aea-b7af-9130b662246a",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -702,7 +680,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "002d91fd-7e74-4aea-b7af-9130b662246a",
           "provider": "deepseek",
           "model": "deepseek-flash",

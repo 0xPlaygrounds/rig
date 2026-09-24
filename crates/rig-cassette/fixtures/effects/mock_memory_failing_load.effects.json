@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 171082663332529849,
     "handlers": [
       {
@@ -35,7 +36,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/memory",
       "kind": {
@@ -50,8 +50,6 @@
           "kind": "memory_backend",
           "retryable": false,
           "message": "Memory backend error: the store refused the load",
-          "code": null,
-          "http_status": null,
           "refusal": false,
           "source_chain": [
             "the store refused the load"

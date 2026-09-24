@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 13216707040221315529,
     "handlers": [
       {
@@ -107,7 +108,6 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/retrieve:context#0",
       "kind": {
@@ -116,10 +116,7 @@
           "query": "top_n",
           "req": {
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
-            "samples": 1,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 1
           }
         }
       },
@@ -138,7 +135,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/retrieve:tools#0",
       "kind": {
@@ -147,10 +143,7 @@
           "query": "top_n_ids",
           "req": {
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
-            "samples": 1,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 1
           }
         }
       },
@@ -168,13 +161,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -217,11 +208,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -245,9 +232,7 @@
                   "x": 50,
                   "y": 8
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -257,7 +242,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "resp_056d9046a86e73f7006ab3968ee11c87d0ad76d1cead65d7cf",
           "provider_request_id": "req_b3691c6b90484f7490c6a454442a44f6",
           "finish_reason": "tool_calls",
@@ -401,7 +385,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 5,
       "key": "golden/retrieve:context#0",
       "kind": {
@@ -410,10 +393,7 @@
           "query": "top_n",
           "req": {
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
-            "samples": 1,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 1
           }
         }
       },
@@ -432,7 +412,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 6,
       "key": "golden/retrieve:tools#0",
       "kind": {
@@ -441,10 +420,7 @@
           "query": "top_n_ids",
           "req": {
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
-            "samples": 1,
-            "threshold": null,
-            "additional_params": null,
-            "filter": null
+            "samples": 1
           }
         }
       },
@@ -462,13 +438,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 7,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -485,7 +459,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -503,9 +476,7 @@
                       "x": 50,
                       "y": 8
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -560,11 +531,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },

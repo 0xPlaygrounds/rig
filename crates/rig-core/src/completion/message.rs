@@ -22,6 +22,7 @@ pub enum Message {
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
         /// Provider-assigned assistant message ID, when available.
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         content: Vec<AssistantContent>,
     },
@@ -170,6 +171,7 @@ pub enum ReasoningContent {
 /// Assistant reasoning payload with an optional provider-supplied identifier.
 pub struct Reasoning {
     /// Provider reasoning identifier, when supplied by the upstream API.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// Ordered reasoning content blocks.
     pub content: Vec<ReasoningContent>,
@@ -659,10 +661,10 @@ pub struct ToolCall {
     /// Function name and JSON arguments requested by the model.
     pub function: ToolFunction,
     /// Opaque provider signature preserved for replay. Rig does not verify it.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
     /// Additional provider-specific parameters to be sent to the completion model provider
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
 

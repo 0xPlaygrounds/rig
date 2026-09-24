@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -151,7 +151,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -309,9 +309,7 @@
                     "key": "index",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -362,9 +360,7 @@
                       "key": "index",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -374,7 +370,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyQyg9457L15SoUSzQTQhOdItx3R",
               "provider_request_id": "req_8a721f66676a45d287362370e81984ec",
               "finish_reason": "tool_calls",
@@ -499,9 +494,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -562,9 +555,7 @@
                     "key": "depot/1",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -615,9 +606,7 @@
                       "key": "depot/1",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -627,7 +616,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyQzpNSSrTLqczcpwLdl6tC0Lldw",
               "provider_request_id": "req_d7804502ddf241d99dcd8a4a51673e23",
               "finish_reason": "tool_calls",
@@ -748,9 +736,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -807,9 +793,7 @@
                     "key": "depot/2",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -860,9 +844,7 @@
                       "key": "depot/2",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -872,7 +854,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyQzaJARGW14rf6Oc3KoSvmKG86D",
               "provider_request_id": "req_d10775229e93433480ed933bdd73b23f",
               "finish_reason": "tool_calls",
@@ -993,9 +974,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1052,9 +1031,7 @@
                     "key": "depot/1",
                     "value": 11
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               },
               {
                 "type": "toolcall",
@@ -1072,9 +1049,7 @@
                     "key": "depot/2",
                     "value": 22
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1125,9 +1100,7 @@
                       "key": "depot/1",
                       "value": 11
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1145,9 +1118,7 @@
                       "key": "depot/2",
                       "value": 22
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -1157,7 +1128,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR0x5cjMbCDXWFpz2zvEnXog7YO",
               "provider_request_id": "req_89dc634bf5594919a41f1c1730b025b6",
               "finish_reason": "tool_calls",
@@ -1319,9 +1289,7 @@
                   "key": "depot/1",
                   "value": 11
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1343,9 +1311,7 @@
                   "key": "depot/2",
                   "value": 22
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1424,9 +1390,7 @@
                     "key": "depot/3",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1477,9 +1441,7 @@
                       "key": "depot/3",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -1489,7 +1451,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR1Vg7LPiRujrE1wOsj7wDm4jY4",
               "provider_request_id": "req_dee719a533e0495dae19e1792c1a4624",
               "finish_reason": "tool_calls",
@@ -1610,9 +1571,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1669,9 +1628,7 @@
                     "key": "depot/4",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1722,9 +1679,7 @@
                       "key": "depot/4",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -1734,7 +1689,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR2lhHQMh5Qu8nX5IqdJWhPlDv8",
               "provider_request_id": "req_cafd21a1b4b9497b8bbe4375053d63a0",
               "finish_reason": "tool_calls",
@@ -1855,9 +1809,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -1914,9 +1866,7 @@
                     "key": "depot/3",
                     "value": 33
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               },
               {
                 "type": "toolcall",
@@ -1934,9 +1884,7 @@
                     "key": "depot/4",
                     "value": 44
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -1987,9 +1935,7 @@
                       "key": "depot/3",
                       "value": 33
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2007,9 +1953,7 @@
                       "key": "depot/4",
                       "value": 44
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -2019,7 +1963,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR2MFMV9CKovDRFrPmf3GoE4G2y",
               "provider_request_id": "req_c632536464904eab8f475aa6e2a0c06d",
               "finish_reason": "tool_calls",
@@ -2181,9 +2124,7 @@
                   "key": "depot/3",
                   "value": 33
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2205,9 +2146,7 @@
                   "key": "depot/4",
                   "value": 44
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2286,9 +2225,7 @@
                     "key": "depot/5",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -2339,9 +2276,7 @@
                       "key": "depot/5",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -2351,7 +2286,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR4dCmGuMLrBV539KQtbd4EvPj0",
               "provider_request_id": "req_9958e59767104594b5d4dbd37a153d25",
               "finish_reason": "tool_calls",
@@ -2472,9 +2406,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2531,9 +2463,7 @@
                     "key": "depot/6",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -2584,9 +2514,7 @@
                       "key": "depot/6",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -2596,7 +2524,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR5WqlbckrFGSmn3P5SCOmIWGHF",
               "provider_request_id": "req_b50c27d8f1e345538b642fb0f6a1ed00",
               "finish_reason": "tool_calls",
@@ -2717,9 +2644,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -2776,9 +2701,7 @@
                     "key": "depot/5",
                     "value": 55
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               },
               {
                 "type": "toolcall",
@@ -2796,9 +2719,7 @@
                     "key": "depot/6",
                     "value": 66
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -2849,9 +2770,7 @@
                       "key": "depot/5",
                       "value": 55
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2869,9 +2788,7 @@
                       "key": "depot/6",
                       "value": 66
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -2881,7 +2798,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR5UtSLYYPGmJyhir5NU5Cy3ENc",
               "provider_request_id": "req_7ee94ccc2cd745aaa62b337a96bf7c08",
               "finish_reason": "tool_calls",
@@ -3043,9 +2959,7 @@
                   "key": "depot/5",
                   "value": 55
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3067,9 +2981,7 @@
                   "key": "depot/6",
                   "value": 66
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3148,9 +3060,7 @@
                     "key": "all",
                     "value": null
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -3201,9 +3111,7 @@
                       "key": "all",
                       "value": null
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -3213,7 +3121,6 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR6b1jqGOjbVDB76BvRMNYJSidO",
               "provider_request_id": "req_f38b3291a1e143ff804f8b9510bc0bba",
               "finish_reason": "tool_calls",
@@ -3332,9 +3239,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3417,7 +3322,6 @@
                 "cached_input_tokens": 1024,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
               "response_id": "chatcmpl-EQyR7qJftngUChOc7KLEs1lo4XbYM",
               "provider_request_id": "req_1fa7097294bb4f5da0de036c2711ff4a",
               "finish_reason": "stop",
@@ -3537,9 +3441,7 @@
                   "key": "index",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3603,9 +3505,7 @@
                   "key": "depot/1",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3665,9 +3565,7 @@
                   "key": "depot/2",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3727,9 +3625,7 @@
                   "key": "depot/1",
                   "value": 11
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3751,9 +3647,7 @@
                   "key": "depot/2",
                   "value": 22
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3834,9 +3728,7 @@
                   "key": "depot/3",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3896,9 +3788,7 @@
                   "key": "depot/4",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3958,9 +3848,7 @@
                   "key": "depot/3",
                   "value": 33
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -3982,9 +3870,7 @@
                   "key": "depot/4",
                   "value": 44
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4065,9 +3951,7 @@
                   "key": "depot/5",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4127,9 +4011,7 @@
                   "key": "depot/6",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4189,9 +4071,7 @@
                   "key": "depot/5",
                   "value": 55
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4213,9 +4093,7 @@
                   "key": "depot/6",
                   "value": 66
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },
@@ -4296,9 +4174,7 @@
                   "key": "all",
                   "value": null
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         },

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 4919451952991111117,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -98,12 +97,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -112,8 +106,6 @@
           "kind": "cancelled",
           "retryable": false,
           "message": "the consumer cancelled the dispatch before it was answered",
-          "code": null,
-          "http_status": null,
           "refusal": false,
           "source_chain": []
         }

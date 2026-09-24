@@ -25,10 +25,13 @@ pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
     /// Maximum number of results to return.
     samples: u64,
     /// Minimum similarity score for results.
+    #[serde(skip_serializing_if = "Option::is_none")]
     threshold: Option<f64>,
     /// Backend-specific parameters as a JSON object.
+    #[serde(skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
     /// Filter expression to narrow results by metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
     filter: Option<F>,
 }
 

@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -119,7 +119,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -246,9 +246,7 @@
                     "age": 55,
                     "profession": "retired teacher"
                   }
-                },
-                "signature": null,
-                "additional_params": null
+                }
               }
             ],
             "message_id": null,
@@ -287,9 +285,7 @@
                       "age": 55,
                       "profession": "retired teacher"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ],
               "usage": {
@@ -299,7 +295,6 @@
                 "cached_input_tokens": 192,
                 "reasoning_tokens": 157
               },
-              "message_id": null,
               "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
               "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
               "finish_reason": "tool_calls",

@@ -131,8 +131,6 @@ const GOLDEN: &str = r#"
       }
     ],
     "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -197,7 +195,6 @@ const GOLDEN: &str = r#"
       {
         "content": [
           {
-            "additional_params": null,
             "function": {
               "arguments": {
                 "x": 2,
@@ -212,11 +209,9 @@ const GOLDEN: &str = r#"
             "provider": {
               "call_id": "tc1"
             },
-            "signature": null,
             "type": "toolcall"
           }
         ],
-        "id": null,
         "role": "assistant"
       },
       {
@@ -253,8 +248,6 @@ const GOLDEN: &str = r#"
       }
     ],
     "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -319,7 +312,6 @@ const GOLDEN: &str = r#"
       {
         "content": [
           {
-            "additional_params": null,
             "function": {
               "arguments": {
                 "x": 2,
@@ -334,11 +326,9 @@ const GOLDEN: &str = r#"
             "provider": {
               "call_id": "tc1"
             },
-            "signature": null,
             "type": "toolcall"
           }
         ],
-        "id": null,
         "role": "assistant"
       },
       {
@@ -370,7 +360,6 @@ const GOLDEN: &str = r#"
             "type": "text"
           }
         ],
-        "id": null,
         "role": "assistant"
       },
       {
@@ -394,8 +383,6 @@ const GOLDEN: &str = r#"
       }
     ],
     "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [

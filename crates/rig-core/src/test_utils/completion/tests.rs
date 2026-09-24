@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     error::ErrorKind,
     message::Message,
-    streaming::{Delta, StreamEvent, StreamFinal},
+    streaming::{Delta, StreamEvent},
 };
 use futures::StreamExt;
 
@@ -95,10 +95,9 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
 
 /// The streaming half of the same contract: the mock's adapter maps the
 /// scripted terminal onto the `Final` record, so the terminal's `raw` is
-/// the scripted terminal record serialized (the mock's own terminal type is
-/// `StreamFinal`).
+/// the scripted terminal record in the mock's document layout.
 #[tokio::test]
-async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
+async fn stream_terminal_raw_is_the_scripted_terminal_in_the_mocks_layout() {
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("hello"),
         MockStreamEvent::final_response(Usage {
@@ -116,17 +115,16 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
     while stream.next().await.is_some() {}
     let terminal = stream.response.expect("terminal record");
     let raw = &terminal.raw;
-    let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
-    assert_eq!(typed.usage.total_tokens, Some(3));
+    let scripted = super::super::streaming::mock_final(Usage {
+        input_tokens: Some(1),
+        output_tokens: Some(2),
+        total_tokens: Some(3),
+        ..Usage::default()
+    });
     assert_eq!(
-        typed,
-        super::super::streaming::mock_final(typed.usage),
-        "the capture is the scripted terminal, origin document included"
-    );
-    assert_eq!(
-        serde_json::to_value(&typed).expect("re-serialize"),
         *raw,
-        "the capture must be exactly what the scripted terminal serializes to"
+        super::super::mock_terminal_document(&scripted).expect("the mock's document"),
+        "the capture is the scripted terminal in the mock's layout, origin document included"
     );
     assert_eq!(terminal.usage.total_tokens, Some(3));
 }

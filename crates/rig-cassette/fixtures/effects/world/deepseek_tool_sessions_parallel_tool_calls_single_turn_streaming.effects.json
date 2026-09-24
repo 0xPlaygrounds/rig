@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -120,13 +121,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -163,16 +162,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": true
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -192,9 +187,7 @@
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -208,9 +201,7 @@
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -219,7 +210,6 @@
             "total_tokens": 435,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "bfea432f-c97c-4741-ba9b-561a3964612c",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
@@ -299,9 +289,7 @@
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -324,9 +312,7 @@
             "function": {
               "name": "lookup_orchard_label",
               "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -338,7 +324,6 @@
             "cached_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "bfea432f-c97c-4741-ba9b-561a3964612c",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -417,13 +402,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -440,7 +423,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -454,9 +436,7 @@
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -470,9 +450,7 @@
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -537,16 +515,12 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             },
             "parallel_tool_calls": true
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -565,7 +539,6 @@
             "total_tokens": 488,
             "cached_input_tokens": 256
           },
-          "message_id": null,
           "response_id": "2ced3273-07d5-41b6-a2fa-67c64a658461",
           "finish_reason": "stop",
           "provider": "deepseek",
@@ -793,7 +766,6 @@
             "cached_input_tokens": 256
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "2ced3273-07d5-41b6-a2fa-67c64a658461",
           "provider": "deepseek",
           "model": "deepseek-flash",

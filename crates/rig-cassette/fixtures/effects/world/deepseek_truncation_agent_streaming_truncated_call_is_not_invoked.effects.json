@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -90,13 +91,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -131,15 +130,12 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 32,
-          "tool_choice": null,
           "additional_params": {
             "thinking": {
               "type": "disabled"
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -153,7 +149,6 @@
             "total_tokens": 395,
             "cached_input_tokens": 128
           },
-          "message_id": null,
           "response_id": "08dba19e-2206-4021-8a5f-be6656109fdd",
           "finish_reason": "length",
           "provider": "deepseek",
@@ -319,7 +314,6 @@
             "cached_input_tokens": 128
           },
           "finish_reason": "length",
-          "message_id": null,
           "response_id": "08dba19e-2206-4021-8a5f-be6656109fdd",
           "provider": "deepseek",
           "model": "deepseek-flash",

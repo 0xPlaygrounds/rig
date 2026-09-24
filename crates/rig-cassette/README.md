@@ -6,6 +6,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 | part | path | published |
 |---|---|---|
 | effect logs and checkpoints | `src/effect_log/` | yes, always |
+| offline format migration | `src/migrate.rs`, `src/bin/rig-migrate.rs` | yes, always (the command with the `migrate` feature) |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | ECS replay adapter | `src/ecs/` | yes, `ecs` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
@@ -31,6 +32,7 @@ rig-cassette = { version = "0.42.0", default-features = false }
 | `ecs` | `effect_log`, `ecs` | `rig-ecs` and Bevy |
 | `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
 | `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |
+| `migrate` | the `rig-migrate` command | ordered/round-trip JSON |
 
 Effect logs alone acquire neither runtime, Bevy, HTTP clients/servers, Tokio
 nor AWS dependencies. Agent and ECS integration are independently selectable:
@@ -61,16 +63,34 @@ hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
 The recorder implements `rig_core::serve::Recorder`; the replayer implements
 the ordinary core handler interface.
 
-Effect records require `tool_output`: `null` means no publication and an object
-means published values, including an empty map. Omitting it cannot establish
-whether values were lost, so decoding rejects omission. Replayers publish these
-values before resolving outcomes, including errors. Handlers must publish before
+An effect record's `tool_output` is omitted when the tool published nothing
+and is an object of published values otherwise, including an empty map.
+Replayers publish these values before resolving outcomes, including errors. Handlers must publish before
 resolving and must exclude inbound context, secrets, and live capabilities.
 Custom outcomes keep their JSON value in an explicit `payload` field. Nested tool
-identities retain origin tags; bare-string identities are rejected. Logs validate
-their data rather than a global format number; unknown header fields, including
-`format`, are rejected. The checkpoint envelope has its own version and does not convert
-nested payloads.
+identities retain origin tags; bare-string identities are rejected. Every log
+names its format in `header.format` (`LOG_FORMAT`); a log without one is format
+0. Loading refuses every other format and names the migration command, and
+unknown header fields are rejected. Absent optional values are omitted, never
+written as `null`. The checkpoint envelope has its own version and does not
+convert nested payloads.
+
+## Migrating persisted logs and checkpoints
+
+`rig_cassette::migrate::migrate` rewrites an effect log or a rig-ecs checkpoint
+from an older format to the current one, offline and idempotently: a current
+document is returned untouched. Old formats exist only in that module. The
+`rig-migrate` command applies it to files in place:
+
+```sh
+cargo install rig-cassette --features migrate
+rig-migrate recorded/*.effects.json saved/world.checkpoint.json
+```
+
+The committed effect goldens change only through this migration: the ignored
+`regenerate_goldens_from_base` test in `tests/migrate.rs` rewrites every golden
+from its content at a base revision, and `every_golden_is_current_and_canonical`
+checks that each one is current and exactly what the current types write.
 
 Replay preserves recorded semantic families, model identities, and capabilities.
 Required keys include all scoped program rows; conflicting declarations are

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 17958747465494223130,
     "handlers": [
       {
@@ -55,13 +56,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -103,13 +102,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "venice_parameters": {
               "strip_thinking_response": false
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -119,7 +116,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -145,9 +141,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -155,7 +149,6 @@
             "output_tokens": 191,
             "total_tokens": 1499
           },
-          "message_id": null,
           "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -1420,9 +1413,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -1433,7 +1424,6 @@
             "total_tokens": 1499
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
@@ -1484,13 +1474,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -1507,11 +1495,9 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -1537,9 +1523,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -1592,13 +1576,11 @@
           ],
           "temperature": 0.0,
           "max_tokens": 4096,
-          "tool_choice": null,
           "additional_params": {
             "venice_parameters": {
               "strip_thinking_response": false
             }
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -1608,7 +1590,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -1629,7 +1610,6 @@
             "output_tokens": 21,
             "total_tokens": 1537
           },
-          "message_id": null,
           "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
           "finish_reason": "stop",
           "provider": "venice",
@@ -1830,7 +1810,6 @@
             "total_tokens": 1537
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",

@@ -611,37 +611,37 @@ fn reports_match_the_replaced_error_enums() {
         (
             "*::HttpError(StreamEnded)",
             ProviderError::Http(H::StreamEnded),
-            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Stream ended","refusal":false,"retryable":true,"source_chain":[]}"#,
+            r#"{"kind":"http","message":"HttpError: Stream ended","refusal":false,"retryable":true,"source_chain":[]}"#,
             AdapterErrorBoundary::Transport,
         ),
         (
             "*::HttpError(Instance)",
             ProviderError::Http(H::instance(std::io::Error::other("conn reset"))),
-            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: conn reset","refusal":false,"retryable":true,"source_chain":[]}"#,
+            r#"{"kind":"http","message":"HttpError: Http client error: conn reset","refusal":false,"retryable":true,"source_chain":[]}"#,
             AdapterErrorBoundary::Unknown,
         ),
         (
             "*::HttpError(NoHeaders)",
             ProviderError::Http(H::NoHeaders),
-            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Request in error state, cannot access headers","refusal":false,"retryable":false,"source_chain":[]}"#,
+            r#"{"kind":"http","message":"HttpError: Request in error state, cannot access headers","refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::Request,
         ),
         (
             "*::JsonError",
             ProviderError::Json(json_error()),
-            r#"{"code":null,"http_status":null,"kind":"json","message":"JsonError: EOF while parsing an object at line 1 column 1","refusal":false,"retryable":false,"source_chain":["EOF while parsing an object at line 1 column 1"]}"#,
+            r#"{"kind":"json","message":"JsonError: EOF while parsing an object at line 1 column 1","refusal":false,"retryable":false,"source_chain":["EOF while parsing an object at line 1 column 1"]}"#,
             AdapterErrorBoundary::Decode,
         ),
         (
             "*::ResponseError",
             ProviderError::Response("bad shape".into()),
-            r#"{"code":null,"http_status":null,"kind":"response","message":"ResponseError: bad shape","refusal":false,"retryable":false,"source_chain":[]}"#,
+            r#"{"kind":"response","message":"ResponseError: bad shape","refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::Decode,
         ),
         (
             "*::ProviderError",
             ProviderError::Provider("provider said no".into()),
-            r#"{"code":null,"http_status":null,"kind":"provider","message":"ProviderError: provider said no","refusal":false,"retryable":false,"source_chain":[]}"#,
+            r#"{"kind":"provider","message":"ProviderError: provider said no","refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::ProviderResponse,
         ),
         (
@@ -658,13 +658,13 @@ fn reports_match_the_replaced_error_enums() {
         (
             "*::from_http_response(400)",
             ProviderError::from_http_response(StatusCode::BAD_REQUEST, "plain body"),
-            r#"{"code":null,"http_status":400,"kind":"provider_response","message":"ProviderResponseError: status 400 Bad Request: plain body","provider_response":{"body":"plain body","provider_request_id":null,"status":400},"refusal":false,"retryable":false,"source_chain":[]}"#,
+            r#"{"http_status":400,"kind":"provider_response","message":"ProviderResponseError: status 400 Bad Request: plain body","provider_response":{"body":"plain body","status":400},"refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "*::from_transport_error(503)",
             ProviderError::from_transport_error(transport_503()),
-            r#"{"code":"overloaded","http_status":503,"kind":"provider_response","message":"ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","provider_response":{"body":"{\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","provider_request_id":null,"status":503},"refusal":false,"retryable":true,"source_chain":[]}"#,
+            r#"{"code":"overloaded","http_status":503,"kind":"provider_response","message":"ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","provider_response":{"body":"{\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","status":503},"refusal":false,"retryable":true,"source_chain":[]}"#,
             AdapterErrorBoundary::ProviderResponse,
         ),
         (
@@ -674,25 +674,25 @@ fn reports_match_the_replaced_error_enums() {
                     .with_refusal(true)
                     .with_code(Some("REFUSED".into())),
             ),
-            r#"{"code":"REFUSED","http_status":null,"kind":"provider_response","message":"ProviderResponseError: {\"error\":{\"code\":\"content_filter\"}}","provider_response":{"body":"{\"error\":{\"code\":\"content_filter\"}}","code":"REFUSED","provider_request_id":null,"refusal":true,"status":null},"refusal":true,"retryable":false,"source_chain":[]}"#,
+            r#"{"code":"REFUSED","kind":"provider_response","message":"ProviderResponseError: {\"error\":{\"code\":\"content_filter\"}}","provider_response":{"body":"{\"error\":{\"code\":\"content_filter\"}}","code":"REFUSED","refusal":true},"refusal":true,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "*::from_provider_body+transient",
             ProviderError::from_provider_body("sdk said busy").with_transient(Some(true)),
-            r#"{"code":null,"http_status":null,"kind":"provider_response","message":"ProviderResponseError: sdk said busy","provider_response":{"body":"sdk said busy","provider_request_id":null,"status":null,"transient":true},"refusal":false,"retryable":true,"source_chain":[]}"#,
+            r#"{"kind":"provider_response","message":"ProviderResponseError: sdk said busy","provider_response":{"body":"sdk said busy","transient":true},"refusal":false,"retryable":true,"source_chain":[]}"#,
             AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "Completion/Embedding/Rerank::UrlError",
             ProviderError::Url(url_error()),
-            r#"{"code":null,"http_status":null,"kind":"url","message":"UrlError: relative URL without a base","refusal":false,"retryable":false,"source_chain":["relative URL without a base"]}"#,
+            r#"{"kind":"url","message":"UrlError: relative URL without a base","refusal":false,"retryable":false,"source_chain":["relative URL without a base"]}"#,
             AdapterErrorBoundary::Request,
         ),
         (
             "Completion/Transcription/ImageGeneration/AudioGeneration::RequestError",
             ProviderError::Request(boxed()),
-            r#"{"code":null,"http_status":null,"kind":"request","message":"RequestError: io broke","refusal":false,"retryable":false,"source_chain":["io broke"]}"#,
+            r#"{"kind":"request","message":"RequestError: io broke","refusal":false,"retryable":false,"source_chain":["io broke"]}"#,
             AdapterErrorBoundary::Request,
         ),
         (
@@ -701,7 +701,7 @@ fn reports_match_the_replaced_error_enums() {
                 provider: "voyage",
                 parameter: "dimensions",
             },
-            r#"{"code":null,"http_status":null,"kind":"request","message":"voyage embeddings do not support the `dimensions` parameter","refusal":false,"retryable":false,"source_chain":[]}"#,
+            r#"{"kind":"request","message":"voyage embeddings do not support the `dimensions` parameter","refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::Request,
         ),
         (
@@ -711,7 +711,7 @@ fn reports_match_the_replaced_error_enums() {
                 parameter: "dimensions",
                 requirement: "to be greater than zero",
             },
-            r#"{"code":null,"http_status":null,"kind":"request","message":"doubleword embeddings require `dimensions` to be greater than zero","refusal":false,"retryable":false,"source_chain":[]}"#,
+            r#"{"kind":"request","message":"doubleword embeddings require `dimensions` to be greater than zero","refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::Request,
         ),
     ];

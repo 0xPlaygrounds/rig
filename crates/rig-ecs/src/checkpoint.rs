@@ -53,7 +53,7 @@ pub type CheckpointEntity = serde_json::Map<String, serde_json::Value>;
 type Reflected<'a> = Vec<(&'a str, Box<dyn PartialReflect>)>;
 
 /// The [`Checkpoint`] envelope format this crate writes and reads.
-pub const CHECKPOINT_FORMAT: u32 = 2;
+pub const CHECKPOINT_FORMAT: u32 = 3;
 
 /// Reflected execution state with binary assets and counters.
 /// Deserialization rejects unknown envelope fields and formats other than
@@ -93,7 +93,8 @@ fn checkpoint_format<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
         Ok(format)
     } else {
         Err(serde::de::Error::custom(format!(
-            "load refused: the checkpoint is format {format}, this rig reads format {CHECKPOINT_FORMAT}"
+            "load refused: the checkpoint is format {format}, this rig reads format \
+             {CHECKPOINT_FORMAT}; upgrade it with `rig-migrate` (rig-cassette, feature `migrate`)"
         )))
     }
 }
@@ -548,7 +549,8 @@ fn validated_state(
 ) -> Result<(BinaryAssets, HashMap<usize, Entity>), ErrorReport> {
     if checkpoint.format != CHECKPOINT_FORMAT {
         return Err(refused(format!(
-            "load refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
+            "load refused: the checkpoint is format {}, this rig reads format \
+             {CHECKPOINT_FORMAT}; upgrade it with `rig-migrate` (rig-cassette, feature `migrate`)",
             checkpoint.format
         )));
     }

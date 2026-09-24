@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 8,
@@ -189,13 +190,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -244,14 +243,11 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 128,
-          "tool_choice": null,
           "additional_params": {
             "tool_choice": "required",
             "parallel_tool_calls": true
-          },
-          "output_schema": null
+          }
         },
         "stream": true
       },
@@ -273,9 +269,7 @@
                 "arguments": {
                   "value": "red"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -291,9 +285,7 @@
                 "arguments": {
                   "value": "blue"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -303,7 +295,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDAy43pAROqR342mOcEOmQVKAWrx",
           "provider_request_id": "req_23dff62b153d49c7b65d6cdbab4190bd",
           "finish_reason": "tool_calls",
@@ -437,9 +428,7 @@
               "arguments": {
                 "value": "red"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -464,9 +453,7 @@
               "arguments": {
                 "value": "blue"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -479,7 +466,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-ERDAy43pAROqR342mOcEOmQVKAWrx",
           "provider_request_id": "req_23dff62b153d49c7b65d6cdbab4190bd",
           "provider": "openai",

@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -80,13 +81,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -121,11 +120,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -135,7 +130,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -160,9 +154,7 @@
                 "arguments": {
                   "topic": "prefix"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             },
             {
               "type": "toolcall",
@@ -178,9 +170,7 @@
                 "arguments": {
                   "topic": "breakpoint"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -190,7 +180,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 67
           },
-          "message_id": null,
           "response_id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
           "finish_reason": "tool_calls",
           "provider": "venice",
@@ -328,13 +317,11 @@
       "scope": "parity/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -351,11 +338,9 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "id": null,
                   "content": [
                     {
                       "type": "text",
@@ -380,9 +365,7 @@
                     "arguments": {
                       "topic": "prefix"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -398,9 +381,7 @@
                     "arguments": {
                       "topic": "breakpoint"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -463,11 +444,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -477,7 +454,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -500,7 +476,6 @@
             "cached_input_tokens": 5280,
             "reasoning_tokens": 22
           },
-          "message_id": null,
           "response_id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
           "finish_reason": "stop",
           "provider": "venice",

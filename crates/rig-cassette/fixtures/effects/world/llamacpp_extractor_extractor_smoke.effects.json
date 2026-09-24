@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -87,11 +86,7 @@
               }
             }
           ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": "required",
-          "additional_params": null,
-          "output_schema": null
+          "tool_choice": "required"
         },
         "stream": false
       },
@@ -101,7 +96,6 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -128,9 +122,7 @@
                   "last_name": "Lovelace",
                   "job": "mathematician"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -139,7 +131,6 @@
             "total_tokens": 642,
             "cached_input_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-DlJeeHan88vya1EgD79KkRyVSDy0NiAp",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",

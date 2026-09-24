@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 7,
@@ -285,13 +286,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -333,11 +332,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -361,9 +356,7 @@
                   "category": "Technology / Programming",
                   "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss best practices, explore new Rust features, and network with fellow developers passionate about systems programming and memory-safe software development."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -374,7 +367,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLccqL7BL1hUWEhUi3xw",
-          "response_id": null,
           "provider_request_id": "req_011CfLccoe9uGkgpsPVD2Zmn",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -843,9 +835,7 @@
                 "category": "Technology / Programming",
                 "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss best practices, explore new Rust features, and network with fellow developers passionate about systems programming and memory-safe software development."
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -859,7 +849,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLccqL7BL1hUWEhUi3xw",
-          "response_id": null,
           "provider_request_id": "req_011CfLccoe9uGkgpsPVD2Zmn",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",

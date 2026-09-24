@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -53,13 +54,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -78,10 +77,7 @@
           "documents": [],
           "tools": [],
           "temperature": 0.0,
-          "max_tokens": 512,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 512
         },
         "stream": true
       },
@@ -99,7 +95,6 @@
             "output_tokens": 3,
             "total_tokens": 982
           },
-          "message_id": null,
           "response_id": "chatcmpl-RKZzUEQtOYKxtb8g2l1u9MOK",
           "finish_reason": "stop",
           "provider": "venice",
@@ -157,7 +152,6 @@
             "total_tokens": 982
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-RKZzUEQtOYKxtb8g2l1u9MOK",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",

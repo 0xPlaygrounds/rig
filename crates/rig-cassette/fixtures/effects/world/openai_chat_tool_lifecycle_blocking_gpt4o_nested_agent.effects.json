@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -84,13 +85,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -143,14 +142,11 @@
               }
             }
           ],
-          "temperature": null,
           "max_tokens": 128,
-          "tool_choice": null,
           "additional_params": {
             "tool_choice": "required",
             "parallel_tool_calls": false
-          },
-          "output_schema": null
+          }
         },
         "stream": false
       },
@@ -180,9 +176,7 @@
                     "active": true
                   }
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -192,7 +186,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDAwvmqnRoE7GeGRCQoacOtrA0kk",
           "provider_request_id": "req_a51b78800c5c43a293acec2046887b5e",
           "finish_reason": "tool_calls",

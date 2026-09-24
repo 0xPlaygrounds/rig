@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 5,
@@ -31,8 +32,7 @@
             "source_chain": [],
             "provider_response": {
               "status": 400,
-              "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model 'gpt-4o-mini-nonexistent-rig-test' does not exist.\",\"param\":\"model\",\"type\":\"invalid_request_error\"}}",
-              "provider_request_id": null
+              "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model 'gpt-4o-mini-nonexistent-rig-test' does not exist.\",\"param\":\"model\",\"type\":\"invalid_request_error\"}}"
             }
           }
         }
@@ -66,13 +66,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "parity/model",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "user",
@@ -86,11 +84,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": null,
-          "max_tokens": 16,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "max_tokens": 16
         },
         "stream": true
       },
@@ -105,8 +99,7 @@
           "source_chain": [],
           "provider_response": {
             "status": 400,
-            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model 'gpt-4o-mini-nonexistent-rig-test' does not exist.\",\"param\":\"model\",\"type\":\"invalid_request_error\"}}",
-            "provider_request_id": null
+            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model 'gpt-4o-mini-nonexistent-rig-test' does not exist.\",\"param\":\"model\",\"type\":\"invalid_request_error\"}}"
           }
         }
       },

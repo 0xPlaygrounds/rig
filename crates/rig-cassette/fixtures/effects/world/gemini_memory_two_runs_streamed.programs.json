@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -108,7 +108,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -269,7 +269,6 @@
                 "total_tokens": 76,
                 "reasoning_tokens": 55
               },
-              "message_id": null,
               "response_id": "U2GzapzGJrysz7IPkvvF4AU",
               "finish_reason": "stop",
               "provider": "gcp.gemini",
@@ -356,7 +355,6 @@
                   "reasoning_tokens": 55
                 },
                 "finish_reason": "stop",
-                "message_id": null,
                 "response_id": "U2GzapzGJrysz7IPkvvF4AU",
                 "provider": "gcp.gemini",
                 "model": "gemini-3-flash-preview",
@@ -404,7 +402,6 @@
                   "total_tokens": 76,
                   "reasoning_tokens": 55
                 },
-                "message_id": null,
                 "response_id": "U2GzapzGJrysz7IPkvvF4AU",
                 "finish_reason": "stop",
                 "provider": "gcp.gemini",

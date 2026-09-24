@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 4,
@@ -37,13 +38,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -66,11 +65,7 @@
             }
           ],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -94,7 +89,6 @@
             "total_tokens": 167,
             "reasoning_tokens": 89
           },
-          "message_id": null,
           "response_id": "xa2yasv0OLHVz7IP2J_OIA",
           "finish_reason": "stop",
           "provider": "gcp.gemini",

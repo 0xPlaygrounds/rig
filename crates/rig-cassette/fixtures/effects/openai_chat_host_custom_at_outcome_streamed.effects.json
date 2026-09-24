@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "run_spec": 1321309695476625513,
     "handlers": [
       {
@@ -60,13 +61,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -105,12 +104,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -133,9 +127,7 @@
                   "x": 17,
                   "y": 25
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -145,7 +137,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDBr6VbsWSNPEXXOjLiEISKID0im",
           "provider_request_id": "req_2d2b7bcb03cf4753a35ad6239afcecdd",
           "finish_reason": "tool_calls",
@@ -280,9 +271,7 @@
                 "x": 17,
                 "y": 25
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -295,7 +284,6 @@
             "reasoning_tokens": 128
           },
           "finish_reason": "tool_calls",
-          "message_id": null,
           "response_id": "chatcmpl-ERDBr6VbsWSNPEXXOjLiEISKID0im",
           "provider_request_id": "req_2d2b7bcb03cf4753a35ad6239afcecdd",
           "provider": "openai",
@@ -351,7 +339,6 @@
       }
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "host/note",
       "kind": {
@@ -372,13 +359,11 @@
       }
     },
     {
-      "tool_output": null,
       "id": 4,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -395,7 +380,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -412,9 +396,7 @@
                       "x": 17,
                       "y": 25
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -464,12 +446,7 @@
                 ]
               }
             }
-          ],
-          "temperature": null,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          ]
         },
         "stream": true
       },
@@ -489,7 +466,6 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
           "response_id": "chatcmpl-ERDBuD9e2WBseSPFsrQObAO2bjrXu",
           "provider_request_id": "req_ffa1ccd441014cf188af38e98cb2d208",
           "finish_reason": "stop",
@@ -546,7 +522,6 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": null,
           "response_id": "chatcmpl-ERDBuD9e2WBseSPFsrQObAO2bjrXu",
           "provider_request_id": "req_ffa1ccd441014cf188af38e98cb2d208",
           "provider": "openai",

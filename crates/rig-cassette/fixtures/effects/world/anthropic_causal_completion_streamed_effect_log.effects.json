@@ -1,5 +1,6 @@
 {
   "header": {
+    "format": 1,
     "deliveries": [
       {
         "batch": 6,
@@ -132,13 +133,11 @@
   },
   "records": [
     {
-      "tool_output": null,
       "id": 0,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -177,11 +176,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -203,9 +198,7 @@
                 "arguments": {
                   "q": "What is the capital of France?"
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -216,7 +209,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcVosqqKqEJRDXpbRkx",
-          "response_id": null,
           "provider_request_id": "req_011CfLcVoQKLKAwBUme7RG5S",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
@@ -331,9 +323,7 @@
               "arguments": {
                 "q": "What is the capital of France?"
               }
-            },
-            "signature": null,
-            "additional_params": null
+            }
           }
         },
         {
@@ -347,7 +337,6 @@
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_011CfLcVosqqKqEJRDXpbRkx",
-          "response_id": null,
           "provider_request_id": "req_011CfLcVoQKLKAwBUme7RG5S",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -371,7 +360,6 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 1,
       "key": "golden/tool:lookup#0",
       "kind": {
@@ -396,13 +384,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -420,11 +406,7 @@
           ],
           "documents": [],
           "tools": [],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": false
       },
@@ -445,7 +427,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcVvnKfWfGwQPeidZB1",
-          "response_id": null,
           "provider_request_id": "req_011CfLcVvLnJXfm7fXZ2kbsF",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -484,13 +465,11 @@
       "scope": "golden/run#0"
     },
     {
-      "tool_output": null,
       "id": 3,
       "key": "golden/model:default",
       "kind": {
         "effect": "completion",
         "request": {
-          "model": null,
           "chat_history": [
             {
               "role": "system",
@@ -523,9 +502,7 @@
                     "arguments": {
                       "q": "What is the capital of France?"
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
               ]
             },
@@ -575,11 +552,7 @@
               }
             }
           ],
-          "temperature": 0.0,
-          "max_tokens": null,
-          "tool_choice": null,
-          "additional_params": null,
-          "output_schema": null
+          "temperature": 0.0
         },
         "stream": true
       },
@@ -600,7 +573,6 @@
             "cache_creation_input_tokens": 0
           },
           "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F",
-          "response_id": null,
           "provider_request_id": "req_011CfLcWCdKMMoTXzZp2m89E",
           "finish_reason": "stop",
           "provider": "anthropic",
@@ -649,7 +621,6 @@
           },
           "finish_reason": "stop",
           "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F",
-          "response_id": null,
           "provider_request_id": "req_011CfLcWCdKMMoTXzZp2m89E",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
