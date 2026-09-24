@@ -231,7 +231,7 @@ use candle_transformers::models::llama::{Cache, Llama};
 use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama;
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::utils::apply_repeat_penalty;
-use rig_core::completion::{AssistantContent, CompletionResponse};
+use rig_core::completion::AssistantContent;
 use rig_core::message::ReasoningContent;
 use rig_core::streaming::{BlockId, MintKind, ToolCallEnd, non_empty_id};
 use tokenizers::tokenizer::DecodeStream;
@@ -574,33 +574,20 @@ pub(crate) fn infer(
 
 /// Local response metadata and assistant content from one protocol parse.
 /// `response.text` has markup removed; use `choice` to retain parsed tool calls.
-pub(crate) struct InferredCompletion {
+pub struct InferredCompletion {
     /// The local model's own response record.
     pub(crate) response: CandleCompletionResponse,
     /// Assistant content parsed out of the generated text.
     pub(crate) choice: Vec<AssistantContent>,
 }
 
-impl InferredCompletion {
-    /// Normalizes content and metadata, serializing the local response as `raw`.
-    /// Returns serialization errors.
-    pub(crate) fn into_normalized(self) -> Result<CompletionResponse, serde_json::Error> {
-        let usage = (&self.response).into();
-        let finish_reason = self.response.finish_reason.into();
-        let raw = serde_json::to_value(&self.response)?;
-        Ok(
-            CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME, raw)
-                .with_finish_reason(finish_reason),
-        )
-    }
-}
 
 /// One event of a local generation, as the generator hands it to the
 /// streaming adapter.
 ///
 /// The in-process wire's typed frame: the generator sends these over the
-/// streaming channel and [`crate::stream_from_events`] drives them through
-/// the shared driver, which maps each onto the canonical stream vocabulary.
+/// streaming channel and the shared driver maps each onto the canonical
+/// stream vocabulary.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GenerationEvent {
     /// A fragment of visible text.

@@ -1,10 +1,64 @@
 use super::*;
+use crate::completion::{Converse, ConverseRequest};
 use futures::StreamExt;
+use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{AssistantContent, Reasoning};
-use rig_core::streaming::{Delta, StreamEvent};
+use rig_core::streaming::{CompletionStream, Delta, StreamEvent};
+use rig_core::wire::Mode;
 
-// ---- Event-seam helpers: no AWS transport, `stream_from_events` only ----
+// ---- Event-seam helpers: a transport that replays scripted events ----
+
+/// Replays scripted Converse events after the frame naming the model.
+#[derive(Clone)]
+struct Scripted(std::sync::Arc<std::sync::Mutex<Vec<aws_bedrock::ConverseStreamOutput>>>);
+
+impl Transport<Converse> for Scripted {
+    fn send(
+        &self,
+        payload: ConverseRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let events = std::mem::take(&mut *self.0.lock().expect("script lock"));
+        let opened = ConverseFrame::Opened {
+            model: payload.model,
+            request_id: None,
+        };
+        Ok(async move {
+            Opened::new(futures::stream::iter(
+                std::iter::once(opened)
+                    .chain(events.into_iter().map(ConverseFrame::Event))
+                    .map(Ok),
+            ))
+        })
+    }
+}
+
+/// The stream `model`'s Converse endpoint yields for scripted `events`.
+fn stream_of(model: &str, events: Vec<aws_bedrock::ConverseStreamOutput>) -> CompletionStream {
+    let request = rig_core::completion::CompletionRequestBuilder::unbound("hi").build();
+    Model::new(
+        Converse::new(model),
+        Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
+    )
+    .stream(request, None)
+    .expect("the stream opens")
+}
+
+/// A stream over events a decoder already produced, folded as a relayed
+/// stream is.
+fn folded(items: Vec<Result<StreamEvent, ProviderError>>) -> CompletionStream {
+    CompletionStream::relay(
+        PROVIDER_NAME,
+        Box::pin(futures::stream::iter(items).map(|item| {
+            item.map_err(|error| ErrorReport::from(&error))
+        })),
+    )
+}
 
 fn reasoning_text_delta(index: i32, text: &str) -> aws_bedrock::ConverseStreamOutput {
     aws_bedrock::ConverseStreamOutput::ContentBlockDelta(
@@ -74,7 +128,7 @@ struct Drained {
 }
 
 async fn drain(events: Vec<aws_bedrock::ConverseStreamOutput>) -> Drained {
-    let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
+    let mut stream = stream_of("amazon.nova-lite-v1:0", events);
     let mut drained = Drained {
         reasoning: Vec::new(),
         errors: Vec::new(),
@@ -524,8 +578,7 @@ async fn assembled(
     items: Vec<Result<StreamEvent, ProviderError>>,
 ) -> (Vec<rig_core::message::ToolCall>, Vec<ErrorReport>) {
     use futures::StreamExt;
-    let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
+    let mut stream = folded(items);
     let mut calls = Vec::new();
     let mut errors = Vec::new();
     while let Some(item) = stream.next().await {
@@ -758,36 +811,34 @@ fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseSt
 /// Drive `items` through the normalized pipeline exactly as the
 /// `CompletionModel` seam does, returning the terminal.
 async fn normalized_terminal(items: Vec<Result<StreamEvent, ProviderError>>) -> StreamFinal {
-    let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
+    let mut stream = folded(items);
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
     stream
-        .response
+        .folded()
+        .terminal()
+        .cloned()
         .expect("the stream must end with a terminal record")
 }
 
-/// The events-first seam captures like the request-driven one: its
-/// terminal `raw` is the same `BedrockStreamingResponse` the model's
-/// `stream()` would attach, because both funnel through the adapter's
-/// `terminal_record`.
+/// A scripted stream's terminal `raw` is the `BedrockStreamingResponse`
+/// the adapter's `terminal_record` attaches.
 #[tokio::test]
-async fn stream_from_events_terminal_carries_raw() {
-    let mut stream = stream_from_events(futures::stream::iter(
+async fn a_scripted_streams_terminal_carries_raw() {
+    let mut stream = stream_of(
+        "amazon.nova-lite-v1:0",
         vec![
             text_delta_event(0, "hi"),
             block_stop(0),
             message_stop_event(aws_bedrock::StopReason::EndTurn),
             metadata_event_with_usage(3, 1),
-        ]
-        .into_iter()
-        .map(Ok),
-    ));
+        ],
+    );
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = stream.response.expect("terminal record");
+    let terminal = stream.folded().terminal().cloned().expect("terminal record");
 
     let raw = &terminal.raw;
     let typed: BedrockStreamingResponse =
@@ -846,11 +897,8 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 /// turn's reasoning records it.
 #[tokio::test]
 async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
-    let state = StreamState {
-        reasoning_issuer: Some("anthropic"),
-        ..StreamState::default()
-    };
-    let events = futures::stream::iter(
+    let mut stream = stream_of(
+        crate::completion::ANTHROPIC_CLAUDE_SONNET_4_6,
         vec![
             reasoning_text_delta(0, "thinking"),
             reasoning_signature_delta(0, "sig"),
@@ -859,16 +907,13 @@ async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
             block_stop(1),
             message_stop_event(aws_bedrock::StopReason::EndTurn),
             metadata_event_with_usage(3, 1),
-        ]
-        .into_iter()
-        .map(Ok),
+        ],
     );
-    let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, run_wire_stream(events, state));
+    assert_eq!(stream.folded().reasoning_issuer(), Some("anthropic"));
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    assert_eq!(stream.reasoning_issuer(), Some("anthropic"));
+    assert_eq!(stream.folded().reasoning_issuer(), Some("anthropic"));
     let response = stream.finish().expect("a terminal record");
     let issuers: Vec<_> = response
         .choice

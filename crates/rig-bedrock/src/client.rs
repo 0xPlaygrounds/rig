@@ -1,20 +1,28 @@
-use crate::image::ImageGenerationModel;
-use crate::{completion::CompletionModel, embedding::EmbeddingModel};
+//! The Bedrock runtime transport: the AWS SDK client every Bedrock wire is
+//! sent through.
+//!
+//! ```no_run
+//! use rig_bedrock::client::BedrockRuntime;
+//! use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
+//! use rig_core::Model;
+//!
+//! let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env()?);
+//! # let _ = model;
+//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! ```
+
 use aws_config::{BehaviorVersion, Region};
-use rig_core::driver::CompletionProvider;
-use rig_core::embeddings::EmbeddingsBuilder;
-use rig_core::error::ProviderError;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 pub const DEFAULT_AWS_REGION: &str = "us-east-1";
 
 #[derive(Clone)]
-pub struct ClientBuilder<'a> {
+pub struct Builder<'a> {
     region: &'a str,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a> Builder<'a> {
     /// Sets the AWS region. The selected model must be
     /// [available there](https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html).
     pub fn region(mut self, region: &'a str) -> Self {
@@ -22,22 +30,18 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    /// Loads AWS SDK configuration and constructs a client for the selected region.
+    /// Loads AWS SDK configuration and constructs a runtime for the selected region.
     /// Requests require permission to access the selected Bedrock model.
-    pub async fn build(self) -> Client {
+    pub async fn build(self) -> BedrockRuntime {
         let sdk_config = aws_config::defaults(BehaviorVersion::latest())
             .region(Region::new(String::from(self.region)))
             .load()
             .await;
-        let client = aws_sdk_bedrockruntime::Client::new(&sdk_config);
-        Client {
-            profile_name: None,
-            aws_client: Arc::new(OnceCell::from(client)),
-        }
+        BedrockRuntime::from(aws_sdk_bedrockruntime::Client::new(&sdk_config))
     }
 }
 
-impl Default for ClientBuilder<'_> {
+impl Default for Builder<'_> {
     fn default() -> Self {
         Self {
             region: DEFAULT_AWS_REGION,
@@ -45,30 +49,41 @@ impl Default for ClientBuilder<'_> {
     }
 }
 
+/// The Bedrock runtime client every Bedrock wire is sent through. Clones
+/// share one client, which loads its AWS configuration on first use unless
+/// it was built from a configured SDK client.
 #[derive(Clone, Debug)]
-pub struct Client {
+pub struct BedrockRuntime {
     profile_name: Option<String>,
-    pub(crate) aws_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
+    aws_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
 }
 
-impl From<aws_sdk_bedrockruntime::Client> for Client {
+impl From<aws_sdk_bedrockruntime::Client> for BedrockRuntime {
     fn from(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
-        Client {
+        Self {
             profile_name: None,
             aws_client: Arc::new(OnceCell::from(aws_client)),
         }
     }
 }
 
-impl Client {
-    fn new() -> Self {
-        Self {
-            profile_name: None,
-            aws_client: Arc::new(OnceCell::new()),
-        }
+impl BedrockRuntime {
+    /// A builder that loads AWS SDK configuration for a chosen region.
+    pub fn builder<'a>() -> Builder<'a> {
+        Builder::default()
     }
 
-    /// Create an AWS Bedrock client using AWS profile name
+    /// A runtime that loads AWS SDK configuration from the environment on
+    /// first use. Construction does not validate credentials and always
+    /// succeeds.
+    pub fn from_env() -> Result<Self, rig_core::client::ProviderClientError> {
+        Ok(Self {
+            profile_name: None,
+            aws_client: Arc::new(OnceCell::new()),
+        })
+    }
+
+    /// A runtime that loads the named AWS profile on first use.
     pub fn with_profile_name(profile_name: &str) -> Self {
         Self {
             profile_name: Some(profile_name.into()),
@@ -76,6 +91,7 @@ impl Client {
         }
     }
 
+    /// The AWS SDK client, loading its configuration on first use.
     pub async fn inner(&self) -> &aws_sdk_bedrockruntime::Client {
         self.aws_client
             .get_or_init(|| async {
@@ -90,55 +106,5 @@ impl Client {
                 aws_sdk_bedrockruntime::Client::new(&config)
             })
             .await
-    }
-}
-
-impl Client {
-    /// Creates a client that loads AWS SDK configuration on first use.
-    /// Construction does not validate credentials and always succeeds.
-    pub fn from_env() -> Result<Self, rig_core::client::ProviderClientError> {
-        Ok(Client::new())
-    }
-
-    /// This provider's embedding model for `model`, at `ndims` dimensions
-    /// when the caller named one rather than taking the model's default.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, ndims)
-    }
-
-    /// An embedding builder over this provider's `model`.
-    pub fn embeddings<D: rig_core::Embed>(
-        &self,
-        model: impl Into<String>,
-    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
-        EmbeddingsBuilder::new(self.embedding(model, None))
-    }
-
-    /// An embedding builder over this provider's `model` at `ndims`
-    /// dimensions.
-    pub fn embeddings_with_ndims<D: rig_core::Embed>(
-        &self,
-        model: impl Into<String>,
-        ndims: usize,
-    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
-        EmbeddingsBuilder::new(self.embedding(model, Some(ndims)))
-    }
-
-    /// This provider's image-generation model for `model`.
-    pub fn image_generation(&self, model: impl Into<String>) -> ImageGenerationModel {
-        ImageGenerationModel::new(self.clone(), model)
-    }
-
-    /// Returns success without making a request or validating credentials.
-    pub async fn verify(&self) -> Result<(), ProviderError> {
-        Ok(())
-    }
-}
-
-impl CompletionProvider for Client {
-    type Model = CompletionModel;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Model {
-        CompletionModel::new(self.clone(), model)
     }
 }

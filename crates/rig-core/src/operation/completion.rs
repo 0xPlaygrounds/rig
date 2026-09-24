@@ -827,6 +827,63 @@ impl AdapterOutput {
         }));
     }
 
+    /// Emit a whole turn's parts as the events a stream sends for them: one
+    /// complete block per part, in order. Images, which no stream carries,
+    /// become unmodeled payloads.
+    pub fn content(&mut self, choice: &[crate::message::AssistantContent]) {
+        use crate::message::AssistantContent;
+
+        for (index, content) in choice.iter().enumerate() {
+            let index = index as u64;
+            match content {
+                AssistantContent::Text(text) => {
+                    let id = BlockId::minted(MintKind::Text, index);
+                    self.text_start(id.clone(), text.additional_params.clone());
+                    self.text(text.text.clone());
+                    self.text_end(id);
+                }
+                AssistantContent::Reasoning(reasoning) => {
+                    let id = reasoning
+                        .id
+                        .as_deref()
+                        .map(BlockId::wire)
+                        .unwrap_or_else(|| BlockId::minted(MintKind::Reasoning, index));
+                    self.reasoning_end(id, Some(reasoning.clone()), None, true);
+                }
+                // Images never stream (no adapter emits one, the accumulator has
+                // no block for one); a unary answer carrying an image reaches a
+                // stream consumer as an unmodeled item, verbatim.
+                AssistantContent::Image(image) => match serde_json::to_value(image) {
+                    Ok(value) => self.unknown(crate::streaming::UnknownPayload::new(value)),
+                    Err(error) => self.error(crate::error::ProviderError::Json(error)),
+                },
+                AssistantContent::ToolCall(call) => {
+                    // The durable handle is separate from the assembly key and
+                    // provider metadata. Local names are never inferred to be
+                    // wire IDs merely because they do not look minted.
+                    let mut end = ToolCallEnd::whole(
+                        call.function.name.clone(),
+                        call.function.arguments.clone(),
+                    )
+                    .with_durable_id(call.id.clone())
+                    .with_signature(call.signature.clone())
+                    .with_additional_params(call.additional_params.clone());
+                    if let Some(provider) = &call.provider {
+                        end = match &provider.item_id {
+                            Some(item_id) => end
+                                .with_call_id(provider.call_id.clone())
+                                .with_tool_id(item_id.clone()),
+                            None => end.with_tool_id(provider.call_id.clone()),
+                        };
+                    }
+                    // Re-emission creates a fresh assembly occurrence; durable
+                    // identity and provider handles are preserved on `end`.
+                    self.tool_call(BlockId::minted(MintKind::Tool, index), end);
+                }
+            }
+        }
+    }
+
     /// The provider-assigned message id (a `Message` block start).
     pub fn message_id(&mut self, id: impl Into<String>) {
         self.push(Ok(StreamEvent::BlockStart {

@@ -64,14 +64,11 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
     let loaded_model = model()?;
 
     let simple = tokio::time::timeout(Duration::from_secs(300), async {
-        loaded_model
-            .raw_completion(
-                loaded_model
+        raw_completion(&loaded_model, loaded_model
                     .completion_request("Answer with only the capital of France.")
                     .temperature(0.0)
                     .max_tokens(32)
-                    .build(),
-            )
+                    .build())
             .await
     })
     .await??;

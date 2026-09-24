@@ -16,14 +16,16 @@ use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use futures::Stream;
-use rig_core::completion::{CompletionModel, CompletionRequest, CompletionResponse};
-use rig_core::driver::run_wire_stream;
+use futures::StreamExt;
+use rig_core::completion::CompletionRequest;
+use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
 use rig_core::operation::AdapterOutput;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
-use rig_core::streaming::{StreamFinal, StreamingCompletionResponse, StreamingResult};
+use rig_core::streaming::StreamFinal;
+use rig_core::wire::Mode;
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -312,18 +314,79 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
+/// Local generation: the wire a [`CandleModel`] transport answers. Its
+/// payload is the completion request itself; the loaded model renders and
+/// runs it.
+///
+/// ```no_run
+/// use rig_candle::{CandleModel, Generation};
+/// use rig_core::Model;
+///
+/// fn model(candle: CandleModel) -> Model<Generation, CandleModel> {
+///     Model::new(Generation, candle)
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Generation;
+
+/// One unit of a local generation's reply.
+pub enum CandleFrame {
+    /// A whole unary turn: the local response record and its parsed content.
+    Whole(crate::generation::InferredCompletion),
+    /// One streamed generation event.
+    Event(GenerationEvent),
+}
+
+impl rig_core::wire::Wire for Generation {
+    type Op = rig_core::operation::Completion;
+    type Payload = CompletionRequest;
+    type Frame = CandleFrame;
+    type Decoder = CandleAdapter;
+
+    fn name(&self) -> &str {
+        crate::types::PROVIDER_NAME
+    }
+
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<CompletionRequest, rig_core::error::EncodeError> {
+        Ok(request)
+    }
+
+    fn decoder(&self, _mode: Mode) -> CandleAdapter {
+        CandleAdapter::default()
+    }
+}
+
 /// Converts typed local generation events through the shared completion driver.
 /// Every input is modeled; no byte decoding or unknown-frame classification occurs.
-struct CandleAdapter;
+#[derive(Default)]
+pub struct CandleAdapter {
+    /// The unary turn's local response record, for the response's `raw`.
+    document: Option<serde_json::Value>,
+}
 
-impl rig_core::wire::Decoder<rig_core::operation::Completion, GenerationEvent> for CandleAdapter {
-    type Event = GenerationEvent;
+impl rig_core::wire::Decoder<rig_core::operation::Completion, CandleFrame> for CandleAdapter {
+    type Event = CandleFrame;
 
-    fn classify(&self, frame: GenerationEvent) -> WireEvent<Self::Event> {
+    fn classify(&self, frame: CandleFrame) -> WireEvent<Self::Event> {
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
+    fn interpret(&mut self, frame: Self::Event, out: &mut AdapterOutput) {
+        let event = match frame {
+            CandleFrame::Event(event) => event,
+            CandleFrame::Whole(inferred) => {
+                match serde_json::to_value(&inferred.response) {
+                    Ok(document) => self.document = Some(document),
+                    Err(err) => return out.error(err.into()),
+                }
+                out.content(&inferred.choice);
+                GenerationEvent::Final(inferred.response)
+            }
+        };
         match event {
             GenerationEvent::Text(text) => out.text(text),
             GenerationEvent::ToolCall { id, end } => out.tool_call(id, end),
@@ -343,6 +406,10 @@ impl rig_core::wire::Decoder<rig_core::operation::Completion, GenerationEvent> f
         // Channel EOF without a `Final` event means the generator failed or
         // was cancelled: truncation, no terminal record.
     }
+
+    fn document(&self) -> Option<serde_json::Value> {
+        self.document.clone()
+    }
 }
 
 /// Map this crate's own terminal record onto rig's [`StreamFinal`],
@@ -357,29 +424,38 @@ fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, s
     .with_finish_reason(response.finish_reason.into()))
 }
 
-/// Normalizes typed generation events through the shared completion driver.
-/// No model loading is required; input errors propagate through the stream.
-pub fn stream_from_events(
-    events: impl futures::Stream<Item = Result<GenerationEvent, ProviderError>>
-    + rig_core::wasm_compat::WasmCompatSend
-    + 'static,
-) -> StreamingCompletionResponse {
-    StreamingCompletionResponse::stream(
-        crate::types::PROVIDER_NAME,
-        run_wire_stream(events, CandleAdapter),
-    )
+impl Transport<Generation> for CandleModel {
+    fn send(
+        &self,
+        request: CompletionRequest,
+        mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<CompletionRequest, CandleFrame>>
+        + rig_core::wasm_compat::WasmCompatSend
+        + 'static
+        + use<>,
+        ProviderError,
+    > {
+        let model = self.clone();
+        Ok(async move {
+            match mode {
+                Mode::Unary => match model.infer_completion(request).await {
+                    Ok(inferred) => {
+                        Opened::new(futures::stream::iter([Ok(CandleFrame::Whole(inferred))]))
+                    }
+                    Err(error) => Opened::failed(error),
+                },
+                Mode::Streaming => match model.open_stream(request).await {
+                    Ok(events) => Opened::new(events.map(|event| event.map(CandleFrame::Event))),
+                    Err(error) => Opened::failed(error),
+                },
+            }
+        })
+    }
 }
 
 impl CandleModel {
-    /// Runs one local completion and returns text, usage, and generation metrics.
-    /// Returns request-validation, inference, or native task errors.
-    pub async fn raw_completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CandleCompletionResponse, ProviderError> {
-        Ok(self.infer_completion(request).await?.response)
-    }
-
     async fn infer_completion(
         &self,
         request: CompletionRequest,
@@ -412,12 +488,15 @@ impl CandleModel {
         }
     }
 
-    /// Open a stream normalized to rig's terminal record; the adapter maps
-    /// this crate's own response record onto [`StreamFinal::raw`].
+    /// Open a stream of this model's generation events. Dropping the stream
+    /// signals cancellation between forward passes.
     async fn open_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingResult, ProviderError> {
+    ) -> Result<
+        rig_core::wasm_compat::WasmBoxedStream<'static, Result<GenerationEvent, ProviderError>>,
+        ProviderError,
+    > {
         let loaded = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
@@ -444,16 +523,12 @@ impl CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            // Dropping the driver stream drops the receiver and signals cancellation.
-            let stream = run_wire_stream(
-                CandleReceiverStream {
-                    receiver,
-                    cancellation,
-                },
-                CandleAdapter,
-            );
+            // Dropping the receiver signals cancellation.
             cancel_on_drop.disarm();
-            Ok(stream)
+            Ok(Box::pin(CandleReceiverStream {
+                receiver,
+                cancellation,
+            }))
         }
 
         #[cfg(target_family = "wasm")]
@@ -464,32 +539,8 @@ impl CandleModel {
                 Ok(())
             })?;
             events.push(Ok(GenerationEvent::Final(response)));
-            Ok(run_wire_stream(
-                futures::stream::iter(events),
-                CandleAdapter,
-            ))
+            Ok(Box::pin(futures::stream::iter(events)))
         }
-    }
-}
-
-impl CompletionModel for CandleModel {
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        Ok(self.infer_completion(request).await?.into_normalized()?)
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        let stream = self.open_stream(request).await?;
-
-        Ok(StreamingCompletionResponse::stream(
-            crate::types::PROVIDER_NAME,
-            stream,
-        ))
     }
 }
 

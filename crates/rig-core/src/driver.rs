@@ -444,6 +444,11 @@ where
         observation: Option<AdapterContext>,
     ) -> Result<CompletionStream, ProviderError> {
         let span = self.span(&request, true);
+        let model = request.model.clone();
+        let issuer = self
+            .wire
+            .reasoning_issuer(model.as_deref().or(self.wire.model()))
+            .map(str::to_owned);
         let steps = self.run(request, Mode::Streaming, observation, span.clone())?;
         let events = tracing_futures::Instrument::instrument(steps, span).filter_map(|step| {
             futures::future::ready(match step {
@@ -452,10 +457,7 @@ where
                 Err(error) => Some(Err(crate::error::ErrorReport::from(&error))),
             })
         });
-        let fold = CompletionFold::opened(
-            self.wire.name(),
-            self.wire.reasoning_issuer().map(str::to_owned),
-        );
+        let fold = CompletionFold::opened(self.wire.name(), issuer);
         Ok(CompletionStream::opened(fold, Box::pin(events)))
     }
 }

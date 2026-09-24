@@ -225,61 +225,10 @@ pub(crate) fn emit_response(
     response: &CompletionResponse,
     out: &mut crate::operation::AdapterOutput,
 ) {
-    use crate::{
-        message::AssistantContent,
-        streaming::{BlockId, MintKind, ToolCallEnd},
-    };
-
     if let Some(message_id) = &response.message_id {
         out.message_id(message_id.clone());
     }
-    for (index, content) in response.choice.iter().enumerate() {
-        let index = index as u64;
-        match content {
-            AssistantContent::Text(text) => {
-                let id = BlockId::minted(MintKind::Text, index);
-                out.text_start(id.clone(), text.additional_params.clone());
-                out.text(text.text.clone());
-                out.text_end(id);
-            }
-            AssistantContent::Reasoning(reasoning) => {
-                let id = reasoning
-                    .id
-                    .as_deref()
-                    .map(BlockId::wire)
-                    .unwrap_or_else(|| BlockId::minted(MintKind::Reasoning, index));
-                out.reasoning_end(id, Some(reasoning.clone()), None, true);
-            }
-            // Images never stream (no adapter emits one, the accumulator has
-            // no block for one); a unary answer carrying an image reaches a
-            // stream consumer as an unmodeled item, verbatim.
-            AssistantContent::Image(image) => match serde_json::to_value(image) {
-                Ok(value) => out.unknown(crate::streaming::UnknownPayload::new(value)),
-                Err(error) => out.error(crate::error::ProviderError::Json(error)),
-            },
-            AssistantContent::ToolCall(call) => {
-                // The durable handle is separate from the assembly key and
-                // provider metadata. Local names are never inferred to be
-                // wire IDs merely because they do not look minted.
-                let mut end =
-                    ToolCallEnd::whole(call.function.name.clone(), call.function.arguments.clone())
-                        .with_durable_id(call.id.clone())
-                        .with_signature(call.signature.clone())
-                        .with_additional_params(call.additional_params.clone());
-                if let Some(provider) = &call.provider {
-                    end = match &provider.item_id {
-                        Some(item_id) => end
-                            .with_call_id(provider.call_id.clone())
-                            .with_tool_id(item_id.clone()),
-                        None => end.with_tool_id(provider.call_id.clone()),
-                    };
-                }
-                // Re-emission creates a fresh assembly occurrence; durable
-                // identity and provider handles are preserved on `end`.
-                out.tool_call(BlockId::minted(MintKind::Tool, index), end);
-            }
-        }
-    }
+    out.content(&response.choice);
     let mut terminal = StreamFinal::new(
         response.provider.clone(),
         response.usage,

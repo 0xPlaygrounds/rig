@@ -441,10 +441,10 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
         Capabilities::<Self>::default()
     }
 
-    /// The issuer of this wire's reasoning when a deployment serves another
-    /// provider's models, known before a reply's terminal record names it.
-    /// `None` is the wire itself.
-    fn reasoning_issuer(&self) -> Option<&str> {
+    /// The issuer of the reasoning a reply for `model` carries when a
+    /// deployment serves another provider's models, known before the reply's
+    /// terminal record names it. `None` is the wire itself.
+    fn reasoning_issuer(&self, _model: Option<&str>) -> Option<&str> {
         None
     }
 
