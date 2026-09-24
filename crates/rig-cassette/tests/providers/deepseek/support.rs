@@ -93,6 +93,8 @@ where
         "https://api.deepseek.com",
     )
     .await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let bound = OpenAI::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

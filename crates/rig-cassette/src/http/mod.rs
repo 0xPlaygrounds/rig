@@ -1,9 +1,11 @@
 //! Native provider HTTP recording and replay with explicit fixture roots.
 //!
 //! Replay is the default; `RIG_PROVIDER_TEST_MODE=record` contacts the provider
-//! and overwrites scrubbed fixtures. The `http` feature enables this engine;
-//! `bedrock` adds binary Smithy event-stream scrubbing. Invalid fixtures and
-//! failed replay assertions panic.
+//! and overwrites scrubbed fixtures, unless the test failed or the recording
+//! holds an undeclared account failure or undeleted stored state, in which
+//! case it goes under [`attempt_root`] instead. The `http` feature enables this
+//! engine; `bedrock` adds binary Smithy event-stream scrubbing. Invalid
+//! fixtures and failed replay assertions panic.
 //!
 //! ```
 //! use rig_cassette::http::CassetteSpec;
@@ -47,13 +49,19 @@ use std::net::SocketAddr;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 
+mod account;
+pub mod ledger;
+mod relay;
+pub use account::{AccountFailure, account_failure, reply_account_failure};
+
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
+const ATTEMPT_DIR_ENV: &str = "RIG_CASSETTE_ATTEMPT_DIR";
 const REDACTED: &str = "[REDACTED]";
 const DUMMY_API_KEY: &str = REDACTED;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -71,6 +79,7 @@ enum ReplayMatching {
 pub struct CassetteSpec {
     scenario: &'static str,
     replay_matching: ReplayMatching,
+    expected_failures: u8,
 }
 
 impl CassetteSpec {
@@ -79,6 +88,7 @@ impl CassetteSpec {
         Self {
             scenario,
             replay_matching: ReplayMatching::Ordered,
+            expected_failures: 0,
         }
     }
 
@@ -90,6 +100,14 @@ impl CassetteSpec {
     /// Allow matching an unused interaction in any order.
     pub const fn unordered(mut self) -> Self {
         self.replay_matching = ReplayMatching::Unordered;
+        self
+    }
+
+    /// Declare `failure` as this cell's subject, so a recording may keep a
+    /// reply that [`account_failure`] classifies as one. Without the
+    /// declaration the recorder refuses such a reply.
+    pub const fn expects_account_failure(mut self, failure: AccountFailure) -> Self {
+        self.expected_failures |= failure.bit();
         self
     }
 }
@@ -223,6 +241,7 @@ fn skips_recording(mode: CassetteMode, reason: &str) -> bool {
 pub struct DirectRecorder {
     interactions: Arc<Mutex<Vec<CassetteInteraction>>>,
     policy: CassettePolicy,
+    ledger: Arc<relay::LedgerTarget>,
 }
 
 /// Borrowed request bytes and headers supplied to the direct recorder.
@@ -248,6 +267,44 @@ pub struct DirectHttpResponse<'a, Headers> {
 }
 
 impl DirectRecorder {
+    /// Append what a successful reply to `method uri` created to the
+    /// created-resource ledger. Called before the reply reaches the caller.
+    fn log_created(
+        &self,
+        method: &str,
+        uri: &str,
+        request_body: &[u8],
+        status: u16,
+        response_body: &[u8],
+    ) {
+        if !(200..300).contains(&status) {
+            return;
+        }
+        let path = url::Url::parse(uri)
+            .map(|url| url.path().to_owned())
+            .unwrap_or_else(|_| uri.to_owned());
+        let created = ledger::created_resources(
+            &self.ledger.provider,
+            &self.ledger.origin,
+            method,
+            &path,
+            request_body,
+            response_body,
+        );
+        ledger::append(
+            &self.ledger.path,
+            &created
+                .into_iter()
+                .map(|resource| {
+                    ledger::LedgerEntry::Created(ledger::CreatedResource {
+                        scenario: self.ledger.scenario.clone(),
+                        ..resource
+                    })
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
+
     /// Scrub and append one complete direct request/response exchange.
     pub async fn record_http_interaction<RequestHeaders, ResponseHeaders>(
         &self,
@@ -274,6 +331,14 @@ impl DirectRecorder {
                 response.body,
             ),
         };
+        // The ledger sees the exchange before its reply reaches the caller.
+        self.log_created(
+            request.method,
+            request.uri,
+            request.body,
+            response.status,
+            response.body,
+        );
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         self.interactions.lock().await.push(interaction);
@@ -325,12 +390,17 @@ pub struct ProviderCassette {
     base_path: String,
     mode: CassetteMode,
     policy: CassettePolicy,
+    provider: &'static str,
+    scenario: &'static str,
+    expected_failures: Arc<AtomicU8>,
+    attempt_root: PathBuf,
 }
 
 enum CassetteServer {
     Recording {
         server: MockServer,
         recording_id: usize,
+        relay: relay::Relay,
     },
     DirectRecording(DirectRecordingServer),
     Replay(ReplayServer),
@@ -339,12 +409,40 @@ enum CassetteServer {
 struct DirectRecordingServer {
     base_url: String,
     interactions: Arc<Mutex<Vec<CassetteInteraction>>>,
+    ledger: Arc<relay::LedgerTarget>,
 }
 
 impl CassetteServer {
+    /// The exchanges a recording session captured, as YAML; `None` for replay
+    /// or when nothing was exchanged.
+    async fn recorded_yaml(&self) -> Option<String> {
+        match self {
+            Self::Recording {
+                server,
+                recording_id,
+                ..
+            } => {
+                let recording = httpmock::Recording::new(*recording_id, server);
+                let bytes = recording.export_async().await.ok()??;
+                let yaml = String::from_utf8(bytes.to_vec()).ok()?;
+                // httpmock can export an empty document before the first response.
+                let parsed = serde_yaml::Deserializer::from_str(&yaml)
+                    .map(CassetteInteraction::deserialize)
+                    .collect::<Result<Vec<_>, _>>()
+                    .ok()?;
+                (!parsed.is_empty()).then_some(yaml)
+            }
+            Self::DirectRecording(server) => {
+                let interactions = server.interactions.lock().await;
+                (!interactions.is_empty()).then(|| serialize_cassette_interactions(&interactions))
+            }
+            Self::Replay(_) => None,
+        }
+    }
+
     fn base_url(&self) -> String {
         match self {
-            Self::Recording { server, .. } => server.base_url(),
+            Self::Recording { relay, .. } => relay.base_url.clone(),
             Self::DirectRecording(server) => server.base_url.clone(),
             Self::Replay(server) => server.base_url(),
         }
@@ -413,7 +511,31 @@ impl ProviderCassette {
         mode: CassetteMode,
         cassette_path: PathBuf,
     ) -> Self {
+        Self::start_with_attempts(
+            transport,
+            provider,
+            spec,
+            real_base_url,
+            mode,
+            cassette_path,
+            attempt_root(),
+        )
+        .await
+    }
+
+    /// [`Self::start_at`] with failed recordings and the ledger under
+    /// `attempt_root` instead of the ambient [`attempt_root`].
+    pub(crate) async fn start_with_attempts(
+        transport: Transport,
+        provider: &'static str,
+        spec: CassetteSpec,
+        real_base_url: &str,
+        mode: CassetteMode,
+        cassette_path: PathBuf,
+        attempt_root: PathBuf,
+    ) -> Self {
         let scenario = spec.scenario;
+        let ledger_path = attempt_root.join(ledger::LEDGER_FILE);
         let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
         let upstream = UpstreamBase::parse(real_base_url);
         let server = if !mode.records() {
@@ -429,6 +551,12 @@ impl ProviderCassette {
                 Transport::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
                     base_url: upstream.origin.clone(),
                     interactions: Arc::new(Mutex::new(Vec::new())),
+                    ledger: Arc::new(relay::LedgerTarget {
+                        path: ledger_path.clone(),
+                        provider: provider.to_owned(),
+                        scenario: scenario.to_owned(),
+                        origin: upstream.origin.clone(),
+                    }),
                 }),
                 Transport::Proxy => {
                     let server = MockServer::start_async().await;
@@ -450,9 +578,23 @@ impl ProviderCassette {
                         })
                         .await;
                     let recording_id = recording.id;
+                    // Clients reach the proxy through the relay, which writes
+                    // the created-resource ledger as replies pass.
+                    let relay = relay::Relay::start(
+                        server.address().to_string(),
+                        relay::LedgerTarget {
+                            path: ledger_path.clone(),
+                            provider: provider.to_owned(),
+                            scenario: scenario.to_owned(),
+                            origin: upstream.origin.clone(),
+                        },
+                    )
+                    .await
+                    .expect("the recording relay should bind");
                     CassetteServer::Recording {
                         server,
                         recording_id,
+                        relay,
                     }
                 }
             }
@@ -464,6 +606,10 @@ impl ProviderCassette {
             base_path: upstream.path,
             mode,
             policy,
+            provider,
+            scenario,
+            expected_failures: Arc::new(AtomicU8::new(spec.expected_failures)),
+            attempt_root,
         }
     }
 
@@ -478,6 +624,7 @@ impl ProviderCassette {
             CassetteServer::Recording {
                 server,
                 recording_id,
+                ..
             } => {
                 let recording = httpmock::Recording::new(*recording_id, server);
                 let Ok(Some(bytes)) = recording.export_async().await else {
@@ -522,6 +669,7 @@ impl ProviderCassette {
             CassetteServer::DirectRecording(server) => Some(DirectRecorder {
                 interactions: server.interactions.clone(),
                 policy: self.policy,
+                ledger: server.ledger.clone(),
             }),
             _ => None,
         }
@@ -535,11 +683,21 @@ impl ProviderCassette {
     /// Return an invalid key for recording auth failures, or the scrubbed dummy
     /// key for replay so matched query credentials agree with the fixture.
     pub fn bogus_api_key(&self) -> String {
+        // Handing out a rejected credential makes the rejection the subject.
+        self.expect_account_failure(AccountFailure::Auth);
         if self.mode.records() {
             "invalid-edge-matrix-key".to_string()
         } else {
             DUMMY_API_KEY.to_string()
         }
+    }
+
+    /// Declare `failure` as this session's subject, so the recording may keep
+    /// a reply [`account_failure`] classifies as one. Call it from a wrapper
+    /// that presents a rejected or missing credential on purpose.
+    pub fn expect_account_failure(&self, failure: AccountFailure) {
+        self.expected_failures
+            .fetch_or(failure.bit(), Ordering::Relaxed);
     }
 
     /// Return the named environment key when recording, or a dummy key for replay.
@@ -556,16 +714,22 @@ impl ProviderCassette {
 
     /// Write a scrubbed recording or assert complete replay consumption and shut
     /// down. Panics on empty recordings, export or write failures, unsafe data,
-    /// unused interactions, or refused replay requests.
+    /// unused interactions, or refused replay requests. A recording holding an
+    /// undeclared account failure (see [`account_failure`]) is not written to
+    /// the fixture: it goes to [`attempt_root`] and this panics.
     pub async fn finish(self) {
+        let expected = self.expected_failures.load(Ordering::Relaxed);
         let Self {
             server,
             cassette_path,
             policy,
+            provider,
+            scenario,
+            attempt_root,
             ..
         } = self;
 
-        let (server, recording_id) = match server {
+        let yaml = match server {
             CassetteServer::Replay(mut server) => {
                 let result = AssertUnwindSafe(server.assert_consumed(&cassette_path))
                     .catch_unwind()
@@ -576,36 +740,32 @@ impl ProviderCassette {
                 }
                 return;
             }
-            CassetteServer::DirectRecording(server) => {
-                let yaml = {
-                    let interactions = server.interactions.lock().await;
-                    assert!(
-                        !interactions.is_empty(),
-                        "provider cassette {} should contain at least one interaction",
-                        cassette_path.display()
-                    );
-                    serialize_cassette_interactions(&interactions)
-                };
-                write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
-                return;
-            }
-            CassetteServer::Recording {
-                server,
-                recording_id,
-            } => (server, recording_id),
+            server => server.recorded_yaml().await.unwrap_or_else(|| {
+                panic!(
+                    "provider cassette {} should contain at least one interaction",
+                    cassette_path.display()
+                )
+            }),
         };
 
-        let recording = httpmock::Recording::new(recording_id, &server);
-        let bytes = recording
-            .export_async()
-            .await
-            .expect("provider cassette should export")
-            .expect("provider cassette should contain at least one interaction");
-        let yaml = String::from_utf8(bytes.to_vec()).expect("cassette YAML should be UTF-8");
+        let refusals = recording_refusals(provider, &yaml, expected);
+        if !refusals.is_empty() {
+            let kept = write_attempt(&attempt_root, provider, scenario, policy, &yaml).await;
+            panic!(
+                "provider cassette {} was not written: {}\nthe recording was kept at {}",
+                cassette_path.display(),
+                refusals.join("; "),
+                kept.map_or_else(
+                    || "<nowhere: write failed>".to_owned(),
+                    |path| path.display().to_string()
+                )
+            );
+        }
         write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
     }
 
     /// Finalize after a successful test, preserving its original panic otherwise.
+    /// A failed recording is kept under [`attempt_root`], never over the fixture.
     pub async fn finish_after_test(self, test_result: Result<(), PanicPayload>) {
         match test_result {
             Ok(()) => {
@@ -614,12 +774,14 @@ impl ProviderCassette {
                 }
             }
             Err(payload) => {
+                self.keep_failed_attempt().await;
                 resume_unwind(payload);
             }
         }
     }
 
     /// Finalize after a successful fallible test, preserving its failure otherwise.
+    /// A failed recording is kept under [`attempt_root`], never over the fixture.
     pub async fn finish_after_test_result<E>(
         mut self,
         test_result: Result<Result<(), E>, PanicPayload>,
@@ -635,9 +797,35 @@ impl ProviderCassette {
                 // The test's own failure is the report; the session it left
                 // unplayed must not replace it with the drop guard's.
                 self.disarm_drop_guard();
+                self.keep_failed_attempt().await;
                 Err(error)
             }
-            Err(payload) => resume_unwind(payload),
+            Err(payload) => {
+                self.keep_failed_attempt().await;
+                resume_unwind(payload)
+            }
+        }
+    }
+
+    /// Save a failed recording pass's exchanges under [`attempt_root`], so
+    /// the ids it created stay recoverable. Replay sessions keep nothing.
+    async fn keep_failed_attempt(self) {
+        if !self.mode.records() {
+            return;
+        }
+        let Self {
+            server,
+            policy,
+            provider,
+            scenario,
+            attempt_root,
+            ..
+        } = self;
+        if let Some(yaml) = server.recorded_yaml().await
+            && let Some(path) =
+                write_attempt(&attempt_root, provider, scenario, policy, &yaml).await
+        {
+            eprintln!("failed recording kept at {}", path.display());
         }
     }
 
@@ -1999,6 +2187,194 @@ fn artifact_safety_failures_with_policy(
     failures
 }
 
+/// One reply in a cassette that [`reply_account_failure`] classifies.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CassetteAccountFailure {
+    /// The interaction's position, from 0.
+    pub index: usize,
+    /// The request method and path.
+    pub request: String,
+    /// The reply's status.
+    pub status: u16,
+    /// What kind of account failure it is.
+    pub failure: AccountFailure,
+}
+
+/// Every reply in the cassette `contents` that is an account failure, by
+/// [`reply_account_failure`].
+/// Panics if the cassette cannot be parsed.
+pub fn cassette_account_failures(contents: &str) -> Vec<CassetteAccountFailure> {
+    parse_cassette_interactions(Path::new("<cassette>"), contents)
+        .iter()
+        .enumerate()
+        .filter_map(|(index, interaction)| {
+            let body = interaction.then.body.as_deref().unwrap_or_default();
+            let body = decode_body(body, interaction.then.body_encoding)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .unwrap_or_default();
+            reply_account_failure(interaction.then.status, &body).map(|failure| {
+                CassetteAccountFailure {
+                    index,
+                    request: format!("{} {}", interaction.when.method, interaction.when.path),
+                    status: interaction.then.status,
+                    failure,
+                }
+            })
+        })
+        .collect()
+}
+
+/// Providers whose Responses API stores a response unless the request sends
+/// `store: false`.
+pub(crate) const STORING_RESPONSES_PROVIDERS: &[&str] = &["openai", "xai"];
+
+/// The stored responses a cassette for `provider` creates and never deletes:
+/// each successful Responses request without `store: false` whose response
+/// id no successful `DELETE` in the same cassette removes. Only `openai` and
+/// `xai` store. Panics if the cassette cannot be parsed.
+pub fn cassette_stored_state(provider: &str, contents: &str) -> Vec<String> {
+    if !STORING_RESPONSES_PROVIDERS.contains(&provider) {
+        return Vec::new();
+    }
+    let interactions = parse_cassette_interactions(Path::new("<cassette>"), contents);
+    let body_bytes = |body: Option<&str>, encoding: BodyEncoding| {
+        decode_body(body.unwrap_or_default(), encoding).unwrap_or_default()
+    };
+    // Only a DELETE the provider accepted (2xx) removed the response.
+    let deleted: Vec<&str> = interactions
+        .iter()
+        .filter(|interaction| {
+            interaction.when.method.eq_ignore_ascii_case("DELETE")
+                && (200..300).contains(&interaction.then.status)
+        })
+        .map(|interaction| interaction.when.path.as_str())
+        .collect();
+    let mut stored = Vec::new();
+    for interaction in &interactions {
+        if !(200..300).contains(&interaction.then.status) {
+            continue;
+        }
+        let created = ledger::created_resources(
+            provider,
+            "",
+            &interaction.when.method,
+            &interaction.when.path,
+            &body_bytes(
+                interaction.when.body.as_deref(),
+                interaction.when.body_encoding,
+            ),
+            &body_bytes(
+                interaction.then.body.as_deref(),
+                interaction.then.body_encoding,
+            ),
+        );
+        for resource in created {
+            let removed = deleted.iter().any(|path| {
+                path.trim_end_matches('/')
+                    .ends_with(&format!("/{}", resource.id))
+            });
+            if resource.kind == ledger::ResourceKind::Response
+                && !removed
+                && !stored.contains(&resource.id)
+            {
+                stored.push(resource.id);
+            }
+        }
+    }
+    stored
+}
+
+/// Why a finished recording must not become a fixture: each reply that is an
+/// account failure the session did not declare, and each response it stored
+/// without deleting.
+fn recording_refusals(provider: &str, yaml: &str, expected: u8) -> Vec<String> {
+    let mut refusals: Vec<String> = cassette_account_failures(yaml)
+        .into_iter()
+        .filter(|found| expected & found.failure.bit() == 0)
+        .map(|found| {
+            format!(
+                "interaction {} ({}) is an undeclared {:?} failure (status {})",
+                found.index, found.request, found.failure, found.status
+            )
+        })
+        .collect();
+    let stored = cassette_stored_state(provider, yaml);
+    if !stored.is_empty() {
+        refusals.push(format!(
+            "it stored responses it never deleted ({}); send `store: false`, or delete them in \
+             the same session",
+            stored.join(", ")
+        ));
+    }
+    refusals
+}
+
+/// Where failed and refused recordings go: `RIG_CASSETTE_ATTEMPT_DIR` (a
+/// relative path is taken from the current directory), else
+/// `cassette-attempts` in the Cargo target directory the running binary was
+/// built in, which is where `cargo xtask cassette` looks (a `--target
+/// <triple>` build uses `<target>/<triple>` instead). Failing that, an
+/// absolute `CARGO_TARGET_DIR`, else the system temporary directory. Never
+/// inside the fixture tree.
+pub fn attempt_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os(ATTEMPT_DIR_ENV) {
+        let dir = PathBuf::from(dir);
+        return std::env::current_dir()
+            .map(|current| current.join(&dir))
+            .unwrap_or(dir);
+    }
+    let target = std::env::current_exe()
+        .ok()
+        .and_then(|exe| target_dir_of(&exe))
+        .or_else(|| {
+            std::env::var_os("CARGO_TARGET_DIR")
+                .map(PathBuf::from)
+                .filter(|dir| dir.is_absolute())
+        })
+        .unwrap_or_else(std::env::temp_dir);
+    target.join("cassette-attempts")
+}
+
+/// The Cargo target directory a test or example binary was built in:
+/// `<target>/<profile>/deps/<binary>` or `<target>/<profile>/examples/<binary>`.
+pub(crate) fn target_dir_of(exe: &Path) -> Option<PathBuf> {
+    let kind = exe.parent()?;
+    let name = kind.file_name()?;
+    (name == "deps" || name == "examples")
+        .then(|| kind.parent()?.parent().map(Path::to_path_buf))
+        .flatten()
+}
+
+/// Scrub `yaml` and write it to a fresh file under `root`:
+/// `<provider>/<scenario>.<unix seconds>-<pid>-<n>.yaml`. Returns the path,
+/// or `None` when the write failed.
+async fn write_attempt(
+    root: &Path,
+    provider: &str,
+    scenario: &str,
+    policy: CassettePolicy,
+    yaml: &str,
+) -> Option<PathBuf> {
+    let redacted = scrub_cassette_contents_with_policy(policy, yaml);
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = root.join(provider).join(format!(
+        "{}.{seconds}-{}-{counter}.yaml",
+        scenario
+            .split('/')
+            .map(sanitize_path_segment)
+            .collect::<Vec<_>>()
+            .join("/"),
+        std::process::id()
+    ));
+    write_cassette_atomically(&path, redacted.as_bytes())
+        .await
+        .ok()
+        .map(|()| path)
+}
+
 async fn write_scrubbed_cassette(cassette_path: &Path, policy: CassettePolicy, yaml: &str) {
     let redacted = scrub_cassette_contents_with_policy(policy, yaml);
     let failures = cassette_safety_failures_with_policy(policy, cassette_path, &redacted);
@@ -2172,6 +2548,21 @@ const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
     "x-request-id",
     "mistral-correlation-id",
 ];
+
+/// Whether the recorder normalizes `key`, at any depth and in any ASCII
+/// case, in recorded JSON bodies (a timestamp that changes on every
+/// recording). A recording pass therefore sees a live value the fixture does
+/// not hold; compare such keys by JSON type there and exactly in replay.
+pub fn is_volatile_json_key(key: &str) -> bool {
+    VOLATILE_JSON_KEYS
+        .iter()
+        .any(|volatile| volatile.eq_ignore_ascii_case(key))
+}
+
+/// Every key [`is_volatile_json_key`] accepts.
+pub fn volatile_json_keys() -> &'static [&'static str] {
+    VOLATILE_JSON_KEYS
+}
 
 const VOLATILE_JSON_KEYS: &[&str] = &[
     "completed_at",
@@ -2754,8 +3145,9 @@ fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
 mod tests;
 
 /// A reqwest client that buffers unary responses and optionally records complete
-/// exchanges, preserving non-UTF-8 bodies as base64. Multipart and streaming
-/// requests pass through without recording.
+/// exchanges, preserving non-UTF-8 bodies as base64. Multipart requests are
+/// not recorded, but a file they upload is logged in the created-resource
+/// ledger; streaming requests pass through untouched.
 #[derive(Clone, Debug, Default)]
 pub struct DirectRecordingHttpClient {
     inner: rig_reqwest::ReqwestClient,
@@ -2835,7 +3227,20 @@ impl HttpClientExt for DirectRecordingHttpClient {
     where
         U: From<Bytes> + Send + 'static,
     {
-        self.inner.send_multipart(req)
+        let inner = self.inner.clone();
+        let recorder = self.recorder.clone();
+        let method = req.method().to_string();
+        let uri = req.uri().to_string();
+        async move {
+            let response = inner.send_multipart::<Bytes>(req).await?;
+            let (parts, lazy_body) = response.into_parts();
+            let bytes = lazy_body.await?;
+            if let Some(recorder) = recorder {
+                recorder.log_created(&method, &uri, &[], parts.status.as_u16(), &bytes);
+            }
+            let body: LazyBody<U> = Box::pin(async move { Ok(U::from(bytes)) });
+            Ok(HttpResponse::from_parts(parts, body))
+        }
     }
 
     fn send_streaming<T>(
@@ -2866,6 +3271,8 @@ pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> 
 mod explicit_destination_tests;
 #[cfg(test)]
 mod paths;
+#[cfg(test)]
+mod recording_guard_tests;
 #[cfg(test)]
 mod replay_session_tests;
 

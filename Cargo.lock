@@ -10930,6 +10930,8 @@ dependencies = [
  "bytes",
  "futures",
  "http 1.4.2",
+ "proc-macro2",
+ "quote",
  "reqwest 0.13.4",
  "rig-agent",
  "rig-cassette",
@@ -15105,7 +15107,9 @@ version = "0.42.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "serde",
  "serde_json",
+ "serde_yaml",
  "syn 2.0.117",
  "thiserror 2.0.18",
 ]

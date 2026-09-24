@@ -265,13 +265,12 @@ async fn raw_round_trips_into_provider_type() {
         &[body["id"].as_str().map(str::to_string)],
         ROUND_TRIP_SCENARIO,
     );
-    for key in body.as_object().expect("recorded body is an object").keys() {
-        assert_eq!(
-            raw.get(key),
-            body.get(key),
-            "`raw` carries the document's `{key}` field, verbatim"
-        );
-    }
+    crate::support::assert_matches_recorded_document(
+        raw,
+        &body,
+        &[],
+        "`raw` carries the document's fields, verbatim",
+    );
 
     // The transport id is a response *header*, not a body field, so the
     // document cannot carry it; the driver stamps it onto the normalized

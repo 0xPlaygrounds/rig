@@ -43,7 +43,7 @@ use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::{BoundOpenRouter, with_openrouter_terminal_metadata_cassette_result};
-use crate::support::assert_wire_value_matches;
+use crate::support::assert_matches_recorded_document;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -371,19 +371,11 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
                 "{scenario}: model"
             );
             assert_usage(scenario, &observation.raw["usage"], &usage);
-            // The recorder normalizes the volatile `created`, so it compares by
-            // type in a recording pass and exactly in replay.
-            let mut live = observation.raw["additional_params"].clone();
-            let mut recorded = recorded_additional_params(&chunks);
-            assert_wire_value_matches(&live, &recorded, "created");
-            for fields in [&mut live, &mut recorded] {
-                if let Some(fields) = fields.as_object_mut() {
-                    fields.remove("created");
-                }
-            }
-            assert_eq!(
-                live, recorded,
-                "{scenario}: every unmodeled top-level SSE field"
+            assert_matches_recorded_document(
+                &observation.raw["additional_params"],
+                &recorded_additional_params(&chunks),
+                &[],
+                &format!("{scenario}: every unmodeled top-level SSE field"),
             );
             assert_eq!(
                 observation.raw["additional_params"]["provider"],

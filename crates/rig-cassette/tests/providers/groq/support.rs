@@ -60,6 +60,8 @@ where
         GROQ.base_url,
     )
     .await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let groq = OpenAI::with_key(&GROQ, "gsk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

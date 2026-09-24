@@ -104,6 +104,8 @@ where
         MISTRAL_BASE_URL,
     )
     .await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let client = OpenAI::with_key(&MISTRAL, "invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

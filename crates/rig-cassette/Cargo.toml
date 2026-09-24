@@ -26,6 +26,10 @@ exclude = [
 # those entrypoints include, never targets of their own.
 autotests = false
 
+[[example]]
+name = "cassette_tool"
+required-features = ["http"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

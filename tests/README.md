@@ -145,6 +145,65 @@ RIG_PROVIDER_TEST_MODE=record \
 cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
 ```
 
+Prefer re-recording by fixture, from the repository root:
+
+```bash
+cargo xtask cassette record [--cap N] [--pause SECS] [--dry-run] [--no-cleanup] <provider/scenario.yaml>...
+```
+
+It runs each fixture's owning test once in record mode and logs every run in
+an attempt ledger, before it starts and when it ends. A test stops at six
+attempts, or at `--cap` when that is lower. After a failed run it copies every
+fixture change aside and restores the provider's fixtures as they were just
+before the run. It ends with the cleanup pass below, whatever happened, and
+exits non-zero when any test did not record, including one already at its cap.
+The other commands:
+
+- `cassette owner <fixture>...` prints every test that records a fixture.
+- `cassette spend [--cap-per-wire USD] [--cap-total USD]` prices the attempt
+  ledger conservatively. A failed or interrupted attempt costs at least $0.05.
+- `cassette scan [--base REF] [<fixture>...]` checks changed fixtures for
+  credentials, account ids, emails and home paths. It matches case-sensitively
+  on whole tokens, and searches for every exported `*_API_KEY`, `*_TOKEN` and
+  `*_SECRET` value literally.
+- `cassette goldens [--test TARGET]...` regenerates effect goldens from
+  replay and reverts churn that only touches `header.deliveries`.
+- `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.
+
+The recorder refuses to write a fixture, and panics, in two cases:
+
+- A reply is an account failure the cell did not declare as its subject: a
+  refused credential, a spent quota, a rate limit or an empty balance. This
+  includes one delivered inside a successful stream. Declare an expected
+  failure with `CassetteSpec::expects_account_failure` or, in a wrapper that
+  presents a rejected key, `ProviderCassette::expect_account_failure`
+  (`bogus_api_key()` declares it too).
+- An OpenAI or xAI Responses request stored a response the same session never
+  deleted. Send `store: false` unless the cell is a chain that deletes its
+  own state.
+
+Fixtures older than the stored-state rule are listed in
+`crates/rig-cassette/tests/common/stored_state_grandfathered.txt`. When you
+re-record one with `store: false`, delete its line; the safety tests fail
+until you do.
+
+A failed or refused recording is written under the attempt root, never over
+the fixture. The attempt root is `RIG_CASSETTE_ATTEMPT_DIR`, or by default
+`cassette-attempts` in the target directory. As replies arrive, before the
+test can panic, the recorder appends every stored response, file, cache,
+interaction, conversation or vector store it sees created to `ledger.jsonl`
+there. `cargo xtask cassette cleanup` deletes whatever the ledger still holds,
+using each provider's API key. A 404, or Gemini's 403 "not found", counts as
+already gone.
+
+The recorder normalizes volatile timestamps (`created`, `created_at`, …) at
+any depth, so a recording pass sees live values its fixture never holds.
+Compare a reply document with its fixture through
+`assert_matches_recorded_document`, or one field through
+`assert_wire_value_matches`. Both compare such keys by type when recording and
+exactly in replay. The cassette-safety tests reject an exact comparison of a
+volatile key outside replay.
+
 A handful of committed cassettes hold bytes no provider will return: they are
 hand-derived from a live capture, or deliberately corrupted to pin a parser
 regression. The test that owns such a fixture marks itself, so the sweep above

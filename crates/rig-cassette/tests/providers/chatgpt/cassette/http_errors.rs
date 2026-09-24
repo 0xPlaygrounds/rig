@@ -12,7 +12,10 @@ use super::super::support::with_chatgpt_cassette;
 #[tokio::test]
 async fn nonstreaming_unauthorized_preserves_status_and_body() {
     with_chatgpt_cassette(
-        "http_errors/nonstreaming_unauthorized_preserves_status_and_body",
+        crate::cassettes::CassetteSpec::new(
+            "http_errors/nonstreaming_unauthorized_preserves_status_and_body",
+        )
+        .expects_account_failure(crate::cassettes::AccountFailure::Auth),
         |client| async move {
             assert_nonstreaming_http_error(
                 client,

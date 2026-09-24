@@ -1142,8 +1142,22 @@ pub fn assert_wire_value_matches(
     recorded: &serde_json::Value,
     field: &str,
 ) {
+    wire_value_matches_in(
+        crate::cassettes::CassetteMode::current(),
+        live,
+        recorded,
+        field,
+    );
+}
+
+fn wire_value_matches_in(
+    mode: crate::cassettes::CassetteMode,
+    live: &serde_json::Value,
+    recorded: &serde_json::Value,
+    field: &str,
+) {
     let (live_value, recorded_value) = (live.get(field), recorded.get(field));
-    match crate::cassettes::CassetteMode::current() {
+    match mode {
         crate::cassettes::CassetteMode::Replay => assert_eq!(
             live_value, recorded_value,
             "{field}: replayed value must equal the recorded wire value"
@@ -1158,6 +1172,121 @@ pub fn assert_wire_value_matches(
                 "{field}: live and recorded values must share a JSON type"
             );
         }
+    }
+}
+
+/// Compare a live reply document with its recorded fixture, key for key.
+///
+/// Both must hold the same keys at every depth, apart from the top-level
+/// `ignore` keys, which the caller checks another way (a minted id), and
+/// arrays of the same length. Keys the recorder normalizes
+/// ([`crate::cassettes::is_volatile_json_key`], at any depth) compare
+/// through [`assert_wire_value_matches`]: by JSON type in a recording pass,
+/// exactly in replay. Every other value compares exactly in both modes.
+///
+/// # Panics
+///
+/// Panics on the first difference, naming `context` and the path to it
+/// (`.data[3].created_at`).
+pub fn assert_matches_recorded_document(
+    live: &serde_json::Value,
+    recorded: &serde_json::Value,
+    ignore: &[&str],
+    context: &str,
+) {
+    matches_recorded_document_in(
+        crate::cassettes::CassetteMode::current(),
+        live,
+        recorded,
+        ignore,
+        context,
+    );
+}
+
+pub(crate) fn matches_recorded_document_in(
+    mode: crate::cassettes::CassetteMode,
+    live: &serde_json::Value,
+    recorded: &serde_json::Value,
+    ignore: &[&str],
+    context: &str,
+) {
+    compare_recorded(mode, live, recorded, ignore, context, "");
+}
+
+fn compare_recorded(
+    mode: crate::cassettes::CassetteMode,
+    live: &serde_json::Value,
+    recorded: &serde_json::Value,
+    ignore: &[&str],
+    context: &str,
+    at: &str,
+) {
+    use serde_json::Value;
+    match (live, recorded) {
+        (Value::Object(live_map), Value::Object(recorded_map)) => {
+            let keys =
+                |map: &serde_json::Map<String, Value>| -> std::collections::BTreeSet<String> {
+                    map.keys()
+                        .filter(|key| !ignore.contains(&key.as_str()))
+                        .cloned()
+                        .collect()
+                };
+            let recorded_keys = keys(recorded_map);
+            assert_eq!(
+                keys(live_map),
+                recorded_keys,
+                "{context}: the keys of `{at}`"
+            );
+            for key in &recorded_keys {
+                let path = format!("{at}.{key}");
+                if crate::cassettes::is_volatile_json_key(key) {
+                    let (live_value, recorded_value) = (&live_map[key], &recorded_map[key]);
+                    match mode {
+                        crate::cassettes::CassetteMode::Replay => assert_eq!(
+                            live_value, recorded_value,
+                            "{context}: `{path}` must equal the recorded wire value in replay"
+                        ),
+                        crate::cassettes::CassetteMode::Record => assert_eq!(
+                            std::mem::discriminant(live_value),
+                            std::mem::discriminant(recorded_value),
+                            "{context}: `{path}` must share the recorded value's JSON type"
+                        ),
+                    }
+                } else {
+                    compare_recorded(
+                        mode,
+                        &live_map[key],
+                        &recorded_map[key],
+                        &[],
+                        context,
+                        &path,
+                    );
+                }
+            }
+        }
+        (Value::Array(live_items), Value::Array(recorded_items)) => {
+            assert_eq!(
+                live_items.len(),
+                recorded_items.len(),
+                "{context}: the length of `{at}`"
+            );
+            for (index, (live_item, recorded_item)) in
+                live_items.iter().zip(recorded_items).enumerate()
+            {
+                compare_recorded(
+                    mode,
+                    live_item,
+                    recorded_item,
+                    &[],
+                    context,
+                    &format!("{at}[{index}]"),
+                );
+            }
+        }
+        _ => assert_eq!(
+            live, recorded,
+            "{context}: `{at}` must be carried unchanged"
+        ),
     }
 }
 

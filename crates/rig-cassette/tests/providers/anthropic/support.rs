@@ -305,6 +305,8 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
         "https://api.anthropic.com",
     )
     .await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let bound = Anthropic::new("sk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

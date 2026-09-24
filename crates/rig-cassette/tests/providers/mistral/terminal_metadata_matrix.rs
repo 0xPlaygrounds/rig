@@ -45,6 +45,7 @@ use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::{BoundMistral, with_mistral_terminal_metadata_cassette_result};
+use crate::support::assert_matches_recorded_document;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -326,10 +327,11 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
                 "{scenario}: model"
             );
             assert_usage(scenario, &observation.raw["usage"], &usage);
-            assert_eq!(
-                observation.raw["additional_params"],
-                recorded_additional_params(&chunks),
-                "{scenario}: every unmodeled top-level SSE field"
+            assert_matches_recorded_document(
+                &observation.raw["additional_params"],
+                &recorded_additional_params(&chunks),
+                &[],
+                &format!("{scenario}: every unmodeled top-level SSE field"),
             );
             assert_eq!(
                 observation.raw["finish_reason"], expected_finish,
