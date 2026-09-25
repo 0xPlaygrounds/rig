@@ -99,17 +99,6 @@ impl EmbeddingResponse {
 
 crate::provider_response::modality_response_metadata_setters!(EmbeddingResponse);
 
-/// Normalizes embedding payloads using the supplied provider name and input documents.
-pub trait NormalizeEmbeddingResponse {
-    /// Normalize this payload, attributing it to `provider`. `documents` are
-    /// the inputs in request order, for [`Embedding::document`].
-    fn normalize(
-        self,
-        provider: &str,
-        documents: Vec<String>,
-    ) -> Result<EmbeddingResponse, ProviderError>;
-}
-
 /// Image embeddings and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageEmbeddingResponse {

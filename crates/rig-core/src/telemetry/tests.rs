@@ -118,62 +118,6 @@ where
     }
 }
 
-/// `instrument_modality` opens the canonical span with the request fields
-/// and records the normalized response's usage and identity on success.
-#[test]
-fn instrument_modality_records_usage_and_identity() {
-    let fields = ModalityCapture::default();
-    let subscriber = Registry::default().with(ModalityCaptureLayer {
-        fields: fields.clone(),
-    });
-    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
-        let response = crate::embeddings::EmbeddingResponse::new(vec![], "probe")
-            .with_model("probe-embed-v2")
-            .with_response_id("emb_123")
-            .with_usage(Usage {
-                input_tokens: Some(7),
-                total_tokens: Some(7),
-                ..Usage::default()
-            });
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
-        runtime
-            .block_on(instrument_modality::<crate::operation::Embedding, _>(
-                "probe",
-                "probe-embed",
-                async { Ok::<_, crate::error::ProviderError>(response) },
-            ))
-            .expect("call succeeds");
-    });
-
-    assert_eq!(
-        fields.get("gen_ai.operation.name").as_deref(),
-        Some("\"embeddings\"")
-    );
-    assert_eq!(
-        fields.get("gen_ai.provider.name").as_deref(),
-        Some("\"probe\"")
-    );
-    assert_eq!(
-        fields.get("gen_ai.request.model").as_deref(),
-        Some("\"probe-embed\"")
-    );
-    assert_eq!(
-        fields.get("gen_ai.response.model").as_deref(),
-        Some("\"probe-embed-v2\"")
-    );
-    assert_eq!(
-        fields.get("gen_ai.response.id").as_deref(),
-        Some("\"emb_123\"")
-    );
-    assert_eq!(
-        fields.get("gen_ai.usage.input_tokens").as_deref(),
-        Some("7")
-    );
-}
-
 /// The provider seams are wired: an `embed_texts_response` call through
 /// the shared OpenAI-compatible driver opens the embeddings span and
 /// records usage — and because the vector stores' `embed_text` defaults

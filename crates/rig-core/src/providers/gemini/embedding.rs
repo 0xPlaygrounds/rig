@@ -169,10 +169,7 @@ impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
 /// let vector = EmbeddingValues { values: vec![1.into(), 2.into()] };
 /// ```
 pub mod gemini_api_types {
-    use crate::error::ProviderError;
     use serde::{Deserialize, Serialize};
-
-    use crate::embeddings::{self, NormalizeEmbeddingResponse};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingResponse {
@@ -183,34 +180,6 @@ pub mod gemini_api_types {
     pub struct EmbeddingValues {
         #[serde(default)]
         pub values: Vec<serde_json::Number>,
-    }
-
-    impl NormalizeEmbeddingResponse for EmbeddingResponse {
-        fn normalize(
-            self,
-            provider: &str,
-            documents: Vec<String>,
-        ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-            if self.embeddings.len() != documents.len() {
-                return Err(ProviderError::Response(
-                    "Number of returned embeddings does not match input".into(),
-                ));
-            }
-            let docs = documents
-                .into_iter()
-                .zip(self.embeddings)
-                .map(|(document, embedding)| embeddings::Embedding {
-                    document,
-                    vec: embedding
-                        .values
-                        .into_iter()
-                        .filter_map(|n| n.as_f64())
-                        .collect(),
-                })
-                .collect();
-            // batchEmbedContents reports neither usage nor a response id.
-            Ok(embeddings::EmbeddingResponse::new(docs, provider))
-        }
     }
 }
 

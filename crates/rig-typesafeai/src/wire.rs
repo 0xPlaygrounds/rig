@@ -28,9 +28,6 @@ impl Operation for Evaluation {
         true
     }
     fn telemetry(_streaming: bool) {}
-    fn stamp_request_id(event: &mut Response, request_id: &Option<String>) {
-        event.provider_request_id.clone_from(request_id);
-    }
     fn stamp_reply(response: &mut Response, reply: Reply) {
         response.provider_request_id = reply.provider_request_id;
     }

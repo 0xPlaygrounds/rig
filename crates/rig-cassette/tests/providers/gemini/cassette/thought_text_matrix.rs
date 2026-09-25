@@ -13,7 +13,7 @@
 //!   `response.text` was **the model's private reasoning** and the actual
 //!   transcript, sitting in parts[1], was dropped. A transcript split across
 //!   several text parts lost everything after the first, too.
-//! * `ProviderResponseExt::text_response` collected *every* text part,
+//! * the client layer's `text_response` reader collected *every* text part,
 //!   gluing the chain-of-thought onto the answer — a second reader of the
 //!   same document, disagreeing with the first.
 //!
@@ -92,7 +92,7 @@
 //!
 //! Cell 24, `text_response_still_ignores_non_model_roles`, is deleted rather
 //! than restated. The role filter it pinned existed only inside
-//! `ProviderResponseExt::text_response` (`content.role != Role::Model` →
+//! the client layer's `text_response` reader (`content.role != Role::Model` →
 //! contribute nothing); the decoder reads the first candidate's parts without
 //! consulting `role`, and `visible_text_parts` — the surviving skip rule —
 //! never filtered on it either. Nothing replaces the cell because nothing

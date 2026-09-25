@@ -75,13 +75,6 @@ impl AudioGenerationResponse {
 
 crate::provider_response::modality_response_metadata_setters!(AudioGenerationResponse);
 
-/// Normalizes provider audio payloads, attributing the response to the supplied
-/// provider name.
-pub trait NormalizeAudioGenerationResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<AudioGenerationResponse, ProviderError>;
-}
-
 impl<W, T> crate::driver::Model<W, T>
 where
     W: crate::wire::Wire<Op = crate::operation::AudioGeneration> + Clone,
