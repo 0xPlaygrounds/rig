@@ -8,8 +8,8 @@
 //!
 //! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
 //! # where W: Wire<Op = Transcription> + Clone, T: Transport<W> {
-//! let response = TranscriptionRequestBuilder::from_file(model, "audio.wav")?
-//!     .send().await?;
+//! let request = TranscriptionRequestBuilder::from_file("audio.wav")?.build();
+//! let response = model.call(request).await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }

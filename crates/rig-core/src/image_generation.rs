@@ -8,8 +8,11 @@
 //!
 //! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
 //! # where W: Wire<Op = ImageGeneration> + Clone, T: Transport<W> {
-//! let response = ImageGenerationRequestBuilder::new(model, "A mountain lake")
-//!     .width(1024).height(1024).send().await?;
+//! let request = ImageGenerationRequestBuilder::new("A mountain lake")
+//!     .width(1024)
+//!     .height(1024)
+//!     .build();
+//! let response = model.call(request).await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }

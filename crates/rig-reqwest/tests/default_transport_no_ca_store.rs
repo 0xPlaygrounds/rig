@@ -18,9 +18,10 @@
 
 #![cfg(all(target_os = "linux", feature = "rustls", not(feature = "native-tls")))]
 
+use futures::StreamExt;
 use rig_core::Model;
 use rig_core::completion::CompletionRequestBuilder;
-use rig_core::error::ProviderError;
+use rig_core::error::{ErrorKind, ProviderError};
 use rig_core::providers::openai::OpenAI;
 
 fn empty_the_ca_store() {
@@ -41,7 +42,7 @@ async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
         rig_reqwest::shared(),
     );
     let request = CompletionRequestBuilder::new("hello").build();
-    let outcome = match model.call(request).await {
+    let outcome = match model.call(request.clone()).await {
         Err(ProviderError::Http(error)) => error.to_string(),
         Err(other) => format!("wrong variant: {other}"),
         Ok(_) => "sent a request with no CA store".to_owned(),
@@ -49,5 +50,22 @@ async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
     assert!(
         outcome.contains("CA certificates"),
         "expected the Http error naming the CA store, got: {outcome}"
+    );
+
+    // A stream opens (nothing is sent until it is polled) and the same
+    // failure is its first item.
+    let mut stream = model
+        .stream(request)
+        .expect("a stream opens before sending");
+    let first = stream
+        .next()
+        .await
+        .expect("the build failure is the first item");
+    let report = first.expect_err("the first item is the failure");
+    assert_eq!(report.kind, ErrorKind::Http, "{report:?}");
+    assert!(
+        report.message.contains("CA certificates"),
+        "expected the report to name the CA store, got: {}",
+        report.message
     );
 }

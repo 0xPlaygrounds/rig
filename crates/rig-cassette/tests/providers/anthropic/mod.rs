@@ -3,7 +3,6 @@ mod support;
 mod cassette {
     mod adversarial_matrix;
     mod agent;
-    mod boxed_transport;
     mod corpus_causal;
     mod corpus_endings;
     mod corpus_hooks;

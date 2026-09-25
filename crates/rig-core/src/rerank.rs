@@ -6,12 +6,16 @@
 //!
 //! ```no_run
 //! use rig_core::driver::{Model, Transport};
-//! use rig_core::operation::Rerank;
+//! use rig_core::operation::{Rerank, RerankRequest};
 //! use rig_core::wire::Wire;
 //!
 //! # async fn example<W, T>(model: &Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
 //! # where W: Wire<Op = Rerank> + Clone, T: Transport<W> {
-//! let response = model.rerank("Rust", vec!["A systems programming language".into()]).await?;
+//! let request = RerankRequest {
+//!     query: "Rust".into(),
+//!     documents: vec!["A systems programming language".into()],
+//! };
+//! let response = model.call(request).await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }
