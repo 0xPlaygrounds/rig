@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_5_2), rig_reqwest::shared());
 
     let request = CompletionRequestBuilder::new("Who are you?").build();
-    let response = model.call(request, None).await?;
+    let response = model.call(request).await?;
     for item in response.choice {
         if let AssistantContent::Text(text) = item {
             println!("{}", text.text);
@@ -244,13 +244,13 @@ mapping, so authorization failures do not become recreation loops.
 ## Provider observations
 
 `observe::AdapterContext` carries a caller-owned operation identity and a
-`Witness` sink. Pass it separately from request data as the second argument
-of `Model::call(request, Some(context))` or `Model::stream(request,
-Some(context))`; `None` records nothing. Request builders and request literals
-contain only provider request data.
+`Witness` sink. Pass it separately from request data through
+`Model::call_observed(request, context)` or `Model::stream_observed(request,
+context)`; `Model::call` and `Model::stream` record nothing. Request builders
+and request literals contain only provider request data.
 
-Bus-backed `ModelHandle::complete` and `ModelHandle::stream` take the same
-optional context. `ModelAdapter` forwards `Dispatch::adapter_context`;
+Bus-backed `ModelHandle::complete_observed` and `ModelHandle::stream_observed`
+take the same context. `ModelAdapter` forwards `Dispatch::adapter_context`;
 explicit caller context takes precedence over Recorder/Observe context for
 that invocation, including through handler layers. It is never serialized into
 provider data or effect records and is not inherited by child calls.

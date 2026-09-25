@@ -40,7 +40,7 @@ async fn web_search_on_returns_citations() {
         .build();
 
         let response = model
-            .call(request, None)
+            .call(request)
             .await
             .expect("web-search completion should succeed");
         let reply = venice_reply(&response.raw);
@@ -83,7 +83,7 @@ async fn web_search_auto_is_echoed() {
             .build();
 
         let response = model
-            .call(request, None)
+            .call(request)
             .await
             .expect("auto web-search completion should succeed");
 
@@ -117,7 +117,7 @@ async fn disable_thinking_is_applied() {
                 .build();
 
         let response = model
-            .call(request, None)
+            .call(request)
             .await
             .expect("completion should succeed");
 
@@ -150,7 +150,7 @@ async fn venice_system_prompt_can_be_disabled() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
             let reply = venice_reply(&response.raw);
@@ -189,7 +189,7 @@ async fn character_slug_selects_a_persona() {
             .build();
 
         let response = model
-            .call(request, None)
+            .call(request)
             .await
             .expect("character completion should succeed");
 

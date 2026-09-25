@@ -33,7 +33,7 @@ async fn strict_tools_opt_in_roundtrip() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -89,7 +89,7 @@ async fn incomplete_response_surfaces_partial_output() {
             // own reply in `raw`. `status` and `incomplete_details` are
             // Responses-API wire fields, so they are read off the latter.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("an incomplete response should still convert, not error");
             let reply = ResponsesReply::deserialize(&response.raw)

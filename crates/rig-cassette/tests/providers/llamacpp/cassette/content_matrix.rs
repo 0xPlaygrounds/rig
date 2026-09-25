@@ -77,7 +77,6 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
                     // would still leave the reasoning preamble behind.
                     .additional_params(json!({ "stop": ["<think>"] }))
                     .build(),
-                    None,
                 )
                 .await
                 .expect_err("rig rejects an empty converted choice");
@@ -153,7 +152,6 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
                     ])
                     .max_tokens(256)
                     .build(),
-                    None,
                 )
                 .await
                 .expect("consecutive same-role messages are accepted");
@@ -299,7 +297,6 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                     ])
                     .max_tokens(256)
                     .build(),
-                    None,
                 )
                 .await
                 .expect("a long tool result should be accepted");
@@ -351,7 +348,6 @@ async fn a_system_message_plus_history_keeps_its_order() {
                     ])
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("a system message plus history should be accepted");

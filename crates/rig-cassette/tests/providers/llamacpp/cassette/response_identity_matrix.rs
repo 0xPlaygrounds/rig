@@ -71,10 +71,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
         |client| async move {
             let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
                 .await
                 .expect("completion should succeed");
 
@@ -93,10 +90,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
         |client| async move {
             let model = rig::model(client.completion(CASSETTE_MODEL));
             let mut stream = model
-                .stream(
-                    CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
-                    None,
-                )
+                .stream(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
                 .expect("stream should start");
 
             let mut terminal = None;
@@ -157,10 +151,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
         |client| async move {
             let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
                 .await
                 .expect("completion should succeed");
 
@@ -180,10 +171,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
         |client| async move {
             let model = rig::model(client.completion(CASSETTE_MODEL));
             let mut stream = model
-                .stream(
-                    CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
-                    None,
-                )
+                .stream(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
                 .expect("stream should start");
 
             let mut terminal = None;
@@ -266,11 +254,11 @@ async fn the_typed_route_reproduces_the_normalized_one() {
             let request = || CompletionRequestBuilder::new(PROBE).max_tokens(256).build();
 
             let first = model
-                .call(request(), None)
+                .call(request())
                 .await
                 .expect("completion should succeed");
             let second = model
-                .call(request(), None)
+                .call(request())
                 .await
                 .expect("the same request should succeed again");
 

@@ -98,7 +98,7 @@ async fn reasoning_gpt5_nano_blocking_cap() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a capped reasoning-model turn must be accepted");
 
@@ -121,7 +121,7 @@ async fn reasoning_gpt5_nano_streaming_cap() {
                 .build();
 
             let stream = model
-                .stream(request, None)
+                .stream(request)
                 .expect("a capped reasoning-model stream must connect");
             let observed = collect_raw_stream_observation(stream).await;
 
@@ -142,7 +142,7 @@ async fn reasoning_o4_mini_blocking_cap() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a capped o-series turn must be accepted");
 
@@ -165,7 +165,7 @@ async fn reasoning_o4_mini_streaming_cap() {
                 .build();
 
             let stream = model
-                .stream(request, None)
+                .stream(request)
                 .expect("a capped o-series stream must connect");
             let observed = collect_raw_stream_observation(stream).await;
 
@@ -278,7 +278,7 @@ async fn legacy_gpt_4o_mini_blocking_cap() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a non-reasoning model's request must not change at all");
 
@@ -300,7 +300,7 @@ async fn legacy_gpt_4o_mini_streaming_cap() {
                 .max_tokens(CAP)
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -319,7 +319,7 @@ async fn legacy_gpt_4_1_nano_blocking_cap() {
                 .max_tokens(CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("capped turn");
+            let response = model.call(request).await.expect("capped turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -341,7 +341,7 @@ async fn legacy_gpt_3_5_turbo_blocking_cap() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("the oldest chat model rig names keeps the legacy field");
 
@@ -363,7 +363,7 @@ async fn legacy_gpt_3_5_turbo_streaming_cap() {
                 .max_tokens(CAP)
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -386,7 +386,7 @@ async fn uncapped_blocking_sends_neither_spelling() {
             let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
             let request = CompletionRequestBuilder::new(PROMPT).build();
 
-            let response = model.call(request, None).await.expect("uncapped turn");
+            let response = model.call(request).await.expect("uncapped turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -404,7 +404,7 @@ async fn uncapped_streaming_sends_neither_spelling() {
             let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
             let request = CompletionRequestBuilder::new(PROMPT).build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -430,7 +430,7 @@ async fn caller_modern_spelling_wins_over_cap() {
                 .additional_params(json!({ "max_completion_tokens": CAP }))
                 .build();
 
-            let response = model.call(request, None).await.expect("capped turn");
+            let response = model.call(request).await.expect("capped turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice)
@@ -451,7 +451,7 @@ async fn caller_modern_spelling_alone_survives() {
                 .additional_params(json!({ "max_completion_tokens": CAP }))
                 .build();
 
-            let response = model.call(request, None).await.expect("capped turn");
+            let response = model.call(request).await.expect("capped turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -475,7 +475,7 @@ async fn caller_legacy_spelling_is_upgraded() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a hand-spelled legacy cap must be upgraded, not rejected");
 
@@ -501,7 +501,7 @@ async fn responses_surface_keeps_max_output_tokens() {
                 .max_tokens(CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("capped turn");
+            let response = model.call(request).await.expect("capped turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -521,7 +521,7 @@ async fn responses_surface_reasoning_model_cap() {
                 .max_tokens(CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("capped turn");
+            let response = model.call(request).await.expect("capped turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -541,7 +541,7 @@ async fn responses_surface_streaming_cap() {
                 .max_tokens(CAP)
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);

@@ -104,7 +104,7 @@ async fn guardrail_trace_survives_into_the_converse_frame() {
             .build();
 
             model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("guardrail-intervened completion should still return a response");
 
@@ -159,7 +159,7 @@ async fn request_id_survives_into_streamed_terminal() {
                 .max_tokens(16)
                 .build();
 
-            let mut stream = model.stream(request, None).expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
@@ -198,7 +198,7 @@ async fn request_id_survives_into_the_converse_frame() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 

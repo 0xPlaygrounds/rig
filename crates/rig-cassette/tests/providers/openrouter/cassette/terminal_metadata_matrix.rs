@@ -144,10 +144,10 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             // terminal metadata — routed `provider`, `service_tier`, the
             // per-choice finish reason — so it observes the reply document
             // the driver keeps on `raw`, not the normalized projection.
-            model.call(request, None).await?.raw
+            model.call(request).await?.raw
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request, None)?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

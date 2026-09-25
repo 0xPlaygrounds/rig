@@ -60,7 +60,7 @@ async fn assert_model_streaming_tool_call(
 
     let observation = collect_raw_stream_observation(
         model
-            .stream(request, None)
+            .stream(request)
             .expect("strict streaming request should start"),
     )
     .await;

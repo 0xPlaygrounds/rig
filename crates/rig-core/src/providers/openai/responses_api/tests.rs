@@ -268,7 +268,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
         MockStreamEvent::final_response_with_default_usage(),
     ]]);
     let request = CompletionRequestBuilder::new("hi").build();
-    let mut stream = model.stream(request, None).expect("mock stream");
+    let mut stream = model.stream(request).expect("mock stream");
     while stream.next().await.is_some() {}
     let choice = stream.folded().snapshot();
     // The provenance funnel: a minted stream identity never becomes the
@@ -2274,7 +2274,7 @@ async fn responses_completion_http_non_success_preserves_status_and_body() {
     let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
-        .call(request, None)
+        .call(request)
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -2762,7 +2762,7 @@ mod raw_capture {
         );
 
         let response = model
-            .call(CompletionRequestBuilder::new("hello").build(), None)
+            .call(CompletionRequestBuilder::new("hello").build())
             .await
             .expect("completion");
 

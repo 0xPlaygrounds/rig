@@ -315,7 +315,7 @@ async fn direct_completion_model_requests_are_intentionally_hook_free() {
         .build();
 
     model
-        .call(CompletionRequestBuilder::new("raw request").build(), None)
+        .call(CompletionRequestBuilder::new("raw request").build())
         .await
         .expect("direct model request should succeed");
 

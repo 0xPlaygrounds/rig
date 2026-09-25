@@ -499,7 +499,7 @@ async fn raw_and_normalized_completion<
     model: &rig_core::driver::Model<W, T>,
     request: rig::completion::CompletionRequest,
 ) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
-    let normalized = model.call(request, None).await?;
+    let normalized = model.call(request).await?;
     let raw = openai::CompletionResponse::deserialize(&normalized.raw)
         .map_err(|error| anyhow::anyhow!("captured raw is the shared OpenAI reply: {error}"))?;
     let metadata = RawResponseMetadata::capture(&raw);
@@ -576,7 +576,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .tool_choice(ToolChoice::Required)
                 .max_tokens(SESSION_MAX_TOKENS).build();
 
-            let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
+            let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -614,7 +614,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Auto)
-                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             anyhow::ensure!(
                 auto.choice.iter().any(|content| matches!(
@@ -630,7 +630,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -649,7 +649,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             let specific_calls = specific
                 .choice
@@ -669,7 +669,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .call(CompletionRequestBuilder::new("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -769,13 +769,11 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
         |client| async move {
             let model = rig::model(client.completion(SESSION_MODEL));
             let mut stream = model
-                .stream(
-                    CompletionRequestBuilder::new(
+                .stream(CompletionRequestBuilder::new(
                             "Reply with exactly this comma-separated sequence and no extra words: alpha,beta,gamma,delta,epsilon,zeta,eta,theta",
                         )
                         .preamble("Stream the requested short sequence exactly.".to_string())
-                        .max_tokens(64).build(),
-                None)
+                        .max_tokens(64).build())
                 ?;
 
             let mut text_chunks = 0usize;

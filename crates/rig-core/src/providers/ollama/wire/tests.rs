@@ -80,7 +80,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         Ollama::new().completion("qwen3:4b"),
         RecordingHttpClient::new(UNARY_BODY),
     )
-    .call(recorded_request(), None)
+    .call(recorded_request())
     .await
     .expect("the recorded reply decodes");
 
@@ -91,7 +91,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         },
     );
     let mut response = streaming
-        .stream(recorded_request(), None)
+        .stream(recorded_request())
         .expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
@@ -154,7 +154,7 @@ async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
         Ollama::new().completion("deepseek-r1"),
         RecordingHttpClient::new(body),
     )
-    .call(recorded_request(), None)
+    .call(recorded_request())
     .await
     .expect("the reply decodes");
 
@@ -188,9 +188,7 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
             sse_bytes: bytes::Bytes::from(stream),
         },
     );
-    let mut response = bound
-        .stream(recorded_request(), None)
-        .expect("the stream opens");
+    let mut response = bound.stream(recorded_request()).expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
@@ -264,7 +262,7 @@ async fn the_model_listing_reads_every_installed_model() {
         Ollama::new().models(),
         RecordingHttpClient::new(MODELS_BODY),
     )
-    .call((), None)
+    .call(())
     .await
     .expect("the recorded reply decodes");
 
@@ -288,7 +286,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
         Ollama::new().embedding("all-minilm", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
-    .call(vec!["first".to_owned(), "second".to_owned()], None)
+    .call(vec!["first".to_owned(), "second".to_owned()])
     .await
     .expect("the reply decodes");
 

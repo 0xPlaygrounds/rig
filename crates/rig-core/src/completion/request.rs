@@ -622,7 +622,7 @@ fn merge_provider_tools_into_additional_params(
 /// let request = CompletionRequestBuilder::new("Who are you?")
 ///     .temperature(0.5)
 ///     .build();
-/// let response = model.call(request, None).await?;
+/// let response = model.call(request).await?;
 /// # let _ = response;
 /// # Ok(())
 /// # }

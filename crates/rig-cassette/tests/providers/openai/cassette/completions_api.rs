@@ -52,7 +52,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
             // `CompletionResponse::raw` beside the normalized view, so both
             // texts come off a single request.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completions api request should succeed");
             let reply: openai::completion::CompletionResponse =
@@ -119,7 +119,7 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .build();
-            let stream = model.stream(request, None).expect("stream should start");
+            let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -139,7 +139,7 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw completions api stream should start"),
             )
             .await;
@@ -169,7 +169,7 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw completions api stream should start"),
             )
             .await;
@@ -221,7 +221,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw completions api stream should start"),
             )
             .await;
@@ -256,7 +256,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
 
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request, None)
+                    .stream(followup_request)
                     .expect("raw completions api followup stream should start"),
             )
             .await;

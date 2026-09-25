@@ -12,10 +12,7 @@ async fn audio_generation_smoke() {
     let model = rig::model(client.audio_generation(openai::TTS_1));
 
     let response = model
-        .call(
-            AudioGenerationRequestBuilder::new(AUDIO_TEXT, "alloy").build(),
-            None,
-        )
+        .call(AudioGenerationRequestBuilder::new(AUDIO_TEXT, "alloy").build())
         .await
         .expect("audio generation should succeed");
 

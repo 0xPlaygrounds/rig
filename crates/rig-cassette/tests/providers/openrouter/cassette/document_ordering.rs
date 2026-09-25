@@ -54,7 +54,6 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
                         .temperature(0.0)
                         .max_tokens(32)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("OpenRouter document ordering request should succeed");

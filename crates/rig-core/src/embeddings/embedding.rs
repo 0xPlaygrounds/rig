@@ -24,7 +24,7 @@ where
 {
     /// Embed one text, returning the last vector or an error if none is returned.
     pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
-        let mut embeddings = self.call(vec![text.to_owned()], None).await?.embeddings;
+        let mut embeddings = self.call(vec![text.to_owned()]).await?.embeddings;
         embeddings.pop().ok_or_else(|| {
             ProviderError::Response(
                 "embedding provider returned an empty response for embed_text".to_string(),

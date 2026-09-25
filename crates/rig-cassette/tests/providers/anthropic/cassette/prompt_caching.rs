@@ -310,7 +310,7 @@ async fn send_matrix_raw_probe(
         builder = builder.tools(tools).tool_choice(ToolChoice::None);
     }
     let response = model
-        .call(builder.build(), None)
+        .call(builder.build())
         .await
         .expect("matrix Anthropic request should succeed");
     anthropic::completion::CompletionResponse::deserialize(&response.raw)
@@ -350,7 +350,7 @@ async fn send_matrix_streaming_probe(
         }));
     }
     let mut stream = model
-        .stream(builder.build(), None)
+        .stream(builder.build())
         .expect("streaming matrix Anthropic request should start");
     let mut text = String::new();
     let mut usage = None;
@@ -1259,7 +1259,6 @@ async fn static_prefix_5m_with_automatic_1h_errors_client_side() {
                 .preamble(cache_probe_preamble_for("illegal inversion"))
                 .max_tokens(16)
                 .build(),
-            None,
         )
         .await
         .expect_err("5m static prefix under a 1h top-level TTL must fail client-side");
@@ -1283,7 +1282,6 @@ async fn static_prefix_5m_with_manual_automatic_1h_errors_client_side_streaming(
                 .preamble(cache_probe_preamble_for("illegal inversion streaming"))
                 .max_tokens(16)
                 .build(),
-            None,
         )
         .err()
         .expect("5m static prefix under a 1h top-level TTL must fail client-side");
@@ -1326,7 +1324,6 @@ async fn static_prefix_with_explicit_tool_marker_at_marker_limit() {
                         .temperature(0.0)
                         .max_tokens(16)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("request at the 4-marker limit should succeed");
@@ -1361,7 +1358,6 @@ async fn static_prefix_with_excess_explicit_tool_markers_errors_client_side() {
                 .additional_params(json!({ "tools": provider_tools }))
                 .max_tokens(16)
                 .build(),
-            None,
         )
         .await
         .expect_err("explicit markers beyond the budget must fail client-side");
@@ -1386,7 +1382,6 @@ async fn send_cache_probe(
                 .temperature(0.0)
                 .max_tokens(16)
                 .build(),
-            None,
         )
         .await
         .expect("prompt-cached Anthropic request should succeed")
@@ -1414,7 +1409,6 @@ async fn send_streaming_cache_probe(
                 .temperature(0.0)
                 .max_tokens(16)
                 .build(),
-            None,
         )
         .expect("streaming prompt-cached Anthropic request should start");
     let mut text = String::new();

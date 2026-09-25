@@ -150,7 +150,6 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
                         .max_tokens(1024)
                         .tool(notify_tool_definition())
                         .build(),
-                    None,
                 )
                 .await
                 .expect("first Anthropic turn should succeed");
@@ -181,7 +180,6 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
                         content: first_turn.choice.clone(),
                     })
                     .build(),
-                    None,
                 )
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");

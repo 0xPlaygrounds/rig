@@ -40,7 +40,6 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
             .message(Message::user("Remember the secret color is teal."))
             .message(assistant)
             .build(),
-            None,
         )
         .await
         .expect("reasoning-history completion should succeed");

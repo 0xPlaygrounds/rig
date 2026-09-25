@@ -58,10 +58,7 @@ async fn blocking_response_carries_the_correlation_id() -> Result<()> {
         |client| async move {
             let model = rig::model(client.completion(mistral::MISTRAL_SMALL));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await?;
             assert_is_request_id(response.provider_request_id.as_deref());
             Ok::<_, anyhow::Error>(())
@@ -117,10 +114,7 @@ async fn blocking_error_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/blocking_error_carries_the_correlation_id",
         |client| async move {
             let error = rig::model(client.completion("definitely-not-a-model"))
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect_err("an unroutable model must fail");
             assert_error_keeps_id_and_body(&error);
@@ -142,10 +136,9 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/streaming_error_carries_the_correlation_id",
         |client| async move {
-            let error = match rig::model(client.completion("definitely-not-a-model")).stream(
-                CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                None,
-            ) {
+            let error = match rig::model(client.completion("definitely-not-a-model"))
+                .stream(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
+            {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {
                     let mut failure = None;
@@ -173,10 +166,7 @@ async fn blocking_unauthorized_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/blocking_unauthorized_carries_the_correlation_id",
         |client| async move {
             let error = rig::model(client.completion(mistral::MISTRAL_SMALL))
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect_err("a bogus key must fail");
             assert_is_request_id(error.provider_request_id());

@@ -72,7 +72,7 @@ fn driver() -> WireDriver {
                 Generation,
                 Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
             )
-            .stream(CompletionRequestBuilder::new("hello").build(), None)?;
+            .stream(CompletionRequestBuilder::new("hello").build())?;
             Ok(drain(stream).await)
         })
     })

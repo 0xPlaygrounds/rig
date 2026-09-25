@@ -31,7 +31,6 @@ async fn image_generation_smoke() {
                             "aspect_ratio": "4:3",
                         }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("image generation should succeed");

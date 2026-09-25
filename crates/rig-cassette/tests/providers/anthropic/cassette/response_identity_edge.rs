@@ -65,7 +65,6 @@ async fn caching_and_identity_share_the_wire_blocking() {
                             .temperature(0.0)
                             .max_tokens(16)
                             .build(),
-                        None,
                     )
                     .await
                     .expect("cached completion should succeed")
@@ -124,7 +123,6 @@ async fn caching_and_identity_share_the_wire_streaming() {
                             .temperature(0.0)
                             .max_tokens(16)
                             .build(),
-                        None,
                     )
                     .expect("stream should open");
                 let mut terminal = None;
@@ -166,7 +164,6 @@ async fn strict_tools_and_identity() {
                         .tool(rig::tool::tool_definition(&Adder))
                         .tool_choice(rig::message::ToolChoice::Required)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("strict tool completion should succeed");
@@ -198,7 +195,6 @@ async fn extended_thinking_and_identity() {
                         "thinking": {"type": "enabled", "budget_tokens": 1024}
                     }))
                     .build(),
-                    None,
                 )
                 .await
                 .expect("thinking completion should succeed");
@@ -230,7 +226,6 @@ async fn documents_and_identity() {
                     })
                     .max_tokens(32)
                     .build(),
-                    None,
                 )
                 .await
                 .expect("document completion should succeed");
@@ -673,7 +668,6 @@ async fn stream_conversion_carries_live_identity() {
                     CompletionRequestBuilder::new("Reply with exactly: conversion probe")
                         .max_tokens(32)
                         .build(),
-                    None,
                 )
                 .expect("stream should open");
             let mut terminal_id = None;
@@ -711,7 +705,6 @@ async fn provider_error_response_surfaces_cleanly() {
                     CompletionRequestBuilder::new("Reply with exactly: never sent successfully")
                         .max_tokens(16)
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("a nonexistent model must fail");

@@ -16,14 +16,14 @@ where
 {
     /// Creates cached content and returns its handle and storage usage metadata.
     pub async fn create(&self, request: NewCachedContent) -> Result<CachedContent, ProviderError> {
-        self.call(CachedContentRequest::Create(request), None)
+        self.call(CachedContentRequest::Create(request))
             .await?
             .resource()
     }
 
     /// Fetch one cached content by handle.
     pub async fn get(&self, name: &str) -> Result<CachedContent, ProviderError> {
-        self.call(CachedContentRequest::Get(name.to_owned()), None)
+        self.call(CachedContentRequest::Get(name.to_owned()))
             .await
             .map_err(|error| on_handle(error, name))?
             .resource()
@@ -32,7 +32,7 @@ where
     /// Every cached content this API key can see, following pagination at
     /// the wire's page size.
     pub async fn list(&self) -> Result<Vec<CachedContent>, ProviderError> {
-        self.call(CachedContentRequest::List, None).await?.entries()
+        self.call(CachedContentRequest::List).await?.entries()
     }
 
     /// Changes cache expiry without modifying its immutable content.
@@ -46,7 +46,7 @@ where
             name: name.to_owned(),
             expiry,
         };
-        self.call(request, None)
+        self.call(request)
             .await
             .map_err(|error| on_handle(error, name))?
             .resource()
@@ -57,7 +57,7 @@ where
     /// Handles other than `cachedContents/<id>` or bare `<id>` return
     /// [`ProviderError::Request`] before dispatch.
     pub async fn delete(&self, name: &str) -> Result<(), ProviderError> {
-        self.call(CachedContentRequest::Delete(name.to_owned()), None)
+        self.call(CachedContentRequest::Delete(name.to_owned()))
             .await
             .map_err(|error| on_handle(error, name))?;
         Ok(())

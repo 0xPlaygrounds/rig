@@ -60,7 +60,7 @@ async fn stream_to_terminal(
     model: &rig::driver::Model<Interactions, BoxedHttpClient>,
     request: rig::completion::CompletionRequest,
 ) -> StreamFinal {
-    let mut stream = model.stream(request, None).expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
     let mut terminal = None;
     let mut text = String::new();
     while let Some(item) = stream.next().await {

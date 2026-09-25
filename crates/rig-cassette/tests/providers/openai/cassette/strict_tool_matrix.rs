@@ -131,7 +131,7 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("non-strict tool request should succeed");
 
@@ -158,7 +158,7 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
                 .build();
 
             let stream = model
-                .stream(request, None)
+                .stream(request)
                 .expect("non-strict streaming tool request should start");
             let observation = collect_raw_stream_observation(stream).await;
 
@@ -200,7 +200,7 @@ async fn strict_tools_opt_in_sends_strict_true() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("strict tool request should succeed");
 

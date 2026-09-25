@@ -206,7 +206,7 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             // the same recorded bytes as the normalized surface, so the axis
             // is "provider document vs decoder's choice" rather than two
             // normalizers that could drift.
-            let response = model.call(request(cell), None).await?;
+            let response = model.call(request(cell)).await?;
             let wire = openrouter::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is OpenRouter's own completion response");
             Observation {
@@ -218,14 +218,14 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.call(request(cell), None).await?;
+            let response = model.call(request(cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,
             }
         }
         (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.stream(request(cell), None)?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
@@ -243,7 +243,7 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             observation
         }
         (Transport::Streaming, Surface::Normalized) => {
-            let mut stream = model.stream(request(cell), None)?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,

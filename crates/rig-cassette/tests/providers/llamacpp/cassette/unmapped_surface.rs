@@ -70,7 +70,7 @@ use rig::completion::CompletionRequestBuilder;
 async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
         let models = rig::model(client.models())
-            .call((), None)
+            .call(())
             .await
             .expect("listing llama.cpp models should succeed");
 
@@ -215,7 +215,6 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
                 CompletionRequestBuilder::new("/no_think Reply with the single word: ok")
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("llama.cpp serves the Responses API end to end");

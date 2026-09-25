@@ -98,7 +98,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#,
     ]);
     let mut stream = model
-        .stream(interactions_request(), None)
+        .stream(interactions_request())
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -135,7 +135,7 @@ async fn drive_frames(
 
     let model = interactions_stream(frames);
     let mut stream = model
-        .stream(interactions_request(), None)
+        .stream(interactions_request())
         .expect("stream should open");
 
     let mut items = Vec::new();

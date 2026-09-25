@@ -136,7 +136,7 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
 
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
@@ -174,7 +174,7 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
@@ -286,7 +286,7 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
                 .additional_params(openai_reasoning("high"))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
@@ -318,7 +318,7 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
@@ -350,7 +350,7 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
@@ -393,7 +393,7 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
                 }))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
@@ -429,7 +429,7 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
                 }))
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
@@ -465,7 +465,7 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
                 .additional_params(pinned("DeepInfra"))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
@@ -510,7 +510,7 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
                 }))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
 
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
@@ -547,7 +547,7 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
             let usage = &response.usage;
 
             assert!(usage.reasoning_tokens.is_some_and(|n| n > 0), "{usage:?}");
@@ -584,7 +584,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let response = model.call(request, None).await.expect("reasoning turn");
+            let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
@@ -621,7 +621,6 @@ async fn transports_agree_on_reasoning_tokens() {
                         .max_tokens(CAP)
                         .additional_params(openai_reasoning("medium"))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("blocking reasoning turn");
@@ -632,7 +631,6 @@ async fn transports_agree_on_reasoning_tokens() {
                         .max_tokens(CAP)
                         .additional_params(openai_reasoning("medium"))
                         .build(),
-                    None,
                 )
                 .expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
@@ -685,7 +683,7 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let normalized = model.call(request, None).await.expect("the turn");
+            let normalized = model.call(request).await.expect("the turn");
             let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
                 .expect("raw is OpenRouter's own completion response");
             let raw_reasoning = document
@@ -727,7 +725,7 @@ async fn blocking_cost_and_cache_details_still_map() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let normalized = model.call(request, None).await.expect("the turn");
+            let normalized = model.call(request).await.expect("the turn");
             let usage = openrouter::CompletionResponse::deserialize(&normalized.raw)
                 .expect("raw is OpenRouter's own completion response")
                 .usage
@@ -782,7 +780,7 @@ async fn control_non_reasoning_model_reports_zero_blocking() {
                 .additional_params(pinned("OpenAI"))
                 .build();
 
-            let response = model.call(request, None).await.expect("plain turn");
+            let response = model.call(request).await.expect("plain turn");
             assert_eq!(response.usage.reasoning_tokens, Some(0));
             assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
         },
@@ -807,7 +805,7 @@ async fn control_non_reasoning_model_reports_zero_streaming() {
                 .additional_params(pinned("OpenAI"))
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 

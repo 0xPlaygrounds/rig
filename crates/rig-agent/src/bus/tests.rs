@@ -1545,7 +1545,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
         .await
         .expect("the family's own answer");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
-    let response = within(model.complete(completion_request_value(), None))
+    let response = within(model.complete(completion_request_value()))
         .await
         .expect("the convenience is the same dispatch");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
@@ -2186,12 +2186,19 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
             let context =
                 explicit.then(|| AdapterContext::new(sink, Subject::scoped("caller"), "caller"));
             if streamed {
-                let mut stream = handle.stream(request, context);
+                let mut stream = match context {
+                    Some(context) => handle.stream_observed(request, context),
+                    None => handle.stream(request),
+                };
                 while let Some(event) = within(stream.next()).await {
                     event.unwrap();
                 }
             } else {
-                within(handle.complete(request, context)).await.unwrap();
+                let completion = match context {
+                    Some(context) => handle.complete_observed(request, context),
+                    None => handle.complete(request),
+                };
+                within(completion).await.unwrap();
             }
             let requests = model.requests();
             assert_eq!(requests.len(), 1);

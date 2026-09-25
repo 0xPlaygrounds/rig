@@ -136,7 +136,6 @@ async fn context_overflow_preserves_the_token_counts() {
                     CompletionRequestBuilder::new(overflowing_prompt())
                         .max_tokens(8)
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("a prompt past the context window must fail");
@@ -195,7 +194,7 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
             // as its first in-band item; both are the same contract as far as
             // this matrix is concerned, so the cell accepts either and asserts
             // on the error it gets.
-            let error = match model.stream(request, None) {
+            let error = match model.stream(request) {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
@@ -264,7 +263,6 @@ async fn an_unknown_model_is_ignored_rather_than_rejected() {
                     CompletionRequestBuilder::new("Reply with the single word: ok")
                         .max_tokens(256)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("llama.cpp ignores the model field rather than rejecting it");
@@ -307,10 +305,7 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
         |client| async move {
             let model = rig::model(client.completion(CASSETTE_MODEL));
             let error = model
-                .call(
-                    CompletionRequestBuilder::new("hi").max_tokens(8).build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("hi").max_tokens(8).build())
                 .await
                 .expect_err("a server started with --api-key must reject an unkeyed request");
 
@@ -348,7 +343,6 @@ async fn the_api_key_the_provider_sends_is_accepted() {
                 CompletionRequestBuilder::new("Reply with the single word: ok")
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("the bearer token the provider sends must be accepted");
@@ -423,7 +417,7 @@ async fn the_model_listing_requires_the_key_on_a_keyed_server() {
         "error_matrix/model_listing_is_keyed",
         |client| async move {
             let error = rig::model(client.models())
-                .call((), None)
+                .call(())
                 .await
                 .expect_err("`/v1/models` must refuse an unkeyed client");
             assert!(
@@ -457,7 +451,7 @@ async fn embeddings_without_the_flag_are_a_501() {
         "error_matrix/embeddings_without_the_flag",
         |client| async move {
             let error = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None))
-                .call(vec!["hello".to_string()], None)
+                .call(vec!["hello".to_string()])
                 .await
                 .map(|response| response.embeddings)
                 .expect_err("a server without --embeddings must refuse");
@@ -501,7 +495,7 @@ async fn embeddings_with_pooling_none_are_a_400() {
         "error_matrix/embeddings_with_pooling_none",
         |client| async move {
             let error = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None))
-                .call(vec!["hello".to_string()], None)
+                .call(vec!["hello".to_string()])
                 .await
                 .map(|response| response.embeddings)
                 .expect_err("--pooling none is not OpenAI-compatible");
@@ -544,7 +538,7 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
         "error_matrix/embeddings_on_a_causal_lm",
         |client| async move {
             let embeddings = rig::model(client.embedding(CASSETTE_MODEL, None))
-                .call(vec!["hello".to_string()], None)
+                .call(vec!["hello".to_string()])
                 .await
                 .map(|response| response.embeddings)
                 .expect("llama.cpp pools a causal LM rather than refusing");
@@ -587,7 +581,6 @@ async fn tools_without_jinja_are_a_500() {
                     .tool(rig::tool::tool_definition(&crate::support::Adder))
                     .max_tokens(64)
                     .build(),
-                None,
             )
             .await
             .expect_err("a --no-jinja server cannot render a tool list");
@@ -635,7 +628,6 @@ async fn a_malformed_body_keeps_its_parse_error() {
                         // type error the server reports before generating.
                         .additional_params(json!({ "temperature": "hot" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("a mistyped parameter must fail");
@@ -681,7 +673,6 @@ async fn an_oversized_output_cap_is_clamped_not_rejected() {
                         // Two orders of magnitude past the server's -c 512.
                         .max_tokens(100_000)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("llama.cpp clamps an oversized cap rather than refusing");
@@ -721,13 +712,10 @@ async fn rerank_without_a_reranker_is_a_501() {
         "error_matrix/rerank_without_a_reranker",
         |client| async move {
             let error = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
-                .call(
-                    RerankRequest {
-                        query: "what is a panda?".to_owned(),
-                        documents: vec!["hi".into(), "it is a bear".into()],
-                    },
-                    None,
-                )
+                .call(RerankRequest {
+                    query: "what is a panda?".to_owned(),
+                    documents: vec!["hi".into(), "it is a bear".into()],
+                })
                 .await
                 .expect_err("a server without --reranking must refuse");
 
@@ -767,13 +755,10 @@ async fn rerank_without_a_reranker_is_a_501() {
 async fn rerank_with_an_empty_document_list_is_a_400() {
     with_llamacpp_rerank_cassette("error_matrix/rerank_empty_documents", |client| async move {
         let error = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
-            .call(
-                RerankRequest {
-                    query: "what is a panda?".to_owned(),
-                    documents: Vec::new(),
-                },
-                None,
-            )
+            .call(RerankRequest {
+                query: "what is a panda?".to_owned(),
+                documents: Vec::new(),
+            })
             .await
             .expect_err("an empty document list is refused by the server");
 
@@ -824,7 +809,7 @@ async fn an_embeddings_input_past_the_batch_size_is_a_500() {
             // with, and deterministic.
             let oversized = "word ".repeat(4_000);
             let error = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None))
-                .call(vec![oversized], None)
+                .call(vec![oversized])
                 .await
                 .map(|response| response.embeddings)
                 .expect_err("an input past the physical batch must fail");

@@ -260,7 +260,7 @@ impl_matrix_tool!(Beta, "beta", ValueArgs);
 async fn run_model(client: OpenAI, cell: Cell) -> Observation {
     let model = rig::model(client.completion(model_name(cell.model)));
     match cell.transport {
-        Transport::Blocking => match model.call(request(cell), None).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
@@ -277,7 +277,7 @@ async fn run_model(client: OpenAI, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(cell), None) {
+            let raw = match model.stream(request(cell)) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {

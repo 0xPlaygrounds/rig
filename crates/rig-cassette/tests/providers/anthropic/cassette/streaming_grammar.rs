@@ -131,7 +131,7 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
                 "thinking": { "type": "enabled", "budget_tokens": 1536 }
             }))
             .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_terminal(&run, FinishReason::Stop);
@@ -189,7 +189,7 @@ async fn parallel_tool_use_stays_distinct() {
             .tool(rig::tool::tool_definition(&BetaSignal))
             .max_tokens(1024)
             .build();
-        let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+        let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
         let aggregated: Vec<&ToolCall> = run

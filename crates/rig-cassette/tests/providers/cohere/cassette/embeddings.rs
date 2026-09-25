@@ -32,7 +32,6 @@ async fn embed_texts_smoke() {
                     .iter()
                     .map(|input| (*input).to_string())
                     .collect(),
-                None,
             )
             .await
             .map(|response| response.embeddings)
@@ -54,10 +53,7 @@ async fn embed_search_query_smoke() {
         assert_eq!(model.wire.capabilities().ndims, 384);
 
         let embeddings = model
-            .call(
-                vec!["Where can I find coffee near the office?".to_string()],
-                None,
-            )
+            .call(vec!["Where can I find coffee near the office?".to_string()])
             .await
             .map(|response| response.embeddings)
             .expect("search query embedding should succeed");
@@ -80,10 +76,9 @@ async fn embed_classification_smoke() {
             assert_eq!(model.wire.capabilities().ndims, 384);
 
             let embeddings = model
-                .call(
-                    vec!["The package arrived early and in perfect condition.".to_string()],
-                    None,
-                )
+                .call(vec![
+                    "The package arrived early and in perfect condition.".to_string(),
+                ])
                 .await
                 .map(|response| response.embeddings)
                 .expect("classification embedding should succeed");
@@ -102,7 +97,7 @@ async fn embed_image_smoke() {
         assert_eq!(model.wire.capabilities().max_documents, 1);
 
         let response = model
-            .call(vec![decode_image(PNG_2X2)], None)
+            .call(vec![decode_image(PNG_2X2)])
             .await
             .expect("image embedding request should succeed");
         let embedding = response
@@ -124,7 +119,7 @@ async fn embed_images_preserves_batch_order() {
         |client| async move {
             let model = rig::model(client.image_embedding());
             let response = model
-                .call(vec![decode_image(PNG_2X2), decode_image(GIF_2X2)], None)
+                .call(vec![decode_image(PNG_2X2), decode_image(GIF_2X2)])
                 .await
                 .expect("image embedding batch should succeed");
             let embeddings = response.embeddings.clone();

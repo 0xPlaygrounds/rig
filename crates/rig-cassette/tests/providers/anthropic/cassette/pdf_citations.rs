@@ -69,7 +69,6 @@ async fn pdf_document_citations_decode_as_page_locations() {
                     .temperature(0.0)
                     .max_tokens(512)
                     .build(),
-                    None,
                 )
                 .await
                 .expect("cited PDF completion should succeed");

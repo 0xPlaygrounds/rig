@@ -280,7 +280,7 @@ async fn long_history_replay_nonstreaming() {
                     .tool(rig::tool::tool_definition(&AlphaSignal))
                     .build();
             let first_response = model
-                .call(first_request, None)
+                .call(first_request)
                 .await
                 .expect("first turn should succeed");
             let tool_call = first_response
@@ -329,7 +329,7 @@ async fn long_history_replay_nonstreaming() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("long history replay should be accepted by the Messages API");
 

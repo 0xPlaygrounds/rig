@@ -1683,7 +1683,7 @@ async fn completion_non_success_preserves_status_and_body() {
         wire(super::GEMINI_3_FLASH_PREVIEW),
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
     )
-    .call(wire_request("hello"), None)
+    .call(wire_request("hello"))
     .await
     .expect_err("should fail with non-success status");
 
@@ -1812,7 +1812,7 @@ async fn fold_unary(
     body: impl Into<bytes::Bytes>,
 ) -> Result<crate::completion::CompletionResponse, ProviderError> {
     crate::driver::Model::new(wire(model), RecordingHttpClient::new(body))
-        .call(wire_request("probe"), None)
+        .call(wire_request("probe"))
         .await
 }
 
@@ -1829,7 +1829,7 @@ async fn streamed(model: &str, body: &'static str) -> crate::completion::Complet
             sse_bytes: bytes::Bytes::from_static(body.as_bytes()),
         },
     )
-    .stream(wire_request("probe"), None)
+    .stream(wire_request("probe"))
     .expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("the recorded stream carries no in-band error");

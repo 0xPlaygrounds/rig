@@ -18,7 +18,6 @@ async fn image_generation_smoke() {
                 .width(1024)
                 .height(1024)
                 .build(),
-            None,
         )
         .await
         .expect("image generation should succeed");

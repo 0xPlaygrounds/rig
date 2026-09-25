@@ -86,7 +86,7 @@ async fn file_id_chain() {
             };
             let model = rig::model(client.completion(xai::GROK_4));
             let first = model
-                .call(request(vec![document.clone()]), None)
+                .call(request(vec![document.clone()]))
                 .await
                 .expect("turn one reads the file by id");
             assert!(text(&first.choice).contains('3'), "{:?}", first.choice);
@@ -99,7 +99,7 @@ async fn file_id_chain() {
                 Message::user("Is the attached PDF longer than two pages? Answer yes or no."),
             ];
             let second = model
-                .call(request(history), None)
+                .call(request(history))
                 .await
                 .expect("turn two still reads the file by id");
             assert!(

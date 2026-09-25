@@ -45,7 +45,7 @@ fn stream_of(model: &str, events: Vec<aws_bedrock::ConverseStreamOutput>) -> Com
         Converse::new(model),
         Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
     )
-    .stream(request, None)
+    .stream(request)
     .expect("the stream opens")
 }
 
@@ -951,7 +951,7 @@ async fn a_converse_stream_whose_send_fails_reports_it_in_band() {
         crate::client::BedrockRuntime::from(aws_sdk_bedrockruntime::Client::from_conf(config));
     let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
     let mut stream = Model::new(Converse::new("amazon.nova-lite-v1:0"), runtime)
-        .stream(request, None)
+        .stream(request)
         .expect("opening a stream sends nothing");
     let first = stream.next().await.expect("the stream yields the failure");
     assert!(

@@ -52,7 +52,7 @@ async fn system_messages_are_lifted_into_instructions() {
             .message(Message::system("Always answer with the single word maple."))
             .build();
     let mut stream = model
-        .stream(request, None)
+        .stream(request)
         .expect("system-message stream should succeed");
 
     let mut text = String::new();

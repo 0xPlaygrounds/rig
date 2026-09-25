@@ -73,7 +73,7 @@ fn driver() -> WireDriver {
                 GenerateContent::new("gemini-2.5-pro"),
                 Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
             )
-            .stream(request, None)?;
+            .stream(request)?;
             Ok(drain(stream).await)
         })
     })

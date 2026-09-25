@@ -168,7 +168,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw responses stream should start"),
             )
             .await;
@@ -203,7 +203,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request, None)
+                    .stream(followup_request)
                     .expect("raw followup responses stream should start"),
             )
             .await;

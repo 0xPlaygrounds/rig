@@ -20,9 +20,7 @@ async fn raw_completion(
     model: &Model<Generation, CandleModel>,
     request: CompletionRequest,
 ) -> Result<CandleCompletionResponse, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(serde_json::from_value(
-        model.call(request, None).await?.raw,
-    )?)
+    Ok(serde_json::from_value(model.call(request).await?.raw)?)
 }
 
 fn model() -> Result<Model<Generation, CandleModel>, Box<dyn std::error::Error + Send + Sync>> {

@@ -17,7 +17,6 @@ async fn image_generation_smoke() {
                 .width(1024)
                 .height(1024)
                 .build(),
-            None,
         )
         .await
         .expect("image generation should succeed");
@@ -37,7 +36,6 @@ async fn gpt_image_2_image_generation_smoke() {
                 .width(1024)
                 .height(1024)
                 .build(),
-            None,
         )
         .await
         .expect("gpt-image-2 image generation should succeed");

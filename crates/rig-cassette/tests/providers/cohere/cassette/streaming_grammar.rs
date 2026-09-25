@@ -92,7 +92,7 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
         )
         .max_tokens(1024)
         .build();
-        let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+        let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert!(!run.text.trim().is_empty(), "turn should produce text");
         assert_eq!(
@@ -173,7 +173,7 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
             .max_tokens(1024)
             .tool(rig::tool::tool_definition(&IntegerSubtract))
             .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_eq!(
                 run.finals.len(),
@@ -234,7 +234,7 @@ async fn required_tool_choice_streams_tool_call() {
                     .tool_choice(ToolChoice::Required)
                     .max_tokens(128)
                     .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(run.text.is_empty(), "tool-only turn should not emit text");
             assert_eq!(run.tool_calls.len(), 1, "expected one streamed tool call");
@@ -267,7 +267,7 @@ async fn none_tool_choice_streams_text() {
             .tool_choice(ToolChoice::None)
             .max_tokens(32)
             .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "NONE should stream text");
             assert!(run.tool_calls.is_empty(), "NONE must suppress tool calls");

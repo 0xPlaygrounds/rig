@@ -15,13 +15,10 @@ async fn rerank_non_success_preserves_status_and_body() {
     );
 
     let error = model
-        .call(
-            RerankRequest {
-                query: "query".to_owned(),
-                documents: vec!["doc one".to_string(), "doc two".to_string()],
-            },
-            None,
-        )
+        .call(RerankRequest {
+            query: "query".to_owned(),
+            documents: vec!["doc one".to_string(), "doc two".to_string()],
+        })
         .await
         .expect_err("rerank should fail with non-success status");
 
@@ -50,13 +47,10 @@ async fn rerank_2xx_error_envelope_preserves_status_and_body() {
     );
 
     let error = model
-        .call(
-            RerankRequest {
-                query: "query".to_owned(),
-                documents: vec!["doc one".to_string(), "doc two".to_string()],
-            },
-            None,
-        )
+        .call(RerankRequest {
+            query: "query".to_owned(),
+            documents: vec!["doc one".to_string(), "doc two".to_string()],
+        })
         .await
         .expect_err("rerank should fail with provider error envelope");
 

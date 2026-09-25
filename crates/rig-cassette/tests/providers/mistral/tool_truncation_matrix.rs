@@ -193,7 +193,7 @@ impl Tool for FileReport {
 async fn run_model(client: OpenAI, cell: Cell) -> Observation {
     let model = rig::model(client.completion(model_name(cell.model)));
     match cell.transport {
-        Transport::Blocking => match model.call(request(cell), None).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -205,7 +205,7 @@ async fn run_model(client: OpenAI, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(cell), None) {
+            let raw = match model.stream(request(cell)) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {

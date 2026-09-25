@@ -158,7 +158,7 @@ async fn main() -> Result<()> {
             request = request.tool_choice(ToolChoice::Required);
         }
 
-        let response = model.call(request.build(), None).await?;
+        let response = model.call(request.build()).await?;
         let tool_calls = collect_tool_calls(&response.choice);
 
         history.push(current_prompt.clone());

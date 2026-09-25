@@ -28,7 +28,7 @@
 //!     T: Transport<W>,
 //! {
 //!     let request = CompletionRequestBuilder::new("Who are you?").build();
-//!     model.call(request, None).await
+//!     model.call(request).await
 //! }
 //! ```
 

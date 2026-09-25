@@ -331,7 +331,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<W, T, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream = agent.model.stream(request, None).expect("Turn 1 stream");
+    let mut stream = agent.model.stream(request).expect("Turn 1 stream");
 
     let mut assistant_content = Vec::new();
     let mut saw_reasoning_block = false;
@@ -427,7 +427,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<W, T, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream2 = agent.model.stream(request2, None).expect("Turn 2 stream");
+    let mut stream2 = agent.model.stream(request2).expect("Turn 2 stream");
     let mut turn2_text = String::new();
 
     while let Some(chunk) = stream2.next().await {
@@ -486,11 +486,7 @@ pub async fn run_reasoning_roundtrip_nonstreaming<W, T>(
         record_telemetry_content: false,
     };
 
-    let response = agent
-        .model
-        .call(request, None)
-        .await
-        .expect("Turn 1 completion");
+    let response = agent.model.call(request).await.expect("Turn 1 completion");
 
     let mut text_parts = String::new();
 
@@ -538,7 +534,7 @@ pub async fn run_reasoning_roundtrip_nonstreaming<W, T>(
 
     let response2 = agent
         .model
-        .call(request2, None)
+        .call(request2)
         .await
         .expect("Turn 2 completion - provider may have rejected reasoning in chat history");
 

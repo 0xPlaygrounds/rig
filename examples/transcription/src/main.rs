@@ -32,10 +32,7 @@ async fn whisper(file_path: &str) -> Result<(), anyhow::Error> {
     let openai = OpenAI::from_env()?;
     let whisper = rig::model(openai.transcription(openai::WHISPER_1));
     let response = whisper
-        .call(
-            TranscriptionRequestBuilder::from_file(file_path)?.build(),
-            None,
-        )
+        .call(TranscriptionRequestBuilder::from_file(file_path)?.build())
         .await?;
     println!("Whisper-1: {}", response.text);
     Ok(())
@@ -45,10 +42,7 @@ async fn gemini(file_path: &str) -> Result<(), anyhow::Error> {
     let gemini = Gemini::from_env()?;
     let model = rig::model(gemini.transcription(gemini::completion::GEMINI_3_FLASH_PREVIEW));
     let response = model
-        .call(
-            TranscriptionRequestBuilder::from_file(file_path)?.build(),
-            None,
-        )
+        .call(TranscriptionRequestBuilder::from_file(file_path)?.build())
         .await?;
     println!("Gemini: {}", response.text);
     Ok(())
@@ -58,10 +52,7 @@ async fn azure(file_path: &str) -> Result<(), anyhow::Error> {
     let azure = OpenAI::from_env_with(&AZURE)?;
     let whisper = rig::model(azure.transcription("whisper"));
     let response = whisper
-        .call(
-            TranscriptionRequestBuilder::from_file(file_path)?.build(),
-            None,
-        )
+        .call(TranscriptionRequestBuilder::from_file(file_path)?.build())
         .await?;
     println!("Azure Whisper-1: {}", response.text);
     Ok(())
@@ -71,10 +62,7 @@ async fn groq(file_path: &str) -> Result<(), anyhow::Error> {
     let groq = OpenAI::from_env_with(&GROQ)?;
     let whisper = rig::model(groq.transcription(groq::WHISPER_LARGE_V3));
     let response = whisper
-        .call(
-            TranscriptionRequestBuilder::from_file(file_path)?.build(),
-            None,
-        )
+        .call(TranscriptionRequestBuilder::from_file(file_path)?.build())
         .await?;
     println!("Groq Whisper-Large-V3: {}", response.text);
     Ok(())
@@ -84,10 +72,7 @@ async fn huggingface(file_path: &str) -> Result<(), anyhow::Error> {
     let huggingface = OpenAI::from_env_with(&HUGGINGFACE)?;
     let whisper = rig::model(huggingface.transcription("whisper-large-v3"));
     let response = whisper
-        .call(
-            TranscriptionRequestBuilder::from_file(file_path)?.build(),
-            None,
-        )
+        .call(TranscriptionRequestBuilder::from_file(file_path)?.build())
         .await?;
     println!("HuggingFace Whisper-Large-V3: {}", response.text);
     Ok(())
@@ -97,10 +82,7 @@ async fn mistral(file_path: &str) -> Result<(), anyhow::Error> {
     let client = OpenAI::from_env_with(&MISTRAL)?;
     let model = rig::model(client.transcription(mistral::VOXTRAL_MINI));
     let response = model
-        .call(
-            TranscriptionRequestBuilder::from_file(file_path)?.build(),
-            None,
-        )
+        .call(TranscriptionRequestBuilder::from_file(file_path)?.build())
         .await?;
     println!("Mistral: {}", response.text);
     Ok(())

@@ -33,7 +33,7 @@ async fn normalized_response_is_complete() {
         |client| async move {
             let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             let response = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -50,7 +50,7 @@ async fn raw_round_trips() {
     with_mistral_embedding_cassette("embedding_matrix/raw_round_trips", |client| async move {
         let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
         let response = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("embedding request should succeed");
 
@@ -76,11 +76,11 @@ async fn raw_route_parity() {
     with_mistral_embedding_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
         let normalized = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("normalized call should succeed");
         let again = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("the same request should succeed again");
         assert_eq!(again.embeddings.len(), normalized.embeddings.len());
@@ -102,7 +102,7 @@ async fn single_text_convenience() {
         |client| async move {
             let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             let response = model
-                .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
+                .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -130,7 +130,7 @@ async fn dimensions_request() {
         let ndims = 64;
         let model = rig::model(client.embedding(mistral::embedding::CODESTRAL_EMBED, Some(ndims)));
         let response = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
         for embedding in &response.embeddings {
@@ -148,7 +148,7 @@ async fn error_preserves_provider_body() {
         |client| async move {
             let model = rig::model(client.embedding("no-such-embedding-model", None));
             let error = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(
@@ -181,7 +181,7 @@ async fn bug_mistral_request_id_dropped() {
         |client| async move {
             let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             let response = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert!(

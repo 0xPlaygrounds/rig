@@ -50,7 +50,7 @@ where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    sink.put(model.call(request, None).await?);
+    sink.put(model.call(request).await?);
     Ok(())
 }
 
@@ -70,8 +70,8 @@ where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let first = model.call(request.clone(), None).await?;
-    let second = model.call(request, None).await?;
+    let first = model.call(request.clone()).await?;
+    let second = model.call(request).await?;
     sink.put((first, second));
     Ok(())
 }
@@ -87,7 +87,7 @@ where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let (text, terminal) = collect_text_and_terminal(model.stream(request, None)?).await;
+    let (text, terminal) = collect_text_and_terminal(model.stream(request)?).await;
     sink.put((
         text,
         terminal.expect("stream should end with a terminal record"),
@@ -110,7 +110,7 @@ where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    sink.put(collect_required_terminal(model.stream(request, None)?).await);
+    sink.put(collect_required_terminal(model.stream(request)?).await);
     Ok(())
 }
 
@@ -125,7 +125,7 @@ where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    sink.put(collect_sole_terminal(model.stream(request, None)?).await);
+    sink.put(collect_sole_terminal(model.stream(request)?).await);
     Ok(())
 }
 
@@ -145,7 +145,7 @@ where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    sink.put(collect_text_and_sole_terminal(model.stream(request, None)?).await);
+    sink.put(collect_text_and_sole_terminal(model.stream(request)?).await);
     Ok(())
 }
 

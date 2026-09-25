@@ -106,7 +106,7 @@ async fn drain_stream<
     model: &rig_core::driver::Model<W, T>,
     request: rig::completion::CompletionRequest,
 ) -> Drained {
-    let mut stream = model.stream(request, None).expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
     let mut terminal = None;
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {

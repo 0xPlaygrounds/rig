@@ -108,7 +108,6 @@ async fn whisper_reports_duration_usage() {
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("transcription should succeed");
@@ -133,7 +132,6 @@ async fn gpt_4o_transcribe_reports_token_usage() {
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("transcription should succeed");
@@ -171,7 +169,6 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("transcription should succeed");
@@ -198,7 +195,6 @@ async fn completions_client_reports_duration_usage() {
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("transcription should succeed");
@@ -223,7 +219,6 @@ async fn completions_client_reports_token_usage() {
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("transcription should succeed");
@@ -253,7 +248,6 @@ async fn verbose_json_still_reports_duration_usage() {
                         .filename(Some("audio.mp3".to_owned()))
                         .additional_params(json!({ "response_format": "verbose_json" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("transcription should succeed");
@@ -287,7 +281,6 @@ async fn transcript_still_reaches_the_normalized_response() {
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("transcription should succeed");
@@ -315,7 +308,6 @@ async fn rejected_request_surfaces_the_provider_body() {
                         .filename(Some("audio.mp3".to_owned()))
                         .additional_params(json!({ "response_format": "rig-invalid" }))
                         .build(),
-                    None,
                 )
                 .await
             else {

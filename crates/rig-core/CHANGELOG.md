@@ -392,12 +392,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```rust
   model
       .call(CompletionRequestBuilder::new(prompt)
-      .messages(history).build(), None)
+      .messages(history).build())
       .await?;
 
   let stream = model
       .stream(CompletionRequestBuilder::new(prompt)
-      .messages(history).build(), None)
+      .messages(history).build())
       .await?;
   ```
 

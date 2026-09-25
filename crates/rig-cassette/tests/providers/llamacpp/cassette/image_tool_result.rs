@@ -92,7 +92,7 @@ async fn a_tool_result_image_is_read_by_the_model() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("llama.cpp accepts an image in a tool result");
 
@@ -132,7 +132,7 @@ async fn the_same_image_in_a_user_message_is_read_too() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("an image in a user message is ordinary and must work");
 

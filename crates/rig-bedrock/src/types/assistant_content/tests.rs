@@ -60,7 +60,7 @@ fn complete_as(
     output: InternalConverseOutput,
 ) -> Result<completion::CompletionResponse, ProviderError> {
     let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
-    futures::executor::block_on(Model::new(Converse::new(model), Reply(output)).call(request, None))
+    futures::executor::block_on(Model::new(Converse::new(model), Reply(output)).call(request))
 }
 
 /// `output` as a Nova model's Converse endpoint answers it.

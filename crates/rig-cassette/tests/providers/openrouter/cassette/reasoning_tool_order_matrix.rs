@@ -160,9 +160,9 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
 async fn run_cell(client: OpenAI, cell: Cell, observed: SharedChoice) -> Result<()> {
     let model = rig::model(client.completion(MODEL));
     let choice = match cell.transport {
-        Transport::Blocking => model.call(request(cell), None).await?.choice,
+        Transport::Blocking => model.call(request(cell)).await?.choice,
         Transport::Streaming => {
-            let raw = model.stream(request(cell), None)?;
+            let raw = model.stream(request(cell))?;
             let mut stream = raw;
             while let Some(item) = stream.next().await {
                 item?;

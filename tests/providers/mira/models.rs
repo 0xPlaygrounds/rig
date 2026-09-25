@@ -7,7 +7,7 @@ use rig::providers::openai::wire::{MIRA, OpenAI};
 async fn list_models_smoke() {
     let provider = OpenAI::from_env_with(&MIRA).expect("config should build from env");
     let models = rig::model(provider.models())
-        .call((), None)
+        .call(())
         .await
         .expect("listing models should succeed");
     assert!(

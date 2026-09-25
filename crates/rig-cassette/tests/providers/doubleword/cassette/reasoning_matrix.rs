@@ -32,7 +32,6 @@ async fn exercise_blocking(client: OpenAI, model_name: &'static str) {
             CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build(),
-            None,
         )
         .await
         .expect("reasoning completion should decode");
@@ -69,7 +68,6 @@ async fn exercise_streaming(client: OpenAI, model_name: &'static str) {
             CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build(),
-            None,
         )
         .expect("reasoning stream should connect");
     let observation = collect_raw_stream_observation(stream).await;

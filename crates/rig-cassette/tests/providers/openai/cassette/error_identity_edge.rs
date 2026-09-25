@@ -22,10 +22,7 @@ async fn auth_rejection_carries_identity() {
         |client| async move {
             let model = rig::model(client.openai.completion(openai::GPT_4O));
             let error = model
-                .call(
-                    CompletionRequestBuilder::new("Never authenticated").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -54,7 +51,7 @@ async fn nonexistent_previous_response_reference_carries_identity() {
                 .call(CompletionRequestBuilder::new("Continue the conversation")
                 .additional_params(serde_json::json!({
                     "previous_response_id": "resp_000000000000000000000000000000000000000000000000",
-                })).build(), None)
+                })).build())
                 .await
                 .expect_err("a nonexistent previous_response_id must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -85,7 +82,6 @@ async fn chat_completions_validation_error_carries_identity() {
                     CompletionRequestBuilder::new("Never validated")
                         .additional_params(serde_json::json!({"temperature": 99.0}))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("an impossible temperature must be rejected");
@@ -114,10 +110,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                     .openai
                     .completion("gpt-nonexistent-model-for-error-edge"),
             );
-            let result = model.stream(
-                CompletionRequestBuilder::new("Never streamed").build(),
-                None,
-            );
+            let result = model.stream(CompletionRequestBuilder::new("Never streamed").build());
             let error = match result {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {
@@ -180,7 +173,7 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
         "error_identity_edge/model_listing_auth_failure_keeps_api_error_context",
         |client| async move {
             let error = rig::model(client.openai.models())
-                .call((), None)
+                .call(())
                 .await
                 .expect_err("a bogus key must fail the listing");
             assert!(

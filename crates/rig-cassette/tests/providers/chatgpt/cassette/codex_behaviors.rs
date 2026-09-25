@@ -35,7 +35,7 @@ async fn strict_tools_opt_in_roundtrip() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -97,7 +97,6 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                     )
                     .preamble("Return only the requested marker.".to_string())
                     .build(),
-                    None,
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");

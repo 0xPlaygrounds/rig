@@ -77,7 +77,7 @@ impl<T: Transport<Jev>> Evaluate for Model<Jev, T> {
             state: questions::state(state)?,
             questions: encoded,
         };
-        let response = self.call(request, None).await?;
+        let response = self.call(request).await?;
         if ids != validation::response_ids(&response.answers)? {
             return Err(ProviderError::Response(
                 "response question IDs differ from request".into(),

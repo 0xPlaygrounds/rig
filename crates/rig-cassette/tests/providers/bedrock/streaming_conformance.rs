@@ -76,7 +76,7 @@ fn driver() -> WireDriver {
                 Converse::new("amazon.nova-lite-v1:0"),
                 Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
             );
-            let stream = model.stream(CompletionRequestBuilder::new("hi").build(), None)?;
+            let stream = model.stream(CompletionRequestBuilder::new("hi").build())?;
             Ok(drain(stream).await)
         })
     })

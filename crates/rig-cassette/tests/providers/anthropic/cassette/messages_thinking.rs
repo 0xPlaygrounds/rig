@@ -54,7 +54,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .additional_params(thinking_params())
                 .build();
             let first_response = model
-                .call(first_request, None)
+                .call(first_request)
                 .await
                 .expect("redacted-thinking completion should succeed");
 
@@ -78,7 +78,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                     .build();
 
             let second_response = model
-                .call(second_request, None)
+                .call(second_request)
                 .await
                 .expect("history containing redacted_thinking should be accepted");
 
@@ -131,7 +131,7 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
                 .additional_params(thinking_params())
                 .build();
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("extended thinking with a 1h static prefix should succeed");
 
@@ -157,7 +157,7 @@ async fn redacted_thinking_streaming() {
                 .build();
 
             let mut stream = model
-                .stream(request, None)
+                .stream(request)
                 .expect("redacted-thinking streaming request should start");
 
             let mut saw_redacted_reasoning = false;

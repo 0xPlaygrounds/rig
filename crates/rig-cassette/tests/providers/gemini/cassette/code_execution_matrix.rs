@@ -193,7 +193,7 @@ async fn blocking_body(
     }
 
     let response = model
-        .call(request.build(), None)
+        .call(request.build())
         .await
         .expect("a turn carrying code-execution parts must still convert");
 
@@ -223,9 +223,7 @@ async fn streaming_body(
         request = request.max_tokens(max_tokens);
     }
 
-    let stream = model
-        .stream(request.build(), None)
-        .expect("stream should open");
+    let stream = model.stream(request.build()).expect("stream should open");
     let (streamed, choice, saw_terminal) = drain(stream).await;
 
     assert!(
@@ -384,7 +382,7 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a turn carrying code-execution parts must still convert");
 
@@ -552,7 +550,7 @@ async fn blocking_code_execution_with_visible_thoughts() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("code-execution parts next to thought parts must still convert");
 
@@ -591,7 +589,7 @@ async fn streaming_code_execution_with_visible_thoughts() {
                 .additional_params(code_execution_params_with_thoughts())
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should open");
+            let stream = model.stream(request).expect("stream should open");
             let (streamed, choice, saw_terminal) = drain(stream).await;
 
             assert!(
@@ -635,7 +633,7 @@ async fn blocking_code_execution_with_preamble() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("systemInstruction + codeExecution must still convert");
             assert!(
@@ -665,7 +663,7 @@ async fn streaming_code_execution_with_preamble() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should open");
+            let stream = model.stream(request).expect("stream should open");
             let (streamed, _, saw_terminal) = drain(stream).await;
 
             assert!(
@@ -1012,7 +1010,7 @@ mod unit {
             RecordingHttpClient::new(reply_with(parts)),
         );
         let request = rig::completion::CompletionRequestBuilder::new("unit").build();
-        model.call(request, None).await
+        model.call(request).await
     }
 
     /// Not a recording: Gemini always narrates a code round, so a candidate

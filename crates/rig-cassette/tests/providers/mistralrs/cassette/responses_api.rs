@@ -55,7 +55,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
             // whose reasoning fields are provider-specific and not
             // normalized.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)

@@ -109,7 +109,7 @@ async fn poll_until_terminal(
     let model = rig::model(gemini.interaction(interaction_id));
 
     loop {
-        let response = model.call(request.clone(), None).await?;
+        let response = model.call(request.clone()).await?;
         let interaction: Interaction = serde_json::from_value(response.raw)?;
         if interaction.is_terminal() {
             return Ok(interaction);
@@ -206,10 +206,9 @@ async fn main() -> Result<()> {
             // the one already running by id. They are two different wires, so
             // the branches meet at the opened stream rather than at the model.
             let opened = if attempt == 0 {
-                rig::model(gemini.interactions(agent.as_str())).stream(request.clone(), None)
+                rig::model(gemini.interactions(agent.as_str())).stream(request.clone())
             } else if let Some(interaction_id) = state.interaction_id.as_deref() {
-                rig::model(gemini.interaction_resumed(interaction_id, None))
-                    .stream(request.clone(), None)
+                rig::model(gemini.interaction_resumed(interaction_id, None)).stream(request.clone())
             } else {
                 eprintln!("Stream closed before an interaction id was received.");
                 break;
@@ -249,7 +248,7 @@ async fn main() -> Result<()> {
             // interaction status before reconnecting a dropped/expired stream.
             let probe = rig::model(gemini.interaction(interaction_id.as_str()));
             let interaction: Interaction =
-                serde_json::from_value(probe.call(request.clone(), None).await?.raw)?;
+                serde_json::from_value(probe.call(request.clone()).await?.raw)?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);
@@ -282,7 +281,7 @@ async fn main() -> Result<()> {
     println!("== Deep Research (background polling) ==");
     println!("Agent: {agent}");
     let opened = rig::model(gemini.interactions(agent.as_str()))
-        .call(request.clone(), None)
+        .call(request.clone())
         .await?;
     // rig normalizes the interaction id onto `response_id`, so opening a
     // background run needs no reach into `raw`.

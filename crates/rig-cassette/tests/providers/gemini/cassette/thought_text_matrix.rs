@@ -234,7 +234,7 @@ async fn transcription_body(
     }
 
     let response = model
-        .call(request.build(), None)
+        .call(request.build())
         .await
         .expect("transcription should succeed");
     let raw: GenerateContentResponse = serde_json::from_value(response.raw.clone())
@@ -466,7 +466,7 @@ async fn text_response_body(client: Gemini, scenario: &'static str, cell: TextRe
     let request = request.build();
 
     let response = model
-        .call(request, None)
+        .call(request)
         .await
         .expect("completion should succeed");
 
@@ -750,7 +750,7 @@ async fn text_response_on_a_tool_call_turn() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -847,7 +847,7 @@ async fn text_response_across_two_candidates() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -934,7 +934,7 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -982,7 +982,7 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 .additional_params(completion_thinking(512, true))
                 .build();
 
-            let mut stream = model.stream(request, None).expect("stream should open");
+            let mut stream = model.stream(request).expect("stream should open");
 
             let mut text = String::new();
             let mut reasoning = String::new();
@@ -1055,7 +1055,7 @@ async fn blocking_keeps_a_trailing_thought_signature() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -1105,7 +1105,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
                 .max_tokens(1000)
                 .build();
 
-            let mut stream = model.stream(request, None).expect("stream should open");
+            let mut stream = model.stream(request).expect("stream should open");
             while stream.next().await.is_some() {}
 
             // The stream sends the answer, then an empty part carrying the
@@ -1176,7 +1176,7 @@ mod unit {
         );
         let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model
-            .call(request, None)
+            .call(request)
             .await
             .expect("the stubbed reply should convert")
     }

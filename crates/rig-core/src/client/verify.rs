@@ -13,7 +13,7 @@ where
     /// Check that the provider accepts the configured credentials. A 401 or
     /// 403 reply is [`ProviderError::InvalidAuthentication`].
     pub async fn verify(&self) -> Result<(), ProviderError> {
-        self.call((), None).await.map_err(authentication)
+        self.call(()).await.map_err(authentication)
     }
 }
 

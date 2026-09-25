@@ -110,7 +110,6 @@ async fn unlisted_model_generates_without_response_format() {
                         .height(SIDE)
                         .additional_params(json!({ "quality": "low" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("a model outside the old allowlist must be able to generate at all");
@@ -141,7 +140,6 @@ async fn allowlisted_model_still_generates() {
                         .height(SIDE)
                         .additional_params(json!({ "quality": "low" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("the previously-allowlisted path must be unchanged");
@@ -169,7 +167,6 @@ async fn retired_model_reaches_model_validation() {
                         .width(SIDE)
                         .height(SIDE)
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("dall-e-3 is retired");
@@ -206,7 +203,6 @@ async fn additional_params_quality_reaches_the_api() {
                         .height(SIDE)
                         .additional_params(json!({ "quality": "low", "background": "opaque" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("generation with caller parameters");
@@ -236,7 +232,6 @@ async fn additional_params_output_format_reaches_the_api() {
                         .height(SIDE)
                         .additional_params(json!({ "quality": "low", "output_format": "jpeg" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("generation with caller parameters");
@@ -275,7 +270,6 @@ async fn completions_client_shares_the_fixed_body() {
                         .height(SIDE)
                         .additional_params(json!({ "quality": "low" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("the chat-route image model must behave identically");
@@ -305,7 +299,6 @@ async fn additional_params_invalid_background_is_rejected() {
                         .height(SIDE)
                         .additional_params(json!({ "background": "rig-invalid" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("an invalid caller parameter must be rejected by OpenAI");
@@ -335,7 +328,6 @@ async fn additional_params_invalid_output_format_is_rejected() {
                         .height(SIDE)
                         .additional_params(json!({ "output_format": "rig-invalid" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("rejected parameter");
@@ -364,7 +356,6 @@ async fn additional_params_invalid_quality_is_rejected() {
                         .height(SIDE)
                         .additional_params(json!({ "quality": "rig-invalid" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("rejected parameter");
@@ -394,7 +385,6 @@ async fn additional_params_override_size() {
                         .height(SIDE)
                         .additional_params(json!({ "size": "3x3" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("the overridden size must reach OpenAI and be rejected");
@@ -423,7 +413,6 @@ async fn additional_params_override_model() {
                         .height(SIDE)
                         .additional_params(json!({ "model": "rig-nonexistent-image-model" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("the overridden model must reach OpenAI and be rejected");
@@ -452,7 +441,6 @@ async fn additional_params_override_prompt() {
                         .height(SIDE)
                         .additional_params(json!({ "prompt": "" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("the overridden prompt must reach OpenAI and be rejected");
@@ -484,7 +472,6 @@ async fn caller_can_reinstate_response_format() {
                         .height(SIDE)
                         .additional_params(json!({ "response_format": "b64_json" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("OpenAI rejects the reinstated field, which proves it was sent");
@@ -515,7 +502,6 @@ async fn unlisted_dated_snapshot_reaches_its_own_validation() {
                         .height(SIDE)
                         .additional_params(json!({ "size": "3x3" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("rejected on its own parameter, not on one rig added");
@@ -548,7 +534,6 @@ async fn chatgpt_image_latest_reaches_its_own_validation() {
                         .height(SIDE)
                         .additional_params(json!({ "quality": "rig-invalid" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("rejected on its own parameter");
@@ -591,7 +576,6 @@ async fn response_format_is_rejected_before_the_model_is_looked_at() {
                         .height(SIDE)
                         .additional_params(json!({ "response_format": "b64_json" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("both the field and the model are invalid");
@@ -626,7 +610,6 @@ async fn non_object_additional_params_are_a_no_op() {
                         .height(SIDE)
                         .additional_params(json!("not-an-object"))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("the empty prompt still reaches OpenAI");

@@ -97,7 +97,6 @@ async fn two_images_in_one_turn_keep_their_order() {
                                 .max_tokens(64)
                                 .temperature(0.0)
                                 .build(),
-                            None,
                         )
                         .await
                         .expect("a two-image turn should be accepted");
@@ -188,7 +187,6 @@ async fn an_image_and_a_tool_reach_the_model_together() {
                 .max_tokens(256)
                 .temperature(0.0)
                 .build(),
-                None,
             )
             .await
             .expect("an image alongside tools should be accepted");
@@ -250,7 +248,6 @@ async fn a_malformed_data_uri_is_a_400() {
                     })
                     .max_tokens(32)
                     .build(),
-                    None,
                 )
                 .await
                 .expect_err("undecodable image bytes must fail");
@@ -313,7 +310,6 @@ async fn a_url_the_server_cannot_fetch_is_a_500() {
                     })
                     .max_tokens(32)
                     .build(),
-                    None,
                 )
                 .await
                 .expect_err("an unfetchable image URL must fail");
@@ -352,7 +348,6 @@ async fn an_image_to_a_text_only_server_names_the_missing_mmproj() {
                     })
                     .max_tokens(32)
                     .build(),
-                    None,
                 )
                 .await
                 .expect_err("a text-only server cannot see an image");
@@ -396,7 +391,6 @@ async fn a_video_part_is_refused_even_though_props_advertises_video() {
                     })
                     .max_tokens(64)
                     .build(),
-                    None,
                 )
                 .await
                 .expect_err("the chat-completions content vocabulary has no video part here");

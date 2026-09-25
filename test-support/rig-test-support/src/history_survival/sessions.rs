@@ -78,7 +78,7 @@ pub async fn run<W, T, Wm, Tr>(
 {
     let loaded = turn_one(&first, cell).await;
     let answer = second
-        .call(request(cell, loaded), None)
+        .call(request(cell, loaded))
         .await
         .unwrap_or_else(|error| {
             panic!(
@@ -184,7 +184,7 @@ where
         "Think it through, then call lookup_code for record alpha. Do not guess the code.",
     );
     let reply = first
-        .call(request(cell, vec![prompt.clone()]), None)
+        .call(request(cell, vec![prompt.clone()]))
         .await
         .unwrap_or_else(|error| panic!("[{}] turn one: {error}", cell.provider));
     let call = reply

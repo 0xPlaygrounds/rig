@@ -62,7 +62,7 @@ async fn normalized_response_is_complete() {
                     .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
             );
             let response = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -83,7 +83,7 @@ async fn raw_round_trips() {
                 .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
         );
         let response = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("embedding request should succeed");
 
@@ -104,11 +104,11 @@ async fn raw_route_parity() {
                 .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
         );
         let first = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("first call should succeed");
         let second = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("second call should succeed");
 
@@ -132,7 +132,7 @@ async fn single_text_convenience() {
                     .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
             );
             let response = model
-                .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
+                .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -162,7 +162,7 @@ async fn dimensions_request() {
                 .embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(ndims)),
         );
         let response = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
         for embedding in &response.embeddings {
@@ -180,7 +180,7 @@ async fn error_preserves_provider_body() {
         |client| async move {
             let model = rig::model(client.openai.embedding("no-such-embedding-model", None));
             let error = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(

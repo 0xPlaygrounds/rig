@@ -248,7 +248,7 @@ where
 {
     let model = crate::driver::Model::new(OpenAI::new("test-key").responses("gpt-5.4"), http);
     let request = CompletionRequestBuilder::new("hello").build();
-    model.stream(request, None).expect("stream should start")
+    model.stream(request).expect("stream should start")
 }
 
 /// The same, for a body scripted as JSON events.

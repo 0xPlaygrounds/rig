@@ -259,7 +259,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
             // No shared capture helper collects completed tool calls beside
             // the terminal record, so this cell drives the stream itself.
             let model = rig::model(client.completion(DEFAULT_MODEL));
-            let stream = model.stream(tool_request(), None)?;
+            let stream = model.stream(tool_request())?;
             sink.put(collect_tool_calls_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())
         },

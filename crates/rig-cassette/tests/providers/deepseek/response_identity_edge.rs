@@ -13,10 +13,7 @@ async fn blocking_contract_captures_none() {
         |client| async move {
             let model = rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect("completion should succeed");
             assert_eq!(response.provider_request_id, None);

@@ -144,14 +144,14 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             // Log probabilities stay provider-native: the normalized response
             // models none, so the blocking control reads them off the reply
             // document the driver keeps on `raw`.
-            let document = model.call(request, None).await?.raw;
+            let document = model.call(request).await?.raw;
             Observation {
                 logprobs: document["choices"][0]["logprobs"].clone(),
                 finish_reason: document["choices"][0]["finish_reason"].clone(),
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request, None)?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

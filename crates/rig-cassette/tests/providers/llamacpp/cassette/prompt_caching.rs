@@ -203,7 +203,6 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                         .temperature(0.0)
                         .max_tokens(16)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("the warming turn should succeed");
@@ -216,7 +215,6 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                         .temperature(0.0)
                         .max_tokens(16)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("the warm turn should succeed");
@@ -234,7 +232,6 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                         .max_tokens(16)
                         .additional_params(json!({ "cache_prompt": false }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("cache_prompt: false should succeed");
@@ -252,7 +249,6 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                         .temperature(0.0)
                         .max_tokens(16)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("the turn after the switch should succeed");

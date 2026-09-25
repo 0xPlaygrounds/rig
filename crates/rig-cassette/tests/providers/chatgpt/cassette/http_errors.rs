@@ -36,7 +36,7 @@ async fn assert_nonstreaming_http_error(
     let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
-        .call(request, None)
+        .call(request)
         .await
         .expect_err("non-success response should fail");
 

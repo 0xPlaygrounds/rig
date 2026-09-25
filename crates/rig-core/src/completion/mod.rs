@@ -8,7 +8,7 @@
 //! # async fn run(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let model = Model::new(OpenAI::from_env()?.completion("gpt-4o"), http);
 //! let request = CompletionRequestBuilder::new("What is Rig?").build();
-//! let response = model.call(request, None).await?;
+//! let response = model.call(request).await?;
 //! println!("{:?}", response.choice);
 //! # Ok(())
 //! # }

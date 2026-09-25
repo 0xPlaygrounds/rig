@@ -9,7 +9,7 @@ use super::super::support::with_ollama_cassette;
 async fn list_models_smoke() {
     with_ollama_cassette("models/list_models_smoke", |client| async move {
         let models = rig::model(client.models())
-            .call((), None)
+            .call(())
             .await
             .expect("listing Ollama models should succeed");
 

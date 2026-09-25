@@ -112,7 +112,7 @@ where
         .max_tokens(1024)
         .build();
     if direct {
-        Box::pin(model.stream(request, None).unwrap())
+        Box::pin(model.stream(request).unwrap())
     } else {
         let handler = rig_core::serve::ErasedHandler::new(
             rig_core::serve::adapters::ModelAdapter::new("probe", model),

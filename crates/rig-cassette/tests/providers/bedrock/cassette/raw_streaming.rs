@@ -23,7 +23,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .build();
-            let stream = model.stream(request, None).expect("stream should start");
+            let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", false).await;
         },
@@ -44,7 +44,7 @@ async fn raw_stream_text_response_smoke() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw Bedrock stream should start"),
             )
             .await;
@@ -77,7 +77,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw Bedrock stream should start"),
             )
             .await;
@@ -122,7 +122,7 @@ async fn raw_stream_emits_tool_call_before_text() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw Bedrock stream should start"),
             )
             .await;

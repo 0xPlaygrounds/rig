@@ -65,7 +65,7 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("documents with metadata should be accepted");
             let text = response

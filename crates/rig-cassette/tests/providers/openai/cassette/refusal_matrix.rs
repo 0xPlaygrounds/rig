@@ -149,7 +149,7 @@ async fn chat_blocking_raw_model_surfaces_refusal() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a refusal is content, not a transport failure");
 
@@ -203,7 +203,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.call(request, None).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
             let reply = ChatReply::deserialize(&response.raw)
                 .expect("`raw` is the serialized openai::completion::CompletionResponse");
             let raw_refusal = reply
@@ -240,7 +240,7 @@ async fn chat_blocking_refusal_finishes_with_stop() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.call(request, None).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
 
             assert_eq!(
                 response.finish_reason(),
@@ -266,7 +266,7 @@ async fn chat_streaming_raw_model_surfaces_refusal() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -317,7 +317,7 @@ async fn chat_streaming_terminal_carries_usage() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (text, terminal) = collect_text_and_terminal(stream).await;
 
             assert_nonempty_response(&text);
@@ -360,7 +360,6 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
                     CompletionRequestBuilder::new(REFUSED_PROMPT)
                         .additional_params(chat_response_format())
                         .build(),
-                    None,
                 )
                 .await
                 .expect("blocking refusal turn");
@@ -372,7 +371,6 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
                     CompletionRequestBuilder::new(REFUSED_PROMPT)
                         .additional_params(chat_response_format())
                         .build(),
-                    None,
                 )
                 .expect("streaming refusal turn");
             let (streamed_text, terminal) = collect_text_and_terminal(stream).await;
@@ -462,7 +460,7 @@ async fn chat_control_non_refusing_prompt_is_unchanged() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.call(request, None).await.expect("ordinary turn");
+            let response = model.call(request).await.expect("ordinary turn");
             let text = assistant_text_response(&response.choice).expect("assistant text");
 
             assert!(
@@ -488,7 +486,7 @@ async fn chat_control_non_refusing_stream_is_unchanged() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert!(
@@ -517,7 +515,7 @@ async fn chat_control_mini_answers_inside_schema() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.call(request, None).await.expect("turn");
+            let response = model.call(request).await.expect("turn");
             let text = assistant_text_response(&response.choice).expect("assistant text");
 
             assert!(text.trim_start().starts_with('{'), "{text}");
@@ -541,7 +539,7 @@ async fn chat_control_plain_refusal_is_content_not_refusal() {
             let model = rig::model(client.openai.chat(REFUSING_MODEL));
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT).build();
 
-            let response = model.call(request, None).await.expect("turn");
+            let response = model.call(request).await.expect("turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -569,7 +567,7 @@ async fn responses_blocking_refusal_part_surfaces() {
                 .additional_params(responses_text_format())
                 .build();
 
-            let response = model.call(request, None).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -593,7 +591,7 @@ async fn responses_streaming_refusal_delta_surfaces() {
                 .additional_params(responses_text_format())
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -670,7 +668,6 @@ async fn cross_surface_refusal_parity() {
                         CompletionRequestBuilder::new(REFUSED_PROMPT)
                             .additional_params(responses_text_format())
                             .build(),
-                        None,
                     )
                     .await
                     .expect("responses refusal turn")
@@ -685,7 +682,6 @@ async fn cross_surface_refusal_parity() {
                         CompletionRequestBuilder::new(REFUSED_PROMPT)
                             .additional_params(chat_response_format())
                             .build(),
-                        None,
                     )
                     .await
                     .expect("chat refusal turn")

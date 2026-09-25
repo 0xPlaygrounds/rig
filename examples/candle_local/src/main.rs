@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     // carries usage and a finish reason, not these. The provider's terminal
     // record rides along serialized on `StreamFinal::raw`, so they stay
     // reachable by deserializing it back into Candle's own type.
-    let mut stream = model.stream(request, None)?;
+    let mut stream = model.stream(request)?;
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         match item? {

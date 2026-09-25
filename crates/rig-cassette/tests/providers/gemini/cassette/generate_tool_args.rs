@@ -211,7 +211,7 @@ async fn nested_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("nested-args streaming request should start"),
             )
             .await;
@@ -263,7 +263,7 @@ async fn unicode_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("unicode-args streaming request should start"),
             )
             .await;
@@ -330,7 +330,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("optional-arg completion should succeed");
 

@@ -10,16 +10,13 @@ async fn rerank_smoke() {
     let model = rig::model(provider.rerank(voyageai::RERANK_2_5));
 
     let response = model
-        .call(
-            RerankRequest {
-                query: "capital of France".to_owned(),
-                documents: vec![
-                    "Paris is the capital of France.".to_string(),
-                    "Madrid is the capital of Spain.".to_string(),
-                ],
-            },
-            None,
-        )
+        .call(RerankRequest {
+            query: "capital of France".to_owned(),
+            documents: vec![
+                "Paris is the capital of France.".to_string(),
+                "Madrid is the capital of Spain.".to_string(),
+            ],
+        })
         .await
         .expect("rerank request should succeed");
 

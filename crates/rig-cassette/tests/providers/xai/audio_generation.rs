@@ -22,7 +22,6 @@ async fn audio_generation_smoke() {
                     "language": "en",
                 }))
                 .build(),
-            None,
         )
         .await
         .expect("audio generation should succeed");

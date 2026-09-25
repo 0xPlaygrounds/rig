@@ -24,7 +24,6 @@ async fn audio_generation_smoke() {
                         .speed(1.0)
                         .additional_params(serde_json::json!({ "response_format": "mp3" }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("Venice speech synthesis should succeed");

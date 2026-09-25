@@ -1216,7 +1216,7 @@ fn probe() -> CompletionRequest {
 async fn fold_resource(interaction: &Interaction) -> crate::completion::CompletionResponse {
     let body = serde_json::to_string(interaction).expect("the resource serializes");
     crate::driver::Model::new(interactions_wire(), RecordingHttpClient::new(body))
-        .call(probe(), None)
+        .call(probe())
         .await
         .expect("the interaction resource decodes")
 }
@@ -1250,7 +1250,7 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
         interactions_wire(),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
-    .call(probe(), None)
+    .call(probe())
     .await
     .expect("the recorded interaction resource decodes");
 
@@ -1260,7 +1260,7 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
             sse_bytes: bytes::Bytes::from_static(STREAMED_INTERACTION.as_bytes()),
         },
     )
-    .stream(probe(), None)
+    .stream(probe())
     .expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("the recorded stream carries no in-band error");
@@ -1423,7 +1423,7 @@ async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
         crate::providers::gemini::Gemini::new("test-key").interaction("v1_REDACTED_1"),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
-    .call(probe(), None)
+    .call(probe())
     .await
     .expect("the recorded interaction resource decodes");
 

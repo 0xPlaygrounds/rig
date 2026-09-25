@@ -5,7 +5,7 @@ use super::super::support::with_openrouter_cassette;
 #[tokio::test]
 async fn list_models_smoke() {
     with_openrouter_cassette("models/list_models_smoke", |client| async move {
-        let models = match rig::model(client.models()).call((), None).await {
+        let models = match rig::model(client.models()).call(()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!(
@@ -34,7 +34,7 @@ async fn list_models_preserves_context_and_output_limits() -> anyhow::Result<()>
     super::super::support::with_openrouter_cassette_result(
         "models/list_models_smoke",
         |client| async move {
-            let models = rig::model(client.models()).call((), None).await?;
+            let models = rig::model(client.models()).call(()).await?;
 
             anyhow::ensure!(
                 models
@@ -68,7 +68,7 @@ async fn list_models_is_public_and_ignores_a_rejected_key() -> anyhow::Result<()
         "models/list_models_is_public_and_ignores_a_rejected_key",
         |client| async move {
             let models = rig::model(client.models())
-                .call((), None)
+                .call(())
                 .await
                 .expect("OpenRouter lists models without a valid key");
 

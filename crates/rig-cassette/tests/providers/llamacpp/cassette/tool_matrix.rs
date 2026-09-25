@@ -139,7 +139,6 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
                     .tool_choice(ToolChoice::Required)
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("a required zero-argument tool call should succeed");
@@ -264,7 +263,6 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
                     .tool(zero_arg_tool_definition("ping"))
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("a three-tool request should succeed");
@@ -312,7 +310,6 @@ async fn two_independent_calls_arrive_in_one_turn() {
                 .tool(rig::tool::tool_definition(&Subtract))
                 .max_tokens(512)
                 .build(),
-                None,
             )
             .await
             .expect("a parallel tool request should succeed");
@@ -443,7 +440,6 @@ async fn tool_choice_auto_lets_the_model_decide() {
                     .tool_choice(ToolChoice::Auto)
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("tool_choice auto should succeed");
@@ -484,7 +480,6 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
                     .tool_choice(ToolChoice::None)
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("tool_choice none should succeed");
@@ -564,7 +559,6 @@ async fn tool_choice_required_forces_a_call() {
                     .tool_choice(ToolChoice::Required)
                     .max_tokens(256)
                     .build(),
-                None,
             )
             .await
             .expect("tool_choice required should succeed");
@@ -625,7 +619,6 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
                 })
                 .max_tokens(256)
                 .build(),
-            None,
         )
         .await
         .expect_err("a specific tool choice must not be sent to llama.cpp");
@@ -679,7 +672,6 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
                 })
                 .max_tokens(256)
                 .build(),
-            None,
         )
         .err()
         .expect("opening the stream must fail before anything is sent");
@@ -728,7 +720,6 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                 ])
                 .max_tokens(512)
                 .build(),
-                None,
             )
             .await
             .expect("a text tool result should be accepted");
@@ -788,7 +779,6 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                 ])
                 .max_tokens(512)
                 .build(),
-                None,
             )
             .await
             .expect("a JSON tool result should be accepted");

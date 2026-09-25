@@ -94,7 +94,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         cohere().completion("command-a-03-2025"),
         RecordingHttpClient::new(UNARY_BODY),
     )
-    .call(recorded_request(), None)
+    .call(recorded_request())
     .await
     .expect("the recorded reply decodes");
 
@@ -105,7 +105,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         },
     );
     let mut response = streaming
-        .stream(recorded_request(), None)
+        .stream(recorded_request())
         .expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
@@ -180,7 +180,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
         cohere().embedding("embed-v4.0", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
-    .call(vec!["first".to_owned(), "second".to_owned()], None)
+    .call(vec!["first".to_owned(), "second".to_owned()])
     .await
     .expect("the reply decodes");
 
@@ -280,7 +280,7 @@ fn image_reply(first: f64) -> MockHttpResponse {
 async fn an_image_batch_folds_its_replies_in_input_order() {
     let http = SequencedHttpClient::new([image_reply(0.5), image_reply(0.75)]);
     let response = crate::driver::Model::new(cohere().image_embedding(), http.clone())
-        .call(vec![png(b"first"), png(b"second")], None)
+        .call(vec![png(b"first"), png(b"second")])
         .await
         .expect("both replies decode");
 
@@ -329,7 +329,7 @@ async fn an_image_batch_folds_its_replies_in_input_order() {
 async fn a_single_image_embed_captures_the_bare_document() {
     let http = SequencedHttpClient::new([image_reply(0.5)]);
     let response = crate::driver::Model::new(cohere().image_embedding(), http.clone())
-        .call(vec![png(b"only")], None)
+        .call(vec![png(b"only")])
         .await
         .expect("the reply decodes");
 

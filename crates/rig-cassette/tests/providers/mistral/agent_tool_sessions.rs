@@ -464,7 +464,7 @@ async fn raw_and_normalized_completion<
     mistral::CompletionResponse,
     rig::completion::CompletionResponse,
 )> {
-    let normalized = model.call(request, None).await?;
+    let normalized = model.call(request).await?;
     let raw = mistral::CompletionResponse::deserialize(&normalized.raw)?;
     Ok((raw, normalized))
 }
@@ -532,7 +532,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required).build();
 
-            let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
+            let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(&observation, &[InspectManifest::NAME]);
             let tool_call = observation
@@ -560,7 +560,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             let auto = model
                 .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Auto).build(), None)
+                        .tool_choice(ToolChoice::Auto).build())
                 .await?;
             anyhow::ensure!(
                 auto.choice.iter().any(|content| matches!(
@@ -575,7 +575,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             let any = model
                 .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Required).build(), None)
+                        .tool_choice(ToolChoice::Required).build())
                 .await?;
             anyhow::ensure!(
                 any.choice.iter().any(|content| matches!(
@@ -593,7 +593,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
-                        }).build(), None)
+                        }).build())
                 .await?;
             let specific_calls = specific
                 .choice
@@ -611,7 +611,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             let none = model
                 .call(CompletionRequestBuilder::new("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::None).build(), None)
+                        .tool_choice(ToolChoice::None).build())
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;

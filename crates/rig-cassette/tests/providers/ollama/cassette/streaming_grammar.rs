@@ -123,7 +123,7 @@ async fn thinking_and_tool_call_in_one_stream() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(serde_json::json!({ "think": true }))
                 .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
@@ -192,7 +192,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
             .tool(rig::tool::tool_definition(&BetaSignal))
             .additional_params(serde_json::json!({ "think": false }))
             .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let aggregated: Vec<&ToolCall> = run
@@ -278,7 +278,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
             )
             .tool(rig::tool::tool_definition(&Adder))
             .additional_params(serde_json::json!({ "think": false })).build();
-        let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+        let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
         let add_calls: Vec<&ToolCall> = run
@@ -389,7 +389,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
             .messages(history)
             .additional_params(serde_json::json!({ "think": false }))
             .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),
                 "the model should answer from the replayed tool result, got {:?}",

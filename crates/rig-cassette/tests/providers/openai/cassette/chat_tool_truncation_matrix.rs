@@ -197,7 +197,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
         // normalization, keeping the native value on `CompletionResponse::raw`.
-        Transport::Blocking => match model.call(request(cell), None).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -209,7 +209,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let mut stream = match model.stream(request(cell), None) {
+            let mut stream = match model.stream(request(cell)) {
                 Ok(stream) => stream,
                 Err(error) => {
                     return Observation {

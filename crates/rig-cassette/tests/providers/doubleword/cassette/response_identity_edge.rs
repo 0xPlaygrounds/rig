@@ -36,7 +36,6 @@ async fn blocking_identity_contract_vs_reality() {
                     CompletionRequestBuilder::new("Reply with exactly: identity probe")
                         .max_tokens(128)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("completion should succeed");
@@ -64,7 +63,6 @@ async fn streaming_identity_contract_vs_reality() {
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
                         .max_tokens(128)
                         .build(),
-                    None,
                 )
                 .expect("stream should open");
             let mut terminal = None;

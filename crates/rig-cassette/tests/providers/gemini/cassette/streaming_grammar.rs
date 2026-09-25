@@ -180,7 +180,7 @@ async fn max_tokens_truncation_normalizes_to_length() {
                         serde_json::to_value(params).expect("params should serialize"),
                     )
                     .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
             assert!(
@@ -209,7 +209,7 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let streamed = run
@@ -273,7 +273,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                 .additional_params(
                     serde_json::to_value(params).expect("params should serialize"),
                 ).build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_terminal(&run, FinishReason::Stop);
@@ -378,7 +378,7 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .additional_params(serde_json::to_value(params).expect("params should serialize"))
             .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
@@ -453,7 +453,7 @@ async fn parallel_function_calls_stay_distinct() {
             .tool(rig::tool::tool_definition(&BetaSignal))
             .additional_params(serde_json::to_value(params).expect("params should serialize"))
             .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let aggregated: Vec<&ToolCall> = run
@@ -531,7 +531,7 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
                         serde_json::to_value(params).expect("params should serialize"),
                     )
                     .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -570,7 +570,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                     })
                     .expect("params should serialize"),
                 ).build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_eq!(
@@ -716,7 +716,6 @@ async fn interactions_requires_action_roundtrip() {
                             .expect("params should serialize"),
                         )
                         .build(),
-                    None,
                 )
                 .await
                 .expect("tool-required interaction should succeed");
@@ -782,7 +781,6 @@ async fn interactions_requires_action_roundtrip() {
                         .expect("params should serialize"),
                     )
                     .build(),
-                    None,
                 )
                 .await
                 .expect("tool-result follow-up should succeed");
@@ -837,7 +835,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     })
                     .expect("params should serialize"),
                 ).build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let add_calls: Vec<&ToolCall> = run
@@ -939,7 +937,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                     })
                     .expect("params should serialize"),
                 ).build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             let signature_delivered = run.choice.iter().any(|content| {
@@ -1046,7 +1044,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     .tool(rig::tool::tool_definition(&crate::support::Adder))
                     .messages(history)
                     .build();
-            let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),
                 "the model should answer from the replayed tool result, got {:?}",

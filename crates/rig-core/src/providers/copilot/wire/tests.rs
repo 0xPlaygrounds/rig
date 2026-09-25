@@ -412,7 +412,7 @@ async fn the_chat_route_folds_its_recorded_turn() {
         copilot().completion(super::super::GPT_4O),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .call(prompt(), None)
+    .call(prompt())
     .await
     .expect("the recorded chat body folds");
 
@@ -435,7 +435,7 @@ async fn the_responses_route_folds_its_recorded_turn() {
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .call(prompt(), None)
+    .call(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -466,7 +466,7 @@ async fn a_contentless_reasoning_item_survives_the_fold() {
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .call(prompt(), None)
+    .call(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -506,7 +506,7 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
     assert_eq!(bound.wire.capabilities().max_documents, 1024);
 
     let response = bound
-        .call(documents.clone(), None)
+        .call(documents.clone())
         .await
         .expect("the recorded embeddings body folds");
     assert_eq!(response.provider, PROVIDER_NAME);
@@ -595,7 +595,7 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
         copilot().models(),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .call((), None)
+    .call(())
     .await
     .expect("the recorded catalogue folds");
 

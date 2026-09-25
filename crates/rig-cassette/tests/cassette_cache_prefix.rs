@@ -761,7 +761,7 @@ macro_rules! determinism_test {
                 let model = $build;
                 // The response is intentionally unparseable; only the captured
                 // request matters, and it is captured before parsing.
-                let _ = model.call(determinism_probe_request(), None).await;
+                let _ = model.call(determinism_probe_request()).await;
                 bodies.push(captured_body($provider, &$http));
             }
             assert_identical($provider, &bodies);

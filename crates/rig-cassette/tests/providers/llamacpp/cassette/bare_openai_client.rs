@@ -106,7 +106,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         );
         let bare = OpenAI::new("llamacpp-local");
         let _ = rig::Model::new(bare.embedding("m", Some(1)), recorder.clone())
-            .call(vec!["probe".to_string()], None)
+            .call(vec!["probe".to_string()])
             .await
             .map(|response| response.embeddings);
         let sent = &recorder.requests()[0];
@@ -124,7 +124,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         );
         let provider = OpenAI::with_key(&LLAMACPP, "");
         let _ = rig::Model::new(provider.embedding("m", Some(1)), recorder.clone())
-            .call(vec!["probe".to_string()], None)
+            .call(vec!["probe".to_string()])
             .await
             .map(|response| response.embeddings);
         assert!(
@@ -147,7 +147,6 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
                     CompletionRequestBuilder::new("Reply with the single word: ok")
                         .max_tokens(256)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("an unauthenticated local server accepts any bearer token");
@@ -288,7 +287,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
             // what the decoder folded it into. The assistant text must be the
             // same text either way.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completions api request should succeed");
             assert_eq!(

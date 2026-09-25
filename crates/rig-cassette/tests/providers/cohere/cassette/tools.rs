@@ -56,7 +56,7 @@ async fn required_tool_choice_is_accepted() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("required tool choice should be accepted");
 
@@ -98,7 +98,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("REQUIRED with multiple tools should succeed");
             let tool_calls = response
@@ -134,7 +134,7 @@ async fn none_tool_choice_with_tools_returns_text() {
                 .max_tokens(32).build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("NONE with tools should produce a direct response");
 
@@ -169,7 +169,7 @@ async fn none_tool_choice_without_tools_returns_text() {
                 .max_tokens(16).build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("Cohere permits NONE without a tools parameter");
 
@@ -201,7 +201,7 @@ async fn strict_required_tool_choice_is_accepted() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("strict_tools should compose with REQUIRED");
             let tool_call = response

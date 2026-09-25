@@ -96,7 +96,7 @@ async fn raw_roundtrips_interaction() {
         |client| async move {
             let model = rig::model(client.interactions(MODEL));
             let response = model
-                .call(request(), None)
+                .call(request())
                 .await
                 .expect("completion should succeed");
 
@@ -152,7 +152,7 @@ async fn raw_exposes_lifecycle_fields() {
         |client| async move {
             let model = rig::model(client.interactions(MODEL));
             let response = model
-                .call(request(), None)
+                .call(request())
                 .await
                 .expect("completion should succeed");
 

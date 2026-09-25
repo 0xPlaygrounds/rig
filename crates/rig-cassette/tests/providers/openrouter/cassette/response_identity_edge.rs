@@ -20,10 +20,7 @@ async fn blocking_contract_and_gateway_both_report_none() {
         |client| async move {
             let model = rig::model(client.completion(MODEL));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect("completion should succeed");
             assert_eq!(
@@ -49,7 +46,6 @@ async fn streaming_contract_and_gateway_both_report_none() {
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
                         .build(),
-                    None,
                 )
                 .expect("stream should open");
             let mut terminal = None;
@@ -76,7 +72,7 @@ async fn routed_failure_error_shape() {
         |client| async move {
             let model = rig::model(client.completion("openai/gpt-nonexistent-routed-model"));
             let error = model
-                .call(CompletionRequestBuilder::new("Never routed").build(), None)
+                .call(CompletionRequestBuilder::new("Never routed").build())
                 .await
                 .expect_err("an unroutable model must fail");
             // Derived from the recording: OpenRouter answers a body-ful 4xx,

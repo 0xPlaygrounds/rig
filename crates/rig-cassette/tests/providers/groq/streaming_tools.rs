@@ -26,7 +26,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         .tool(zero_arg_tool_definition("ping"))
         .tool_choice(ToolChoice::Required)
         .build();
-    let stream = model.stream(request, None).expect("stream should start");
+    let stream = model.stream(request).expect("stream should start");
 
     assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
 }
@@ -42,12 +42,9 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         .tool(rig::tool::tool_definition(&BetaSignal))
         .build();
 
-    let observation = collect_raw_stream_observation(
-        model
-            .stream(request, None)
-            .expect("raw stream should start"),
-    )
-    .await;
+    let observation =
+        collect_raw_stream_observation(model.stream(request).expect("raw stream should start"))
+            .await;
 
     assert_raw_stream_contains_distinct_tool_calls_before_text(
         &observation,
@@ -107,12 +104,9 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         .tool(rig::tool::tool_definition(&AlphaSignal))
         .build();
 
-    let first_turn = collect_raw_stream_observation(
-        model
-            .stream(request, None)
-            .expect("raw stream should start"),
-    )
-    .await;
+    let first_turn =
+        collect_raw_stream_observation(model.stream(request).expect("raw stream should start"))
+            .await;
 
     assert_raw_stream_tool_call_precedes_text(&first_turn, "lookup_harbor_label");
 
@@ -144,7 +138,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
 
     let second_turn = collect_raw_stream_observation(
         model
-            .stream(followup_request, None)
+            .stream(followup_request)
             .expect("raw followup stream should start"),
     )
     .await;

@@ -132,7 +132,7 @@ fn embedding_model(
 async fn embed_one(client: &OpenAI, width: Option<usize>, input: &str) {
     let model = embedding_model(client, width);
     let embeddings = model
-        .call(vec![input.to_string()], None)
+        .call(vec![input.to_string()])
         .await
         .map(|response| response.embeddings)
         .expect("embedding request should succeed");
@@ -148,10 +148,7 @@ async fn embed_one(client: &OpenAI, width: Option<usize>, input: &str) {
 async fn embed_batch(client: &OpenAI, width: Option<usize>, inputs: &[&str]) {
     let model = embedding_model(client, width);
     let embeddings = model
-        .call(
-            inputs.iter().map(|input| (*input).to_string()).collect(),
-            None,
-        )
+        .call(inputs.iter().map(|input| (*input).to_string()).collect())
         .await
         .map(|response| response.embeddings)
         .expect("embedding request should succeed");
@@ -170,7 +167,7 @@ async fn embed_batch(client: &OpenAI, width: Option<usize>, inputs: &[&str]) {
 /// wire for the refusal to be the provider's rather than rig's.
 async fn assert_rejected_input(client: &OpenAI, input: &str) {
     let error = rig::model(client.embedding(MODEL, Some(512)))
-        .call(vec![input.to_string()], None)
+        .call(vec![input.to_string()])
         .await
         .map(|response| response.embeddings)
         .expect_err("Doubleword should reject a contentless input");
@@ -356,7 +353,7 @@ async fn usage_survives_a_requested_width() {
         |client| async move {
             let model = rig::model(client.embedding(MODEL, Some(256)));
             let response = model
-                .call(vec![PROBE.to_string()], None)
+                .call(vec![PROBE.to_string()])
                 .await
                 .expect("embedding request should succeed");
 
@@ -387,7 +384,7 @@ async fn usage_at_the_default_width() {
         |client| async move {
             let model = rig::model(client.embedding(MODEL, None));
             let response = model
-                .call(vec![PROBE.to_string()], None)
+                .call(vec![PROBE.to_string()])
                 .await
                 .expect("embedding request should succeed");
 
@@ -565,7 +562,7 @@ async fn an_unknown_model_still_puts_the_requested_width_on_the_wire() {
                 rig::model(client.embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192)));
             assert_eq!(model.wire.capabilities().ndims, 8_192);
             let error = model
-                .call(vec![PROBE.to_string()], None)
+                .call(vec![PROBE.to_string()])
                 .await
                 .map(|response| response.embeddings)
                 .expect_err("an unserved model should fail");

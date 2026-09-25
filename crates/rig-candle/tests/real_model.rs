@@ -42,7 +42,7 @@ async fn loads_and_generates_with_a_real_local_model()
     // normalized `completion()`/`stream()` surfaces are exercised further
     // below against the same request.
     let response: CandleCompletionResponse =
-        serde_json::from_value(model.call(request.clone(), None).await?.raw)?;
+        serde_json::from_value(model.call(request.clone()).await?.raw)?;
     if response.text.is_empty() {
         return Err(std::io::Error::other("real model returned empty generated text").into());
     }
@@ -57,7 +57,7 @@ async fn loads_and_generates_with_a_real_local_model()
         .into());
     }
     // The stream's terminal carries the same local record on `raw`.
-    let mut stream = model.stream(request.clone(), None)?;
+    let mut stream = model.stream(request.clone())?;
     let mut streamed_text = String::new();
     while let Some(item) = stream.next().await {
         if let StreamEvent::BlockDelta {
@@ -85,7 +85,7 @@ async fn loads_and_generates_with_a_real_local_model()
 
     // Normalized unary surface: the same request through `completion()` must
     // produce non-empty text and non-zero usage.
-    let normalized = model.call(request.clone(), None).await?;
+    let normalized = model.call(request.clone()).await?;
     let normalized_text: String = normalized
         .choice
         .iter()
@@ -105,7 +105,7 @@ async fn loads_and_generates_with_a_real_local_model()
 
     // Normalized streaming surface: `stream()` must deliver text and a
     // genuine terminal record (its absence would signal truncation).
-    let mut normalized_stream = model.stream(request, None)?;
+    let mut normalized_stream = model.stream(request)?;
     let mut normalized_streamed = String::new();
     while let Some(item) = normalized_stream.next().await {
         if let StreamEvent::BlockDelta {

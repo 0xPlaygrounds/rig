@@ -56,8 +56,12 @@ async fn streamed_body_failure_preserves_boundary_through_provider_error_convers
         );
         let log = Arc::new(ObservationLog::default());
         let request = CompletionRequestBuilder::new("hello").build();
-        let context = enabled.then(|| AdapterContext::new(log.clone(), Subject::default(), "call"));
-        let mut stream = model.stream(request, context).unwrap();
+        let mut stream = if enabled {
+            let context = AdapterContext::new(log.clone(), Subject::default(), "call");
+            model.stream_observed(request, context).unwrap()
+        } else {
+            model.stream(request).unwrap()
+        };
         let error = loop {
             match stream.next().await {
                 Some(Err(error)) => break error,
@@ -220,15 +224,11 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
         http.clone(),
     );
     let plain = CompletionRequestBuilder::new("hello").build();
-    model.call(plain.clone(), None).await.unwrap();
+    model.call(plain.clone()).await.unwrap();
     let log = Arc::new(ObservationLog::default());
     let observed = plain;
-    let context = Some(AdapterContext::new(
-        log.clone(),
-        Subject::default(),
-        "call-1",
-    ));
-    model.call(observed, context).await.unwrap();
+    let context = AdapterContext::new(log.clone(), Subject::default(), "call-1");
+    model.call_observed(observed, context).await.unwrap();
     let requests = http.requests();
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0], requests[1]);
@@ -311,9 +311,9 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
     let context = AdapterContext::new(log.clone(), Subject::default(), "retry-operation");
     for _ in 0..2 {
         let error = model
-            .call(
+            .call_observed(
                 CompletionRequestBuilder::new("hello").build(),
-                Some(context.clone()),
+                context.clone(),
             )
             .await
             .unwrap_err();
@@ -441,12 +441,8 @@ async fn dropping_pending_transport_or_body_closes_the_attempt_once() {
         );
         let log = Arc::new(ObservationLog::default());
         let request = CompletionRequestBuilder::new("hello").build();
-        let context = Some(AdapterContext::new(
-            log.clone(),
-            Subject::default(),
-            "cancelled-call",
-        ));
-        let mut future = Box::pin(model.call(request, context));
+        let context = AdapterContext::new(log.clone(), Subject::default(), "cancelled-call");
+        let mut future = Box::pin(model.call_observed(request, context));
         assert!(futures::poll!(future.as_mut()).is_pending());
         drop(future);
         let trace = log.trace();
@@ -469,16 +465,12 @@ async fn shared_arc_model_keeps_mixed_invocations_distinct_after_context_scope_e
     let request = CompletionRequestBuilder::new("same request").build();
     let mut stream = {
         let context = AdapterContext::new(sink.clone(), Subject::default(), "stream");
-        model.stream(request.clone(), Some(context)).unwrap()
+        model.stream_observed(request.clone(), context).unwrap()
     };
     assert!(sink.is_empty(), "stream creation remains lazy");
-    let mut unary = Box::pin(model.call(
+    let mut unary = Box::pin(model.call_observed(
         request,
-        Some(AdapterContext::new(
-            sink.clone(),
-            Subject::default(),
-            "unary",
-        )),
+        AdapterContext::new(sink.clone(), Subject::default(), "unary"),
     ));
     assert!(futures::poll!(unary.as_mut()).is_pending());
     // Move the lazy stream to another task before starting its HTTP attempt.
@@ -523,12 +515,8 @@ async fn dropping_stream_pending_on_connection_or_body_closes_once() {
         );
         let log = Arc::new(ObservationLog::default());
         let request = CompletionRequestBuilder::new("hello").build();
-        let context = Some(AdapterContext::new(
-            log.clone(),
-            Subject::default(),
-            "pending-stream",
-        ));
-        let mut stream = model.stream(request, context).unwrap();
+        let context = AdapterContext::new(log.clone(), Subject::default(), "pending-stream");
+        let mut stream = model.stream_observed(request, context).unwrap();
         assert!(log.is_empty());
         assert!(futures::poll!(stream.next()).is_pending());
         drop(stream);
@@ -551,7 +539,7 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
     );
     let log = Arc::new(ObservationLog::default());
     let request = CompletionRequestBuilder::new("hello").build();
-    let mut plain_stream = model.stream(request.clone(), None).unwrap();
+    let mut plain_stream = model.stream(request.clone()).unwrap();
     let mut plain_items = Vec::new();
     while let Some(item) = plain_stream.next().await {
         let terminal = matches!(&item, Ok(crate::streaming::StreamEvent::Final(_)));
@@ -564,12 +552,8 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
         }
     }
     drop(plain_stream);
-    let context = Some(AdapterContext::new(
-        log.clone(),
-        Subject::default(),
-        "stream-call",
-    ));
-    let mut stream = model.stream(request, context).unwrap();
+    let context = AdapterContext::new(log.clone(), Subject::default(), "stream-call");
+    let mut stream = model.stream_observed(request, context).unwrap();
     assert!(
         log.is_empty(),
         "an unpolled lazy stream has not sent a request"
@@ -750,14 +734,10 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
             http.clone(),
         );
         let request = CompletionRequestBuilder::new("hello").build();
-        let plain_error = model.call(request.clone(), None).await.unwrap_err();
+        let plain_error = model.call(request.clone()).await.unwrap_err();
         let log = Arc::new(ObservationLog::default());
-        let context = Some(AdapterContext::new(
-            log.clone(),
-            Subject::default(),
-            "empty-call",
-        ));
-        let error = model.call(request, context).await.unwrap_err();
+        let context = AdapterContext::new(log.clone(), Subject::default(), "empty-call");
+        let error = model.call_observed(request, context).await.unwrap_err();
         assert_eq!(error.to_string(), plain_error.to_string());
         assert_eq!(http.requests()[0], http.requests()[1]);
         let trace = log.trace();
@@ -835,16 +815,12 @@ async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
         ),
     );
     let request = CompletionRequestBuilder::new("hello").build();
-    let mut plain = model.stream(request.clone(), None).unwrap();
+    let mut plain = model.stream(request.clone()).unwrap();
     let plain_error = plain.next().await.unwrap().unwrap_err();
     assert!(plain.next().await.is_none());
     let log = Arc::new(ObservationLog::default());
-    let context = Some(AdapterContext::new(
-        log.clone(),
-        Subject::default(),
-        "rejected-stream",
-    ));
-    let mut stream = model.stream(request, context).unwrap();
+    let context = AdapterContext::new(log.clone(), Subject::default(), "rejected-stream");
+    let mut stream = model.stream_observed(request, context).unwrap();
     let error = stream.next().await.unwrap().unwrap_err();
     assert_eq!(error.to_string(), plain_error.to_string());
     assert!(stream.next().await.is_none());
@@ -904,14 +880,10 @@ async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
         );
         let log = Arc::new(ObservationLog::default());
         let request = CompletionRequestBuilder::new("hello").build();
-        let context = Some(AdapterContext::new(
-            log.clone(),
-            Subject::default(),
-            "metadata-call",
-        ));
+        let context = AdapterContext::new(log.clone(), Subject::default(), "metadata-call");
         assert!(
             model
-                .call(request, context)
+                .call_observed(request, context)
                 .await
                 .unwrap_err()
                 .is_retryable()
@@ -1158,7 +1130,7 @@ async fn a_transport_that_records_nothing_writes_no_facts() {
     let context = AdapterContext::new(log.clone(), Subject::default(), "ordinary-call");
     let request = CompletionRequestBuilder::new("hello").build();
     let response = MockCompletionModel::from_turns([MockTurn::text("ordinary")])
-        .call(request.clone(), Some(context.clone()))
+        .call_observed(request.clone(), context.clone())
         .await
         .unwrap();
     assert!(
@@ -1170,7 +1142,7 @@ async fn a_transport_that_records_nothing_writes_no_facts() {
         MockStreamEvent::text("ordinary stream"),
         MockStreamEvent::final_response_with_default_usage(),
     ]])
-    .stream(request, Some(context))
+    .stream_observed(request, context)
     .unwrap();
     let mut events = Vec::new();
     while let Some(event) = stream.next().await {

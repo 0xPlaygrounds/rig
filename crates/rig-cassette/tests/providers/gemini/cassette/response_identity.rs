@@ -18,10 +18,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
         |client| async move {
             let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect("completion should succeed");
 
@@ -44,7 +41,6 @@ async fn streaming_request_id_is_none_by_design() {
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
                         .build(),
-                    None,
                 )
                 .expect("stream should open");
 
@@ -143,10 +139,7 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
         |client| async move {
             let model = rig::model(client.completion("gemini-nonexistent-model-for-identity-edge"));
             let error = model
-                .call(
-                    CompletionRequestBuilder::new("Never answered").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
@@ -170,10 +163,7 @@ async fn auth_rejection_keeps_transport_shape() {
         |client| async move {
             let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
             let error = model
-                .call(
-                    CompletionRequestBuilder::new("Never authenticated").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(

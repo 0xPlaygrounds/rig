@@ -49,7 +49,7 @@ pub(super) async fn strict_tool_call_arguments(
         .build();
 
     let response = model
-        .call(request, None)
+        .call(request)
         .await
         .expect("strict-tools completion should succeed");
     let tool_calls = response
@@ -105,7 +105,7 @@ async fn strict_tools_opt_in_roundtrip() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("strict-tools completion should succeed");
 

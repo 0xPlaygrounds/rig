@@ -12,10 +12,7 @@ async fn audio_generation_smoke() {
     let model = rig::model(provider.audio_generation("EN"));
 
     let response = model
-        .call(
-            AudioGenerationRequestBuilder::new(AUDIO_TEXT, "EN-US").build(),
-            None,
-        )
+        .call(AudioGenerationRequestBuilder::new(AUDIO_TEXT, "EN-US").build())
         .await
         .expect("audio generation should succeed");
 

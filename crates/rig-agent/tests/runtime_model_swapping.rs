@@ -558,13 +558,13 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_agent_stream(alpha_agent.prompt("stream type").stream());
 
     let unary = alpha
-        .call(request("low-level unary"), None)
+        .call(request("low-level unary"))
         .await
         .expect("direct unary response");
     assert_eq!(unary.provider, "alpha");
 
     let mut low_level_stream = beta
-        .stream(request("low-level stream"), None)
+        .stream(request("low-level stream"))
         .expect("direct provider stream");
     let mut stream_final: Option<StreamFinal> = None;
     while let Some(item) = low_level_stream.next().await {

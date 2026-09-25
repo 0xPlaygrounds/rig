@@ -119,7 +119,7 @@ async fn raw_terminal(
     request: CompletionRequest,
 ) -> StreamingCompletionResponse {
     let mut stream = model
-        .stream(request, None)
+        .stream(request)
         .expect("stop-sequence stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -139,7 +139,7 @@ async fn provider_response(
     request: CompletionRequest,
 ) -> anthropic::completion::CompletionResponse {
     let response = model
-        .call(request, None)
+        .call(request)
         .await
         .expect("blocking stop-sequence request should succeed");
     anthropic::completion::CompletionResponse::deserialize(&response.raw)
@@ -774,7 +774,7 @@ async fn normalized_stream_single_sequence() {
         |client| async move {
             let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
             let mut stream = model
-                .stream(request(LIST_PROMPT, &["charlie"], 64), None)
+                .stream(request(LIST_PROMPT, &["charlie"], 64))
                 .expect("normalized stream should open");
             while stream.next().await.is_some() {}
 

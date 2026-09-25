@@ -218,7 +218,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let request = prepared
                     .apply(CompletionRequestBuilder::new(prompt))
                     .build();
-                let response = drive(model.complete(request, None), &mut driver)?;
+                let response = drive(model.complete(request), &mut driver)?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(
                     None,

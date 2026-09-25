@@ -82,10 +82,7 @@ async fn default_body_returns_mp3() {
                 client.openai.audio_generation(openai::TTS_1),
                 client.http.clone(),
             )
-            .call(
-                AudioGenerationRequestBuilder::new(TEXT, VOICE).build(),
-                None,
-            )
+            .call(AudioGenerationRequestBuilder::new(TEXT, VOICE).build())
             .await
             .expect("speech synthesis should succeed");
 
@@ -108,7 +105,6 @@ async fn response_format_wav_changes_the_container() {
                 AudioGenerationRequestBuilder::new(TEXT, VOICE)
                     .additional_params(json!({ "response_format": "wav" }))
                     .build(),
-                None,
             )
             .await
             .expect("speech synthesis should succeed");
@@ -136,7 +132,6 @@ async fn response_format_flac_changes_the_container() {
                 AudioGenerationRequestBuilder::new(TEXT, VOICE)
                     .additional_params(json!({ "response_format": "flac" }))
                     .build(),
-                None,
             )
             .await
             .expect("speech synthesis should succeed");
@@ -163,7 +158,6 @@ async fn instructions_reach_the_tts_model() {
                 AudioGenerationRequestBuilder::new(TEXT, VOICE)
                     .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
                     .build(),
-                None,
             )
             .await
             .expect("speech synthesis should succeed");
@@ -193,7 +187,6 @@ async fn completions_client_shares_the_fixed_body() {
                 AudioGenerationRequestBuilder::new(TEXT, VOICE)
                     .additional_params(json!({ "response_format": "wav" }))
                     .build(),
-                None,
             )
             .await
             .expect("speech synthesis should succeed");
@@ -218,7 +211,6 @@ async fn additional_params_can_override_voice() {
                 AudioGenerationRequestBuilder::new(TEXT, VOICE)
                     .additional_params(json!({ "voice": "nova" }))
                     .build(),
-                None,
             )
             .await
             .expect("speech synthesis should succeed");
@@ -243,7 +235,6 @@ async fn non_object_additional_params_are_a_no_op() {
                 AudioGenerationRequestBuilder::new(TEXT, VOICE)
                     .additional_params(json!("not-an-object"))
                     .build(),
-                None,
             )
             .await
             .expect("speech synthesis should succeed");

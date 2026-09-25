@@ -24,7 +24,6 @@ async fn auth_rejection_carries_identity() {
                     CompletionRequestBuilder::new("Never authenticated")
                         .max_tokens(16)
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("a bogus key must be rejected");
@@ -62,7 +61,6 @@ async fn validation_error_carries_identity() {
                         .max_tokens(1)
                         .additional_params(serde_json::json!({"temperature": -5.0}))
                         .build(),
-                    None,
                 )
                 .await
                 .expect_err("an impossible temperature must be rejected");
@@ -107,7 +105,6 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                 CompletionRequestBuilder::new("Never streamed")
                     .max_tokens(16)
                     .build(),
-                None,
             );
             let error = match result {
                 Err(error) => rig::ErrorReport::from(&error),
@@ -157,7 +154,6 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
                 CompletionRequestBuilder::new("Never streamed")
                     .max_tokens(16)
                     .build(),
-                None,
             );
             let error = match result {
                 Err(error) => rig::ErrorReport::from(&error),

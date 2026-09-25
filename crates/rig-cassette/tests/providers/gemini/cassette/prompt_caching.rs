@@ -381,7 +381,7 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                         record_telemetry_content: false,
                     };
                     let response = model
-                        .call(request, None)
+                        .call(request)
                         .await
                         .expect("a cached-content request should succeed");
                     reads.push((
@@ -523,11 +523,11 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
             };
 
             let first = model
-                .call(request(), None)
+                .call(request())
                 .await
                 .expect("first small request should succeed");
             let second = model
-                .call(request(), None)
+                .call(request())
                 .await
                 .expect("second small request should succeed");
 
@@ -567,18 +567,17 @@ async fn changing_temperature_still_hits() {
             let history = vec![user("Reply with exactly: temp")];
 
             let warm = model
-                .call(
-                    mutation_request(Some(&preamble), vec![], history.clone(), 0.0),
-                    None,
-                )
+                .call(mutation_request(
+                    Some(&preamble),
+                    vec![],
+                    history.clone(),
+                    0.0,
+                ))
                 .await
                 .expect("warming request should succeed");
 
             let hotter = model
-                .call(
-                    mutation_request(Some(&preamble), vec![], history, 0.7),
-                    None,
-                )
+                .call(mutation_request(Some(&preamble), vec![], history, 0.7))
                 .await
                 .expect("second request should succeed");
 
@@ -615,10 +614,7 @@ async fn changing_the_system_instruction_misses() {
             let history = vec![user("Reply with exactly: sysinstr")];
 
             let _warm = model
-                .call(
-                    mutation_request(Some(&base), vec![], history.clone(), 0.0),
-                    None,
-                )
+                .call(mutation_request(Some(&base), vec![], history.clone(), 0.0))
                 .await
                 .expect("warming request should succeed");
 
@@ -630,7 +626,7 @@ async fn changing_the_system_instruction_misses() {
             );
 
             let after = model
-                .call(mutation_request(Some(&mutated), vec![], history, 0.0), None)
+                .call(mutation_request(Some(&mutated), vec![], history, 0.0))
                 .await
                 .expect("mutated request should succeed");
 

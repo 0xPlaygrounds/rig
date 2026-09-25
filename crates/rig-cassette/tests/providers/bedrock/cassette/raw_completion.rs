@@ -26,7 +26,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
             // from, so raw-vs-normalized parity is checked against one
             // recorded interaction.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("Bedrock request should succeed");
             let raw = InternalConverseOutput::deserialize(&response.raw)

@@ -52,7 +52,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
     with_groq_cassette_result(
         "constants_matrix/catalog_lists_current_constants",
         |client| async move {
-            let models = rig::model(client.models()).call((), None).await?;
+            let models = rig::model(client.models()).call(()).await?;
             let served: Vec<&str> = models.data.iter().map(|model| model.id.as_str()).collect();
             let missing: Vec<&str> = PUBLIC_CONSTANTS
                 .iter()
@@ -72,7 +72,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
 async fn assert_completion_smoke(client: OpenAI, model_id: &str) -> Result<()> {
     let model = rig::model(client.completion(model_id));
     let request = CompletionRequestBuilder::new(PROMPT).max_tokens(64).build();
-    let response = model.call(request, None).await?;
+    let response = model.call(request).await?;
     let text = assistant_text_response(&response.choice)
         .ok_or_else(|| anyhow::anyhow!("{model_id} should answer with text"))?;
     assert_nonempty_response(&text);

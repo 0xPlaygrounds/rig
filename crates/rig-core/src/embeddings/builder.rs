@@ -128,7 +128,7 @@ where
             .map(|chunk| async {
                 let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
 
-                let response: EmbeddingResponse = self.model.call(batch, None).await?;
+                let response: EmbeddingResponse = self.model.call(batch).await?;
                 Ok::<_, ProviderError>((
                     slots
                         .into_iter()

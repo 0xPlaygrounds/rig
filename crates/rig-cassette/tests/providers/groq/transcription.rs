@@ -16,7 +16,6 @@ async fn transcription_smoke() {
             TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)
                 .expect("should be able to load audio fixture")
                 .build(),
-            None,
         )
         .await
         .expect("transcription should succeed");

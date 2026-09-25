@@ -135,13 +135,13 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // The provider-native chat-completions reply rides serialized on
             // `CompletionResponse::raw`; decode it to prove the shape, then
             // read the serialized form the way the old raw surface did.
-            let response = model.call(request, None).await?;
+            let response = model.call(request).await?;
             let response =
                 serde_json::from_value::<openai::completion::CompletionResponse>(response.raw)?;
             serde_json::to_value(response)?
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request, None)?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(record) = item? {

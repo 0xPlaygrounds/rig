@@ -474,7 +474,7 @@ where
     T: rig_core::driver::Transport<W>,
 {
     model
-        .call(probe.request(chat_history), None)
+        .call(probe.request(chat_history))
         .await
         .unwrap_or_else(|error| panic!("cache probe {label} should succeed: {error}"))
 }
@@ -556,7 +556,7 @@ where
     use rig_core::streaming::StreamEvent;
 
     let mut stream = model
-        .stream(probe.request(chat_history), None)
+        .stream(probe.request(chat_history))
         .unwrap_or_else(|error| panic!("streamed cache probe {label} should start: {error}"));
 
     let mut text = String::new();

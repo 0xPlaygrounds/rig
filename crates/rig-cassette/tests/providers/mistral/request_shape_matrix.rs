@@ -150,7 +150,7 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
     let model = rig::model(client.completion(model_name(cell.model)));
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.call(request(cell), None).await?;
+            let response = model.call(request(cell)).await?;
             let calls = response
                 .choice
                 .iter()
@@ -168,7 +168,7 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request(cell), None)?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item? {

@@ -54,7 +54,6 @@ async fn responses_keeps_documents_after_system_before_history() {
                         .temperature(0.0)
                         .max_tokens(32)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("OpenAI Responses document ordering request should succeed");
@@ -86,7 +85,6 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
                         .temperature(0.0)
                         .max_tokens(32)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("OpenAI Chat Completions document ordering request should succeed");

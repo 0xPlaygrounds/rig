@@ -39,7 +39,6 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
                     (0..OVER_ONE_BATCH)
                         .map(|i| format!("document {i}"))
                         .collect(),
-                    None,
                 )
                 .await
                 .map(|response| response.embeddings)
@@ -76,7 +75,7 @@ async fn list_models_keeps_description_and_context_length() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/list_models_keeps_description_and_context_length",
         |client| async move {
-            let models = rig::model(client.models()).call((), None).await?;
+            let models = rig::model(client.models()).call(()).await?;
             assert_listing_carries_mistrals_fields(&models.data);
             Ok::<_, anyhow::Error>(())
         },
@@ -137,7 +136,6 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
                     .max_tokens(8)
                     .additional_params(serde_json::json!({"n": 2}))
                     .build(),
-                None,
             )?;
 
             let mut text = String::new();
@@ -250,7 +248,6 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
                         .temperature(0.0)
                         .max_tokens(64)
                         .build(),
-                    None,
                 )
                 .await?;
 

@@ -54,7 +54,7 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
         .additional_params(adaptive_thinking_params())
         .build();
     let mut stream = model
-        .stream(request, None)
+        .stream(request)
         .expect("adaptive-thinking Bedrock stream should start");
 
     let mut reasoning_chunks = 0;

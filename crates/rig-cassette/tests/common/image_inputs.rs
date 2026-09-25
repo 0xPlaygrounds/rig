@@ -74,7 +74,7 @@ where
         builder = builder.additional_params(params);
     }
     let response = generator
-        .call(builder.build(), None)
+        .call(builder.build())
         .await
         .expect("image generation");
     assert_image_bytes(&response.image);
@@ -97,7 +97,7 @@ pub async fn as_user_content<W, T>(
         ],
     };
     let reply = vision
-        .call(request(vec![message], vec![], params), None)
+        .call(request(vec![message], vec![], params))
         .await
         .expect("the vision model reads the generated image");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);
@@ -119,10 +119,11 @@ pub async fn as_tool_result<W, T>(
     };
     let prompt = Message::user(format!("Call render_swatch, then answer: {QUESTION}"));
     let first = model
-        .call(
-            request(vec![prompt.clone()], vec![tool.clone()], params.clone()),
-            None,
-        )
+        .call(request(
+            vec![prompt.clone()],
+            vec![tool.clone()],
+            params.clone(),
+        ))
         .await
         .expect("turn one");
     let call = first
@@ -153,7 +154,7 @@ pub async fn as_tool_result<W, T>(
         },
     ];
     let reply = model
-        .call(request(history, vec![tool], params), None)
+        .call(request(history, vec![tool], params))
         .await
         .expect("the model reads the image tool result");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);

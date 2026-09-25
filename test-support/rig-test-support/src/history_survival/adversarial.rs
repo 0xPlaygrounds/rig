@@ -121,7 +121,7 @@ pub async fn colliding_ids<W, T>(
         "Without calling any tool, reply exactly `alpha=<code> beta=<code>` using the lookups above.",
     ));
     let reply = model
-        .call(request(history, params, 2048), None)
+        .call(request(history, params, 2048))
         .await
         .expect("the provider accepts a history that reuses a call id across turns");
     let answer = text(&reply.choice);
@@ -173,7 +173,7 @@ pub async fn out_of_order_results<W, T>(
         "Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.",
     );
     let first = model
-        .call(request(vec![prompt.clone()], params.clone(), 4096), None)
+        .call(request(vec![prompt.clone()], params.clone(), 4096))
         .await
         .expect("turn one");
     let calls: Vec<_> = first
@@ -204,7 +204,7 @@ pub async fn out_of_order_results<W, T>(
         Message::user("Without calling any tool, reply exactly `alpha=<code> beta=<code>`."),
     ];
     let reply = model
-        .call(request(history, params, 4096), None)
+        .call(request(history, params, 4096))
         .await
         .expect("the provider accepts results in reverse order");
     let answer = text(&reply.choice);
@@ -248,10 +248,10 @@ where
     T: rig_core::driver::Transport<W>,
 {
     if !streamed {
-        return model.call(request, None).await;
+        return model.call(request).await;
     }
     use futures::StreamExt;
-    let mut stream = model.stream(request, None)?;
+    let mut stream = model.stream(request)?;
     while let Some(item) = stream.next().await {
         if let Err(error) = item {
             return Err(rig_core::error::ProviderError::Response(error.to_string()));
@@ -403,7 +403,7 @@ pub async fn round_trip_hop<W, T>(
     T: rig_core::driver::Transport<W>,
 {
     let reply = model
-        .call(request(hop.history(), params, 4096), None)
+        .call(request(hop.history(), params, 4096))
         .await
         .unwrap_or_else(|error| panic!("{hop:?} accepts the carried history: {error}"));
     assert!(!text(&reply.choice).trim().is_empty(), "{hop:?} answers");

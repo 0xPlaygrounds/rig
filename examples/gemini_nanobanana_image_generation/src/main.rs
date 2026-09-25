@@ -15,7 +15,6 @@ async fn main() -> Result<()> {
             .width(512)
             .height(512)
             .build(),
-            None,
         )
         .await?;
 

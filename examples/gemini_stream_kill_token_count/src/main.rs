@@ -360,7 +360,6 @@ async fn run_scenario(
             .max_tokens(2000)
             .additional_params(no_thinking_params()?)
             .build(),
-        None,
     )?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);

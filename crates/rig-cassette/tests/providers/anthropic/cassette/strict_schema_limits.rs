@@ -103,7 +103,7 @@ async fn twenty_strict_tools_are_accepted() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("the documented twenty-strict-tool boundary should succeed");
             assert_single_tool_call(&response, "boundary_tool_19", &json!({}));
@@ -136,7 +136,7 @@ async fn twenty_one_strict_tools_are_rejected() {
                     .build();
 
             let error = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect_err("twenty-one strict tools should exceed the provider limit");
             assert_invalid_request(&error, "Too many strict tools");
@@ -168,7 +168,7 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
             .build();
 
             let error = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect_err("the provider's internal grammar cap should reject this shape");
             assert_invalid_request(&error, "Schema is too complex");
@@ -199,7 +199,7 @@ async fn twenty_five_optional_parameters_are_rejected() {
                     .build();
 
             let error = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect_err("twenty-five optional parameters should exceed the provider limit");
             assert_invalid_request(&error, "too many optional parameters");
@@ -231,7 +231,7 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
             .build();
 
             let error = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect_err("the provider's internal grammar cap should reject this shape");
             assert_invalid_request(&error, "Schema is too complex");
@@ -273,7 +273,7 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("twenty-four simple optional parameters should be accepted");
             assert_single_tool_call(&response, "optional_tool_00", &json!({}));
@@ -314,7 +314,7 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("sixteen simple union parameters should be accepted");
             assert_single_tool_call(&response, "union_tool_00", &json!({ "value": null }));
@@ -345,7 +345,7 @@ async fn seventeen_union_parameters_are_rejected() {
                     .build();
 
             let error = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect_err("seventeen union parameters should exceed the provider limit");
             assert_invalid_request(&error, "too many parameters with union types");

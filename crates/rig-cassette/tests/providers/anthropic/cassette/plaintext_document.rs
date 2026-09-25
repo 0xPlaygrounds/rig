@@ -189,7 +189,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             // call yields rig's normalized response and, in `raw`,
             // Anthropic's own reply.
             let first_turn = model
-                .call(first_request, None)
+                .call(first_request)
                 .await
                 .expect("first document citation turn should succeed");
             let first_turn_raw_text = provider_text(&first_turn);
@@ -233,7 +233,6 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                             content: first_turn.choice.clone(),
                         })
                         .build(),
-                    None,
                 )
                 .await
                 .expect("follow-up citation history turn should succeed");

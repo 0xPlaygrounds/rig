@@ -26,7 +26,7 @@ use crate::copilot::with_copilot_cassette;
 #[tokio::test]
 async fn list_models_smoke() {
     with_copilot_cassette("models/list_models_smoke", |client| async move {
-        let models = match rig::model(client.models()).call((), None).await {
+        let models = match rig::model(client.models()).call(()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!("listing Copilot models should succeed\nDisplay: {error}\nDebug: {error:#?}")

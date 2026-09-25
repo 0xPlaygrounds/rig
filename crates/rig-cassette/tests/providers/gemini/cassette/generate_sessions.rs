@@ -235,7 +235,7 @@ async fn long_history_replay_nonstreaming() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("long history replay should be accepted by generateContent");
 
@@ -293,7 +293,7 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("thinking-enabled completion should succeed");
 

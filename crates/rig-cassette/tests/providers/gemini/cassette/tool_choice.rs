@@ -60,7 +60,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
             .tool(rig::tool::tool_definition(&Subtract))
             .tool_choice(specific_add_choice())
             .build();
-            let stream = model.stream(request, None).expect("stream should start");
+            let stream = model.stream(request).expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 
             assert!(
@@ -114,7 +114,6 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool_choice(specific_add_choice())
                     .build(),
-                    None,
                 )
                 .await
                 .expect("specific add raw completion should succeed");

@@ -31,7 +31,7 @@ async fn assert_strict_schema_rejected(
         })
         .build();
     let error = model
-        .call(request, None)
+        .call(request)
         .await
         .expect_err("Anthropic's strict compiler should reject this schema");
     assert_eq!(
@@ -1111,7 +1111,7 @@ async fn required_and_optional_property_order_schema_is_accepted() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("strict property-order request should succeed");
             let arguments = response

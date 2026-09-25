@@ -186,7 +186,6 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
                     .temperature(0.0)
                     .max_tokens(12)
                     .build(),
-                    None,
                 )
                 .await?;
 
@@ -500,7 +499,6 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
                     .temperature(0.0)
                     .max_tokens(24)
                     .build(),
-                    None,
                 )
                 .await?;
 
@@ -685,7 +683,6 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
                     .temperature(0.0)
                     .max_tokens(48)
                     .build(),
-                    None,
                 )
                 .await?;
 

@@ -173,7 +173,6 @@ async fn llama_family_calls_a_tool() {
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(512)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("Llama 3.2's template supports tool calls");
@@ -217,7 +216,6 @@ async fn llama_family_streams_tool_call_arguments_as_deltas() {
                             .tool(rig::tool::tool_definition(&Subtract))
                             .max_tokens(512)
                             .build(),
-                        None,
                     )
                     .expect("raw stream should start"),
             )
@@ -253,7 +251,6 @@ async fn mistral_family_calls_a_tool() {
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(512)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("Mistral Small's template supports tool calls");
@@ -291,7 +288,6 @@ async fn mistral_family_streams_tool_call_arguments_as_deltas() {
                             .tool(rig::tool::tool_definition(&Subtract))
                             .max_tokens(512)
                             .build(),
-                        None,
                     )
                     .expect("raw stream should start"),
             )
@@ -336,7 +332,6 @@ async fn gemma_family_has_no_tool_calling_in_its_template() {
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(256)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("a tool request against a tool-less template is not an error");

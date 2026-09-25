@@ -1693,7 +1693,7 @@ pub mod fixtures {
         );
         // A stream that fails to open still sent (or failed to send) a
         // request: the facts are asserted before the error propagates.
-        let drained = match model.stream(request, Some(context)) {
+        let drained = match model.stream_observed(request, context) {
             Ok(stream) => Ok(drain(stream).await),
             Err(error) => Err(error),
         };
@@ -2157,7 +2157,7 @@ pub mod fixtures {
                         crate::test_utils::RecordingHttpClient::new(body),
                     );
                     let request = CompletionRequestBuilder::new("hello").build();
-                    let response = model.call(request, None).await?;
+                    let response = model.call(request).await?;
                     Ok(response.choice)
                 })
             })

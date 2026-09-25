@@ -19,10 +19,7 @@ async fn blocking_response_carries_identity() -> Result<()> {
         |client| async move {
             let model = rig::model(client.completion(MODEL));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await?;
             anyhow::ensure!(
                 response
@@ -49,7 +46,6 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
             let model = rig::model(client.completion(MODEL));
             let mut stream = model.stream(
                 CompletionRequestBuilder::new("Reply with exactly: stream identity probe").build(),
-                None,
             )?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
@@ -81,10 +77,7 @@ async fn provider_error_response_carries_request_id() -> Result<()> {
         |client| async move {
             let model = rig::model(client.completion("groq-nonexistent-model-for-identity-edge"));
             let error = model
-                .call(
-                    CompletionRequestBuilder::new("Never answered").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
                 .expect_err("a nonexistent model must fail");
             anyhow::ensure!(
@@ -110,10 +103,7 @@ async fn auth_rejection_classifies_with_contract() -> Result<()> {
         |client| async move {
             let model = rig::model(client.completion(MODEL));
             let error = model
-                .call(
-                    CompletionRequestBuilder::new("Never authenticated").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await
                 .expect_err("a bogus key must be rejected");
             anyhow::ensure!(

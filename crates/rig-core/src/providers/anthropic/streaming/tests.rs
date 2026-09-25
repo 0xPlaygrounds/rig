@@ -1782,7 +1782,7 @@ mod terminal_emission {
             MockStreamingClient { sse_bytes },
         );
         let request = crate::completion::CompletionRequestBuilder::new("hello").build();
-        let mut stream = bound.stream(request, None).expect("stream should open");
+        let mut stream = bound.stream(request).expect("stream should open");
 
         let mut texts = Vec::new();
         let mut saw_error = false;
@@ -1834,7 +1834,7 @@ mod terminal_emission {
             ]),
         );
         let request = crate::completion::CompletionRequestBuilder::new("hello").build();
-        let mut stream = bound.stream(request, None).expect("stream should open");
+        let mut stream = bound.stream(request).expect("stream should open");
 
         let mut texts = Vec::new();
         let mut saw_error = false;
@@ -1909,7 +1909,7 @@ mod terminal_emission {
             },
         );
         let request = crate::completion::CompletionRequestBuilder::new("hello").build();
-        let mut stream = bound.stream(request, None).expect("stream should open");
+        let mut stream = bound.stream(request).expect("stream should open");
 
         let error = loop {
             match stream.next().await {
@@ -2057,7 +2057,7 @@ mod terminal_emission {
             },
         );
         let request = crate::completion::CompletionRequestBuilder::new("hello").build();
-        let mut stream = bound.stream(request, None).expect("stream should open");
+        let mut stream = bound.stream(request).expect("stream should open");
         while let Some(item) = stream.next().await {
             item.expect("stream item");
         }
@@ -2166,8 +2166,8 @@ mod projection {
             .collect()
     }
 
-    fn context(log: &Arc<ObservationLog>) -> Option<AdapterContext> {
-        Some(AdapterContext::new(log.clone(), Subject::default(), "call"))
+    fn context(log: &Arc<ObservationLog>) -> AdapterContext {
+        AdapterContext::new(log.clone(), Subject::default(), "call")
     }
 
     fn wire() -> Messages {
@@ -2199,7 +2199,7 @@ mod projection {
         );
         let log = Arc::new(ObservationLog::default());
         let error = crate::driver::Model::new(wire(), http.clone())
-            .call(request(), context(&log))
+            .call_observed(request(), context(&log))
             .await
             .expect_err("the transport rejects the call");
         assert!(error.is_retryable());
@@ -2243,7 +2243,7 @@ mod projection {
             sse_bytes: bytes::Bytes::from(sse),
         };
         let log = Arc::new(ObservationLog::default());
-        let stream = crate::driver::tests::stream(&wire(), &http, request(), context(&log))
+        let stream = crate::driver::tests::stream(&wire(), &http, request(), Some(context(&log)))
             .expect("the streamed request encodes");
         let mut stream = Box::pin(stream);
         while let Some(item) = stream.next().await {

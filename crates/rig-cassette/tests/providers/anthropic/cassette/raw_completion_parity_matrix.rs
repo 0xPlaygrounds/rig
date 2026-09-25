@@ -324,20 +324,14 @@ async fn capture_terminal_pair(
 ) {
     let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
 
-    let normalized = collect_required_terminal(
-        model
-            .stream(request.clone(), None)
-            .expect("`stream` should open"),
-    )
-    .await;
+    let normalized =
+        collect_required_terminal(model.stream(request.clone()).expect("`stream` should open"))
+            .await;
     // The second route: the same request opened again, read through the
     // terminal record's `raw` — the provider's own record, serialized.
-    let second_record = collect_required_terminal(
-        model
-            .stream(request, None)
-            .expect("second `stream` should open"),
-    )
-    .await;
+    let second_record =
+        collect_required_terminal(model.stream(request).expect("second `stream` should open"))
+            .await;
     sink.put((normalized, second_record));
 }
 

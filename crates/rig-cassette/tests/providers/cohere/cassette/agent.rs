@@ -43,7 +43,7 @@ async fn usage_is_reported_from_token_counts() {
             // both views come out of the cassette's one recorded interaction
             // rather than a second request.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
             let raw_response = CohereCompletionResponse::deserialize(&response.raw)
@@ -104,7 +104,7 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("capped completion should succeed");
             let raw = CohereCompletionResponse::deserialize(&response.raw)
@@ -131,7 +131,7 @@ async fn multiturn_history_is_accepted() {
             .build();
 
         let response = model
-            .call(request, None)
+            .call(request)
             .await
             .expect("multi-turn history should be accepted");
         let text = response
@@ -163,7 +163,7 @@ async fn stop_sequences_are_forwarded() {
                 .build();
 
         let response = model
-            .call(request, None)
+            .call(request)
             .await
             .expect("stop sequence request should succeed");
         let raw = CohereCompletionResponse::deserialize(&response.raw)
@@ -194,7 +194,7 @@ async fn sampling_parameters_are_forwarded() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("documented sampling parameters should be accepted");
             let text = response

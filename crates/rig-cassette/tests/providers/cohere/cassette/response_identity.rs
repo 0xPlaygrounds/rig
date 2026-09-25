@@ -18,7 +18,6 @@ async fn nonstreaming_request_id_is_none_by_design() {
                     CompletionRequestBuilder::new("Reply with exactly: identity probe")
                         .max_tokens(32)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("completion should succeed");
@@ -48,7 +47,6 @@ async fn streaming_request_id_is_none_by_design() {
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
                         .max_tokens(32)
                         .build(),
-                    None,
                 )
                 .expect("stream should open");
 

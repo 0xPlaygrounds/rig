@@ -34,7 +34,7 @@ async fn normalized_response_is_complete() {
         |client| async move {
             let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
             let response = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -51,7 +51,7 @@ async fn raw_round_trips() {
     with_openrouter_cassette("embedding_matrix/raw_round_trips", |client| async move {
         let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
         let response = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("embedding request should succeed");
 
@@ -79,11 +79,11 @@ async fn raw_route_parity() {
     with_openrouter_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
         let first = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("the first call should succeed");
         let second = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("the same request should succeed again");
 
@@ -117,7 +117,7 @@ async fn single_text_convenience() {
         |client| async move {
             let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
             let response = model
-                .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
+                .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -141,7 +141,7 @@ async fn error_preserves_provider_body() {
         |client| async move {
             let model = rig::model(client.embedding("no-such/embedding-model", None));
             let error = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(

@@ -159,7 +159,7 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
             .expect("runtime");
         runtime.block_on(async {
             let response = model
-                .call(vec!["hello".to_owned()], None)
+                .call(vec!["hello".to_owned()])
                 .await
                 .expect("embedding succeeds");
             assert_eq!(response.usage.input_tokens, Some(4));

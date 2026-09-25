@@ -75,7 +75,7 @@ async fn prompt_with_reasoning(
         .build();
 
     let response = model
-        .call(request, None)
+        .call(request)
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed");
     let raw_response = openai::responses_api::CompletionResponse::deserialize(&response.raw)
@@ -228,7 +228,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 // read back out of `raw`, which carries the reasoning
                 // metadata under test.
                 let response: CompletionResponse =
-                    model.call(request, None).await.unwrap_or_else(|error| {
+                    model.call(request).await.unwrap_or_else(|error| {
                         panic!("turn {} should succeed: {error}", turn_index + 1)
                     });
                 let raw_response =
@@ -338,7 +338,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 // streaming response, which rides on `StreamFinal::raw`; the
                 // normalized `StreamFinal` does not carry the reasoning
                 // metadata.
-                let mut stream = model.stream(request, None).unwrap_or_else(|error| {
+                let mut stream = model.stream(request).unwrap_or_else(|error| {
                     panic!("turn {} stream should start: {error}", turn_index + 1)
                 });
                 let mut text = String::new();
@@ -483,7 +483,7 @@ async fn streaming_reasoning_metadata() {
             // The terminal record's `raw` keeps the provider-native response;
             // the normalized `StreamFinal` carries no reasoning metadata.
             let mut stream = model
-                .stream(request, None)
+                .stream(request)
                 .expect("GPT-5.6 reasoning stream should start");
             let expected = json!({
                 "context": "current_turn",

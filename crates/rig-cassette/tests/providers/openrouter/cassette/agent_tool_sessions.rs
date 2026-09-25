@@ -554,7 +554,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required).build();
 
-            let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
+            let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -615,7 +615,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             // reasons — which the normalized response collapses into one — are
             // read off OpenRouter's own response type rather than from a
             // second call.
-            let response = model.call(request, None).await?;
+            let response = model.call(request).await?;
             let wire = openrouter::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is OpenRouter's own completion response");
             let text = response

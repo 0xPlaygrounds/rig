@@ -437,7 +437,7 @@ async fn a_deletes_empty_object_is_the_acknowledgement() {
     let http = SequencedHttpClient::new([MockHttpResponse::success("{}")]);
 
     let reply = crate::driver::Model::new(wire.clone(), http.clone())
-        .call(CachedContentRequest::Delete("leaky".to_owned()), None)
+        .call(CachedContentRequest::Delete("leaky".to_owned()))
         .await
         .expect("the empty object acknowledges the delete");
 

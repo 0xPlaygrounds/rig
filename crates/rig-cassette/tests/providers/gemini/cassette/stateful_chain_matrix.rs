@@ -145,10 +145,9 @@ async fn cached_content_lifecycle_chain() {
                         .with_cached_content(name.clone()),
                 );
                 let reply = model
-                    .call(
-                        ask("What is the code of record alpha? Reply with the code only."),
-                        None,
-                    )
+                    .call(ask(
+                        "What is the code of record alpha? Reply with the code only.",
+                    ))
                     .await
                     .expect("generation against the cache");
                 assert!(text(&reply.choice).contains(CODE), "{:?}", reply.choice);
@@ -176,7 +175,7 @@ async fn cached_content_lifecycle_chain() {
                     .completion(CACHE_MODEL)
                     .with_cached_content(created.name.clone()),
             )
-            .call(ask("What is the code of record alpha?"), None)
+            .call(ask("What is the code of record alpha?"))
             .await;
             let refused = refused.expect_err("a deleted cache handle must be refused");
             let report = rig::error::ErrorReport::from(&refused);
@@ -365,7 +364,6 @@ async fn interactions_chain_with_tool_call() {
                         .tool(lookup_tool())
                         .additional_params(params(None))
                         .build(),
-                        None,
                     )
                     .await
                     .expect("turn one");
@@ -385,7 +383,6 @@ async fn interactions_chain_with_tool_call() {
                         )))
                         .additional_params(params(Some(first_id)))
                         .build(),
-                        None,
                     )
                     .await
                     .expect("turn two answers the call");
@@ -399,7 +396,6 @@ async fn interactions_chain_with_tool_call() {
                         )
                         .additional_params(params(Some(second_id)))
                         .build(),
-                        None,
                     )
                     .await
                     .expect("turn three continues");
@@ -489,7 +485,7 @@ async fn file_uri_chain() {
                 };
                 let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
                 let first = model
-                    .call(ask_with(vec![document.clone()]), None)
+                    .call(ask_with(vec![document.clone()]))
                     .await
                     .expect("turn one reads the file by uri");
                 assert!(
@@ -508,7 +504,7 @@ async fn file_uri_chain() {
                     ),
                 ];
                 let second = model
-                    .call(ask_with(history), None)
+                    .call(ask_with(history))
                     .await
                     .expect("turn two still reads the file by uri");
                 assert!(

@@ -17,7 +17,6 @@ async fn nano_banana_image_generation_smoke() {
                     .width(256)
                     .height(256)
                     .build(),
-                    None,
                 )
                 .await
                 .expect("Nano Banana image generation should succeed");

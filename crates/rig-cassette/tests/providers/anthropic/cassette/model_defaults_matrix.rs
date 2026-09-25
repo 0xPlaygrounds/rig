@@ -132,7 +132,7 @@ async fn assert_uncapped_turn(client: Anthropic, model_id: &str) {
     let model = rig::model(client.completion(model_id));
     let request = CompletionRequestBuilder::new(PROMPT).build();
     let response = model
-        .call(request, None)
+        .call(request)
         .await
         .expect("an uncapped request must be accepted with the derived max_tokens");
     let text = assistant_text_response(&response.choice).expect("assistant text");
@@ -149,7 +149,7 @@ async fn assert_mid_conversation_system_turn(client: Anthropic, model_id: &str) 
         ])
         .build();
     let response = model
-        .call(request, None)
+        .call(request)
         .await
         .expect("a mid-conversation system message must be accepted on both placements");
     let text = assistant_text_response(&response.choice).expect("assistant text");

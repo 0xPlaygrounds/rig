@@ -58,7 +58,6 @@ async fn blocking_stop(client: OpenAI) {
                 .additional_params(json!({ "reasoning_effort": "none" }))
                 .max_tokens(64)
                 .build(),
-            None,
         )
         .await
         .expect("blocking stop probe");
@@ -72,7 +71,6 @@ async fn blocking_length(client: OpenAI) {
             CompletionRequestBuilder::new(LENGTH_PROMPT)
                 .max_tokens(1)
                 .build(),
-            None,
         )
         .await
         .expect("a contentless truncated turn is still a completion");
@@ -88,7 +86,6 @@ async fn blocking_tool_calls_body(client: OpenAI) {
                 .tool_choice(ToolChoice::Required)
                 .max_tokens(256)
                 .build(),
-            None,
         )
         .await
         .expect("blocking tool-call probe");
@@ -112,7 +109,7 @@ async fn streaming_reason(
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
     }
-    let stream = model.stream(builder.build(), None).expect("stream probe");
+    let stream = model.stream(builder.build()).expect("stream probe");
     let (_, terminal) = collect_text_and_terminal(stream).await;
     terminal
         .expect("stream should carry a terminal record")
@@ -191,7 +188,6 @@ async fn streaming_tool_calls() {
                         .tool_choice(ToolChoice::Required)
                         .max_tokens(256)
                         .build(),
-                    None,
                 )
                 .expect("tool stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;

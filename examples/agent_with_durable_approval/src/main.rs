@@ -179,7 +179,6 @@ async fn main() -> Result<()> {
                             .preamble(preamble.to_string())
                             .tools(tool_definitions.clone())
                             .build(),
-                        None,
                     )
                     .await?;
                 let tool_names: BTreeSet<String> = tool_definitions

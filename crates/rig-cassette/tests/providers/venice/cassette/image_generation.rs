@@ -31,7 +31,6 @@ async fn image_generation_smoke() {
                         "embed_exif_metadata": false,
                     }))
                     .build(),
-                    None,
                 )
                 .await
                 .expect("Venice image generation should succeed");

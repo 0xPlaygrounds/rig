@@ -1591,7 +1591,7 @@ impl Lookup {
                 }
                 let request = request.build();
                 let response = model
-                    .complete(request, None)
+                    .complete(request)
                     .await
                     .expect("the nested completion");
                 response
@@ -3718,7 +3718,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         note("completion_call").await;
                     }
                     let turn = if program.streamed {
-                        let mut stream = model.stream(request, None);
+                        let mut stream = model.stream(request);
                         let mut assembler = StreamedTurnAssembler::new(executable, allowed);
                         let mut provider_failed = false;
                         let mut delta_stop: Option<&'static str> = None;
@@ -3924,22 +3924,21 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             raw,
                         )
                     } else {
-                        let response =
-                            match (within(model.complete(request, None)).await, program.ending) {
-                                (Ok(response), _) => response,
-                                (Err(report), Ending::ProviderError)
-                                    if report.kind
-                                        == rig_core::error::ErrorKind::ProviderResponse =>
-                                {
-                                    break None;
-                                }
-                                (Err(report), Ending::Failed(kind)) if report.kind == kind => {
-                                    break None;
-                                }
-                                (Err(report), _) => {
-                                    panic!("the replayer recognised the request: {report:?}")
-                                }
-                            };
+                        let response = match (within(model.complete(request)).await, program.ending)
+                        {
+                            (Ok(response), _) => response,
+                            (Err(report), Ending::ProviderError)
+                                if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
+                            {
+                                break None;
+                            }
+                            (Err(report), Ending::Failed(kind)) if report.kind == kind => {
+                                break None;
+                            }
+                            (Err(report), _) => {
+                                panic!("the replayer recognised the request: {report:?}")
+                            }
+                        };
                         ModelTurn::from_response_parts(&response, executable, allowed)
                     };
                     let choice = turn.choice.clone();

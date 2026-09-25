@@ -160,7 +160,7 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
 
     let model = streamed("gemini-2.5-flash", &frames);
     let mut stream = model
-        .stream(streaming_request(), None)
+        .stream(streaming_request())
         .expect("stream should open");
 
     let mut texts = Vec::new();
@@ -655,7 +655,7 @@ mod terminal_emission {
     ) -> (Vec<String>, bool, bool, crate::streaming::CompletionStream) {
         let model = crate::driver::Model::new(wire(), MockStreamingClient { sse_bytes });
         let mut stream = model
-            .stream(super::streaming_request(), None)
+            .stream(super::streaming_request())
             .expect("stream should open");
 
         let mut texts = Vec::new();
@@ -689,7 +689,7 @@ mod terminal_emission {
             },
         );
         let mut stream = model
-            .stream(super::streaming_request(), None)
+            .stream(super::streaming_request())
             .expect("stream should open");
 
         let mut signed = None;
@@ -740,7 +740,7 @@ mod terminal_emission {
             ]),
         );
         let mut stream = model
-            .stream(super::streaming_request(), None)
+            .stream(super::streaming_request())
             .expect("stream should open");
 
         let mut texts = Vec::new();
@@ -856,7 +856,7 @@ mod terminal_emission {
             );
             let model = crate::driver::Model::new(wire(), RecordingHttpClient::new(body));
             let response = model
-                .call(super::streaming_request(), None)
+                .call(super::streaming_request())
                 .await
                 .expect("a terminal that cut the turn short legalizes an empty choice");
             assert!(response.choice.is_empty());
@@ -871,7 +871,7 @@ mod terminal_emission {
             ),
         );
         let error = completed
-            .call(super::streaming_request(), None)
+            .call(super::streaming_request())
             .await
             .expect_err("a turn that ran to completion and delivered nothing is a defect");
         assert!(
@@ -883,7 +883,7 @@ mod terminal_emission {
 
         let silent = crate::driver::Model::new(wire(), RecordingHttpClient::new(SILENT));
         let error = silent
-            .call(super::streaming_request(), None)
+            .call(super::streaming_request())
             .await
             .expect_err("a whole reply that named no terminal and delivered nothing");
         assert!(
@@ -916,7 +916,7 @@ async fn collect_stream(
 
     let model = streamed("gemini-2.5-flash", frames);
     let mut stream = model
-        .stream(streaming_request(), None)
+        .stream(streaming_request())
         .expect("stream should open");
     let mut items = Vec::new();
     while let Some(item) = stream.next().await {

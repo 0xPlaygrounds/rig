@@ -27,7 +27,7 @@ async fn retired_model_id_preserves_provider_error() {
                 .build();
 
             let error = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect_err("a retired model id should be a provider error");
 
@@ -68,7 +68,7 @@ async fn bare_profile_only_model_id_is_rejected() {
                 .build();
 
             let error = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect_err("a bare profile-only model id should be a provider error");
 
@@ -111,7 +111,7 @@ async fn cross_region_profile_id_completes() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("cross-region profile completion should succeed");
 

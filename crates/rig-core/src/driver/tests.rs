@@ -41,9 +41,11 @@ where
     W: Wire + Clone,
     H: Transport<W>,
 {
-    Model::new(wire.clone(), http.clone())
-        .call(request, context)
-        .await
+    let model = Model::new(wire.clone(), http.clone());
+    match context {
+        Some(context) => model.call_observed(request, context).await,
+        None => model.call(request).await,
+    }
 }
 
 /// The driver's own events for one streamed reply of `wire` over `http`,
@@ -259,7 +261,7 @@ const STREAM_BODY: &str = concat!(
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
     let unary = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let buffered = unary.call(prompt(), None).await.expect("the reply decodes");
+    let buffered = unary.call(prompt()).await.expect("the reply decodes");
 
     let streaming = Model::new(
         Echo::streaming(),
@@ -267,7 +269,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
             sse_bytes: Bytes::from_static(STREAM_BODY.as_bytes()),
         },
     );
-    let mut response = streaming.stream(prompt(), None).expect("the stream opens");
+    let mut response = streaming.stream(prompt()).expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
@@ -289,7 +291,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
 #[tokio::test]
 async fn a_unary_reply_carries_its_body_as_raw() {
     let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let response = bound.call(prompt(), None).await.expect("the reply decodes");
+    let response = bound.call(prompt()).await.expect("the reply decodes");
     assert_eq!(
         response.raw.pointer("/text").and_then(|text| text.as_str()),
         Some("hi there")
@@ -741,7 +743,7 @@ async fn a_paged_listing_follows_every_continuation() {
         MockHttpResponse::success(r#"{"data":["c"]}"#),
     ]);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound.call((), None).await.expect("both pages decode");
+    let models = bound.call(()).await.expect("both pages decode");
     assert_eq!(
         models
             .iter()
@@ -773,10 +775,7 @@ async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
         MockHttpResponse::success(r#"{"data":["never"]}"#),
     ]);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound
-        .call((), None)
-        .await
-        .expect("the fetched pages decode");
+    let models = bound.call(()).await.expect("the fetched pages decode");
     assert_eq!(
         models
             .iter()
@@ -798,10 +797,7 @@ async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
     });
     let http = SequencedHttpClient::new(pages);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound
-        .call((), None)
-        .await
-        .expect("the fetched pages decode");
+    let models = bound.call(()).await.expect("the fetched pages decode");
     assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
     assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
 }
@@ -832,7 +828,7 @@ async fn the_driver_records_the_folded_responses_metadata() {
     let subscriber = tracing_subscriber::registry().with(layer);
     let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
     let response = with_default(subscriber, || {
-        futures::executor::block_on(bound.call(prompt(), None))
+        futures::executor::block_on(bound.call(prompt()))
     })
     .expect("the reply decodes");
     assert_eq!(response.model.as_deref(), Some("echo-1"));
@@ -867,7 +863,7 @@ async fn the_span_names_the_requests_model_override_not_the_wires() {
         ..prompt()
     };
     with_default(subscriber, || {
-        futures::executor::block_on(bound.call(request, None))
+        futures::executor::block_on(bound.call(request))
     })
     .expect("the reply decodes");
     let recorded = recorded.lock().expect("no panic held the lock").clone();
@@ -1000,7 +996,7 @@ impl Wire for Guarded {
 async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
     let unary = Model::new(Guarded(Framing::Whole), RecordingHttpClient::new("{}"));
     let error = unary
-        .call(prompt(), None)
+        .call(prompt())
         .await
         .expect_err("a whole reply that delivered nothing is not an answer");
     assert!(
@@ -1015,7 +1011,7 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
             sse_bytes: Bytes::from_static(b"data: {}\n\n"),
         },
     );
-    let mut response = streaming.stream(prompt(), None).expect("the stream opens");
+    let mut response = streaming.stream(prompt()).expect("the stream opens");
     let mut errors = Vec::new();
     while let Some(item) = response.next().await {
         if let Err(error) = item {

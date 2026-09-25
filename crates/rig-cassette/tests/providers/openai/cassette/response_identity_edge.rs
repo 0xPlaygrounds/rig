@@ -31,7 +31,6 @@ async fn structured_output_and_identity() {
                     CompletionRequestBuilder::new("What is 2 + 3? Respond with the JSON object.")
                         .output_schema(schema)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("structured completion should succeed");
@@ -59,7 +58,6 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                         "Remember the code word 'heliotrope'. Reply with exactly: noted",
                     )
                     .build(),
-                    None,
                 )
                 .await
                 .expect("first chained call should succeed");
@@ -78,7 +76,6 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                         "previous_response_id": first_response_id.clone(),
                     }))
                     .build(),
-                    None,
                 )
                 .await
                 .expect("chained call should succeed");
@@ -170,10 +167,7 @@ async fn provider_error_response_carries_request_id() {
                     .completion("gpt-nonexistent-model-for-identity-edge"),
             );
             let error = model
-                .call(
-                    CompletionRequestBuilder::new("Never answered").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
                 .expect_err("a nonexistent model must fail");
             assert_transport_request_id(error.provider_request_id(), "4xx error");
@@ -204,7 +198,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
             let request =
                 CompletionRequestBuilder::new("Reply with exactly: two views probe").build();
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
             assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");

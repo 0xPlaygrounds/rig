@@ -24,10 +24,7 @@ async fn responses_nonstreaming_carries_identity() {
         |client| async move {
             let model = rig::model(client.openai.completion(openai::GPT_4O));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect("completion should succeed");
 
@@ -58,7 +55,6 @@ async fn responses_streaming_carries_identity() {
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
                         .build(),
-                    None,
                 )
                 .expect("stream should open");
 
@@ -86,10 +82,7 @@ async fn chat_completions_nonstreaming_carries_identity() {
         |client| async move {
             let model = rig::model(client.chat(openai::GPT_4O));
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
-                    None,
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect("completion should succeed");
 
@@ -117,7 +110,6 @@ async fn chat_completions_streaming_carries_identity() {
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
                         .build(),
-                    None,
                 )
                 .expect("stream should open");
 

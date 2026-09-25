@@ -229,7 +229,7 @@ pub(crate) async fn call_model(
 ) -> ModelTurn {
     let response = agent
         .model
-        .call(agent.request(prompt, history).build(), None)
+        .call(agent.request(prompt, history).build())
         .await
         .expect("gemini completion should succeed");
     ModelTurn::new(

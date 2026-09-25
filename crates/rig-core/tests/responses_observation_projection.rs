@@ -55,7 +55,7 @@ async fn a_unary_responses_reply_projects_usage_verdict_and_id() {
     let context = AdapterContext::new(log.clone(), Subject::default(), "projection");
     let request: CompletionRequest = CompletionRequestBuilder::new("hi").build();
     let response = model
-        .call(request, Some(context))
+        .call_observed(request, context)
         .await
         .expect("the scripted reply must fold");
     assert!(!response.choice.is_empty(), "the turn must carry content");

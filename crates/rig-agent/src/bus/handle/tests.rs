@@ -226,16 +226,12 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
         let contexts: Vec<_> = ["operation/a", "operation/b"]
             .into_iter()
             .map(|operation| {
-                Some(AdapterContext::new(
-                    sink.clone(),
-                    Subject::scoped("direct"),
-                    operation,
-                ))
+                AdapterContext::new(sink.clone(), Subject::scoped("direct"), operation)
             })
             .collect();
         if streamed {
             let consume = |context| {
-                let mut stream = handle.stream(request(), context);
+                let mut stream = handle.stream_observed(request(), context);
                 async move {
                     while let Some(event) = within(stream.next()).await {
                         event.unwrap();
@@ -249,8 +245,8 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
             tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
         } else {
             let (a, b) = tokio::join!(
-                within(handle.complete(request(), contexts[0].clone())),
-                within(handle.complete(request(), contexts[1].clone()))
+                within(handle.complete_observed(request(), contexts[0].clone())),
+                within(handle.complete_observed(request(), contexts[1].clone()))
             );
             assert_eq!(a.unwrap().choice, vec![AssistantContent::text("same")]);
             assert_eq!(b.unwrap().choice, vec![AssistantContent::text("same")]);
@@ -272,16 +268,14 @@ async fn model_handle_completes_and_streams() {
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("model");
-    let response = within(model.complete(request(), None))
-        .await
-        .expect("completed");
+    let response = within(model.complete(request())).await.expect("completed");
     assert_eq!(response.choice, vec![AssistantContent::text("unary")]);
     assert_eq!(model.capabilities(), ProviderCapabilities::default());
 
     let streamer: ModelHandle = dispatcher
         .handle(&HandlerKey::from("streamer"))
         .expect("model");
-    let mut stream = streamer.stream(request(), None);
+    let mut stream = streamer.stream(request());
     let mut text = String::new();
     while let Some(event) = within(stream.next()).await {
         if let rig_core::streaming::StreamEvent::BlockDelta {
@@ -318,9 +312,7 @@ async fn handle_descriptor_follows_a_runtime_replacement() {
         "swapped",
         "re-read, not the snapshot"
     );
-    let response = within(model.complete(request(), None))
-        .await
-        .expect("completed");
+    let response = within(model.complete(request())).await.expect("completed");
     assert_eq!(response.choice, vec![AssistantContent::text("swapped")]);
 }
 

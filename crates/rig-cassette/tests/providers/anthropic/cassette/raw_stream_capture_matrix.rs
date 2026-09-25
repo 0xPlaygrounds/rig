@@ -160,7 +160,7 @@ async fn streamed_body(
     sink: Observed<Streamed>,
 ) {
     let model = rig::model(client.completion(model_name));
-    let stream = model.stream(request, None).expect("stream should open");
+    let stream = model.stream(request).expect("stream should open");
     sink.put(drain_stream(stream).await);
 }
 

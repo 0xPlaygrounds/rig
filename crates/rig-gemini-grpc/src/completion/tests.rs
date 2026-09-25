@@ -50,16 +50,14 @@ fn hello() -> CompletionRequest {
 pub(crate) fn complete(
     response: GenerateContentResponse,
 ) -> Result<completion::CompletionResponse, ProviderError> {
-    futures::executor::block_on(scripted(vec![Ok(response)]).call(hello(), None))
+    futures::executor::block_on(scripted(vec![Ok(response)]).call(hello()))
 }
 
 /// The stream the endpoint yields for scripted chunks.
 pub(crate) fn stream_from_events(
     chunks: Vec<Result<GenerateContentResponse, ProviderError>>,
 ) -> CompletionStream {
-    scripted(chunks)
-        .stream(hello(), None)
-        .expect("the stream opens")
+    scripted(chunks).stream(hello()).expect("the stream opens")
 }
 
 // ============================================================
@@ -790,7 +788,7 @@ fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
     ];
     let recording = Recording::default();
     futures::executor::block_on(
-        Model::new(GenerateContent::new(GEMINI_2_5_FLASH), recording.clone()).call(request, None),
+        Model::new(GenerateContent::new(GEMINI_2_5_FLASH), recording.clone()).call(request),
     )
     .expect("the call succeeds");
 

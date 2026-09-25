@@ -57,7 +57,6 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
                         // that max_tokens is actually forwarded to the API.
                         .max_tokens(512)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("DeepSeek document ordering request should succeed");

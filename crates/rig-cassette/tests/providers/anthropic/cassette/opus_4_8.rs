@@ -54,7 +54,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
             // model returns, and `raw` carries Anthropic's own reply, so the
             // provider-text fallback below still costs a single interaction.
             let response: RigCompletionResponse = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
             let raw_text = provider_text(&response);
@@ -93,7 +93,7 @@ async fn messages_preserve_mid_conversation_system_role() {
             .max_tokens(64)
             .build();
             let response: RigCompletionResponse = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("Opus 4.8 system-role request should succeed");
             let raw_text = provider_text(&response);
@@ -126,7 +126,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                     ProviderToolDefinition::new("web_search_20250305")
                         .with_config("name", json!("web_search")),
                 )
-                .max_tokens(128).build(), None)
+                .max_tokens(128).build())
                 .await
                 .expect("Opus 4.8 web-search request should produce a server-tool transcript");
             let server_tool_assistant_message =
@@ -141,7 +141,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                     Message::assistant("Entendido."),
                 ])
                 .max_tokens(64).build();
-            let response: RigCompletionResponse = model.call(request, None).await.expect(
+            let response: RigCompletionResponse = model.call(request).await.expect(
                 "Opus 4.8 request with system role after server tool result should succeed",
             );
             let raw_text = provider_text(&response);
@@ -180,7 +180,7 @@ async fn documents_keep_leading_system_message_top_level() {
             })
             .max_tokens(64)
             .build();
-            let response: RigCompletionResponse = model.call(request, None).await.expect(
+            let response: RigCompletionResponse = model.call(request).await.expect(
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );
             let raw_text = provider_text(&response);

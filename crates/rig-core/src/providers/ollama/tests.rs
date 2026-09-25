@@ -71,7 +71,7 @@ async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse
         body.to_string(),
     ));
     model
-        .call(CompletionRequestBuilder::new("hello").build(), None)
+        .call(CompletionRequestBuilder::new("hello").build())
         .await
 }
 
@@ -1148,7 +1148,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     });
     let request = CompletionRequestBuilder::new("hello").build();
 
-    let mut stream = model.stream(request, None).expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
 
     let mut texts = Vec::new();
     let mut saw_terminal = false;
@@ -1194,7 +1194,7 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     });
     let request = CompletionRequestBuilder::new("hello").build();
 
-    let mut stream = model.stream(request, None).expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
 
     let mut texts = Vec::new();
     let mut saw_error = false;
@@ -1242,7 +1242,7 @@ async fn content_after_the_done_record_is_not_yielded() {
     });
     let request = CompletionRequestBuilder::new("hello").build();
 
-    let mut stream = model.stream(request, None).expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
 
     let mut texts = Vec::new();
     let mut terminal = None;
@@ -1289,7 +1289,7 @@ async fn completion_non_success_preserves_status_and_body() {
     let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
-        .call(request, None)
+        .call(request)
         .await
         .expect_err("should fail with non-success status");
 
@@ -1314,7 +1314,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let model = crate::driver::Model::new(Ollama::new().embedding(ALL_MINILM, None), http_client);
 
     let error = model
-        .call(vec!["hello".to_string()], None)
+        .call(vec!["hello".to_string()])
         .await
         .map(|response| response.embeddings)
         .expect_err("should fail with non-success status");
@@ -1379,7 +1379,7 @@ mod raw_capture {
         let model = model();
 
         let response = model
-            .call(CompletionRequestBuilder::new("hello").build(), None)
+            .call(CompletionRequestBuilder::new("hello").build())
             .await
             .expect("completion");
 

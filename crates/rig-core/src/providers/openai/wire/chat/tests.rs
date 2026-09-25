@@ -53,7 +53,7 @@ async fn fold_both(
         wire(),
         RecordingHttpClient::new(recorded("then", unary_cassette)),
     )
-    .call(request.clone(), None)
+    .call(request.clone())
     .await
     .expect("the recorded unary reply decodes");
 
@@ -64,7 +64,7 @@ async fn fold_both(
         },
     );
     let mut response = streaming
-        .stream(request, None)
+        .stream(request)
         .expect("the recorded stream opens");
     while response.next().await.is_some() {}
     (
@@ -248,7 +248,7 @@ async fn the_done_sentinel_emits_the_deferred_terminal() {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     );
-    let mut response = bound.stream(prompt("hi"), None).expect("the stream opens");
+    let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
         .finish()
@@ -275,7 +275,7 @@ async fn a_truncated_stream_yields_no_terminal_record() {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     );
-    let mut response = bound.stream(prompt("hi"), None).expect("the stream opens");
+    let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     while response.next().await.is_some() {}
     assert!(
         response.folded().terminal().cloned().is_none(),
@@ -299,7 +299,7 @@ async fn an_in_band_error_envelope_fails_the_turn() {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     );
-    let mut response = bound.stream(prompt("hi"), None).expect("the stream opens");
+    let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     let mut errors = Vec::new();
     while let Some(item) = response.next().await {
         if let Err(error) = item {
@@ -422,7 +422,7 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
             )),
         },
     )
-    .stream(prompt("Reply with exactly the single word: pong"), None)
+    .stream(prompt("Reply with exactly the single word: pong"))
     .expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
@@ -492,7 +492,7 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
     );
 
     let buffered = crate::driver::Model::new(wire(), RecordingHttpClient::new(UNARY))
-        .call(prompt("think then answer"), None)
+        .call(prompt("think then answer"))
         .await
         .expect("the unary reply decodes without tripping the sequence law");
 
@@ -503,7 +503,7 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
         },
     );
     let mut response = streaming
-        .stream(prompt("think then answer"), None)
+        .stream(prompt("think then answer"))
         .expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
@@ -552,7 +552,7 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
             )),
         },
     )
-    .stream(prompt("Reply with exactly the single word: pong"), None)
+    .stream(prompt("Reply with exactly the single word: pong"))
     .expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
@@ -610,7 +610,7 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     )
-    .stream(prompt("ping"), None)
+    .stream(prompt("ping"))
     .expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
@@ -664,7 +664,7 @@ async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
     );
 
     let folded = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
-        .call(prompt("Record two notes."), None)
+        .call(prompt("Record two notes."))
         .await
         .expect(
             "a body cut mid-arguments must still decode: erroring discards the turn's \
@@ -724,7 +724,7 @@ async fn malformed_arguments_on_a_completed_tool_turn_stay_a_decode_error() {
     );
 
     let error = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
-        .call(prompt("Record a note."), None)
+        .call(prompt("Record a note."))
         .await
         .expect_err("a completed tool-call turn with malformed arguments is a defect");
     assert!(
@@ -751,7 +751,7 @@ async fn valid_arguments_survive_a_length_truncated_turn() {
     );
 
     let folded = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
-        .call(prompt("Record a note."), None)
+        .call(prompt("Record a note."))
         .await
         .expect("valid arguments decode");
 
@@ -781,7 +781,7 @@ async fn a_gateway_may_answer_with_a_bare_string() {
         OpenAI::new("k").with_dialect(&MIRA).chat("gpt-4o"),
         RecordingHttpClient::new(r#""the whole answer""#),
     )
-    .call(prompt("ask"), None)
+    .call(prompt("ask"))
     .await
     .expect("a bare string is the whole reply");
 
@@ -801,7 +801,7 @@ async fn a_gateway_may_answer_with_a_bare_string() {
     // success.
     let strict =
         crate::driver::Model::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
-            .call(prompt("ask"), None)
+            .call(prompt("ask"))
             .await;
     let Err(ProviderError::Response(message)) = &strict else {
         panic!("openai does not answer with a bare string: {strict:?}");
@@ -850,7 +850,7 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
             wire(),
             RecordingHttpClient::new(empty_turn_body(Some(reason))),
         )
-        .call(prompt("ask"), None)
+        .call(prompt("ask"))
         .await
         .unwrap_or_else(|error| panic!("`{reason}` is a cut-short turn, not a defect: {error}"));
 
@@ -887,7 +887,7 @@ async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
     ] {
         let folded =
             crate::driver::Model::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
-                .call(prompt("ask"), None)
+                .call(prompt("ask"))
                 .await;
 
         let Err(ProviderError::Response(message)) = &folded else {

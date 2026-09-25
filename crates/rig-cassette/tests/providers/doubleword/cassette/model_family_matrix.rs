@@ -40,7 +40,6 @@ async fn exercise_blocking(client: OpenAI, model_name: &'static str) {
             CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build(),
-            None,
         )
         .await
         .expect("the advertised model should answer a blocking request");
@@ -193,7 +192,6 @@ async fn default_qwen_family_streaming() {
                     CompletionRequestBuilder::new(PROMPT)
                         .max_tokens(CAP)
                         .build(),
-                    None,
                 )
                 .expect("the default model stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;

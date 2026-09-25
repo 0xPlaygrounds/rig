@@ -166,7 +166,7 @@ async fn zero_argument_tool_use_streaming() {
                 .build();
 
             let stream = model
-                .stream(request, None)
+                .stream(request)
                 .expect("zero-arg streaming request should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -188,7 +188,7 @@ async fn zero_argument_tool_use_nonstreaming() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("zero-arg completion should succeed");
 
@@ -273,7 +273,7 @@ async fn nested_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("nested-args streaming request should start"),
             )
             .await;
@@ -325,7 +325,7 @@ async fn unicode_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("unicode-args streaming request should start"),
             )
             .await;

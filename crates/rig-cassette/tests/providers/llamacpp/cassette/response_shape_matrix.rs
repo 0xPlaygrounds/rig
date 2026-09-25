@@ -79,7 +79,6 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                     CompletionRequestBuilder::new(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("a reasoning turn should succeed");
@@ -134,7 +133,6 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                     CompletionRequestBuilder::new(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
-                    None,
                 )
                 .expect("stream should start");
 
@@ -241,7 +239,6 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("llama.cpp serves n > 1");
@@ -264,7 +261,6 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
-                    None,
                 )
                 .expect("stream should start");
 
@@ -365,7 +361,6 @@ async fn logprobs_survive_into_the_raw_response() {
                     .max_tokens(16)
                     .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
                     .build(),
-                None,
             )
             .await
             .expect("a logprobs request should succeed");

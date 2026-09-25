@@ -20,7 +20,6 @@ async fn main() -> Result<(), anyhow::Error> {
             .width(512)
             .height(512)
             .build(),
-            None,
         )
         .await?;
 

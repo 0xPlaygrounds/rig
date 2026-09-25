@@ -47,7 +47,7 @@ async fn basic_interaction_returns_id() {
                     )
                     .build();
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -89,7 +89,6 @@ async fn followup_with_previous_interaction_id() {
                             .expect("params should serialize"),
                         )
                         .build(),
-                    None,
                 )
                 .await
                 .expect("initial completion should succeed");
@@ -113,7 +112,6 @@ async fn followup_with_previous_interaction_id() {
                             .expect("params should serialize"),
                         )
                         .build(),
-                    None,
                 )
                 .await
                 .expect("followup completion should succeed");
@@ -145,7 +143,6 @@ async fn google_search_tool_interaction() {
                             .expect("params should serialize"),
                         )
                         .build(),
-                    None,
                 )
                 .await
                 .expect("search completion should succeed");
@@ -195,7 +192,6 @@ async fn tool_result_roundtrip() {
                             .expect("params should serialize"),
                         )
                         .build(),
-                    None,
                 )
                 .await
                 .expect("tool call completion should succeed");
@@ -227,7 +223,6 @@ async fn tool_result_roundtrip() {
                         .expect("params should serialize"),
                     )
                     .build(),
-                    None,
                 )
                 .await
                 .expect("tool result followup should succeed");
@@ -248,7 +243,7 @@ async fn streaming_interaction() {
                 CompletionRequestBuilder::new("Write a 3-line poem about rust and rivers.")
                     .temperature(0.4)
                     .build();
-            let mut stream = model.stream(request, None).expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
             let mut saw_usage = false;
@@ -285,7 +280,7 @@ async fn streaming_final_metadata_exposes_model_version() {
                 CompletionRequestBuilder::new("Reply with exactly: interaction metadata ok")
                     .temperature(0.0)
                     .build();
-            let mut stream = model.stream(request, None).expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
             let mut final_model_version = None;
@@ -356,7 +351,7 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("completion should succeed");
             let usage = response.usage;

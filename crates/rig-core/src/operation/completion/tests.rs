@@ -76,7 +76,7 @@ where
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     // The canned reply does not decode; only the request matters here.
     let _ = crate::driver::Model::new(wire, http.clone())
-        .call(history(&own), None)
+        .call(history(&own))
         .await;
     let requests = http.requests();
     let request = requests.first().expect("the wire sent its request");
@@ -332,7 +332,7 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         request.chat_history[1] = Message::Assistant { id: None, content };
         let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
         let _ = crate::driver::Model::new(wire, http.clone())
-            .call(request, None)
+            .call(request)
             .await;
         let requests = http.requests();
         String::from_utf8_lossy(&requests[0].body).into_owned()
@@ -420,7 +420,7 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
             let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
             let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
             let _ = crate::driver::Model::new(wire, http.clone())
-                .call(request, None)
+                .call(request)
                 .await;
             let body = String::from_utf8_lossy(&http.requests()[0].body).into_owned();
             issuers
@@ -454,7 +454,7 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
         OpenAI::with_key(&OPENROUTER, "test-key").responses("openai/gpt-5-mini"),
         RecordingHttpClient::new(Bytes::from(reply.to_string())),
     )
-    .call(history("unused"), None)
+    .call(history("unused"))
     .await
     .expect("the reply decodes");
     let recorded: Vec<_> = response
@@ -491,7 +491,7 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
         wire.clone(),
         RecordingHttpClient::new(Bytes::from(reply.to_string())),
     )
-    .call(history("unused"), None)
+    .call(history("unused"))
     .await
     .expect("the reply decodes");
     let Some(AssistantContent::Reasoning(reasoning)) = response.choice.first() else {
@@ -507,7 +507,7 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
     };
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     let _ = crate::driver::Model::new(wire, http.clone())
-        .call(request, None)
+        .call(request)
         .await;
     let body: serde_json::Value =
         serde_json::from_slice(&http.requests()[0].body).expect("a JSON body");
@@ -557,7 +557,7 @@ async fn openrouter_reasoning_records_its_upstream_family() {
             wire.clone(),
             RecordingHttpClient::new(Bytes::from(reply(model).to_string())),
         )
-        .call(history("unused"), None)
+        .call(history("unused"))
         .await
         .expect("the reply decodes");
         assert_eq!(issuers(&unary.choice), [expected], "unary {model}");
@@ -573,7 +573,7 @@ async fn openrouter_reasoning_records_its_upstream_family() {
                 sse_bytes: Bytes::from(sse),
             },
         )
-        .stream(history("unused"), None)
+        .stream(history("unused"))
         .expect("the stream opens");
         while stream.next().await.is_some() {}
         let streamed = stream.finish().expect("a terminal record");

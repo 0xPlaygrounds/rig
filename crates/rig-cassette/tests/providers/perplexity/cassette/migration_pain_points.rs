@@ -31,7 +31,6 @@ async fn text_only_content_parts_are_flattened() {
                         .max_tokens(32)
                         .additional_params(json!({"search_context_size": "low"}))
                         .build(),
-                    None,
                 )
                 .await
                 .expect("Perplexity should accept flattened text-only content parts");
@@ -77,7 +76,6 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                     .max_tokens(32)
                     .additional_params(json!({"search_context_size": "low"}))
                     .build(),
-                    None,
                 )
                 .await
                 .expect("Perplexity should accept sanitized tool-exchange history");
@@ -105,7 +103,7 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
                     function_names: vec!["lookup_alpha".to_string(), "lookup_beta".to_string()],
                 })
                 .max_tokens(32)
-                .additional_params(json!({"search_context_size": "low"})).build(), None)
+                .additional_params(json!({"search_context_size": "low"})).build())
                 .await
                 .expect(
                     "unsupported tools and multi-name tool choice should be dropped before validation",
@@ -135,7 +133,6 @@ async fn output_schema_is_dropped_instead_of_sent_as_response_format() {
                     .max_tokens(48)
                     .additional_params(json!({"search_context_size": "low"}))
                     .build(),
-                    None,
                 )
                 .await
                 .expect("Perplexity should ignore unsupported response_format mapping");

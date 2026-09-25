@@ -1254,7 +1254,7 @@ where
             .max_tokens(32)
             .build()
     };
-    let buffered = model.call(request(), None).await?;
+    let buffered = model.call(request()).await?;
     let buffered_text = buffered
         .choice
         .iter()
@@ -1264,7 +1264,7 @@ where
         })
         .collect::<String>();
 
-    let mut stream = model.stream(request(), None)?;
+    let mut stream = model.stream(request())?;
     let mut streamed_text = String::new();
     let mut streamed_usage = None;
     while let Some(item) = stream.next().await {
@@ -1972,7 +1972,6 @@ where
                 .temperature(0.0)
                 .max_tokens(64)
                 .build(),
-            None,
         )
         .await?;
     if none
@@ -1994,7 +1993,6 @@ where
                 .temperature(0.0)
                 .max_tokens(96)
                 .build(),
-            None,
         )
         .await?;
     let required_calls = required
@@ -2019,7 +2017,6 @@ where
                 .temperature(0.0)
                 .max_tokens(96)
                 .build(),
-            None,
         )
         .await?;
     let specific_calls = specific

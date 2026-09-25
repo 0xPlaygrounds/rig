@@ -61,7 +61,6 @@ async fn generate_content_keeps_documents_after_system_before_history() {
                         // just has to be loose enough for an answer.
                         .max_tokens(512)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("Gemini document ordering request should succeed");
@@ -93,7 +92,6 @@ async fn interactions_keeps_documents_after_system_before_history() {
                         .temperature(0.0)
                         .max_tokens(512)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("Gemini interactions document ordering request should succeed");

@@ -12,10 +12,7 @@ async fn audio_generation_smoke() {
     let bound = OpenAI::from_env_with(&OPENROUTER).expect("OPENROUTER_API_KEY");
     let model = rig::model(bound.audio_generation(openrouter::GPT_4O_MINI_TTS));
     let response = model
-        .call(
-            AudioGenerationRequestBuilder::new(AUDIO_TEXT, "alloy").build(),
-            None,
-        )
+        .call(AudioGenerationRequestBuilder::new(AUDIO_TEXT, "alloy").build())
         .await
         .expect("audio generation should succeed");
 

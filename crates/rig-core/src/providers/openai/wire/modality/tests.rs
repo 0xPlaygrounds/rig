@@ -33,7 +33,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
     let bound = crate::driver::Model::new(wire, RecordingHttpClient::new(reply));
 
     let response = bound
-        .call(documents(), None)
+        .call(documents())
         .await
         .expect("the recorded reply decodes");
 
@@ -75,7 +75,7 @@ async fn a_short_embedding_reply_fails_the_call() {
         RecordingHttpClient::new(reply),
     );
     let error = bound
-        .call(documents(), None)
+        .call(documents())
         .await
         .expect_err("three inputs and one vector cannot pair up");
     assert!(
@@ -225,7 +225,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
         OpenAI::new("sk-test").embedding("text-embedding-3-small", None),
         RecordingHttpClient::new(reply),
     )
-    .call(vec!["one".to_owned()], None)
+    .call(vec!["one".to_owned()])
     .await
     .expect_err("OpenAI always reports usage");
     assert_eq!(error.kind(), ErrorKind::Response, "{error}");
@@ -242,7 +242,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
             .embedding("togethercomputer/m2-bert-80M-8k-retrieval", None),
         RecordingHttpClient::new(reply),
     )
-    .call(vec!["one".to_owned()], None)
+    .call(vec!["one".to_owned()])
     .await
     .expect("Together may omit usage");
     assert_eq!(response.embeddings.len(), 1);
@@ -257,7 +257,7 @@ async fn a_recorded_model_listing_decodes() {
         OpenAI::new("sk-test").models(),
         RecordingHttpClient::new(reply),
     )
-    .call((), None)
+    .call(())
     .await
     .expect("the recorded catalogue decodes");
     assert!(!models.is_empty(), "the catalogue is not empty");
@@ -274,7 +274,7 @@ async fn a_listing_entry_keeps_the_limits_a_dialect_reports() {
         OpenAI::with_key(&GROQ, "k").models(),
         RecordingHttpClient::new(reply),
     )
-    .call((), None)
+    .call(())
     .await
     .expect("the catalogue decodes");
     let model = models.iter().next().expect("one entry");
@@ -378,7 +378,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
         OpenAI::with_key(&XAI, "k").image_generation("grok-imagine-image-pro"),
         RecordingHttpClient::new(reply),
     )
-    .call(request(), None)
+    .call(request())
     .await
     .expect("a reply without `created` still decodes");
     assert_eq!(response.image, b"hi");
@@ -489,17 +489,14 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
         OpenAI::with_key(&LLAMACPP, "").rerank("bge-reranker-v2-m3"),
         RecordingHttpClient::new(reply),
     )
-    .call(
-        crate::operation::RerankRequest {
-            query: "which is about cats?".to_owned(),
-            documents: vec![
-                "dogs bark".to_owned(),
-                "the sky is blue".to_owned(),
-                "cats purr".to_owned(),
-            ],
-        },
-        None,
-    )
+    .call(crate::operation::RerankRequest {
+        query: "which is about cats?".to_owned(),
+        documents: vec![
+            "dogs bark".to_owned(),
+            "the sky is blue".to_owned(),
+            "cats purr".to_owned(),
+        ],
+    })
     .await
     .expect("the reply decodes");
 
@@ -533,13 +530,10 @@ async fn a_rerank_reply_accepts_either_score_key() {
         OpenAI::with_key(&LLAMACPP, "").rerank("r"),
         RecordingHttpClient::new(reply),
     )
-    .call(
-        crate::operation::RerankRequest {
-            query: "q".to_owned(),
-            documents: vec!["a".to_owned()],
-        },
-        None,
-    )
+    .call(crate::operation::RerankRequest {
+        query: "q".to_owned(),
+        documents: vec!["a".to_owned()],
+    })
     .await
     .expect("the reply decodes");
     assert_eq!(response.results[0].relevance_score, 0.75);
@@ -621,7 +615,7 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
         OpenAI::with_key(&HYPERBOLIC, "hb").image_generation("SDXL1.0-base"),
         RecordingHttpClient::new(r#"{"images":[{"image":"aGk="}]}"#),
     )
-    .call(request(), None)
+    .call(request())
     .await
     .expect("Hyperbolic's reply shape decodes");
     assert_eq!(response.image, b"hi");
@@ -685,15 +679,12 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
         OpenAI::with_key(&HUGGINGFACE, "hf").image_generation("black-forest-labs/FLUX.1-dev"),
         RecordingHttpClient::new(&png[..]),
     )
-    .call(
-        crate::image_generation::ImageGenerationRequest {
-            prompt: "a cat".to_owned(),
-            width: 1024,
-            height: 768,
-            additional_params: None,
-        },
-        None,
-    )
+    .call(crate::image_generation::ImageGenerationRequest {
+        prompt: "a cat".to_owned(),
+        width: 1024,
+        height: 768,
+        additional_params: None,
+    })
     .await
     .expect("raw image bytes decode");
     assert_eq!(response.image, png);
@@ -740,7 +731,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
         OpenAI::with_key(&HYPERBOLIC, "hb").audio_generation("EN"),
         RecordingHttpClient::new(r#"{"audio":"aGk="}"#),
     )
-    .call(request(), None)
+    .call(request())
     .await
     .expect("Hyperbolic's base64 envelope decodes");
     assert_eq!(response.audio, b"hi");
@@ -752,7 +743,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
         OpenAI::new("sk").audio_generation("tts-1"),
         RecordingHttpClient::new(&b"ID3\x04raw-mp3"[..]),
     )
-    .call(request(), None)
+    .call(request())
     .await
     .expect("raw bytes decode");
     assert_eq!(openai.audio, b"ID3\x04raw-mp3");

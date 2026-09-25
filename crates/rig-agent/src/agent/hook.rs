@@ -1645,7 +1645,7 @@ impl RunHandle<'_, rig_core::effect::family::Completion> {
         &self,
         request: rig_core::completion::CompletionRequest,
     ) -> crate::bus::Completion {
-        self.inner.complete(request, None)
+        self.inner.complete(request)
     }
 
     /// The model's label as the handler advertises it now.

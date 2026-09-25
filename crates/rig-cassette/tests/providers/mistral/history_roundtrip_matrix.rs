@@ -136,21 +136,21 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             // The provider-native surface: the reply's verbatim JSON, which
             // the driver keeps on `CompletionResponse::raw`, read the way a
             // caller reaching past the normalized view reads it.
-            let response = model.call(request(cell), None).await?;
+            let response = model.call(request(cell)).await?;
             Observation {
                 text: content_text(&response.raw["choices"][0]["message"]["content"]),
                 saw_terminal: true,
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.call(request(cell), None).await?;
+            let response = model.call(request(cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,
             }
         }
         (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.stream(request(cell), None)?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
@@ -168,7 +168,7 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             observation
         }
         (Transport::Streaming, Surface::Normalized) => {
-            let mut stream = model.stream(request(cell), None)?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,

@@ -47,7 +47,7 @@ async fn raw_streaming_tool_call_smoke() {
 
     let observation = collect_raw_stream_observation(
         model
-            .stream(request, None)
+            .stream(request)
             .expect("raw Bedrock stream should start"),
     )
     .await;

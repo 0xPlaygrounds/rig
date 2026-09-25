@@ -246,7 +246,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
         |client| async move {
             let model = rig::model(client.completion(MODEL));
-            let stream = model.stream(reasoning_request(), None)?;
+            let stream = model.stream(reasoning_request())?;
             sink.put(collect_reasoning_text_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())
         },

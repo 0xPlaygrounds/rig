@@ -26,7 +26,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
             // so it is read off the provider's own reply document, which the
             // driver keeps verbatim on `raw`. One interaction either way.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 

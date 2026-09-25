@@ -40,7 +40,7 @@ async fn required_maps_to_any_and_forces_tool_use() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -82,7 +82,7 @@ async fn none_suppresses_tool_use() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("none tool choice completion should succeed");
 
@@ -130,7 +130,7 @@ async fn specific_tool_targets_named_tool() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("specific tool choice completion should succeed");
 

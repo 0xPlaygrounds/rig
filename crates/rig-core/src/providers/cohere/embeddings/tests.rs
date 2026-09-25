@@ -15,7 +15,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
     );
 
     let error = model
-        .call(vec!["hello".to_string()], None)
+        .call(vec!["hello".to_string()])
         .await
         .map(|response| response.embeddings)
         .expect_err("should fail with non-success status");
@@ -45,7 +45,7 @@ async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
     );
 
     let error = model
-        .call(vec!["hello".to_string()], None)
+        .call(vec!["hello".to_string()])
         .await
         .map(|response| response.embeddings)
         .expect_err("should fail with provider error envelope");
@@ -126,10 +126,10 @@ async fn image_batches_are_fully_validated_before_any_request() {
     );
 
     let error = model
-        .call(
-            vec![b"\x89PNG\r\n\x1a\n".to_vec(), b"not an image".to_vec()],
-            None,
-        )
+        .call(vec![
+            b"\x89PNG\r\n\x1a\n".to_vec(),
+            b"not an image".to_vec(),
+        ])
         .await
         .map(|response| response.embeddings)
         .expect_err("invalid batch should fail before transport");
@@ -151,7 +151,7 @@ async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
     );
 
     let error = model
-        .call(Vec::<Vec<u8>>::new(), None)
+        .call(Vec::<Vec<u8>>::new())
         .await
         .map(|response| response.embeddings)
         .expect_err("an empty batch has no payload to fold");
@@ -176,7 +176,7 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
     );
 
     let error = model
-        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()], None)
+        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()])
         .await
         .expect_err("should fail with non-success status");
 
@@ -202,7 +202,7 @@ async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
     );
 
     let error = model
-        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()], None)
+        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()])
         .await
         .expect_err("should fail with provider error envelope");
 

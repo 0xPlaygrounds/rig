@@ -103,7 +103,7 @@ fn prompt() -> CompletionRequest {
 /// does.
 async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResponse {
     crate::driver::Model::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
-        .call(prompt(), None)
+        .call(prompt())
         .await
         .expect("the recorded body folds")
 }
@@ -117,7 +117,7 @@ async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionRes
             sse_bytes: Bytes::from(body.to_owned()),
         },
     );
-    let mut response = bound.stream(prompt(), None).expect("the stream opens");
+    let mut response = bound.stream(prompt()).expect("the stream opens");
     while response.next().await.is_some() {}
     response
         .finish()
@@ -573,7 +573,7 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
             br#"{"error":{"message":"no capacity","code":"overloaded"}}"#,
         )),
     )
-    .call(prompt(), None)
+    .call(prompt())
     .await
     .expect_err("an error envelope fails the call");
 

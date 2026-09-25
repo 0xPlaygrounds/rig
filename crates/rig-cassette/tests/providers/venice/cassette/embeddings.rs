@@ -15,7 +15,6 @@ async fn embeddings_smoke() {
                     .iter()
                     .map(|input| (*input).to_string())
                     .collect(),
-                None,
             )
             .await
             .map(|response| response.embeddings)
@@ -32,7 +31,7 @@ async fn embeddings_honor_requested_dimensions() {
     with_venice_cassette("embeddings/requested_dimensions", |client| async move {
         let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(256)));
         let embeddings = model
-            .call(vec!["dimensioned input".to_string()], None)
+            .call(vec!["dimensioned input".to_string()])
             .await
             .map(|response| response.embeddings)
             .expect("embedding request should succeed");

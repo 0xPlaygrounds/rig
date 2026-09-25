@@ -333,7 +333,7 @@ fn request(prompt: &str, params: serde_json::Value, max_tokens: u64) -> Completi
 
 async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
     model
-        .call(request, None)
+        .call(request)
         .await
         .expect("completion should succeed")
         .usage
@@ -341,7 +341,7 @@ async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> U
 
 /// Drain a provider-native stream and return its terminal record's usage.
 async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
-    let mut stream = model.stream(request, None).expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         if let StreamEvent::Final(record) = item.expect("stream item should not error") {
@@ -962,7 +962,7 @@ async fn normalized_stream_budget_thinking() {
         |client| async move {
             let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let mut stream = model
-                .stream(request(THINKING_PROMPT, budget_thinking(1024), 2048), None)
+                .stream(request(THINKING_PROMPT, budget_thinking(1024), 2048))
                 .expect("stream should open");
             while stream.next().await.is_some() {}
             slot.record(stream.folded().usage());

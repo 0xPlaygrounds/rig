@@ -97,7 +97,7 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 async fn two_turn_conversation(client: OpenAI) -> (ProviderResponse, ProviderResponse) {
     let model = rig::model(client.completion(openai::GPT_5_6_SOL));
     let first = model
-        .call(CompletionRequestBuilder::new(TURN_ONE).build(), None)
+        .call(CompletionRequestBuilder::new(TURN_ONE).build())
         .await
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
@@ -109,7 +109,6 @@ async fn two_turn_conversation(client: OpenAI) -> (ProviderResponse, ProviderRes
             CompletionRequestBuilder::new(TURN_TWO)
                 .messages([Message::user(TURN_ONE), assistant])
                 .build(),
-            None,
         )
         .await
         .expect("turn 2 should succeed");
@@ -169,7 +168,7 @@ async fn compaction_item_decodes_on_the_response() {
         |client| async move {
             let model = rig::model(client.openai.completion(openai::GPT_5_6_SOL));
             let response = model
-                .call(CompletionRequestBuilder::new(TURN_ONE).build(), None)
+                .call(CompletionRequestBuilder::new(TURN_ONE).build())
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);

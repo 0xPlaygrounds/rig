@@ -74,7 +74,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
                 .max_tokens(1024).build();
 
             let mut stream = model
-                .stream(request, None)
+                .stream(request)
                 .expect("streaming web-search request should open");
 
             let mut raw_types = Vec::new();
@@ -136,7 +136,7 @@ async fn blocking_web_search_preserves_server_tool_blocks() {
                 .max_tokens(1024).build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("blocking web-search request should succeed");
 

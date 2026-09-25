@@ -188,16 +188,13 @@ async fn stored_chain_with_tool_call() {
                 };
 
                 let first = model
-                    .call(
-                        request(
-                            vec![Message::user(
-                                "Use lookup_code to get the code of record alpha. Do not guess.",
-                            )],
-                            vec![lookup_tool()],
-                            stored(None),
-                        ),
-                        None,
-                    )
+                    .call(request(
+                        vec![Message::user(
+                            "Use lookup_code to get the code of record alpha. Do not guess.",
+                        )],
+                        vec![lookup_tool()],
+                        stored(None),
+                    ))
                     .await
                     .expect("turn one");
                 let first_id = first.response_id.clone().expect("a stored response id");
@@ -205,14 +202,11 @@ async fn stored_chain_with_tool_call() {
                 let call = only_call(&first.choice);
 
                 let second = model
-                    .call(
-                        request(
-                            vec![answer(&call)],
-                            vec![lookup_tool()],
-                            stored(Some(&first_id)),
-                        ),
-                        None,
-                    )
+                    .call(request(
+                        vec![answer(&call)],
+                        vec![lookup_tool()],
+                        stored(Some(&first_id)),
+                    ))
                     .await
                     .expect(
                         "turn two continues from the stored response with the tool output alone",
@@ -222,16 +216,13 @@ async fn stored_chain_with_tool_call() {
                 assert!(text(&second.choice).contains(CODE), "{:?}", second.choice);
 
                 let third = model
-                    .call(
-                        request(
-                            vec![Message::user(
-                                "Repeat the code you reported, exactly, and nothing else.",
-                            )],
-                            vec![],
-                            stored(Some(&second_id)),
-                        ),
-                        None,
-                    )
+                    .call(request(
+                        vec![Message::user(
+                            "Repeat the code you reported, exactly, and nothing else.",
+                        )],
+                        vec![],
+                        stored(Some(&second_id)),
+                    ))
                     .await
                     .expect("turn three continues from turn two");
                 let third_id = third.response_id.clone().expect("a stored response id");
@@ -297,14 +288,11 @@ async fn stored_then_stateless_mid_conversation() {
                     Message::user("Use lookup_code to get the code of record alpha. Do not guess.");
 
                 let first = model
-                    .call(
-                        request(
-                            vec![prompt.clone()],
-                            vec![lookup_tool()],
-                            params(None, true),
-                        ),
-                        None,
-                    )
+                    .call(request(
+                        vec![prompt.clone()],
+                        vec![lookup_tool()],
+                        params(None, true),
+                    ))
                     .await
                     .expect("turn one");
                 let first_id = first.response_id.clone().expect("a stored response id");
@@ -313,14 +301,11 @@ async fn stored_then_stateless_mid_conversation() {
                 let tool_answer = answer(&call);
 
                 let second = model
-                    .call(
-                        request(
-                            vec![tool_answer.clone()],
-                            vec![lookup_tool()],
-                            params(Some(&first_id), true),
-                        ),
-                        None,
-                    )
+                    .call(request(
+                        vec![tool_answer.clone()],
+                        vec![lookup_tool()],
+                        params(Some(&first_id), true),
+                    ))
                     .await
                     .expect("turn two chains");
                 let second_id = second.response_id.clone().expect("a stored response id");
@@ -340,10 +325,7 @@ async fn stored_then_stateless_mid_conversation() {
                     Message::user("Repeat the code you reported, exactly, and nothing else."),
                 ];
                 let third = model
-                    .call(
-                        request(history, vec![lookup_tool()], params(None, false)),
-                        None,
-                    )
+                    .call(request(history, vec![lookup_tool()], params(None, false)))
                     .await
                     .expect("turn three continues statelessly from the full history");
                 assert!(text(&third.choice).contains(CODE), "{:?}", third.choice);
@@ -429,10 +411,7 @@ async fn file_id_chain() {
             let model = rig::model(client.openai.responses("gpt-4.1-mini"));
             let params = json!({ "store": false });
             let first = model
-                .call(
-                    request(vec![document.clone()], vec![], params.clone()),
-                    None,
-                )
+                .call(request(vec![document.clone()], vec![], params.clone()))
                 .await
                 .expect("turn one reads the file by id");
             let history = vec![
@@ -444,7 +423,7 @@ async fn file_id_chain() {
                 Message::user("How many pages does the attached PDF have? Answer with a number."),
             ];
             let second = model
-                .call(request(history, vec![], params), None)
+                .call(request(history, vec![], params))
                 .await
                 .expect("turn two still reads the file by id");
             assert!(

@@ -51,7 +51,7 @@ async fn normalized_response_is_complete() {
                     .with_input_type(INPUT_TYPE),
             );
             let response = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -74,7 +74,7 @@ async fn raw_round_trips() {
                 .with_input_type(INPUT_TYPE),
         );
         let response = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("embedding request should succeed");
 
@@ -115,11 +115,11 @@ async fn raw_route_parity() {
                 .with_input_type(INPUT_TYPE),
         );
         let normalized = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("normalized call should succeed");
         let again = model
-            .call(inputs(), None)
+            .call(inputs())
             .await
             .expect("the same request should succeed again");
         let raw: cohere::embeddings::EmbeddingResponse =
@@ -141,7 +141,7 @@ async fn single_text_convenience() {
                     .with_input_type(INPUT_TYPE),
             );
             let response = model
-                .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
+                .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -163,7 +163,7 @@ async fn error_preserves_provider_body() {
                     .with_input_type(INPUT_TYPE),
             );
             let error = model
-                .call(inputs(), None)
+                .call(inputs())
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(
@@ -190,7 +190,7 @@ async fn image_normalized_and_raw_round_trip() {
         |client| async move {
             let model = rig::model(client.image_embedding());
             let response = model
-                .call(vec![decode_image(PNG_2X2)], None)
+                .call(vec![decode_image(PNG_2X2)])
                 .await
                 .expect("image embedding should succeed");
 
@@ -234,7 +234,7 @@ async fn image_normalized_and_raw_round_trip() {
             // the axis left to pin is that the capture is stable rather than
             // that a second route agrees with the first.
             let again = model
-                .call(vec![decode_image(PNG_2X2)], None)
+                .call(vec![decode_image(PNG_2X2)])
                 .await
                 .expect("the same image embed should succeed again");
             // Not byte-equality: Cohere mints a fresh generation id per call,

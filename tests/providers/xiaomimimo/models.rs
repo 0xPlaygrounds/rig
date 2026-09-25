@@ -10,7 +10,7 @@ use rig::providers::xiaomimimo::{
 async fn list_models_smoke() {
     let client =
         OpenAI::from_env_with(&openai_wire::XIAOMIMIMO).expect("XIAOMI_MIMO_API_KEY should be set");
-    let models = match rig::model(client.models()).call((), None).await {
+    let models = match rig::model(client.models()).call(()).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Xiaomi MiMo models should succeed\nDisplay: {error}\nDebug: {error:#?}")

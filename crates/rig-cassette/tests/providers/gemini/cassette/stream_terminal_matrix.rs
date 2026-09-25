@@ -206,7 +206,7 @@ async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, FIRST_ROUND_VALUE),
@@ -251,7 +251,7 @@ async fn two_terminal_stream_blocking_twin_has_the_same_answer() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("blocking turn should convert");
             assert!(
@@ -321,7 +321,7 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             let terminal = drained.terminal.expect("the turn should complete");
             // Gemini's usage is cumulative per chunk, so a terminal built at
@@ -381,7 +381,7 @@ async fn two_terminal_stream_with_visible_thoughts() {
                 }))
                 .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, FIRST_ROUND_VALUE),
@@ -417,7 +417,7 @@ async fn gemini_3_flash_does_not_emit_the_intermediate_finish() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, FIRST_ROUND_VALUE),
@@ -454,7 +454,7 @@ async fn two_terminal_stream_through_raw_stream() {
             // The terminal record carries Gemini's own terminal type on
             // `raw`, so this pins the fix on the provider-native record as
             // well as the normalized one.
-            let mut stream = model.stream(request, None).expect("stream should open");
+            let mut stream = model.stream(request).expect("stream should open");
             let mut text = String::new();
             let mut natives = 0;
             while let Some(item) = stream.next().await {
@@ -514,7 +514,7 @@ async fn two_terminal_stream_unicode_answer_after_the_first_finish() {
             .additional_params(code_execution_params())
             .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 drained.text.contains("résultats"),
@@ -549,7 +549,7 @@ async fn single_terminal_text_stream_is_unchanged() {
                 }))
                 .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(drained.text.contains("PONG"), "got {:?}", drained.text);
             assert_eq!(drained.terminals, 1);
@@ -589,7 +589,7 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
                 }])
                 .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 drained
@@ -619,7 +619,7 @@ async fn max_tokens_truncated_stream_still_reports_length() {
                 }))
                 .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert_eq!(
                 drained
@@ -653,7 +653,7 @@ async fn thinking_stream_terminal_is_unchanged() {
             }))
             .build();
 
-            let drained = drain(model.stream(request, None).expect("stream should open")).await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, "2880"),
@@ -732,7 +732,7 @@ mod unit {
             http_client,
         );
         let request = rig::completion::CompletionRequestBuilder::new("hello").build();
-        let mut stream = model.stream(request, None).expect("stream should open");
+        let mut stream = model.stream(request).expect("stream should open");
 
         let mut run = Run {
             text: String::new(),

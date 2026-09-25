@@ -60,7 +60,7 @@ mod xai {
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                 );
                 let request = CompletionRequestBuilder::new("hello").build();
-                let stream = model.stream(request, None)?;
+                let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
         })
@@ -95,7 +95,7 @@ mod copilot {
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                 );
                 let request = CompletionRequestBuilder::new("hello").build();
-                let stream = model.stream(request, None)?;
+                let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
         })
@@ -140,7 +140,7 @@ mod chatgpt {
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                 );
                 let request = CompletionRequestBuilder::new("hello").build();
-                let stream = model.stream(request, None)?;
+                let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
         })

@@ -255,7 +255,7 @@ fn cases() -> Vec<Value> {
                 .with_model("m2");
             // The streamed call's span records the terminal as it passes.
             let stream = Model::new(Scripted(terminal.clone()), Scripted(terminal))
-                .stream(request, None)
+                .stream(request)
                 .expect("a scripted stream opens");
             futures::executor::block_on(stream.collect::<Vec<_>>());
         },

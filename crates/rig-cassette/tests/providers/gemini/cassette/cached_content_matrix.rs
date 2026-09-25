@@ -986,7 +986,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                 };
 
                 let mut stream = model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("streamed cached-content request should start");
                 let mut usage = None;
                 while let Some(item) = stream.next().await {

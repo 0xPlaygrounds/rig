@@ -130,7 +130,7 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.call(request, None).await?;
+            let response = model.call(request).await?;
             let choice = response.raw["choices"]
                 .as_array()
                 .and_then(|choices| choices.first())
@@ -141,7 +141,7 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Re
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request, None)?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

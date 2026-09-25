@@ -124,7 +124,6 @@ async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
                         .additional_params(thinking_params())
                         .max_tokens(REASONER_BUDGET)
                         .build(),
-                    None,
                 )
                 .await?;
 
@@ -155,7 +154,6 @@ async fn streaming_reasoner_tool_turn_leads_with_reasoning() {
                         .additional_params(thinking_params())
                         .max_tokens(REASONER_BUDGET)
                         .build(),
-                    None,
                 )?,
             )
             .await;
@@ -194,7 +192,7 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
                             "thinking": { "type": "enabled" },
                             "parallel_tool_calls": true,
                         }))
-                        .max_tokens(REASONER_BUDGET).build(), None)
+                        .max_tokens(REASONER_BUDGET).build())
                 .await?;
 
             let kinds = block_kinds(&normalized.choice);
@@ -227,8 +225,7 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
             let model = rig::model(client.completion(MODEL));
             let outcome = collect_raw_stream_outcome(
                 model
-                    .stream(
-                        CompletionRequestBuilder::new(
+                    .stream(CompletionRequestBuilder::new(
                                 "What is the weather AND the air quality in Tokyo? Call both tools in one turn before answering.",
                             )
                             .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
@@ -238,8 +235,7 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
                                 "thinking": { "type": "enabled" },
                                 "parallel_tool_calls": true,
                             }))
-                            .max_tokens(REASONER_BUDGET).build(),
-                    None)
+                            .max_tokens(REASONER_BUDGET).build())
                     ?,
             )
             .await;
@@ -273,7 +269,6 @@ async fn blocking_reasoner_text_turn_leads_with_reasoning() {
                         .additional_params(thinking_params())
                         .max_tokens(REASONER_BUDGET)
                         .build(),
-                    None,
                 )
                 .await?;
 
@@ -302,7 +297,6 @@ async fn streaming_reasoner_text_turn_leads_with_reasoning() {
                         .additional_params(thinking_params())
                         .max_tokens(REASONER_BUDGET)
                         .build(),
-                    None,
                 )?,
             )
             .await;
@@ -338,7 +332,6 @@ async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
                         .additional_params(non_thinking_params())
                         .max_tokens(256)
                         .build(),
-                    None,
                 )
                 .await?;
 
@@ -371,7 +364,6 @@ async fn streaming_non_thinking_tool_turn_has_no_reasoning_block() {
                         .additional_params(non_thinking_params())
                         .max_tokens(256)
                         .build(),
-                    None,
                 )?,
             )
             .await;

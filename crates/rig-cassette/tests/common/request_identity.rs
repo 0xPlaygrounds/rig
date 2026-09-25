@@ -96,7 +96,6 @@ pub async fn run<W, T, Wm, Tr>(
                 .max_tokens(64)
                 .additional_params(params.clone())
                 .build(),
-            None,
         )
         .await
         .expect("unary call");
@@ -106,7 +105,6 @@ pub async fn run<W, T, Wm, Tr>(
                 .max_tokens(64)
                 .additional_params(params.clone())
                 .build(),
-            None,
         )
         .expect("stream opens");
     let mut terminal = None;
@@ -124,7 +122,6 @@ pub async fn run<W, T, Wm, Tr>(
                     .additional_params(params.clone()),
             )
             .build(),
-            None,
         )
         .await
         .expect_err("the provider rejects the model");

@@ -41,9 +41,7 @@ impl Complete for vertexai::model::GenerateContentResponse {
             crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
             Reply(self),
         );
-        futures::executor::block_on(
-            model.call(CompletionRequestBuilder::new("hello").build(), None),
-        )
+        futures::executor::block_on(model.call(CompletionRequestBuilder::new("hello").build()))
     }
 }
 

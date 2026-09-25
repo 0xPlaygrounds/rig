@@ -41,7 +41,7 @@ async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
         rig_reqwest::shared(),
     );
     let request = CompletionRequestBuilder::new("hello").build();
-    let outcome = match model.call(request, None).await {
+    let outcome = match model.call(request).await {
         Err(ProviderError::Http(error)) => error.to_string(),
         Err(other) => format!("wrong variant: {other}"),
         Ok(_) => "sent a request with no CA store".to_owned(),

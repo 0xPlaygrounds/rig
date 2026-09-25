@@ -134,7 +134,7 @@ fn a_worker_thread_completes_through_the_retained_runtime() {
         handle.block_on(async {
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                model.call(request("hello from a worker"), None),
+                model.call(request("hello from a worker")),
             )
             .await
             .expect("worker completion deadline")

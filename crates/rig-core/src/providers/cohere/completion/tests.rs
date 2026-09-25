@@ -123,7 +123,7 @@ async fn unary(body: &'static str) -> completion::CompletionResponse {
         crate::test_utils::RecordingHttpClient::new(body),
     );
     model
-        .call(CompletionRequestBuilder::new("hello").build(), None)
+        .call(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("the reply decodes")
 }
@@ -353,7 +353,7 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
         .build();
 
     let error = model
-        .call(request, None)
+        .call(request)
         .await
         .expect_err("REQUIRED without tools should fail locally");
 
@@ -438,7 +438,7 @@ async fn completion_non_success_preserves_status_and_body() {
     let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
-        .call(request, None)
+        .call(request)
         .await
         .expect_err("should fail with non-success status");
 

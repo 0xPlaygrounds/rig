@@ -1788,10 +1788,8 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         record_telemetry_content: false,
     };
 
-    let unary = within(model.complete(request("hi"), None))
-        .await
-        .expect("unary");
-    let mut stream = streamer.stream(request("hi"), None);
+    let unary = within(model.complete(request("hi"))).await.expect("unary");
+    let mut stream = streamer.stream(request("hi"));
     assert_eq!(
         stream.folded().provider(),
         "streamer",

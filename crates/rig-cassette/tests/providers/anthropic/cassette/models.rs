@@ -6,7 +6,7 @@ use rig::error::ProviderError;
 #[tokio::test]
 async fn list_models_smoke() {
     with_anthropic_cassette("models/list_models_smoke", |client| async move {
-        let models = match rig::model(client.models()).call((), None).await {
+        let models = match rig::model(client.models()).call(()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!(
@@ -34,7 +34,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = rig::model(client.models())
-                .call((), None)
+                .call(())
                 .await
                 .expect_err("a bogus key must not list models");
 

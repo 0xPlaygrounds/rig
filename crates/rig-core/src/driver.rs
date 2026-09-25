@@ -1,7 +1,8 @@
 //! Calls a model. A [`Model`] pairs a [`Wire`] (what to send and how to read
 //! the reply) with a [`Transport`] (how the payload travels). Its `call`
 //! folds a whole reply and its `stream` yields a completion's events; both
-//! run the one private driver, so the two modes share every step.
+//! run the one private driver, so the two modes share every step. The
+//! `_observed` twins take the observation context a bus records under.
 //!
 //! ```no_run
 //! use rig_core::completion::CompletionRequestBuilder;
@@ -10,7 +11,7 @@
 //!
 //! # async fn example(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let model = Model::new(OpenAI::from_env()?.responses(openai::GPT_5_2), http);
-//! let response = model.call(CompletionRequestBuilder::new("Hello").build(), None).await?;
+//! let response = model.call(CompletionRequestBuilder::new("Hello").build()).await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }
@@ -164,9 +165,21 @@ where
     T: Transport<W>,
 {
     /// Send `request` and fold the whole reply into the operation's
-    /// response. `observation` observes the attempt; `None` records nothing.
-    /// A paged operation follows every page the reply names.
-    pub async fn call(
+    /// response. A paged operation follows every page the reply names.
+    pub async fn call(&self, request: Request<W>) -> Result<Response<W>, ProviderError> {
+        self.unary(request, None).await
+    }
+
+    /// [`Self::call`], with the attempt observed under `observation`.
+    pub async fn call_observed(
+        &self,
+        request: Request<W>,
+        observation: AdapterContext,
+    ) -> Result<Response<W>, ProviderError> {
+        self.unary(request, Some(observation)).await
+    }
+
+    async fn unary(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
@@ -438,6 +451,22 @@ where
     /// transport cannot stream, return here; every later failure arrives
     /// in-band. Nothing is sent until the stream is first polled.
     pub fn stream(
+        &self,
+        request: crate::completion::CompletionRequest,
+    ) -> Result<CompletionStream, ProviderError> {
+        self.streamed(request, None)
+    }
+
+    /// [`Self::stream`], with the attempt observed under `observation`.
+    pub fn stream_observed(
+        &self,
+        request: crate::completion::CompletionRequest,
+        observation: AdapterContext,
+    ) -> Result<CompletionStream, ProviderError> {
+        self.streamed(request, Some(observation))
+    }
+
+    fn streamed(
         &self,
         request: crate::completion::CompletionRequest,
         observation: Option<AdapterContext>,

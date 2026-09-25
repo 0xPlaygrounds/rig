@@ -21,7 +21,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
             // document, captured by the driver on the very response the
             // completion path folded.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("chat completion should succeed");
             let raw = &response.raw;

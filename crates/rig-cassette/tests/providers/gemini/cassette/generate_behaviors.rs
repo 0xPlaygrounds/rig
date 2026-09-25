@@ -54,7 +54,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a truncated response should still convert, not error");
 

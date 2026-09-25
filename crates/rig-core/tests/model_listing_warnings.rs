@@ -67,7 +67,7 @@ async fn list(pages: Vec<MockHttpResponse>) {
         anthropic::wire::Anthropic::new("test-key").models(),
         SequencedHttpClient::new(pages),
     )
-    .call((), None)
+    .call(())
     .await
     .expect("listing should succeed");
 }

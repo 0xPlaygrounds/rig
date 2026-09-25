@@ -30,7 +30,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
         voyage().embedding("voyage-3.5", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
-    .call(vec!["first".to_owned(), "second".to_owned()], None)
+    .call(vec!["first".to_owned(), "second".to_owned()])
     .await
     .expect("the reply decodes");
 
@@ -113,13 +113,10 @@ async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     )
-    .call(
-        RerankRequest {
-            query: "which is best?".to_owned(),
-            documents: vec!["worse".to_owned(), "better".to_owned()],
-        },
-        None,
-    )
+    .call(RerankRequest {
+        query: "which is best?".to_owned(),
+        documents: vec!["worse".to_owned(), "better".to_owned()],
+    })
     .await
     .expect("the reply decodes");
 

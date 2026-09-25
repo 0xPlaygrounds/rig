@@ -21,7 +21,7 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
             // mistral.rs's own reply document off the response the completion
             // path folded, so the shape and the fold are the same reply.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("usage check completion should succeed");
             let usage = response

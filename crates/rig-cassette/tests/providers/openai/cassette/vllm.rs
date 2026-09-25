@@ -44,7 +44,7 @@ async fn responses_api_accepts_null_metadata() {
             // `CompletionResponse::raw`. One request therefore yields both
             // views, which is what the single recorded interaction allows.
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("vLLM Responses API completion with null metadata should deserialize");
             let reply = ProviderResponse::deserialize(&response.raw)

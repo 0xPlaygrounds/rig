@@ -39,7 +39,7 @@ async fn required_forces_a_tool_call() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -72,7 +72,7 @@ async fn none_suppresses_tool_calls() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("none tool choice completion should succeed");
 
@@ -114,7 +114,7 @@ async fn specific_single_function_targets_named_tool() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("specific tool choice completion should succeed");
 
@@ -173,7 +173,7 @@ async fn specific_multiple_functions_use_allowed_tools() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("allowed-tools tool choice completion should succeed");
 

@@ -69,7 +69,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .build();
-            let stream = model.stream(request, None).expect("stream should start");
+            let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -113,7 +113,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw xAI responses stream should start"),
             )
             .await;
@@ -148,7 +148,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
 
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request, None)
+                    .stream(followup_request)
                     .expect("raw xAI followup stream should start"),
             )
             .await;

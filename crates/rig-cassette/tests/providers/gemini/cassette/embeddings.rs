@@ -24,7 +24,6 @@ async fn embeddings_smoke() {
                         .iter()
                         .map(|input| (*input).to_string())
                         .collect(),
-                    None,
                 )
                 .await
                 .expect("embedding request should succeed");

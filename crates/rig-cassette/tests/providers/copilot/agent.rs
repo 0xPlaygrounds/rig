@@ -28,7 +28,7 @@ async fn all_models_completion_smoke() {
     let client = live_client().await;
 
     let models = rig::model(client.models())
-        .call((), None)
+        .call(())
         .await
         .expect("listing Copilot models should succeed");
 

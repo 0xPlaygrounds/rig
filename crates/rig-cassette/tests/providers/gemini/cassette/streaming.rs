@@ -93,7 +93,7 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
             let request = CompletionRequestBuilder::new("Reply with exactly: final metadata ok")
                 .temperature(0.0)
                 .build();
-            let mut stream = model.stream(request, None).expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;
@@ -147,7 +147,7 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 CompletionRequestBuilder::new("Reply with exactly: contentless final metadata ok")
                     .temperature(0.0)
                     .build();
-            let mut stream = model.stream(request, None).expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;

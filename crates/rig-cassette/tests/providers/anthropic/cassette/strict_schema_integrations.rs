@@ -67,7 +67,7 @@ async fn default_model_remains_non_strict() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("ordinary non-strict tool use should remain valid");
             assert_one_call(&response, "default_mode", &json!({ "value": "unchanged" }));
@@ -91,7 +91,6 @@ async fn strict_mode_without_tools_is_a_noop() {
                     CompletionRequestBuilder::new("Reply with exactly: no tools needed")
                         .max_tokens(32)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("strict mode without tools should still complete");
@@ -128,7 +127,7 @@ async fn automatic_choice_calls_a_strict_tool() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("automatic strict tool choice should succeed");
             assert_one_call(&response, "strict_auto", &json!({ "value": "automatic" }));
@@ -155,7 +154,7 @@ async fn none_choice_suppresses_a_strict_tool() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("tool_choice none with a strict tool should succeed");
             assert!(tool_calls(&response).is_empty());
@@ -186,7 +185,7 @@ async fn specific_choice_selects_one_of_multiple_strict_tools() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("specific strict tool choice should succeed");
             assert_one_call(&response, "strict_second", &json!({ "value": "chosen" }));
@@ -225,7 +224,7 @@ async fn rig_strict_and_provider_non_strict_tools_coexist() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("Rig strict and provider-specific tools should coexist");
             assert_one_call(&response, "raw_provider_tool", &json!({ "value": "raw" }));
@@ -259,7 +258,7 @@ async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
                 })).build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a non-strict twenty-first tool should not exceed the strict limit");
             assert_one_call(&response, "raw_boundary_tool", &json!({}));
@@ -287,7 +286,7 @@ async fn manual_prompt_caching_coexists_with_strict_tools() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("manual prompt caching and strict tools should coexist");
             assert_one_call(&response, "cached_strict", &json!({ "value": "manual" }));
@@ -315,7 +314,7 @@ async fn automatic_prompt_caching_coexists_with_strict_tools() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("automatic prompt caching and strict tools should coexist");
             assert_one_call(&response, "cached_strict", &json!({ "value": "automatic" }));
@@ -354,7 +353,7 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a 1h static prefix and strict tools should coexist");
             assert_one_call(
@@ -386,7 +385,7 @@ async fn one_hour_automatic_caching_coexists_with_strict_tools() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("one-hour automatic caching and strict tools should coexist");
             assert_one_call(&response, "cached_strict", &json!({ "value": "one-hour" }));
@@ -420,7 +419,7 @@ async fn structured_output_and_strict_tool_use_coexist() {
                     .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("structured output and strict tool use should coexist");
             assert_one_call(
@@ -451,7 +450,7 @@ async fn parallel_strict_tool_calls_preserve_each_schema() {
                 ]).build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("parallel strict tool calls should succeed");
             let mut calls = tool_calls(&response);

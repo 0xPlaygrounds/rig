@@ -22,7 +22,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let response = model
-        .call(request, None)
+        .call(request)
         .await
         .context("Failed to get completion")?;
 

@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
                         "You are a calculator. Always use the provided tools to compute results."
                             .to_string(),
                     )
-                    .tools(tool_definitions.clone()).build(), None)
+                    .tools(tool_definitions.clone()).build())
                     .await?;
 
                 // The tools advertised to the provider for this turn. With

@@ -120,7 +120,7 @@ async fn chat_blocking_reasoning_budget_exhausted() {
                 .build();
 
             let response = model
-                .call(request, None)
+                .call(request)
                 .await
                 .expect("a truncated turn is a diagnostic, not a malformed response");
 
@@ -145,7 +145,7 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
@@ -172,7 +172,7 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
                 .additional_params(json!({ "reasoning_effort": "high" }))
                 .build();
 
-            let response = model.call(request, None).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
@@ -196,7 +196,7 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert!(response.usage.input_tokens.is_some_and(|n| n > 0));
             assert_eq!(response.usage.output_tokens, Some(TINY_CAP));
@@ -227,7 +227,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
             // One turn, two views of it: the provider's own reply read back out
             // of `CompletionResponse::raw`, and the normalized response beside
             // it.
-            let response = model.call(request, None).await.expect("raw turn");
+            let response = model.call(request).await.expect("raw turn");
             let reply = ChatCompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized openai::completion::CompletionResponse");
 
@@ -262,7 +262,7 @@ async fn chat_blocking_tools_present_budget_exhausted() {
                 .tool(rig::tool::tool_definition(&Adder))
                 .build();
 
-            let response = model.call(request, None).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
             assert!(response.choice.is_empty());
@@ -325,7 +325,7 @@ async fn chat_blocking_partial_text_truncation() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
             assert!(
@@ -355,7 +355,7 @@ async fn chat_streaming_reasoning_budget_exhausted() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (text, terminal) = collect_text_and_terminal(stream).await;
 
             assert!(text.is_empty());
@@ -382,7 +382,7 @@ async fn chat_streaming_partial_text_truncation() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (text, terminal) = collect_text_and_terminal(stream).await;
 
             assert!(!text.is_empty());
@@ -413,7 +413,6 @@ async fn chat_transports_agree_on_truncation() {
                     CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("blocking truncated turn");
@@ -423,7 +422,6 @@ async fn chat_transports_agree_on_truncation() {
                     CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
-                    None,
                 )
                 .expect("streaming truncated turn");
             let (streamed_text, terminal) = collect_text_and_terminal(stream).await;
@@ -455,7 +453,7 @@ async fn chat_blocking_completed_turn_is_unaffected() {
             let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
             let request = CompletionRequestBuilder::new("Reply with the word OK.").build();
 
-            let response = model.call(request, None).await.expect("completed turn");
+            let response = model.call(request).await.expect("completed turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
             assert!(!response.choice.is_empty());
@@ -482,7 +480,7 @@ async fn responses_blocking_reasoning_budget_exhausted() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
@@ -504,7 +502,7 @@ async fn responses_streaming_reasoning_budget_exhausted() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let stream = model.stream(request, None).expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
 
             assert_eq!(
@@ -530,7 +528,7 @@ async fn responses_blocking_partial_text_truncation() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let response = model.call(request, None).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
             assert!(
@@ -559,7 +557,6 @@ async fn cross_surface_truncation_parity() {
                     CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("responses truncated turn");
@@ -570,7 +567,6 @@ async fn cross_surface_truncation_parity() {
                     CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
-                    None,
                 )
                 .await
                 .expect("chat truncated turn");

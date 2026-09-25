@@ -146,7 +146,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                     "include_reasoning": true
                 })).build();
 
-            let mut stream = model.stream(request, None).expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
             let observation = observe_stream(&mut stream).await;
             assert!(
                 observation.errors.is_empty(),
@@ -217,7 +217,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 .tool(tool_definition.clone())
                 .additional_params(reasoning_params.clone()).build();
 
-            let mut stream = model.stream(request, None).expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
             let first_turn = observe_stream(&mut stream).await;
             assert!(
                 first_turn.errors.is_empty(),
@@ -262,7 +262,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 .message(tool_result_message).build();
 
             let mut followup_stream = model
-                .stream(followup, None)
+                .stream(followup)
                 .expect("follow-up stream should start");
             let second_turn = observe_stream(&mut followup_stream).await;
 
@@ -293,9 +293,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
                 .build();
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request, None)
-                    .expect("raw stream should start"),
+                model.stream(request).expect("raw stream should start"),
             )
             .await;
 
@@ -320,7 +318,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request, None)
+                    .stream(request)
                     .expect("raw stream should start"),
             )
             .await;
@@ -354,7 +352,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
 
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request, None)
+                    .stream(followup_request)
                     .expect("raw followup stream should start"),
             )
             .await;

@@ -125,20 +125,26 @@ impl ServeOperation for Completion {
             EffectKind::Completion {
                 request,
                 stream: false,
-            } => Reply::Outcome(
-                model
-                    .call(request, context)
-                    .await
-                    .map(Outcome::Completion)
-                    .map_err(ErrorReport::from),
-            ),
+            } => {
+                let result = match context {
+                    Some(context) => model.call_observed(request, context).await,
+                    None => model.call(request).await,
+                };
+                Reply::Outcome(result.map(Outcome::Completion).map_err(ErrorReport::from))
+            }
             EffectKind::Completion {
                 request,
                 stream: true,
-            } => match model.stream(request, context) {
-                Ok(stream) => Reply::Stream(Box::pin(stream)),
-                Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
-            },
+            } => {
+                let opened = match context {
+                    Some(context) => model.stream_observed(request, context),
+                    None => model.stream(request),
+                };
+                match opened {
+                    Ok(stream) => Reply::Stream(Box::pin(stream)),
+                    Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+                }
+            }
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
@@ -178,7 +184,7 @@ impl ServeOperation for Embedding {
                 inputs: EmbedInputs::Texts(texts),
             } => Reply::Outcome(
                 model
-                    .call(texts, None)
+                    .call(texts)
                     .await
                     .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
                     .map_err(ErrorReport::from),
@@ -223,13 +229,10 @@ impl ServeOperation for Rerank {
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model
-                    .call(
-                        crate::operation::RerankRequest {
-                            query: request.query,
-                            documents: request.documents,
-                        },
-                        None,
-                    )
+                    .call(crate::operation::RerankRequest {
+                        query: request.query,
+                        documents: request.documents,
+                    })
                     .await
                     .map(Outcome::Reranked)
                     .map_err(ErrorReport::from),

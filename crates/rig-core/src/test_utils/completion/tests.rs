@@ -30,7 +30,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     ]);
 
     let first = model
-        .call(request("hello"), None)
+        .call(request("hello"))
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(first.message_id.as_deref(), Some("msg_1"));
@@ -40,7 +40,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     ));
 
     let second = model
-        .call(request("use a tool"), None)
+        .call(request("use a tool"))
         .await
         .expect("second scripted turn should succeed");
     assert!(matches!(
@@ -74,13 +74,13 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
     ]);
 
     let scripted = model
-        .call(request("hello"), None)
+        .call(request("hello"))
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(scripted.raw, payload);
 
     let unscripted = model
-        .call(request("hello"), None)
+        .call(request("hello"))
         .await
         .expect("second scripted turn should succeed");
     assert_eq!(unscripted.raw, expected_unscripted);
@@ -109,9 +109,7 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
         }),
     ]]);
 
-    let mut stream = model
-        .stream(request("hello"), None)
-        .expect("stream should open");
+    let mut stream = model.stream(request("hello")).expect("stream should open");
     while stream.next().await.is_some() {}
     let terminal = stream
         .folded()
@@ -139,7 +137,7 @@ async fn missing_completion_turn_returns_provider_error() {
     let model = MockCompletionModel::default();
 
     let err = model
-        .call(request("hello"), None)
+        .call(request("hello"))
         .await
         .expect_err("missing turn should error");
 
@@ -164,7 +162,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
     ]]);
 
     let mut stream = model
-        .stream(request("stream"), None)
+        .stream(request("stream"))
         .expect("stream should be created");
 
     let mut text = String::new();
@@ -229,7 +227,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
 async fn stream_error_event_is_returned() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::error("boom")]]);
     let mut stream = model
-        .stream(request("stream"), None)
+        .stream(request("stream"))
         .expect("stream should be created");
 
     let err = stream
