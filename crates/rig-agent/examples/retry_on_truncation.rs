@@ -17,21 +17,18 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
-use futures::{StreamExt, stream};
+use futures::StreamExt;
 use rig_agent::{
     AgentBuilder,
     agent::{
         AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, ModelTurnAction,
         ModelTurnFinished, MultiTurnStreamItem, RequestPatch,
     },
-    completion::{CompletionRequest, FinishReason, Usage},
-    streaming::StreamFinal,
+    completion::{CompletionResponse, FinishReason, Usage},
 };
-use rig_core::driver::{Model, Observation, Opened, Transport};
-use rig_core::error::{EncodeError, ProviderError};
+use rig_core::driver::{BoxedModel, Model};
 use rig_core::message::AssistantContent;
-use rig_core::operation::{AdapterOutput, Completion};
-use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
+use rig_core::operation::Completion;
 
 /// The full answer costs this many output tokens; anything less is truncated.
 const ANSWER_COST: u64 = 40;
@@ -39,11 +36,21 @@ const ANSWER_COST: u64 = 40;
 const ANSWER: &str = "Rig normalizes every provider's stop reason into one vocabulary.";
 
 /// A local model that behaves like a real one under an output-token cap: it
-/// emits what fits and reports `Length` when the cap cut it short. It is its
-/// own wire (what a request sends: the cap), transport (the answer under
-/// that cap) and decoder (the answer as stream events).
-#[derive(Clone)]
-struct Budgeted;
+/// emits what fits and reports `Length` when the cap cut it short. A closure
+/// is the whole model; the driver streams it and folds it like any wire.
+fn budgeted() -> BoxedModel<Completion> {
+    Model::completion_fn("budgeted", |request| async move {
+        let (text, reason) = answer_under(request.max_tokens);
+        Ok(CompletionResponse::new(
+            vec![AssistantContent::text(text)],
+            Usage::default(),
+            "budgeted",
+            serde_json::Value::Null,
+        )
+        .with_finish_reason(reason))
+    })
+    .boxed()
+}
 
 /// What the model can say under `cap`, and how it stopped.
 fn answer_under(cap: Option<u64>) -> (String, FinishReason) {
@@ -55,59 +62,6 @@ fn answer_under(cap: Option<u64>) -> (String, FinishReason) {
             (ANSWER[..kept].to_owned(), FinishReason::Length)
         }
         _ => (ANSWER.to_owned(), FinishReason::Stop),
-    }
-}
-
-impl Wire for Budgeted {
-    type Op = Completion;
-    type Payload = Option<u64>;
-    type Frame = (String, FinishReason);
-    type Decoder = Self;
-
-    fn name(&self) -> &str {
-        "budgeted"
-    }
-
-    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Option<u64>, EncodeError> {
-        Ok(request.max_tokens)
-    }
-
-    fn decoder(&self, _mode: Mode) -> Self {
-        Self
-    }
-}
-
-impl Transport<Budgeted> for Budgeted {
-    fn send(
-        &self,
-        cap: Option<u64>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Option<u64>, (String, FinishReason)>> + Send + 'static + use<>,
-        ProviderError,
-    > {
-        Ok(std::future::ready(Opened::new(stream::iter([Ok(
-            answer_under(cap),
-        )]))))
-    }
-}
-
-impl Decoder<Completion, (String, FinishReason)> for Budgeted {
-    type Event = (String, FinishReason);
-
-    fn classify(&self, answer: (String, FinishReason)) -> WireEvent<(String, FinishReason)> {
-        WireEvent::Known(answer)
-    }
-
-    /// Identical semantics on both surfaces: the hook sees the same reason
-    /// and the same cap either way.
-    fn interpret(&mut self, (text, reason): (String, FinishReason), out: &mut AdapterOutput) {
-        out.text(text);
-        out.final_record(
-            StreamFinal::new("budgeted", Usage::default(), serde_json::Value::Null)
-                .with_finish_reason(reason),
-        );
     }
 }
 
@@ -181,7 +135,7 @@ impl AgentHook for GrowCapOnTruncation {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Starts far below what the answer costs, so the first attempts truncate.
-    let agent = AgentBuilder::new(Model::new(Budgeted, Budgeted))
+    let agent = AgentBuilder::new(budgeted())
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
 
@@ -197,7 +151,7 @@ async fn main() -> Result<()> {
     // `max_tokens` are read from the same per-attempt carrier either way, so
     // the escalation below is identical to the one above.
     println!("streaming:");
-    let streaming_agent = AgentBuilder::new(Model::new(Budgeted, Budgeted))
+    let streaming_agent = AgentBuilder::new(budgeted())
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
     let mut stream = streaming_agent

@@ -35,9 +35,11 @@ use crate::wire::{
 };
 
 mod boxed;
+mod func;
 mod http_transport;
 
 pub use boxed::BoxedModel;
+pub use func::{FnDecoder, FnFrame, FnTransport, FnWire};
 
 /// An endpoint of one provider: a wire bound to a transport.
 ///

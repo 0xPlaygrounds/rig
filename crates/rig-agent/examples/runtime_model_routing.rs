@@ -9,19 +9,15 @@
 use std::convert::Infallible;
 
 use anyhow::Result;
-use futures::stream;
 use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
-    completion::{CompletionRequest, Usage},
-    streaming::StreamFinal,
+    completion::{CompletionRequest, CompletionResponse, Usage},
     tool::{Tool, ToolContext},
 };
-use rig_core::driver::{Model, Observation, Opened, Transport};
-use rig_core::error::{EncodeError, ProviderError};
+use rig_core::driver::{BoxedModel, Model};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
-use rig_core::operation::{AdapterOutput, Completion, ImagePart};
-use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
+use rig_core::operation::Completion;
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -31,83 +27,24 @@ fn usage(total_tokens: u64) -> Usage {
     }
 }
 
-/// A local model: `answer` decides its reply from the request. It is its
-/// own wire (a request becomes its answer), transport (it returns the
-/// answer) and decoder (the answer as stream events), so the blocking and
-/// streaming surfaces reply alike.
-#[derive(Clone)]
-struct Local {
-    provider: &'static str,
-    total_tokens: u64,
-    answer: fn(&CompletionRequest) -> AssistantContent,
-}
-
-impl Wire for Local {
-    type Op = Completion;
-    type Payload = AssistantContent;
-    type Frame = AssistantContent;
-    type Decoder = Self;
-
-    fn name(&self) -> &str {
-        self.provider
-    }
-
-    fn encode(
-        &self,
-        request: CompletionRequest,
-        _mode: Mode,
-    ) -> Result<AssistantContent, EncodeError> {
-        Ok((self.answer)(&request))
-    }
-
-    fn decoder(&self, _mode: Mode) -> Self {
-        self.clone()
-    }
-}
-
-impl Transport<Local> for Local {
-    fn send(
-        &self,
-        answer: AssistantContent,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<AssistantContent, AssistantContent>> + Send + 'static + use<>,
-        ProviderError,
-    > {
-        Ok(std::future::ready(Opened::new(stream::iter([Ok(answer)]))))
-    }
-}
-
-impl Decoder<Completion, AssistantContent> for Local {
-    type Event = AssistantContent;
-
-    fn classify(&self, answer: AssistantContent) -> WireEvent<AssistantContent> {
-        WireEvent::Known(answer)
-    }
-
-    fn interpret(&mut self, answer: AssistantContent, out: &mut AdapterOutput) {
-        out.message_id(format!("{}-message", self.provider));
-        out.content(&[answer], ImagePart::Block);
-        out.final_record(StreamFinal::new(
-            self.provider,
-            usage(self.total_tokens),
-            serde_json::Value::Null,
-        ));
-    }
-}
-
+/// A local model: `answer` decides its reply from the request. A closure is
+/// the whole model, so the blocking and streaming surfaces reply alike.
 fn local(
     provider: &'static str,
     total_tokens: u64,
     answer: fn(&CompletionRequest) -> AssistantContent,
-) -> Model<Local, Local> {
-    let model = Local {
-        provider,
-        total_tokens,
-        answer,
-    };
-    Model::new(model.clone(), model)
+) -> BoxedModel<Completion> {
+    Model::completion_fn(provider, move |request| {
+        let response = CompletionResponse::new(
+            vec![answer(&request)],
+            usage(total_tokens),
+            provider,
+            serde_json::Value::Null,
+        )
+        .with_message_id(format!("{provider}-message"));
+        async move { Ok(response) }
+    })
+    .boxed()
 }
 
 /// Calls the search tool.
