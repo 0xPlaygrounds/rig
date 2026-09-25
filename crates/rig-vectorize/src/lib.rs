@@ -11,7 +11,7 @@
 //!
 //! # fn example() -> anyhow::Result<()> {
 //! let openai = openai::wire::OpenAI::from_env()?;
-//! let http = rig_reqwest::bundled()?;
+//! let http = rig_reqwest::shared();
 //! let embedding_model = rig_core::Model::new(openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None), http);
 //!
 //! let vector_store = VectorizeVectorStore::new(

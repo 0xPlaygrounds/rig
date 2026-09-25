@@ -6,7 +6,7 @@
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person { name: String, age: u8 }
-//! let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_4O), rig_reqwest::bundled()?);
+//! let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_4O), rig_reqwest::shared());
 //! let extractor = ExtractorBuilder::<Person>::new(model).retries(2).build();
 //! let person = extractor.extract("John is 30.").await?.output;
 //! # Ok(())

@@ -26,11 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create ollama client
     let ollama_client = Ollama::new();
-    let http = rig::rig_reqwest::bundled()?;
-    let embedding_model = Model::new(
-        ollama_client.embedding("nomic-embed-text", None),
-        http.clone(),
-    );
+    let embedding_model = rig::model(ollama_client.embedding("nomic-embed-text", None));
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -68,7 +64,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let rag_agent = AgentBuilder::new(Model::new(ollama_client.completion("qwen2.5:14b"), http.clone()))
+    let rag_agent = AgentBuilder::new(rig::model(ollama_client.completion("qwen2.5:14b")))
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

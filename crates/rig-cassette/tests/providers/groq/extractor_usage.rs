@@ -48,7 +48,7 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 async fn extract_backward_compatibility() -> Result<()> {
     let groq = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = groq
         .extractor::<Person>(EXTRACTOR_USAGE_BACKWARD_MODEL)
@@ -71,7 +71,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     let groq = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = groq
         .extractor::<Person>(EXTRACTOR_USAGE_WITH_USAGE_MODEL)
@@ -96,7 +96,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     let groq = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = groq
         .extractor::<Address>(EXTRACTOR_USAGE_CHAT_HISTORY_MODEL)
@@ -126,7 +126,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     let groq = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = groq
         .extractor::<Person>(EXTRACTOR_USAGE_SAME_DATA_MODEL)
@@ -155,7 +155,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     let groq = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     let person_extractor = groq

@@ -45,7 +45,7 @@ fn approx_token_count(message: &Message) -> usize {
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?;
-    let http = rig_reqwest::bundled()?;
+    let http = rig_reqwest::shared();
 
     let sliding_memory = InMemoryConversationMemory::new()
         .with_filter(SlidingWindowMemory::last_messages(20).into_filter());

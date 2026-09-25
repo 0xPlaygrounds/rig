@@ -13,20 +13,20 @@ pub(crate) fn api_key() -> String {
 pub(crate) fn general_client() -> Endpoint<OpenAI> {
     Endpoint::new(
         OpenAI::with_key(&openai_wire::ZAI, api_key()),
-        rig::rig_reqwest::bundled().expect("Z.AI general client should build"),
+        rig::rig_reqwest::shared(),
     )
 }
 
 pub(crate) fn coding_client() -> Endpoint<OpenAI> {
     Endpoint::new(
         OpenAI::with_key(&openai_wire::ZAI_CODING, api_key()),
-        rig::rig_reqwest::bundled().expect("Z.AI coding client should build"),
+        rig::rig_reqwest::shared(),
     )
 }
 
 pub(crate) fn anthropic_client() -> Endpoint<Anthropic> {
     Endpoint::new(
         Anthropic::with_dialect(api_key(), &anthropic_wire::ZAI),
-        rig::rig_reqwest::bundled().expect("Z.AI Anthropic-compatible client should build"),
+        rig::rig_reqwest::shared(),
     )
 }

@@ -28,7 +28,7 @@
 //! * **`POST /v1/messages`** — llama.cpp also speaks the *Anthropic* Messages
 //!   wire, converting it to chat completions internally. Rig has an Anthropic
 //!   wire, so this is reachable today with
-//!   `Endpoint::new(anthropic::wire::Anthropic::new(key).with_base_url(url), rig::rig_reqwest::bundled()?)`. It is
+//!   `Endpoint::new(anthropic::wire::Anthropic::new(key).with_base_url(url), rig::rig_reqwest::shared())`. It is
 //!   excluded from *this* provider because a
 //!   provider that spoke two wires would have to pick one for every capability,
 //!   and the OpenAI wire is the one llama.cpp's own documentation leads with.

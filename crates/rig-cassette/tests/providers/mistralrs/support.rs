@@ -51,7 +51,7 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
     .await;
     let responses = Endpoint::new(
         OpenAI::new(api_key).with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("mistral.rs Responses transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, responses)
@@ -72,7 +72,7 @@ async fn mistralrs_completions_cassette(
         OpenAI::new(api_key)
             .with_base_url(cassette.base_url())
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("mistral.rs chat-completions transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, completions)

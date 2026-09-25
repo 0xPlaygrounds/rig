@@ -77,7 +77,7 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 async fn batch_multi_extract_chain() -> Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let names_extractor = client
         .extractor::<Names>(DEFAULT_MODEL)

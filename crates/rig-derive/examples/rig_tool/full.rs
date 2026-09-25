@@ -31,7 +31,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let string_agent = AgentBuilder::new(Model::new(
         OpenAI::from_env()?.completion(providers::openai::GPT_4O),
-        rig_reqwest::bundled()?,
+        rig_reqwest::shared(),
     ))
     .preamble("You are an agent with tools access, always use the tools")
     .max_tokens(1024)

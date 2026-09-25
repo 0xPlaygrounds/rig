@@ -160,7 +160,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 
     let agent = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(PERMISSION_CONTROL_PROMPT_MODEL)
     .preamble("You are a helpful assistant that can read files using different methods.")
@@ -201,7 +201,7 @@ async fn permission_control_streaming_example() -> Result<()> {
 
     let agent = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(PERMISSION_CONTROL_STREAMING_MODEL)
     .preamble("You are a helpful assistant that can read files using different methods.")

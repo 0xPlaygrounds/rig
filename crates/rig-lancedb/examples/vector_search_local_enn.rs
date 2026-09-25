@@ -15,7 +15,7 @@ mod fixture;
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenAI embeddings endpoint. Use this to generate embeddings (and generate test data for RAG demo).
     let openai_client = OpenAI::from_env()?;
-    let http = rig_reqwest::bundled()?;
+    let http = rig_reqwest::shared();
 
     // Select the embedding model and generate our embeddings
     let model = Model::new(

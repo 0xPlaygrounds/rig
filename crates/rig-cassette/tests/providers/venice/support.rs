@@ -38,10 +38,7 @@ async fn venice_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
         VENICE_BASE_URL,
     )
     .await;
-    let venice = Endpoint::new(
-        venice_config(&cassette),
-        rig::rig_reqwest::bundled().expect("transport should build"),
-    );
+    let venice = Endpoint::new(venice_config(&cassette), rig::rig_reqwest::shared());
 
     (cassette, venice)
 }

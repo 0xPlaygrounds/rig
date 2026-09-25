@@ -29,7 +29,7 @@ use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::serve::adapters::ModelAdapter;
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::streaming::StreamFinal;
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
@@ -137,7 +137,7 @@ impl Decoder<Completion, Vec<AssistantContent>> for Scripted {
     }
 
     fn interpret(&mut self, choice: Vec<AssistantContent>, out: &mut AdapterOutput) {
-        out.content(&choice);
+        out.content(&choice, ImagePart::Block);
         out.final_record(StreamFinal::new("fixture", Usage::default(), serde_json::Value::Null));
     }
 

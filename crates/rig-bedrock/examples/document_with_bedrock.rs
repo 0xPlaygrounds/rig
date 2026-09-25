@@ -22,7 +22,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let agent = AgentBuilder::new(rig_core::Model::new(
         Converse::new(AMAZON_NOVA_LITE),
-        BedrockRuntime::from_env()?,
+        BedrockRuntime::from_env(),
     ))
     .preamble("Describe this document")
     .temperature(0.5)

@@ -11,7 +11,7 @@ use rig::audio_generation::AudioGenerationRequestBuilder;
 async fn audio_generation_smoke() {
     let provider = Endpoint::new(
         OpenAI::from_env_with(&HYPERBOLIC).expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = provider.audio_generation("EN");
 

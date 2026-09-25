@@ -14,7 +14,7 @@ use crate::support::{
 async fn required_tool_choice_agent_roundtrip() {
     let agent = Endpoint::new(
         OpenAI::from_env_with(&openai_wire::MOONSHOT).expect("MOONSHOT_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("moonshot client should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(moonshot::KIMI_K3)
     .preamble(TOOLS_PREAMBLE)

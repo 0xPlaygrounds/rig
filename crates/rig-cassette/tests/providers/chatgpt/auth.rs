@@ -4,7 +4,6 @@ use assert_fs::TempDir;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
 use rig_test_support::endpoint::Endpoint;
 use serde_json::json;
 use std::fs;
@@ -46,9 +45,9 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> O
     provider
 }
 
-/// [`oauth_provider_with_auth_file`], bound to a fresh bundled transport.
+/// [`oauth_provider_with_auth_file`], on the shared default transport.
 async fn oauth_client_with_auth_file(path: &Path) -> Endpoint<OpenAI> {
-    let http = bundled().expect("the bundled transport should build");
+    let http = rig::rig_reqwest::shared();
     Endpoint::new(oauth_provider_with_auth_file(path, &http).await, http)
 }
 

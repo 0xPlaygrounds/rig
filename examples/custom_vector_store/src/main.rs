@@ -192,12 +192,8 @@ struct Document {
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenAI embeddings provider from the environment
     let openai_client = OpenAI::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
     // Pair the embedding wire with the transport
-    let embedding_model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let embedding_model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
 
     // Create the Redis vector store
     let mut store =

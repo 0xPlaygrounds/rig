@@ -57,7 +57,6 @@ async fn main() -> Result<()> {
     // because Ollama is local and does not require an api key, we leave the
     // credential unset
     let client = Ollama::new().with_base_url("http://localhost:11434/v1");
-    let http = rig::rig_reqwest::bundled()?;
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("examples/documents");
@@ -66,7 +65,7 @@ async fn main() -> Result<()> {
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model
-    let model = Model::new(client.embedding("bge-m3", None), http.clone());
+    let model = rig::model(client.embedding("bge-m3", None));
 
     // Create embeddings builder
     let mut builder = EmbeddingsBuilder::new(model.clone());
@@ -89,7 +88,7 @@ async fn main() -> Result<()> {
     println!("Successfully created vector store and index");
 
     // Create RAG agent
-    let rag_agent = AgentBuilder::new(Model::new(client.completion("deepseek-r1"), http.clone()))
+    let rag_agent = AgentBuilder::new(rig::model(client.completion("deepseek-r1")))
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
         .dynamic_context(1, index)
         .build();

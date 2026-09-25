@@ -11,7 +11,7 @@ const DEFAULT_PATH: &str = "./output.png";
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let image_generation_model =
-        Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env()?);
+        Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env());
     let response = image_generation_model
         .call(
             ImageGenerationRequestBuilder::new(

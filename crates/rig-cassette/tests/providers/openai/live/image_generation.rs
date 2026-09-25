@@ -11,7 +11,7 @@ use rig::image_generation::ImageGenerationRequestBuilder;
 async fn image_generation_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.image_generation(openai::DALL_E_2);
 
@@ -34,7 +34,7 @@ async fn image_generation_smoke() {
 async fn gpt_image_2_image_generation_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.image_generation(openai::GPT_IMAGE_2);
 

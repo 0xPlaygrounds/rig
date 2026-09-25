@@ -12,7 +12,7 @@ use super::DEFAULT_MODEL;
 async fn extractor_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = client.extractor::<SmokePerson>(DEFAULT_MODEL).build();
 

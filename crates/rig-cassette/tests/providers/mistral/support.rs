@@ -29,10 +29,7 @@ async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, B
         MISTRAL_BASE_URL,
     )
     .await;
-    let client = Endpoint::new(
-        mistral_config(&cassette),
-        rig::rig_reqwest::bundled().expect("Mistral cassette client should build"),
-    );
+    let client = Endpoint::new(mistral_config(&cassette), rig::rig_reqwest::shared());
 
     (cassette, client)
 }
@@ -108,7 +105,7 @@ where
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let client = Endpoint::new(
         OpenAI::with_key(&MISTRAL, "invalid-edge-matrix-key").with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("Mistral cassette client should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await

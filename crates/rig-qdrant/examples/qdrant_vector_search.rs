@@ -49,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint.
     // Get your API key from https://platform.openai.com/api-keys
     let openai_client = OpenAI::from_env()?;
-    let http = rig_reqwest::bundled()?;
+    let http = rig_reqwest::shared();
 
     let model = Model::new(
         openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),

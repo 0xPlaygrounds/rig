@@ -7,7 +7,6 @@
 //! ```
 
 use anyhow::{Context, Result};
-use rig::prelude::*;
 use rig::providers::cohere::Cohere;
 
 #[tokio::main]
@@ -19,10 +18,9 @@ async fn main() -> Result<()> {
         .with_context(|| format!("failed to read image at {}", path.to_string_lossy()))?;
 
     let cohere = Cohere::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
     // Embed v3 embeds images with one fixed model at one fixed width, so the
     // image-embedding wire takes neither a model name nor a dimension count.
-    let model = Model::new(cohere.image_embedding(), http);
+    let model = rig::model(cohere.image_embedding());
     let response = model.call(vec![image.clone()], None).await?;
     let embedding = response
         .embeddings

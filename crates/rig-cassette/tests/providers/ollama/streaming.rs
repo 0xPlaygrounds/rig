@@ -10,7 +10,7 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 async fn example_streaming_prompt() {
     let agent = Endpoint::new(
         Ollama::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent("llama3.2")
     .preamble("Be precise and concise.")

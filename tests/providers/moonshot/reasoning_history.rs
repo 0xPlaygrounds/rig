@@ -22,7 +22,7 @@ fn response_text(choice: &[AssistantContent]) -> String {
 async fn assistant_reasoning_content_roundtrips_in_history() {
     let model = Endpoint::new(
         OpenAI::from_env_with(&openai_wire::MOONSHOT).expect("MOONSHOT_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("moonshot client should build"),
+        rig::rig_reqwest::shared(),
     )
     .completion(moonshot::KIMI_K3);
     let assistant = Message::Assistant {

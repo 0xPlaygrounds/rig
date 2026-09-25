@@ -76,7 +76,7 @@ impl AgentHook for SessionIdHook<'_> {
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(DEFAULT_MODEL)
     .preamble("You are a comedian here to entertain the user using humour and jokes.")

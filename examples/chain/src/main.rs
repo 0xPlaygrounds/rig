@@ -44,11 +44,7 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     let client = OpenAI::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
-    let embedding_model = Model::new(
-        client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http.clone(),
-    );
+    let embedding_model = rig::model(client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
 
     let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
     for definition in sample_definitions() {
@@ -56,7 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     let vector_store = InMemoryVectorStore::from_documents(builder.build().await?);
     let index = vector_store.index(embedding_model);
-    let agent = build_dictionary_agent(Model::new(client.completion(openai::GPT_4), http));
+    let agent = build_dictionary_agent(rig::model(client.completion(openai::GPT_4)));
 
     // Retrieve the most relevant definition, fold it into the prompt, then
     // prompt the agent. (The old pipeline ran the lookup "in parallel" with a

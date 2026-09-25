@@ -638,14 +638,6 @@ impl From<http::Error> for ProviderError {
     }
 }
 
-/// A client that could not be built keeps its HTTP identity.
-impl From<crate::client::ProviderClientError> for ProviderError {
-    fn from(error: crate::client::ProviderClientError) -> Self {
-        let crate::client::ProviderClientError::Http(error) = error;
-        Self::Http(error)
-    }
-}
-
 impl From<&ProviderError> for ErrorReport {
     fn from(error: &ProviderError) -> Self {
         let response = error.provider_response();

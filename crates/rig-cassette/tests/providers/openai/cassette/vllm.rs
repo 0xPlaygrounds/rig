@@ -27,7 +27,7 @@ where
     .await;
     let client = Endpoint::new(
         OpenAI::new("dummy-vllm-key").with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("vLLM OpenAI-compatible client should build"),
+        rig::rig_reqwest::shared(),
     );
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;

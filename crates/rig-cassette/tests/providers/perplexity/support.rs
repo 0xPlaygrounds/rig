@@ -23,7 +23,7 @@ async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
     let perplexity = Endpoint::new(
         OpenAI::with_key(&PERPLEXITY, cassette.api_key("PERPLEXITY_API_KEY"))
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("Perplexity cassette transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, perplexity)

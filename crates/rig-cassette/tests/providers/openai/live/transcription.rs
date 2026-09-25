@@ -11,7 +11,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 async fn transcription_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.transcription(openai::WHISPER_1);
     let response = model

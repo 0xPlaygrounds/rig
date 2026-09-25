@@ -12,7 +12,6 @@
 use anyhow::{Result, bail};
 use rig::completion::CompletionRequestBuilder;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolOutput, ToolSet};
 use serde::{Deserialize, Serialize};
@@ -132,10 +131,7 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
 async fn main() -> Result<()> {
     const MAX_ROUNDS: usize = 8;
 
-    let model = Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_4O_MINI),
-        rig::rig_reqwest::bundled()?,
-    );
+    let model = rig::model(OpenAI::from_env()?.completion(openai::GPT_4O_MINI));
     let preamble = "You are a calculator. Never do arithmetic from memory. \
                     Use the provided tools for every intermediate step. \
                     You may emit one or multiple tool calls in a single turn. \

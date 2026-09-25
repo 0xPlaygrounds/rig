@@ -21,7 +21,7 @@ struct Greetings {
 async fn derive_embeddings_and_vector_search() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let embedding_model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

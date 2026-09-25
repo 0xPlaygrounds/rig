@@ -158,12 +158,8 @@ async fn vector_search_test() {
 
     // Initialize OpenAI client
     let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
-    let http = rig::rig_reqwest::bundled().unwrap();
 
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
 
     let points = create_points(model.clone()).await;
 

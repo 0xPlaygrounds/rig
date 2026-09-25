@@ -303,7 +303,7 @@ async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
     .await;
     let gemini = Endpoint::new(
         Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, gemini)
@@ -471,7 +471,7 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let client = Endpoint::new(
         Gemini::new(cassette.bogus_api_key()).with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -614,7 +614,7 @@ mod always_deleting_cached_contents_tests {
         });
         let client = Endpoint::new(
             Gemini::new("stub-key").with_base_url(format!("http://{addr}")),
-            rig::rig_reqwest::bundled().expect("transport should build"),
+            rig::rig_reqwest::shared(),
         );
 
         (client, server)

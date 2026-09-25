@@ -11,7 +11,7 @@ use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relev
 async fn loaders_smoke() {
     let provider = Endpoint::new(
         OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")

@@ -12,7 +12,7 @@ async fn anthropic_compatible_completion_smoke() {
     let response = Endpoint::new(
         Anthropic::from_env_with(&anthropic_wire::XIAOMIMIMO)
             .expect("XIAOMIMIMO_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(xiaomimimo::MIMO_V2_5_PRO)
     .preamble(BASIC_PREAMBLE)

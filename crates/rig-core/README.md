@@ -48,13 +48,10 @@ use rig_core::{
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read `OPENAI_API_KEY` into the provider's configuration and pick a
     // model's wire; a model is a wire on a transport. rig-core ships no
-    // transport, so this uses the bundled `reqwest` one.
+    // transport, so this uses rig-reqwest's shared one.
     // OpenAI's default completion route is the Responses API;
     // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
-    let model = Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_5_2),
-        rig_reqwest::bundled()?,
-    );
+    let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_5_2), rig_reqwest::shared());
 
     let request = CompletionRequestBuilder::new("Who are you?").build();
     let response = model.call(request, None).await?;

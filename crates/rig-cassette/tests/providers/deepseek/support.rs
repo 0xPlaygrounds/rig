@@ -27,7 +27,7 @@ async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, 
     let bound = Endpoint::new(
         OpenAI::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("DeepSeek transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, bound)
@@ -98,7 +98,7 @@ where
     let bound = Endpoint::new(
         OpenAI::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("DeepSeek transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test_result(result).await

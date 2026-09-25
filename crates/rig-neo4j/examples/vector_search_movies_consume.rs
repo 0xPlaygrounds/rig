@@ -39,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_api_key = env::var("OPENAI_API_KEY")?;
     let openai_client = OpenAI::new(&openai_api_key);
-    let http = rig_reqwest::bundled()?;
+    let http = rig_reqwest::shared();
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
     let neo4j_username = "recommendations";

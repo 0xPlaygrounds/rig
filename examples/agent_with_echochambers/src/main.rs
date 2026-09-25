@@ -326,10 +326,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the OpenAI Responses provider, bound to the bundled transport
     let openai_client = OpenAI::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
 
     // Create agent with all tools
-    let echochambers_agent = AgentBuilder::new(Model::new(openai_client.completion(openai::GPT_4O), http))
+    let echochambers_agent = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4O)))
         .preamble(
             "You are an assistant designed to help users interact with EchoChambers rooms.
             You can send messages, retrieve message history, and analyze various metrics.

@@ -32,7 +32,6 @@ use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::completion::CompletionRequestBuilder;
 use rig::message::{ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
@@ -148,10 +147,7 @@ async fn main() -> Result<()> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
     // configured `Agent` execution instead always goes through `AgentRunner`.
-    let model = Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_4O),
-        rig::rig_reqwest::bundled()?,
-    );
+    let model = rig::model(OpenAI::from_env()?.completion(openai::GPT_4O));
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
     let mut tools = ToolSet::default();

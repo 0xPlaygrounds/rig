@@ -8,7 +8,7 @@ use rig_test_support::endpoint::Endpoint;
 async fn list_models_smoke() {
     let provider = Endpoint::new(
         OpenAI::from_env_with(&MIRA).expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let models = provider
         .models()

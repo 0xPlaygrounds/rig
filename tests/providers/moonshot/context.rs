@@ -11,7 +11,7 @@ use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_inse
 async fn context_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&openai_wire::MOONSHOT).expect("MOONSHOT_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("moonshot client should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = CONTEXT_DOCS
         .iter()

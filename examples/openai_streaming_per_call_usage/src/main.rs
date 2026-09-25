@@ -93,11 +93,10 @@ async fn main() -> Result<()> {
 
     // Chat Completions: the route every OpenAI-compatible server speaks,
     // chosen once on the configuration.
-    let agent = AgentBuilder::new(Model::new(
+    let agent = AgentBuilder::new(rig::model(
         OpenAI::from_env()?
             .with_route(Route::Chat)
             .completion(model),
-        rig::rig_reqwest::bundled()?,
     ))
     .preamble(
         "You are a concise release assistant. The user will ask about an \

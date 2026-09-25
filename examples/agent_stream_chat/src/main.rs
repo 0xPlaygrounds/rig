@@ -31,12 +31,9 @@ fn sample_history() -> Vec<Message> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = AgentBuilder::new(Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_4),
-        rig::rig_reqwest::bundled()?,
-    ))
-    .preamble(PREAMBLE)
-    .build();
+    let agent = AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(openai::GPT_4)))
+        .preamble(PREAMBLE)
+        .build();
 
     let history = sample_history();
     let mut stream = agent.prompt(PROMPT).history(&history).stream();

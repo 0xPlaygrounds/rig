@@ -11,7 +11,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn openai_compatible_completion_smoke() {
     let response = Endpoint::new(
         OpenAI::from_env_with(&openai_wire::MINIMAX).expect("MINIMAX_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(minimax::MINIMAX_M2_7)
     .preamble(BASIC_PREAMBLE)

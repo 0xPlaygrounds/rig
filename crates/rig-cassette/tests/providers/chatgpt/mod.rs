@@ -29,7 +29,6 @@ mod streaming_tools;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
 use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -86,7 +85,7 @@ async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
 }
 
 pub(crate) async fn live_client() -> Endpoint<OpenAI> {
-    let http = bundled().expect("the bundled transport should build");
+    let http = rig::rig_reqwest::shared();
     Endpoint::new(live_provider(&http).await, http)
 }
 

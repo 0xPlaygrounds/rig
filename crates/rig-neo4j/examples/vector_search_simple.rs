@@ -29,7 +29,7 @@ pub struct Word {
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_client = OpenAI::from_env()?;
-    let http = rig_reqwest::bundled()?;
+    let http = rig_reqwest::shared();
 
     // Initialize Neo4j client
     let neo4j_uri = env::var("NEO4J_URI")?;

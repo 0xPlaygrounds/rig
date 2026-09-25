@@ -13,7 +13,7 @@ use rig::audio_generation::AudioGenerationRequestBuilder;
 async fn audio_generation_smoke() {
     let bound = Endpoint::new(
         OpenAI::from_env_with(&OPENROUTER).expect("OPENROUTER_API_KEY"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = bound.audio_generation(openrouter::GPT_4O_MINI_TTS);
     let response = model

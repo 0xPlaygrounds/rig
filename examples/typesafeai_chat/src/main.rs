@@ -130,13 +130,9 @@ async fn main() -> Result<()> {
         }
     }
 
-    let http = rig::rig_reqwest::bundled()?;
-    let jev = Model::new(Jev::from_env()?, http.clone());
+    let jev = rig::model(Jev::from_env()?);
     let assistant = if with_agent {
-        Some(Model::new(
-            OpenAI::from_env()?.completion("gpt-5.6-sol"),
-            http,
-        ))
+        Some(rig::model(OpenAI::from_env()?.completion("gpt-5.6-sol")))
     } else {
         None
     };

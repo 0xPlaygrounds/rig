@@ -340,7 +340,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 
     let client = Endpoint::new(
         Gemini::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     let agent = AgentBuilder::new(rig_test_support::endpoint::map_wire(

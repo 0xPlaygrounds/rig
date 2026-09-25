@@ -52,7 +52,7 @@ impl Bedrock {
 }
 
 pub(crate) fn client() -> Bedrock {
-    Bedrock(BedrockRuntime::from_env().expect("client should build"))
+    Bedrock(BedrockRuntime::from_env())
 }
 
 mod adaptive_thinking;

@@ -12,7 +12,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 async fn transcription_smoke() {
     let bound = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = bound.transcription(groq::WHISPER_LARGE_V3);
     let response = model

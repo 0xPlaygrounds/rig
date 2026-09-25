@@ -1,15 +1,11 @@
-//! The bundled transport constructor returns an error, not a panic, when the
-//! reqwest client cannot be built.
+//! The shared transport never fails to construct: when the reqwest client
+//! cannot be built, every send on it reports the build failure in-band.
 //!
 //! reqwest's rustls backend loads the platform CA store while building the
 //! client; on a host with none (a bare `ubuntu` container, say)
 //! `reqwest::Client::new()` panics with "No CA certificates were loaded from
-//! the system". [`rig_reqwest::bundled`] promises a `Result`, so that failure
-//! must come back as `ProviderClientError::Http`.
-//!
-//! `bundled()` is the one place the bundled transport is built: a provider
-//! config is infallible data, so a construction error can only arise where a
-//! transport is made.
+//! the system". [`rig_reqwest::shared`] promises a transport, so that failure
+//! must come back from the first call as `ProviderError::Http`.
 //!
 //! The store is emptied through the `SSL_CERT_FILE` / `SSL_CERT_DIR`
 //! overrides rustls-native-certs honours, which is why this test is its own
@@ -22,7 +18,10 @@
 
 #![cfg(all(target_os = "linux", feature = "rustls", not(feature = "native-tls")))]
 
-use rig_core::client::ProviderClientError;
+use rig_core::Model;
+use rig_core::completion::CompletionRequestBuilder;
+use rig_core::error::ProviderError;
+use rig_core::providers::openai::OpenAI;
 
 fn empty_the_ca_store() {
     // SAFETY: this test binary has one test and no other threads read the
@@ -33,14 +32,19 @@ fn empty_the_ca_store() {
     }
 }
 
-#[test]
-fn the_bundled_transport_reports_a_missing_ca_store() {
+#[tokio::test]
+async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
     empty_the_ca_store();
 
-    let outcome = match rig_reqwest::bundled() {
-        Err(ProviderClientError::Http(error)) => error.to_string(),
+    let model = Model::new(
+        OpenAI::new("test-key").completion("gpt-5.2"),
+        rig_reqwest::shared(),
+    );
+    let request = CompletionRequestBuilder::new("hello").build();
+    let outcome = match model.call(request, None).await {
+        Err(ProviderError::Http(error)) => error.to_string(),
         Err(other) => format!("wrong variant: {other}"),
-        Ok(_) => "built a client with no CA store".to_owned(),
+        Ok(_) => "sent a request with no CA store".to_owned(),
     };
     assert!(
         outcome.contains("CA certificates"),

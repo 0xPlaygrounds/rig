@@ -33,9 +33,8 @@ struct AgentConfig<'a> {
 struct ProviderRegistry(HashMap<&'static str, fn(AgentConfig<'_>) -> Result<Agents>>);
 
 fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    let agent = AgentBuilder::new(Model::new(
+    let agent = AgentBuilder::new(rig::model(
         Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6),
-        rig::rig_reqwest::bundled()?,
     ))
     .name(name)
     .preamble(preamble)
@@ -45,13 +44,10 @@ fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Ag
 }
 
 fn openai_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    let agent = AgentBuilder::new(Model::new(
-        OpenAI::from_env()?.completion(GPT_4O),
-        rig::rig_reqwest::bundled()?,
-    ))
-    .name(name)
-    .preamble(preamble)
-    .build();
+    let agent = AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(GPT_4O)))
+        .name(name)
+        .preamble(preamble)
+        .build();
 
     Ok(Agents::OpenAI(agent))
 }

@@ -262,8 +262,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Connected to server: {server_info:#?}");
 
     let openai_client = OpenAI::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
-    let agent = AgentBuilder::new(Model::new(openai_client.completion(openai::GPT_4O), http))
+    let agent = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4O)))
         .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
         .tool_server_handle(tool_server_handle)
         .build();

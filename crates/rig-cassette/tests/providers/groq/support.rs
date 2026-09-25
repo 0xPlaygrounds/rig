@@ -23,7 +23,7 @@ async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Boun
     let groq = Endpoint::new(
         OpenAI::with_key(&GROQ, cassette.api_key("GROQ_API_KEY"))
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("Groq cassette transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, groq)
@@ -64,7 +64,7 @@ where
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let groq = Endpoint::new(
         OpenAI::with_key(&GROQ, "gsk-invalid-edge-matrix-key").with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(groq)).catch_unwind().await;
     cassette.finish_after_test_result(result).await

@@ -10,7 +10,7 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 async fn embeddings_smoke() {
     let provider = Endpoint::new(
         VoyageAi::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = provider.embedding(voyageai::VOYAGE_3_LARGE, None);
 

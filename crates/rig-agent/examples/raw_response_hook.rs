@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
         OpenAI::from_env()?
             .with_route(Route::Chat)
             .completion(openai::GPT_5_2),
-        rig_reqwest::bundled()?,
+        rig_reqwest::shared(),
     );
     let agent = AgentBuilder::new(model)
         .preamble("Answer in one short sentence.")

@@ -14,7 +14,7 @@ mod fixture;
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenAI Chat Completions provider. Use this to generate embeddings (and generate test data for RAG demo).
     let openai_client = OpenAI::from_env()?;
-    let http = rig_reqwest::bundled()?;
+    let http = rig_reqwest::shared();
 
     // Select an embedding model.
     let model = Model::new(

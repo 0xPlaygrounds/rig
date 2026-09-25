@@ -18,7 +18,7 @@ use super::TOOL_MODEL;
 async fn streaming_tools_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(TOOL_MODEL)
@@ -41,7 +41,7 @@ async fn streaming_tools_smoke() {
 async fn example_streaming_with_tools() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(TOOL_MODEL)
@@ -67,7 +67,7 @@ async fn example_streaming_with_tools() {
 async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(TOOL_MODEL)
@@ -94,7 +94,7 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
 async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(TOOL_MODEL)

@@ -12,7 +12,7 @@ use crate::support::{
 async fn example_streaming_with_tools() {
     let agent = Endpoint::new(
         Ollama::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent("llama3.2")
     .preamble(

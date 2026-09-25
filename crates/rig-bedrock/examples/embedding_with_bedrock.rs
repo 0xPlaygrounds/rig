@@ -19,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let model = Model::new(
         Embeddings::new(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256)),
-        BedrockRuntime::from_env()?,
+        BedrockRuntime::from_env(),
     );
     let embeddings = EmbeddingsBuilder::new(model)
         .document(Greetings {

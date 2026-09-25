@@ -22,7 +22,7 @@ async fn tool_prompt_across_subproviders() {
             OpenAI::from_env_with(&HUGGINGFACE)
                 .expect("config should build from env")
                 .with_sub_route(sub_route),
-            rig::rig_reqwest::bundled().expect("transport should build"),
+            rig::rig_reqwest::shared(),
         );
         let agent = provider
             .agent(model)

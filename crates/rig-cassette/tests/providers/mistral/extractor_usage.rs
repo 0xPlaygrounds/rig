@@ -44,7 +44,7 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 async fn extract_backward_compatibility() -> Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = client.extractor::<Person>(DEFAULT_MODEL).build();
 
@@ -65,7 +65,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = client.extractor::<Person>(DEFAULT_MODEL).build();
 
@@ -88,7 +88,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = client.extractor::<Address>(DEFAULT_MODEL).build();
 
@@ -116,7 +116,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = client.extractor::<Person>(DEFAULT_MODEL).build();
 
@@ -143,7 +143,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
 
     let person_extractor = client.extractor::<Person>(DEFAULT_MODEL).build();

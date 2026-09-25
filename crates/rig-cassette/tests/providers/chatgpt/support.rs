@@ -1,7 +1,6 @@
 use assert_fs::TempDir;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
 use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -25,7 +24,7 @@ async fn chatgpt_cassette_with_default_instructions(
             .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
             .with_base_url(cassette.base_url())
             .with_instructions(default_instructions),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, client)
@@ -64,7 +63,7 @@ async fn chatgpt_noninteractive_oauth_cassette(
     // already-exchanged token, so the cache the record above seeded is read
     // first — on the very transport the completion then speaks over, and with
     // the device flow refused so a stale cache fails loudly.
-    let http = bundled().expect("transport should build");
+    let http = rig::rig_reqwest::shared();
     let context = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(auth_file),

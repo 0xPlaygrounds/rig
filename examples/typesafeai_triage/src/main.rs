@@ -3,7 +3,6 @@
 
 use anyhow::Result;
 use rig::error::ProviderError;
-use rig::prelude::*;
 use rig::typesafeai::{
     Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
@@ -94,7 +93,7 @@ struct Ticket<'a> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Model::new(Jev::from_env()?, rig::rig_reqwest::bundled()?);
+    let client = rig::model(Jev::from_env()?);
     let ticket = Ticket {
         message: "My card shows two $49 charges after upgrading. Can you fix this?",
         recent_events: &[

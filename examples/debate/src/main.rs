@@ -22,18 +22,13 @@ impl Debater {
             .init();
         let openai_client = OpenAI::from_env()?;
         let cohere_client = Cohere::from_env()?;
-        let http = rig::rig_reqwest::bundled()?;
 
         Ok(Self {
-            gpt_4: AgentBuilder::new(Model::new(
-                openai_client.completion(openai::GPT_4),
-                http.clone(),
-            ))
-            .preamble(position_a)
-            .build(),
-            coral: AgentBuilder::new(Model::new(
+            gpt_4: AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4)))
+                .preamble(position_a)
+                .build(),
+            coral: AgentBuilder::new(rig::model(
                 cohere_client.completion(cohere::COMMAND_A_03_2025),
-                http,
             ))
             .preamble(position_b)
             .build(),

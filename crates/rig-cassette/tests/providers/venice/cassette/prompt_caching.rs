@@ -121,7 +121,7 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
 async fn live_cache_economics() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&VENICE).expect("VENICE_API_KEY"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;

@@ -150,12 +150,9 @@ impl AgentHook for TurnCounterHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = AgentBuilder::new(Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_4O),
-        rig::rig_reqwest::bundled()?,
-    ))
-    .preamble("You are a comedian here to entertain the user using humour and jokes.")
-    .build();
+    let agent = AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(openai::GPT_4O)))
+        .preamble("You are a comedian here to entertain the user using humour and jokes.")
+        .build();
 
     // Attach four hooks. They run in registration order on every event; the two
     // request-patch hooks (ContextHook, SamplingHook) both contribute to the

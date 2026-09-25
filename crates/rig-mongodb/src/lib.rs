@@ -86,7 +86,7 @@ struct Field {
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
 /// let openai = OpenAI::from_env()?;
-/// let http = rig_reqwest::bundled()?;
+/// let http = rig_reqwest::shared();
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///

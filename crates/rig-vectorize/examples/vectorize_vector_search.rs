@@ -31,7 +31,7 @@ struct Word {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
-    let http = rig_reqwest::bundled()?;
+    let http = rig_reqwest::shared();
     let model = Model::new(
         openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
         http,

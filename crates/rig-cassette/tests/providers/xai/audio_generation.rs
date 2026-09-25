@@ -15,7 +15,7 @@ async fn audio_generation_smoke() {
     // so the chat-side configuration is what serves it.
     let client = Endpoint::new(
         openai::wire::OpenAI::from_env_with(&xai::DIALECT).expect("XAI_API_KEY"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.audio_generation(xai::TTS_1);
 

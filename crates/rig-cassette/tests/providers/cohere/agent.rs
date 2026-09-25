@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     let cohere = Endpoint::new(
         Cohere::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = cohere
         .agent(cohere::COMMAND_A_03_2025)

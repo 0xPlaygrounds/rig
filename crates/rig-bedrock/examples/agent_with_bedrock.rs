@@ -34,7 +34,7 @@ async fn main() -> Result<(), anyhow::Error> {
 fn model() -> Result<Model<Converse, BedrockRuntime>, anyhow::Error> {
     Ok(Model::new(
         Converse::new(AMAZON_NOVA_LITE),
-        BedrockRuntime::from_env()?,
+        BedrockRuntime::from_env(),
     ))
 }
 

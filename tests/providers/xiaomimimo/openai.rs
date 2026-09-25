@@ -11,7 +11,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn openai_compatible_completion_smoke() {
     let response = Endpoint::new(
         OpenAI::from_env_with(&openai_wire::XIAOMIMIMO).expect("XIAOMI_MIMO_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(xiaomimimo::MIMO_V2_5_PRO)
     .preamble(BASIC_PREAMBLE)

@@ -25,7 +25,7 @@ async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
     let doubleword = Endpoint::new(
         OpenAI::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, doubleword)
@@ -62,7 +62,7 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     let client = Endpoint::new(
         OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;

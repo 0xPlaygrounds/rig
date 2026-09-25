@@ -29,7 +29,7 @@ impl std::fmt::Display for WordDefinition {
 async fn main() -> Result<(), anyhow::Error> {
     let openai_model = Model::new(
         OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        rig_reqwest::bundled()?,
+        rig_reqwest::shared(),
     );
 
     let helixdb_client = HelixDB::new(None, Some(6969), None); // Uses default port 6969

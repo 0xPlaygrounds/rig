@@ -123,7 +123,7 @@ impl HelixDBClient for HelixDB {
 /// # fn example() -> anyhow::Result<()> {
 /// let openai_model = rig_core::Model::new(
 ///     OpenAI::from_env()?.embedding("text-embedding-ada-002", None),
-///     rig_reqwest::bundled()?,
+///     rig_reqwest::shared(),
 /// );
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);

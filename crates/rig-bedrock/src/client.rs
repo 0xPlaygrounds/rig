@@ -6,7 +6,7 @@
 //! use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
 //! use rig_core::Model;
 //!
-//! let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env()?);
+//! let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env());
 //! # let _ = model;
 //! # Ok::<(), rig_core::client::ProviderClientError>(())
 //! ```
@@ -74,13 +74,12 @@ impl BedrockRuntime {
     }
 
     /// A runtime that loads AWS SDK configuration from the environment on
-    /// first use. Construction does not validate credentials and always
-    /// succeeds.
-    pub fn from_env() -> Result<Self, rig_core::client::ProviderClientError> {
-        Ok(Self {
+    /// first use. Construction does not validate credentials.
+    pub fn from_env() -> Self {
+        Self {
             profile_name: None,
             aws_client: Arc::new(OnceCell::new()),
-        })
+        }
     }
 
     /// A runtime that loads the named AWS profile on first use.

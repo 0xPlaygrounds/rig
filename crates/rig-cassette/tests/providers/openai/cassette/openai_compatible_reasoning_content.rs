@@ -75,7 +75,7 @@ where
     .await;
     let client = Endpoint::new(
         OpenAI::new("dummy-openai-compatible-key").with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("OpenAI-compatible cassette client should build"),
+        rig::rig_reqwest::shared(),
     );
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;

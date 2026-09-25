@@ -170,7 +170,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 async fn live_cache_economics() {
     let client = Endpoint::new(
         Gemini::from_env().expect("GEMINI_API_KEY"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.completion(CACHE_MODEL);
 

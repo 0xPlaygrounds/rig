@@ -14,7 +14,7 @@ use super::STREAMING_MODEL;
 async fn streaming_smoke() {
     let groq = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = groq
         .agent(STREAMING_MODEL)

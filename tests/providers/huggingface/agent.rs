@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     let provider = Endpoint::new(
         OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = provider
         .agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")

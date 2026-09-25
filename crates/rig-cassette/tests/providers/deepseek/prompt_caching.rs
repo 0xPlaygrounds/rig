@@ -100,7 +100,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 async fn live_cache_economics() {
     let bound = Endpoint::new(
         OpenAI::from_env_with(&DEEPSEEK).expect("DEEPSEEK_API_KEY"),
-        rig::rig_reqwest::bundled().expect("the bundled transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = bound.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;

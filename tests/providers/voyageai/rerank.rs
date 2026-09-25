@@ -9,7 +9,7 @@ use rig_test_support::endpoint::Endpoint;
 async fn rerank_smoke() {
     let provider = Endpoint::new(
         VoyageAi::from_env().expect("config should build from VOYAGE_API_KEY env var"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = provider.rerank(voyageai::RERANK_2_5);
 

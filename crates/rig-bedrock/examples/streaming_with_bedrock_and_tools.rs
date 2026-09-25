@@ -9,7 +9,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create agent with a single context prompt and two tools
     let agent = AgentBuilder::new(rig_core::Model::new(
         Converse::new(AMAZON_NOVA_LITE),
-        BedrockRuntime::from_env()?,
+        BedrockRuntime::from_env(),
     ))
     .preamble(
         "You are a calculator here to help the user perform arithmetic

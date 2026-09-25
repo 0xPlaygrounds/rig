@@ -374,7 +374,7 @@ where
     ///
     /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
     /// let openai_client = OpenAI::from_env()?;
-    /// let http = rig_reqwest::bundled()?;
+    /// let http = rig_reqwest::shared();
     /// let model = rig_core::Model::new(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None), http);
     /// let vector_store_index =
     ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;

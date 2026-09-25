@@ -54,7 +54,6 @@ use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
@@ -353,10 +352,7 @@ async fn run_scenario(
     http: &reqwest::Client,
     api_key: &str,
 ) -> anyhow::Result<Report> {
-    let model = Model::new(
-        Gemini::from_env()?.completion(MODEL),
-        rig::rig_reqwest::bundled()?,
-    );
+    let model = rig::model(Gemini::from_env()?.completion(MODEL));
 
     let stream = model.stream(
         CompletionRequestBuilder::new(prompt)

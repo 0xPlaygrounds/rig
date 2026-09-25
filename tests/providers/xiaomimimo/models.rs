@@ -11,7 +11,7 @@ use rig_test_support::endpoint::Endpoint;
 async fn list_models_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&openai_wire::XIAOMIMIMO).expect("XIAOMI_MIMO_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let models = match client.models().call((), None).await {
         Ok(models) => models,

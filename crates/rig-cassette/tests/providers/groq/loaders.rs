@@ -13,7 +13,7 @@ use super::LOADERS_MODEL;
 async fn loaders_smoke() {
     let groq = Endpoint::new(
         OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")

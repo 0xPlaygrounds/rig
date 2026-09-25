@@ -1,5 +1,4 @@
 use rig::extractor::ExtractorBuilder;
-use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
@@ -64,11 +63,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the Gemini provider
     let gemini_client = Gemini::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
-    let embedding_model = Model::new(
-        gemini_client.embedding(gemini::EMBEDDING_001, None),
-        http.clone(),
-    );
+    let embedding_model = rig::model(gemini_client.embedding(gemini::EMBEDDING_001, None));
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -98,7 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store = InMemoryVectorStore::from_documents(embeddings);
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let rag_extractor = ExtractorBuilder::<QuestionnaireResponses>::new(Model::new(gemini_client.completion("gemini-2.5-flash"), http.clone()))
+    let rag_extractor = ExtractorBuilder::<QuestionnaireResponses>::new(rig::model(gemini_client.completion("gemini-2.5-flash")))
         .append_preamble("
             You are a questionnaire assistant provided by the procurement department to assist the user in answering the questions.
             You are provided with the questions and based on the information available, you must answer the questions with the right format.

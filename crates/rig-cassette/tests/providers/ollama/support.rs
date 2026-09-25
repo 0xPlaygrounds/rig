@@ -25,7 +25,7 @@ async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
     .await;
     let ollama = Endpoint::new(
         Ollama::new().with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, ollama)

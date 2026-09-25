@@ -26,7 +26,7 @@ async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
     .await;
     let cohere = Endpoint::new(
         Cohere::new(cassette.api_key("COHERE_API_KEY")).with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("Cohere cassette transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, cohere)

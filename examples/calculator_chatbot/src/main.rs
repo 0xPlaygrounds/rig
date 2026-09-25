@@ -246,7 +246,6 @@ impl ToolEmbedding for Divide {
 async fn main() -> Result<(), anyhow::Error> {
     // Create the OpenAI provider, bound to the bundled transport
     let openai_client = OpenAI::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
 
     // Create dynamic tools embeddings
     let mut toolset = ToolSet::default();
@@ -254,10 +253,7 @@ async fn main() -> Result<(), anyhow::Error> {
     toolset.add_retrieved_tool(Subtract)?;
     toolset.add_retrieved_tool(Multiply)?;
     toolset.add_retrieved_tool(Divide)?;
-    let embedding_model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http.clone(),
-    );
+    let embedding_model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?
         .build()
@@ -268,7 +264,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = vector_store.index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source
-    let calculator_rag = AgentBuilder::new(Model::new(openai_client.completion(openai::GPT_4), http.clone()))
+    let calculator_rag = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4)))
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

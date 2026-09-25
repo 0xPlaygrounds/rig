@@ -25,7 +25,7 @@ async fn anthropic_cassette(
     .await;
     let bound = Endpoint::new(
         Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, bound)
@@ -141,7 +141,7 @@ pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
     .await;
     let bound = Endpoint::new(
         Anthropic::new(cassette.api_key("OPENROUTER_API_KEY")).with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
@@ -186,7 +186,7 @@ pub(super) async fn with_anthropic_files_cassette<F, Fut>(
         Anthropic::new(api_key.as_str())
             .with_base_url(&base_url)
             .with_beta(beta_header),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     let parts = AnthropicFilesCassette {
@@ -313,7 +313,7 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let bound = Endpoint::new(
         Anthropic::new("sk-invalid-edge-matrix-key").with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test(result).await;

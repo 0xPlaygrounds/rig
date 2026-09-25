@@ -75,13 +75,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the Anthropic provider, bound to the bundled transport
     let anthropic_client = Anthropic::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
     let agent = ReasoningAgent {
-        chain_of_thought_extractor: ExtractorBuilder::new(Model::new(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6), http.clone()))
+        chain_of_thought_extractor: ExtractorBuilder::new(rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
             .append_preamble(CHAIN_OF_THOUGHT_PROMPT)
             .build(),
 
-        executor: AgentBuilder::new(Model::new(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6), http.clone()))
+        executor: AgentBuilder::new(rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.

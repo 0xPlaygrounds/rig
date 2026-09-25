@@ -25,10 +25,7 @@ fn build_adder_agent(model: Gpt4) -> rig::agent::Agent {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let gpt4 = Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_4),
-        rig::rig_reqwest::bundled()?,
-    );
+    let gpt4 = rig::model(OpenAI::from_env()?.completion(openai::GPT_4));
     let seed = build_rng_agent(gpt4.clone())
         .prompt(INPUT_PROMPT)
         .await?

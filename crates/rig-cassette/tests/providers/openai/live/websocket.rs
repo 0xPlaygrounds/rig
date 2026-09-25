@@ -28,7 +28,7 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 async fn websocket_session_roundtrip() -> Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.responses(openai::GPT_4O_MINI);
     let mut session = model.responses_websocket().await?;

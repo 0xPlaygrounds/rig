@@ -12,7 +12,7 @@ async fn anthropic_compatible_completion_smoke() {
     let response = Endpoint::new(
         Anthropic::from_env_with(&anthropic_wire::MOONSHOT)
             .expect("MOONSHOT_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("moonshot anthropic client should build"),
+        rig::rig_reqwest::shared(),
     )
     .agent(moonshot::KIMI_K3)
     .preamble(BASIC_PREAMBLE)

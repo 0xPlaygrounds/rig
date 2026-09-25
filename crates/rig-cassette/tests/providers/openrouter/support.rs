@@ -33,7 +33,7 @@ async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
     let bound = Endpoint::new(
         OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("OpenRouter cassette transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, bound)
@@ -53,7 +53,7 @@ async fn openrouter_openai_cassette(
         OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
             .with_base_url(cassette.base_url())
             .with_route(Route::Responses),
-        rig::rig_reqwest::bundled().expect("OpenRouter Responses cassette transport should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, bound)
@@ -119,7 +119,7 @@ where
     let bound = Endpoint::new(
         OpenAI::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("OpenRouter transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test_result(result).await

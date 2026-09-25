@@ -41,7 +41,7 @@ fn gpt_5_5_reasoning_params() -> serde_json::Value {
 async fn responses_prompt_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -62,7 +62,7 @@ async fn responses_prompt_smoke() {
 async fn responses_streaming_prompt_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -82,7 +82,7 @@ async fn responses_streaming_prompt_smoke() {
 async fn responses_tools_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -105,7 +105,7 @@ async fn responses_tools_smoke() {
 async fn responses_streaming_tools_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -127,7 +127,7 @@ async fn responses_streaming_tools_smoke() {
 async fn responses_structured_output_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client.agent(openai::GPT_5_5).build();
 
@@ -160,7 +160,7 @@ async fn responses_structured_output_smoke() {
 async fn responses_extractor_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
@@ -194,7 +194,7 @@ async fn responses_extractor_smoke() {
 async fn responses_image_input_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -223,7 +223,7 @@ async fn responses_image_input_smoke() {
 async fn responses_reasoning_nonstreaming_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
         client.completion(openai::GPT_5_5),
@@ -237,7 +237,7 @@ async fn responses_reasoning_nonstreaming_smoke() {
 async fn responses_reasoning_streaming_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
         client.completion(openai::GPT_5_5),
@@ -252,7 +252,7 @@ async fn responses_reasoning_tool_roundtrip_smoke() {
     let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -277,7 +277,7 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
     let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -304,7 +304,7 @@ async fn chat_completions_prompt_smoke() {
         OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -327,7 +327,7 @@ async fn chat_completions_streaming_prompt_smoke() {
         OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -349,7 +349,7 @@ async fn chat_completions_tools_smoke() {
         OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -374,7 +374,7 @@ async fn chat_completions_streaming_tools_smoke() {
         OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -398,7 +398,7 @@ async fn chat_completions_structured_output_smoke() {
         OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -423,7 +423,7 @@ async fn chat_completions_extractor_smoke() {
         OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
@@ -459,7 +459,7 @@ async fn chat_completions_image_input_smoke() {
         OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = client
         .agent(openai::GPT_5_5)
@@ -488,7 +488,7 @@ async fn chat_completions_image_input_smoke() {
 async fn responses_websocket_smoke() -> anyhow::Result<()> {
     let client = Endpoint::new(
         OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.responses(openai::GPT_5_5);
     let mut session = model.responses_websocket().await?;

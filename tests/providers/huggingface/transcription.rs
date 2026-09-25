@@ -11,7 +11,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 async fn transcription_smoke() {
     let provider = Endpoint::new(
         OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = provider.transcription("whisper-large-v3");
     let response = model

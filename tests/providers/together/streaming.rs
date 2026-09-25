@@ -13,7 +13,7 @@ use crate::support::{
 async fn streaming_smoke() {
     let provider = Endpoint::new(
         OpenAI::from_env_with(&TOGETHER).expect("config should build from env"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     );
     let agent = provider
         .agent(together::LLAMA_3_8B_CHAT_HF)

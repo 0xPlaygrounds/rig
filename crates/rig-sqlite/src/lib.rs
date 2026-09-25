@@ -1503,7 +1503,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///
 /// let conn = Connection::open("vector_store.db").await?;
 /// let openai = OpenAI::new("YOUR_API_KEY");
-/// let http = rig_reqwest::bundled()?;
+/// let http = rig_reqwest::shared();
 /// let model = rig_core::Model::new(openai.embedding(TEXT_EMBEDDING_ADA_002, None), http);
 ///
 /// // Initialize vector store

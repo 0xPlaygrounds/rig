@@ -109,22 +109,23 @@ fn portable_contract_paths_resolve() {
     assert_portable_facade::<PortableAdder>();
 }
 
-/// A single `use rig::prelude::*` provides `Model` and `AgentBuilder`: a
-/// provider's wire on the bundled transport, and an agent over it.
+/// A single `use rig::prelude::*` provides `model`, `Model` and
+/// `AgentBuilder`: a provider's wire on the default transport, and an agent
+/// over it.
 #[test]
 fn completion_client_single_import_surface() {
     use rig::prelude::*;
 
-    // Pairing a wire with the bundled transport performs no network call, so
+    // Pairing a wire with the default transport performs no network call, so
     // every spelling below runs to completion offline. A regression in any
     // of them fails here, not merely a signature change.
     let openai = rig::providers::openai::wire::OpenAI::with_key(
         &rig::providers::openai::wire::OPENAI,
         "test-key",
     );
-    let http = rig::rig_reqwest::bundled().expect("the bundled transport builds");
-    let _model = Model::new(openai.completion("gpt-4o"), http.clone());
-    let _agent = AgentBuilder::new(Model::new(openai.completion("gpt-4o"), http)).build();
+    let _model = model(openai.completion("gpt-4o"));
+    let _explicit = Model::new(openai.completion("gpt-4o"), rig::rig_reqwest::shared());
+    let _agent = AgentBuilder::new(model(openai.completion("gpt-4o"))).build();
 }
 
 /// The same surface is reachable through explicit imports, without the
@@ -144,11 +145,10 @@ fn completion_provider_explicit_facade_import_surface() {
         &rig::providers::openai::wire::OPENAI,
         "test-key",
     );
-    let http = rig::rig_reqwest::bundled().expect("the bundled transport builds");
-    let _model = Model::new(openai.completion("gpt-4o"), http.clone());
-    let _agent = AgentBuilder::new(Model::new(openai.completion("gpt-4o"), http.clone())).build();
+    let _model = Model::new(openai.completion("gpt-4o"), rig::rig_reqwest::shared());
+    let _agent = AgentBuilder::new(rig::model(openai.completion("gpt-4o"))).build();
     let _extractor =
-        ExtractorBuilder::<Extracted>::new(Model::new(openai.completion("gpt-4o"), http)).build();
+        ExtractorBuilder::<Extracted>::new(rig::model(openai.completion("gpt-4o"))).build();
 }
 
 /// `use rig::prelude::*` still brings the classic contextual `Tool` and

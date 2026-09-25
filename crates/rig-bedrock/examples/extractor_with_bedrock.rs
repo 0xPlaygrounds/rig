@@ -20,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env()?);
+    let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env());
     let data_extractor = ExtractorBuilder::<Person>::new(model).build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")

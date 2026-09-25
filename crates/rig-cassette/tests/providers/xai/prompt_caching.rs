@@ -98,7 +98,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 async fn live_cache_economics() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&xai::DIALECT).expect("XAI_API_KEY"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;

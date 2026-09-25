@@ -97,7 +97,7 @@ async fn live_cache_economics() {
             &rig::providers::openai::wire::OPENROUTER,
         )
         .expect("OPENROUTER_API_KEY"),
-        rig::rig_reqwest::bundled().expect("transport should build"),
+        rig::rig_reqwest::shared(),
     )
     .completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;

@@ -64,11 +64,7 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
-    let http = rig::rig_reqwest::bundled()?;
-    let embedding_model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let embedding_model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(sample_documents())?
         .build()

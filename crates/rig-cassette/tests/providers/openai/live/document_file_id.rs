@@ -185,7 +185,7 @@ fn assert_page_label(response: &str, page_number: u8) {
 async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let client = Endpoint::new(OpenAI::from_env()
-            .expect("config should build from env"), rig::rig_reqwest::bundled().expect("transport should build"));
+            .expect("config should build from env"), rig::rig_reqwest::shared());
         let agent = client
             .agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
@@ -225,7 +225,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let client = Endpoint::new(OpenAI::from_env()
             .expect("config should build from env")
-            .with_route(Route::Chat), rig::rig_reqwest::bundled().expect("transport should build"));
+            .with_route(Route::Chat), rig::rig_reqwest::shared());
         let agent = client.agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
             .build();

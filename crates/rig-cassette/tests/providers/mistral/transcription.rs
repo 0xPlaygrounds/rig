@@ -12,7 +12,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 async fn transcription_smoke() {
     let client = Endpoint::new(
         OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::bundled().expect("client should build"),
+        rig::rig_reqwest::shared(),
     );
     let model = client.transcription(mistral::VOXTRAL_MINI);
     let response = model

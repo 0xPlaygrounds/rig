@@ -18,7 +18,7 @@ async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Endpo
     let client = Endpoint::new(
         OpenAI::with_key(&xai::DIALECT, cassette.api_key("XAI_API_KEY"))
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("xAI client should build"),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, client)
@@ -67,7 +67,7 @@ where
     let client = Endpoint::new(
         OpenAI::with_key(&xai::DIALECT, "xai-invalid-edge-matrix-key")
             .with_base_url(cassette.base_url()),
-        rig::rig_reqwest::bundled().expect("xAI client should build"),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
