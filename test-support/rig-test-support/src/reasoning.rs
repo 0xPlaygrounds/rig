@@ -135,14 +135,12 @@ impl AgentHook for ReasoningDeltaHookRecorder {
 
 /// Drive one real provider stream through the managed agent surface and pin
 /// the `ReasoningDelta` hook contract against the emitted normalized deltas.
-pub async fn run_reasoning_delta_hook_streaming<W, T>(
-    model: rig_core::driver::Model<W, T>,
+pub async fn run_reasoning_delta_hook_streaming(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     additional_params: serde_json::Value,
     provider: &str,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let hook = ReasoningDeltaHookRecorder::default();
     let probe = hook.clone();
     let agent = AgentBuilder::new(model)
@@ -251,9 +249,9 @@ Now suppose both trains slow down by 10 km/h after traveling half \
 the original distance. When do they meet now?";
 
 /// Model and request configuration for a two-turn reasoning-history check.
-pub struct ReasoningRoundtripAgent<M> {
+pub struct ReasoningRoundtripAgent {
     /// Completion model used for both turns.
-    pub model: M,
+    pub model: rig_core::BoxedModel<rig_core::operation::Completion>,
     /// System instruction included in the roundtrip requests.
     pub preamble: String,
     /// Provider-specific parameters included in both requests.
@@ -267,16 +265,13 @@ pub struct ReasoningRoundtripAgent<M> {
     pub expects_signed_reasoning_block: bool,
 }
 
-impl<W, Tr> ReasoningRoundtripAgent<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl ReasoningRoundtripAgent {
     /// Configure the roundtrip with the shared preamble and unsigned-reasoning default.
     pub fn new(
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
         additional_params: Option<serde_json::Value>,
     ) -> Self {
+        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self {
             model,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),
@@ -293,22 +288,15 @@ where
 }
 
 /// Run and assert the two-turn streaming reasoning-history roundtrip.
-pub async fn run_reasoning_roundtrip_streaming<W, T>(
-    agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+pub async fn run_reasoning_roundtrip_streaming(agent: ReasoningRoundtripAgent) {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
 
 /// Run the streaming roundtrip and inspect each provider final with a custom oracle.
-pub async fn run_reasoning_roundtrip_streaming_with_final<W, T, F>(
-    agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
+pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
+    agent: ReasoningRoundtripAgent,
     mut inspect_final: F,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
     F: FnMut(&rig_core::streaming::StreamFinal),
 {
     let turn1_prompt = Message::User {
@@ -460,12 +448,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<W, T, F>(
 }
 
 /// Run and assert the two-turn nonstreaming reasoning-history roundtrip.
-pub async fn run_reasoning_roundtrip_nonstreaming<W, T>(
-    agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent) {
     let turn1_prompt = Message::User {
         content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };

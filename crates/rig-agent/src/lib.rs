@@ -19,13 +19,9 @@
 //! is provided by the native-only `rig-rmcp` crate.
 //!
 //! ```
-//! use rig_agent::core::{Model, driver::Transport, operation::Completion, wire::Wire};
+//! use rig_agent::core::{BoxedModel, operation::Completion};
 //! use rig_agent::{Agent, AgentBuilder};
-//! fn assistant<W, T>(model: Model<W, T>) -> Agent
-//! where
-//!     W: Wire<Op = Completion>,
-//!     T: Transport<W>,
-//! {
+//! fn assistant(model: impl Into<BoxedModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```

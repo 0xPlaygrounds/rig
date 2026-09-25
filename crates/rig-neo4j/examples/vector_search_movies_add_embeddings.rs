@@ -109,7 +109,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client
-        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, &model)
+        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, model.clone())
         .await?;
 
     // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings

@@ -30,11 +30,14 @@ use crate::streaming::{CompletionStream, StreamEvent};
 use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
-    Decoder, Event, Fold, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire,
+    Decoder, Fold, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire,
     WireFrame,
 };
 
+mod boxed;
 mod http_transport;
+
+pub use boxed::BoxedModel;
 
 /// An endpoint of one provider: a wire bound to a transport.
 ///
@@ -152,12 +155,12 @@ impl Observation {
 
 /// One step of a reply: the opened reply's transport request id, an event,
 /// or the folded response of a unary call.
-enum Step<W: Wire> {
+pub(crate) enum Step<Op: Operation> {
     /// Exactly once, first, and only for a streamed call.
     Opened(Option<String>),
-    Event(Event<W>),
+    Event(Op::Event),
     /// Exactly once, last, and only for a unary call.
-    Done(Response<W>),
+    Done(Op::Response),
 }
 
 impl<W, T> Model<W, T>
@@ -167,10 +170,11 @@ where
 {
     /// Send `request` and fold the whole reply into the operation's
     /// response. A paged operation follows every page the reply names.
+    /// The future owns a clone of the model, so it outlives the borrow.
     pub fn call(
         &self,
         request: Request<W>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
         self.unary(request, None)
     }
 
@@ -179,23 +183,48 @@ where
         &self,
         request: Request<W>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
         self.unary(request, Some(observation))
     }
 
-    async fn unary(
+    /// The unary driver's future, owning a clone of the model. Returned as
+    /// is by `call` and boxed by [`BoxedModel`]: another `async fn` around
+    /// it would put a second copy of the driver's state on the stack.
+    pub(crate) fn unary(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
-    ) -> Result<Response<W>, ProviderError> {
-        let span = self.span(&request, false);
-        let result = self.fold(request, observation, &span).await;
-        if let Err(error) = &result {
-            record_request_id(&span, error.provider_request_id());
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+        let model = self.clone();
+        async move {
+            let span = model.span(&request, false);
+            let result = model.fold(request, observation, &span).await;
+            if let Err(error) = &result {
+                record_request_id(&span, error.provider_request_id());
+            }
+            let response = result?;
+            <W::Op as Operation>::accept(&model.wire.capabilities(), model.wire.name(), &response)?;
+            Ok(response)
         }
-        let response = result?;
-        <W::Op as Operation>::accept(&self.wire.capabilities(), self.wire.name(), &response)?;
-        Ok(response)
+    }
+
+    /// The driver's steps for `request` in `mode`, with the span they run
+    /// under, boxed so a [`BoxedModel`] can carry them.
+    pub(crate) fn steps(
+        &self,
+        request: Request<W>,
+        mode: Mode,
+        observation: Option<AdapterContext>,
+    ) -> Result<
+        (
+            tracing::Span,
+            WasmBoxedStream<'static, Result<Step<W::Op>, ProviderError>>,
+        ),
+        ProviderError,
+    > {
+        let span = self.span(&request, mode == Mode::Streaming);
+        let steps = self.run(request, mode, observation, span.clone())?;
+        Ok((span, Box::pin(steps)))
     }
 
     async fn fold(
@@ -265,7 +294,7 @@ where
         observation: Option<AdapterContext>,
         span: tracing::Span,
     ) -> Result<
-        impl futures::Stream<Item = Result<Step<W>, ProviderError>>
+        impl futures::Stream<Item = Result<Step<W::Op>, ProviderError>>
         + WasmCompatSend
         + 'static
         + use<W, T>,
@@ -475,52 +504,64 @@ where
         request: crate::completion::CompletionRequest,
         observation: Option<AdapterContext>,
     ) -> Result<CompletionStream, ProviderError> {
-        let span = self.span(&request, true);
-        let model = request.model.clone();
         let issuer = self
             .wire
-            .reasoning_issuer(model.as_deref().or(self.wire.model()))
+            .reasoning_issuer(request.model.as_deref().or(self.wire.model()))
             .map(str::to_owned);
-        let steps = self.run(request, Mode::Streaming, observation, span.clone())?;
-        // The transport request id read off the reply's headers is stamped
-        // onto the terminal record and onto errors; an id an upstream
-        // constructor already attached wins, since it saw the reply.
-        let mut request_id: Option<String> = None;
-        let recorder = span.clone();
-        let events = tracing_futures::Instrument::instrument(steps, span).filter_map(move |step| {
-            futures::future::ready(match step {
-                Ok(Step::Opened(id)) => {
-                    record_request_id(&recorder, id.as_deref());
-                    request_id = id;
-                    None
-                }
-                Ok(Step::Event(mut event)) => {
-                    if let StreamEvent::Final(terminal) = &mut event {
-                        if terminal.provider_request_id.is_none() {
-                            terminal.provider_request_id = request_id.clone();
-                        }
-                        recorder.record_response(
-                            terminal
-                                .response_id
-                                .as_deref()
-                                .or(terminal.message_id.as_deref()),
-                            terminal.model.as_deref(),
-                            &terminal.usage,
-                        );
-                    }
-                    Some(Ok::<StreamEvent, _>(event))
-                }
-                Ok(Step::Done(_)) => None,
-                Err(error) => {
-                    let error = error.with_provider_request_id(request_id.clone());
-                    record_request_id(&recorder, error.provider_request_id());
-                    Some(Err(crate::error::ErrorReport::from(&error)))
-                }
-            })
-        });
-        let fold = CompletionFold::opened(self.wire.name(), issuer);
-        Ok(CompletionStream::opened(fold, Box::pin(events)))
+        let (span, steps) = self.steps(request, Mode::Streaming, observation)?;
+        Ok(completion_stream(span, self.wire.name(), issuer, steps))
     }
+}
+
+/// The completion stream over the driver's streamed steps: events under
+/// `span`, the terminal record and errors stamped with the transport request
+/// id, folded under `provider` and the reasoning `issuer` named up front.
+pub(crate) fn completion_stream(
+    span: tracing::Span,
+    provider: &str,
+    issuer: Option<String>,
+    steps: impl futures::Stream<Item = Result<Step<Completion>, ProviderError>>
+    + WasmCompatSend
+    + 'static,
+) -> CompletionStream {
+    // The transport request id read off the reply's headers is stamped
+    // onto the terminal record and onto errors; an id an upstream
+    // constructor already attached wins, since it saw the reply.
+    let mut request_id: Option<String> = None;
+    let recorder = span.clone();
+    let events = tracing_futures::Instrument::instrument(steps, span).filter_map(move |step| {
+        futures::future::ready(match step {
+            Ok(Step::Opened(id)) => {
+                record_request_id(&recorder, id.as_deref());
+                request_id = id;
+                None
+            }
+            Ok(Step::Event(mut event)) => {
+                if let StreamEvent::Final(terminal) = &mut event {
+                    if terminal.provider_request_id.is_none() {
+                        terminal.provider_request_id = request_id.clone();
+                    }
+                    recorder.record_response(
+                        terminal
+                            .response_id
+                            .as_deref()
+                            .or(terminal.message_id.as_deref()),
+                        terminal.model.as_deref(),
+                        &terminal.usage,
+                    );
+                }
+                Some(Ok::<StreamEvent, _>(event))
+            }
+            Ok(Step::Done(_)) => None,
+            Err(error) => {
+                let error = error.with_provider_request_id(request_id.clone());
+                record_request_id(&recorder, error.provider_request_id());
+                Some(Err(crate::error::ErrorReport::from(&error)))
+            }
+        })
+    });
+    let fold = CompletionFold::opened(provider, issuer);
+    CompletionStream::opened(fold, Box::pin(events))
 }
 
 /// Drives classified frames through an operation decoder. Known frames are

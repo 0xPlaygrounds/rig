@@ -29,27 +29,23 @@ use uuid::Uuid;
 ///
 /// Queries are embedded with the same model `M` that populated the collection,
 /// so results are meaningless under another model.
-pub struct QdrantVectorStore<M> {
-    model: M,
+pub struct QdrantVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     client: Qdrant,
     query_params: QueryPoints,
 }
 
-impl<W, Tr> QdrantVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl QdrantVectorStore {
     /// Creates a store over the collection named by `query_params`. Each search
     /// clones `query_params` and overrides its query, limit, threshold, and filter.
     pub fn new(
         client: Qdrant,
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         query_params: QueryPoints,
     ) -> Self {
         Self {
             client,
-            model,
+            model: model.into(),
             query_params,
         }
     }
@@ -112,11 +108,7 @@ where
     }
 }
 
-impl<W, Tr> InsertDocuments for QdrantVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl InsertDocuments for QdrantVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -168,11 +160,7 @@ fn missing_point_id() -> VectorStoreError {
     VectorStoreError::MissingIdError("Qdrant search result carries no point id".to_string())
 }
 
-impl<W, Tr> VectorStoreIndex for QdrantVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for QdrantVectorStore {
     type Filter = QdrantFilter;
 
     /// Returns the nearest points as `(score, id, payload)`. Errors when a point

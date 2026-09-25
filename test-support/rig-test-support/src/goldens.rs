@@ -509,17 +509,11 @@ pub const ADD_THEN_SUBTRACT_PROMPT: &str = "First add 20 and 5 with the add tool
 
 /// The facts, embedded by `model`, as an in-memory index (ids `doc0`..).
 #[allow(dead_code)]
-pub async fn facts_index<W, Tr>(
-    model: rig_core::driver::Model<W, Tr>,
+pub async fn facts_index(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
     facts: &[&str],
-) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<
-    String,
-    rig_core::driver::Model<W, Tr>,
->
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<String> {
+    let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
     let store = if facts.is_empty() {
         rig_core::vector_store::in_memory_store::InMemoryVectorStore::<String>::default()
     } else {
@@ -537,17 +531,12 @@ where
 /// The toolset's embeddable schemas, embedded by `model`, as an index keyed
 /// by tool name.
 #[allow(dead_code)]
-pub async fn tool_index<W, Tr>(
-    model: rig_core::driver::Model<W, Tr>,
+pub async fn tool_index(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
     toolset: &rig_agent::tool::ToolSet,
-) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<
-    rig_core::embeddings::ToolSchema,
-    rig_core::driver::Model<W, Tr>,
->
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
+) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<rig_core::embeddings::ToolSchema>
 {
+    let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
     let embeddings = rig_core::embeddings::EmbeddingsBuilder::new(model.clone())
         .documents(toolset.schemas().expect("tool schemas should build"))
         .expect("documents should be added")

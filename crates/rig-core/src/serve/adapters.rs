@@ -11,7 +11,7 @@
 
 use crate::{
     completion::ModelRef,
-    driver::{Model, Transport},
+    driver::BoxedModel,
     effect::{
         EffectFamily, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, FamilyDescriptor,
         HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
@@ -23,7 +23,7 @@ use crate::{
     tool::{ErasedTool, Tool, ToolEmbedding},
     vector_store::{VectorStoreError, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
-    wire::{Operation, Wire},
+    wire::Operation,
 };
 
 use super::{Dispatch, Reply, Serve};
@@ -39,25 +39,26 @@ fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
     )
 }
 
-/// A [`Model`] as a handler under `label`. Completion, text-embedding and
+/// A model as a handler under `label`. Completion, text-embedding and
 /// rerank models serve their effect families; the operation decides how
-/// ([`ServeOperation`]).
-pub struct ModelAdapter<W, T> {
+/// ([`ServeOperation`]). The model is erased to its operation, so one
+/// adapter type serves every wire and transport.
+pub struct ModelAdapter<Op: Operation> {
     label: ModelRef,
-    model: Model<W, T>,
+    model: BoxedModel<Op>,
 }
 
-impl<W, T> ModelAdapter<W, T> {
+impl<Op: Operation> ModelAdapter<Op> {
     /// Wrap `model` under `label`.
-    pub fn new(label: impl Into<ModelRef>, model: Model<W, T>) -> Self {
+    pub fn new(label: impl Into<ModelRef>, model: impl Into<BoxedModel<Op>>) -> Self {
         Self {
             label: label.into(),
-            model,
+            model: model.into(),
         }
     }
 
     /// The wrapped model.
-    pub fn model(&self) -> &Model<W, T> {
+    pub fn model(&self) -> &BoxedModel<Op> {
         &self.model
     }
 }
@@ -72,30 +73,22 @@ pub trait ServeOperation: Operation {
     fn descriptor(label: &ModelRef, capabilities: Self::Capabilities) -> HandlerDescriptor;
 
     /// Serve `kind` through `model`, or refuse an effect of another family.
-    fn serve<W, T>(
-        model: &Model<W, T>,
+    fn serve(
+        model: &BoxedModel<Self>,
         kind: EffectKind,
         dispatch: Dispatch,
-    ) -> impl Future<Output = Reply> + WasmCompatSend
-    where
-        W: Wire<Op = Self>,
-        T: Transport<W>;
+    ) -> impl Future<Output = Reply> + WasmCompatSend;
 }
 
-impl<W, T> Serve for ModelAdapter<W, T>
-where
-    W: Wire,
-    W::Op: ServeOperation,
-    T: Transport<W>,
-{
-    type Family = <W::Op as ServeOperation>::Family;
+impl<Op: ServeOperation> Serve for ModelAdapter<Op> {
+    type Family = Op::Family;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        <W::Op as ServeOperation>::descriptor(&self.label, self.model.wire.capabilities())
+        Op::descriptor(&self.label, self.model.capabilities())
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        <W::Op as ServeOperation>::serve(&self.model, kind, dispatch).await
+        Op::serve(&self.model, kind, dispatch).await
     }
 }
 
@@ -115,11 +108,7 @@ impl ServeOperation for Completion {
         }
     }
 
-    async fn serve<W, T>(model: &Model<W, T>, kind: EffectKind, dispatch: Dispatch) -> Reply
-    where
-        W: Wire<Op = Self>,
-        T: Transport<W>,
-    {
+    async fn serve(model: &BoxedModel<Self>, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let context = dispatch.adapter_context();
         match kind {
             EffectKind::Completion {
@@ -174,11 +163,7 @@ impl ServeOperation for Embedding {
         }
     }
 
-    async fn serve<W, T>(model: &Model<W, T>, kind: EffectKind, _dispatch: Dispatch) -> Reply
-    where
-        W: Wire<Op = Self>,
-        T: Transport<W>,
-    {
+    async fn serve(model: &BoxedModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
@@ -221,11 +206,7 @@ impl ServeOperation for Rerank {
         }
     }
 
-    async fn serve<W, T>(model: &Model<W, T>, kind: EffectKind, _dispatch: Dispatch) -> Reply
-    where
-        W: Wire<Op = Self>,
-        T: Transport<W>,
-    {
+    async fn serve(model: &BoxedModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model

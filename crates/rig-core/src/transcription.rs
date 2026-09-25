@@ -1,13 +1,11 @@
 //! Audio transcription requests, normalized responses, and model interfaces.
 //!
 //! ```no_run
-//! use rig_core::driver::{Model, Transport};
+//! use rig_core::BoxedModel;
 //! use rig_core::operation::Transcription;
 //! use rig_core::transcription::TranscriptionRequestBuilder;
-//! use rig_core::wire::Wire;
 //!
-//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = Transcription>, T: Transport<W> {
+//! # async fn example(model: BoxedModel<Transcription>) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = TranscriptionRequestBuilder::from_file("audio.wav")?.build();
 //! let response = model.call(request).await?;
 //! # let _ = response;

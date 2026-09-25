@@ -1,12 +1,10 @@
 //! Text and image embedding models, responses, and input identifiers.
 //!
 //! ```no_run
-//! use rig_core::driver::{Model, Transport};
+//! use rig_core::BoxedModel;
 //! use rig_core::operation::Embedding;
-//! use rig_core::wire::Wire;
 //!
-//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = Embedding>, T: Transport<W> {
+//! # async fn example(model: BoxedModel<Embedding>) -> Result<(), Box<dyn std::error::Error>> {
 //! let embedding = model.embed_text("A document").await?;
 //! # let _ = embedding;
 //! # Ok(())
@@ -17,11 +15,7 @@ use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 
-impl<W, T> crate::driver::Model<W, T>
-where
-    W: crate::wire::Wire<Op = crate::operation::Embedding>,
-    T: crate::driver::Transport<W>,
-{
+impl crate::driver::BoxedModel<crate::operation::Embedding> {
     /// Embed one text, returning the last vector or an error if none is returned.
     pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
         let mut embeddings = self.call(vec![text.to_owned()]).await?.embeddings;

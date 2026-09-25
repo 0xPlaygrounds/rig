@@ -5,12 +5,10 @@
 //! [`RerankResponse`] carries both the scored results and token usage.
 //!
 //! ```no_run
-//! use rig_core::driver::{Model, Transport};
+//! use rig_core::BoxedModel;
 //! use rig_core::operation::{Rerank, RerankRequest};
-//! use rig_core::wire::Wire;
 //!
-//! # async fn example<W, T>(model: &Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = Rerank>, T: Transport<W> {
+//! # async fn example(model: &BoxedModel<Rerank>) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = RerankRequest {
 //!     query: "Rust".into(),
 //!     documents: vec!["A systems programming language".into()],

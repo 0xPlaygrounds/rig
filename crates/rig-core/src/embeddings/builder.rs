@@ -1,13 +1,11 @@
 //! Batched embedding generation for documents implementing [`Embed`].
 //!
 //! ```no_run
-//! use rig_core::driver::{Model, Transport};
+//! use rig_core::BoxedModel;
 //! use rig_core::embeddings::EmbeddingsBuilder;
 //! use rig_core::operation::Embedding;
-//! use rig_core::wire::Wire;
 //!
-//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = Embedding>, T: Transport<W> {
+//! # async fn example(model: BoxedModel<Embedding>) -> Result<(), Box<dyn std::error::Error>> {
 //! let documents = EmbeddingsBuilder::new(model)
 //!     .documents(["first document", "second document"])?
 //!     .build().await?;
@@ -20,9 +18,9 @@ use std::{cmp::max, ops::Range};
 
 use futures::{StreamExt, stream};
 
-use crate::driver::{Model, Transport};
+use crate::driver::BoxedModel;
 use crate::error::ProviderError;
-use crate::wire::Wire;
+use crate::operation::Embedding as EmbeddingOp;
 use crate::{
     completion::Usage,
     embeddings::{Embed, EmbedError, Embedding, EmbeddingResponse, embed::TextEmbedder},
@@ -31,21 +29,16 @@ use crate::{
 /// Accumulates documents and embeds their extracted texts in provider-sized batches.
 /// Text extraction occurs when documents are added; requests start when built.
 #[must_use = "an embeddings builder does nothing until built"]
-pub struct EmbeddingsBuilder<M, T> {
-    model: M,
+pub struct EmbeddingsBuilder<T> {
+    model: BoxedModel<EmbeddingOp>,
     documents: Vec<(T, Vec<String>)>,
 }
 
-impl<W, Tr, T> EmbeddingsBuilder<Model<W, Tr>, T>
-where
-    W: Wire<Op = crate::operation::Embedding>,
-    Tr: Transport<W>,
-    T: Embed,
-{
+impl<T: Embed> EmbeddingsBuilder<T> {
     /// Create a new embedding builder with the given embedding model
-    pub fn new(model: Model<W, Tr>) -> Self {
+    pub fn new(model: impl Into<BoxedModel<EmbeddingOp>>) -> Self {
         Self {
-            model,
+            model: model.into(),
             documents: vec![],
         }
     }
@@ -71,10 +64,8 @@ where
     }
 }
 
-impl<W, Tr, T> EmbeddingsBuilder<Model<W, Tr>, T>
+impl<T> EmbeddingsBuilder<T>
 where
-    W: Wire<Op = crate::operation::Embedding>,
-    Tr: Transport<W>,
     T: Embed + crate::wasm_compat::WasmCompatSend,
 {
     /// Generate embeddings for all documents in the builder.
@@ -121,7 +112,7 @@ where
         }
 
         let total_texts = texts.len();
-        let max_documents = max(1, self.model.wire.capabilities().max_documents);
+        let max_documents = max(1, self.model.capabilities().max_documents);
 
         let (slots, usage) = stream::iter(texts.into_iter().enumerate())
             .chunks(max_documents)

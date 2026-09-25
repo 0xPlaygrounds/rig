@@ -111,9 +111,9 @@ and `tests/fixtures/agent_run_stepper` is that host in miniature.
 
 High-level agents are concrete values: the provider model is erased once into
 an opaque, cloneable `ModelHandle`, whose `ProviderCapabilities` snapshot is
-captured by value at erasure. The typed `Model<W, T>` stays available for
-direct `call` and `stream`, and a backend is a wire plus a transport rather
-than a trait implementation.
+captured by value at erasure. The typed `Model<W, T>` and its erased twin
+`BoxedModel<Completion>` stay available for direct `call` and `stream`, and a
+backend is a wire plus a transport rather than a trait implementation.
 
 Replace the default on one agent value with `set_model` or
 `set_model_handle`, or change one run's default candidate with `using_model`.

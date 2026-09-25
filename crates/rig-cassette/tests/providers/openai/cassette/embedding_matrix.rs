@@ -130,7 +130,8 @@ async fn single_text_convenience() {
                 client
                     .openai
                     .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-            );
+            )
+            .boxed();
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await

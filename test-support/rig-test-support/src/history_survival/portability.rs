@@ -211,11 +211,11 @@ pub struct Observation {
 pub type Observed = Arc<std::sync::Mutex<Option<Observation>>>;
 
 /// Continue the ported history on the target wire.
-pub async fn run<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell) -> Observation
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+pub async fn run(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    cell: Cell,
+) -> Observation {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let calls = Arc::new(AtomicUsize::new(0));
     let mut builder = AgentBuilder::new(model)
         .preamble(TOOL_SYSTEM_PROMPT)

@@ -39,30 +39,26 @@ mod utils;
 /// Queries are embedded with the same model `M` that populated the table, so
 /// results are meaningless under another model. See [`LanceDbVectorIndex::top_n`]
 /// for a worked example.
-pub struct LanceDbVectorIndex<M> {
-    model: M,
+pub struct LanceDbVectorIndex {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     table: lancedb::Table,
     /// Column holding each record's id.
     id_field: String,
     search_params: SearchParams,
 }
 
-impl<W, Tr> LanceDbVectorIndex<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl LanceDbVectorIndex {
     /// Creates an index over an existing table whose ids live in `id_field`.
     /// The table is not inspected, so a wrong column surfaces at query time.
     pub async fn new(
         table: lancedb::Table,
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         id_field: &str,
         search_params: SearchParams,
     ) -> Result<Self, lancedb::Error> {
         Ok(Self {
             table,
-            model,
+            model: model.into(),
             id_field: id_field.to_string(),
             search_params,
         })
@@ -354,11 +350,7 @@ impl SearchParams {
     }
 }
 
-impl<W, Tr> VectorStoreIndex for LanceDbVectorIndex<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for LanceDbVectorIndex {
     type Filter = LanceDBFilter;
 
     /// Returns matches as `(distance, id, row)` with embedding columns projected

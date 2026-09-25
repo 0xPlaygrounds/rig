@@ -2,13 +2,9 @@
 //! builder-supplied tools or a shared tool server, not both.
 //!
 //! ```
-//! use rig_agent::core::{Model, driver::Transport, operation::Completion, wire::Wire};
+//! use rig_agent::core::{BoxedModel, operation::Completion};
 //! use rig_agent::{Agent, AgentBuilder};
-//! fn assistant<W, T>(model: Model<W, T>) -> Agent
-//! where
-//!     W: Wire<Op = Completion>,
-//!     T: Transport<W>,
-//! {
+//! fn assistant(model: impl Into<BoxedModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```
@@ -321,15 +317,11 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Register another model the run can select by label
     /// (`ModelSelectionAction::select(label)`, `using_model(label)`).
-    pub fn model_route<W, T>(
+    pub fn model_route(
         mut self,
         label: impl Into<ModelRef>,
-        model: rig_core::driver::Model<W, T>,
-    ) -> Self
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    {
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         let label = label.into();
         self.routes.push(label.as_str().to_owned());
         self.pending.push((
@@ -534,24 +526,16 @@ impl<ToolState> AgentBuilder<ToolState> {
 impl AgentBuilder<NoToolConfig> {
     /// An agent over its own bus, with `model` registered as the default
     /// model (label `default`).
-    pub fn new<W, T>(model: rig_core::driver::Model<W, T>) -> Self
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    {
+    pub fn new(model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>) -> Self {
         Self::named_model("default", model)
     }
 
     /// An agent over its own bus, with `model` registered under `label`.
     /// Size the bus with [`configure_bus`](Self::configure_bus).
-    pub fn named_model<W, T>(
+    pub fn named_model(
         label: impl Into<ModelRef>,
-        model: rig_core::driver::Model<W, T>,
-    ) -> Self
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    {
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         let label = label.into();
         let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model));
         Self::start(

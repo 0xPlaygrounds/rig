@@ -20,7 +20,6 @@ use rig::providers::mistral;
 
 use super::support::with_mistral_capability_cassette;
 use rig::completion::CompletionRequestBuilder;
-use rig::wire::Wire;
 
 /// One more than Mistral's real per-request cap, so a single un-chunked
 /// request would be rejected and only correct chunking can succeed.
@@ -57,11 +56,12 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/mistral_embed_reports_its_real_dimensions",
         |client| async move {
-            let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
+            let model =
+                rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None)).boxed();
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.
-            let declared = model.wire.capabilities().ndims;
+            let declared = model.capabilities().ndims;
             let embedding = model.embed_text("dimension probe").await?;
             assert_declared_matches_returned(declared, embedding.vec.len());
             Ok::<_, anyhow::Error>(())

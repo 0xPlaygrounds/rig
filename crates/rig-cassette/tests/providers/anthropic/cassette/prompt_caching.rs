@@ -1626,7 +1626,7 @@ async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
                     .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                     .with_prompt_caching(),
             );
-            let observation = run_cache_probe(&model, &conformance_probe()).await;
+            let observation = run_cache_probe(model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
                 &ANTHROPIC_CACHE_SUPPORT,
@@ -1652,7 +1652,7 @@ async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
                     .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                     .with_prompt_caching(),
             );
-            let observation = run_cache_probe_streaming(&model, &conformance_probe()).await;
+            let observation = run_cache_probe_streaming(model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
                 &ANTHROPIC_CACHE_SUPPORT,

@@ -127,26 +127,22 @@ impl S3SearchFilter {
 ///
 /// Queries are embedded with the same model `M` that populated the index, so
 /// results are meaningless under another model.
-pub struct S3VectorsVectorStore<M> {
-    embedding_model: M,
+pub struct S3VectorsVectorStore {
+    embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     client: Client,
     bucket_name: String,
     index_name: String,
 }
 
-impl<W, Tr> S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl S3VectorsVectorStore {
     pub fn new(
-        embedding_model: rig_core::driver::Model<W, Tr>,
+        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         client: aws_sdk_s3vectors::Client,
         bucket_name: &str,
         index_name: &str,
     ) -> Self {
         Self {
-            embedding_model,
+            embedding_model: embedding_model.into(),
             client,
             bucket_name: bucket_name.to_string(),
             index_name: index_name.to_string(),
@@ -231,11 +227,7 @@ where
     }
 }
 
-impl<W, Tr> InsertDocuments for S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl InsertDocuments for S3VectorsVectorStore {
     async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
@@ -326,11 +318,7 @@ fn document_to_json_value(value: &Document) -> Value {
     }
 }
 
-impl<W, Tr> VectorStoreIndex for S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for S3VectorsVectorStore {
     type Filter = S3SearchFilter;
 
     /// Returns matches as `(distance, vector key, metadata)`, where the metadata

@@ -152,7 +152,7 @@ async fn vector_search_test() {
     let embeddings = create_embeddings(model.clone()).await;
 
     // Initialize SQLite vector store
-    let vector_store = SqliteVectorStore::new(conn, &model)
+    let vector_store = SqliteVectorStore::new(conn, model.clone())
         .await
         .expect("Could not initialize SQLite vector store");
 
@@ -231,7 +231,7 @@ async fn insert_documents_test() {
     let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
     let embeddings = create_embeddings(model.clone()).await;
 
-    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), &model)
+    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), model)
         .await
         .expect("Could not initialize SQLite vector store");
 

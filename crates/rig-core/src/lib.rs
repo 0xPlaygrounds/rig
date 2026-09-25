@@ -11,22 +11,17 @@
 )]
 //! Provider-agnostic model, message, tool, memory, and vector-store contracts.
 //! Provider configurations build endpoint wires, and a [`Model`] binds a
-//! wire to a [`driver::Transport`]. Companion crates supply transports,
-//! agent runtimes, and external storage integrations.
+//! wire to a [`driver::Transport`]; a [`BoxedModel`] is a model erased to
+//! its operation, for consumers that store one. Companion crates supply
+//! transports, agent runtimes, and external storage integrations.
 //!
 //! ```no_run
+//! use rig_core::BoxedModel;
 //! use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
-//! use rig_core::driver::Transport;
 //! use rig_core::error::ProviderError;
 //! use rig_core::operation::Completion;
-//! use rig_core::wire::Wire;
-//! use rig_core::Model;
 //!
-//! async fn ask<W, T>(model: &Model<W, T>) -> Result<CompletionResponse, ProviderError>
-//! where
-//!     W: Wire<Op = Completion>,
-//!     T: Transport<W>,
-//! {
+//! async fn ask(model: &BoxedModel<Completion>) -> Result<CompletionResponse, ProviderError> {
 //!     let request = CompletionRequestBuilder::new("Who are you?").build();
 //!     model.call(request).await
 //! }
@@ -79,7 +74,7 @@ pub mod wire;
 pub mod ws_client;
 
 pub use completion::message;
-pub use driver::Model;
+pub use driver::{BoxedModel, Model};
 pub use embeddings::Embed;
 pub use error::{ErrorKind, ErrorReport, ProviderError};
 pub use provider_response::ProviderResponseError;

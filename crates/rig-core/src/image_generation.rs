@@ -1,13 +1,11 @@
 //! Image-generation requests, normalized responses, and model interfaces.
 //!
 //! ```no_run
-//! use rig_core::driver::{Model, Transport};
+//! use rig_core::BoxedModel;
 //! use rig_core::image_generation::ImageGenerationRequestBuilder;
 //! use rig_core::operation::ImageGeneration;
-//! use rig_core::wire::Wire;
 //!
-//! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = ImageGeneration>, T: Transport<W> {
+//! # async fn example(model: BoxedModel<ImageGeneration>) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = ImageGenerationRequestBuilder::new("A mountain lake")
 //!     .width(1024)
 //!     .height(1024)

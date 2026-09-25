@@ -115,7 +115,7 @@ async fn single_text_convenience() {
     with_openrouter_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
+            let model = rig::model(client.embedding("openai/text-embedding-3-small", None)).boxed();
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
