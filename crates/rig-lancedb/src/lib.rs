@@ -49,7 +49,7 @@ pub struct LanceDbVectorIndex<M> {
 
 impl<W, Tr> LanceDbVectorIndex<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Creates an index over an existing table whose ids live in `id_field`.
@@ -356,7 +356,7 @@ impl SearchParams {
 
 impl<W, Tr> VectorStoreIndex for LanceDbVectorIndex<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = LanceDBFilter;

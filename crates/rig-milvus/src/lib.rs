@@ -90,7 +90,7 @@ struct SearchResultDataOnlyId {
 
 impl<W, Tr> MilvusVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Creates a store over a collection reached at `base_url`, which is the
@@ -205,7 +205,7 @@ where
 
 impl<W, Tr> InsertDocuments for MilvusVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
@@ -250,7 +250,7 @@ where
 
 impl<W, Tr> VectorStoreIndex for MilvusVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = Filter;

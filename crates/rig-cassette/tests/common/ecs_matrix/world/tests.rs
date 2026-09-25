@@ -47,7 +47,7 @@ fn model_level_options_require_intact_host_bindings() {
     };
     fn check<W, T>(model: rig::driver::Model<W, T>, thinking: ThinkingWire)
     where
-        W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+        W: rig::wire::Wire<Op = rig::operation::Completion>,
         T: rig::driver::Transport<W>,
     {
         let wire = Wire {

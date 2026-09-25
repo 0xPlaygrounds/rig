@@ -174,7 +174,7 @@ struct VecResult {
 
 impl<C, W, Tr> HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Creates a new HelixDB vector store.
@@ -190,7 +190,7 @@ where
 
 impl<C, W, Tr> HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
@@ -218,7 +218,7 @@ where
 
 impl<C, W, Tr> InsertDocuments for HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
@@ -260,7 +260,7 @@ where
 
 impl<C, W, Tr> VectorStoreIndex for HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,

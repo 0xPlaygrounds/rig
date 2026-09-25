@@ -35,7 +35,7 @@ fn tool<T: Tool + 'static>(app: &mut App, agent: Entity, tool: T, order: u64) {
     app.world_mut().spawn((Grant(handler), ChildOf(agent)));
 }
 pub(super) async fn run<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: rig_core::driver::Model<W, T>,

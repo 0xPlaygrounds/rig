@@ -162,7 +162,7 @@ enum Step<W: Wire> {
 
 impl<W, T> Model<W, T>
 where
-    W: Wire + Clone,
+    W: Wire,
     T: Transport<W>,
 {
     /// Send `request` and fold the whole reply into the operation's
@@ -448,7 +448,7 @@ where
 
 impl<W, T> Model<W, T>
 where
-    W: Wire<Op = Completion> + Clone,
+    W: Wire<Op = Completion>,
     T: Transport<W>,
 {
     /// Open a streamed completion. Encoding errors, and requests the

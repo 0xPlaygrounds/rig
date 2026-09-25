@@ -320,7 +320,7 @@ fn value_matches_integer(value: &serde_json::Value, expected: i64) -> bool {
             == Some(expected)
 }
 pub(super) async fn parallel_tools<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: rig_core::driver::Model<W, T>,
@@ -395,7 +395,7 @@ pub(super) async fn parallel_tools<
     report_from_response(scenario, started, add + subtract, response)
 }
 pub(super) async fn zero_argument_tool<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: rig_core::driver::Model<W, T>,
@@ -436,7 +436,7 @@ pub(super) async fn zero_argument_tool<
     report_from_response(SCENARIO, started, 1, response)
 }
 pub(super) async fn tool_output_serialization<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: rig_core::driver::Model<W, T>,

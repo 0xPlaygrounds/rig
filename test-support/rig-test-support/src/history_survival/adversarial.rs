@@ -96,7 +96,7 @@ pub async fn colliding_ids<W, T>(
     id: &str,
     params: Option<Value>,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let mut history = vec![Message::user("Look up record alpha.")];
@@ -166,7 +166,7 @@ pub async fn out_of_order_results<W, T>(
     model: &rig_core::driver::Model<W, T>,
     params: Option<Value>,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let prompt = Message::user(
@@ -244,7 +244,7 @@ async fn complete<W, T>(
     streamed: bool,
 ) -> Result<CompletionResponse, rig_core::error::ProviderError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     if !streamed {
@@ -271,7 +271,7 @@ pub async fn reasoning_round_trip<W, T>(
     streamed: bool,
 ) -> CompletionResponse
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let prompt = Message::user(prompt);
@@ -399,7 +399,7 @@ pub async fn round_trip_hop<W, T>(
     hop: Hop,
     params: Option<Value>,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let reply = model

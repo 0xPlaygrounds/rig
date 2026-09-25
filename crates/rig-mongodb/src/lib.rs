@@ -125,7 +125,7 @@ where
 
 impl<C, W, Tr> MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: Send + Sync,
 {
@@ -236,7 +236,7 @@ where
 
 impl<C, W, Tr> MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: Send + Sync,
 {
@@ -398,7 +398,7 @@ impl DynamicSearchFilter for MongoDbSearchFilter {
 
 impl<C, W, Tr> VectorStoreIndex for MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: Sync + Send,
 {
@@ -449,7 +449,7 @@ where
 
 impl<C, W, Tr> InsertDocuments for MongoDbVectorIndex<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: Send + Sync,
 {

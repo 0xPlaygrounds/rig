@@ -448,7 +448,7 @@ impl ProviderConfig {
 /// Pair the provider's completion wire with `http` and erase it under `label`.
 fn erase<W>(wire: W, label: &str, http: BoxedHttpClient) -> ErasedHandler
 where
-    W: Wire<Op = Completion> + Clone,
+    W: Wire<Op = Completion>,
     BoxedHttpClient: Transport<W>,
 {
     ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http)))

@@ -7,7 +7,7 @@
 //! use rig_core::wire::Wire;
 //!
 //! # async fn example<W, T>(model: Model<W, T>, voice: &str) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = AudioGeneration> + Clone, T: Transport<W> {
+//! # where W: Wire<Op = AudioGeneration>, T: Transport<W> {
 //! let request = AudioGenerationRequestBuilder::new("Hello", voice).build();
 //! let response = model.call(request).await?;
 //! # let _ = response;

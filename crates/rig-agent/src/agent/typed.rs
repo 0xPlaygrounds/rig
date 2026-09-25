@@ -267,7 +267,7 @@ macro_rules! forward_runner_setters {
         /// Erase and set a typed default model for this run.
         pub fn using_model_value<W, Tr>(mut self, model: rig_core::driver::Model<W, Tr>) -> Self
         where
-            W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+            W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
             Tr: rig_core::driver::Transport<W>,
         {
             self.runner = self.runner.using_model_value(model);

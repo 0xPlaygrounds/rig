@@ -23,7 +23,7 @@
 //! use rig_agent::{Agent, AgentBuilder};
 //! fn assistant<W, T>(model: Model<W, T>) -> Agent
 //! where
-//!     W: Wire<Op = Completion> + Clone,
+//!     W: Wire<Op = Completion>,
 //!     T: Transport<W>,
 //! {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()

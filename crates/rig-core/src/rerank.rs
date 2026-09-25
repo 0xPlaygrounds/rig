@@ -10,7 +10,7 @@
 //! use rig_core::wire::Wire;
 //!
 //! # async fn example<W, T>(model: &Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = Rerank> + Clone, T: Transport<W> {
+//! # where W: Wire<Op = Rerank>, T: Transport<W> {
 //! let request = RerankRequest {
 //!     query: "Rust".into(),
 //!     documents: vec!["A systems programming language".into()],

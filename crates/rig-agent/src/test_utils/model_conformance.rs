@@ -1003,7 +1003,7 @@ pub async fn parallel_tools<W, T, F>(
     tool_concurrency: Option<usize>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1091,7 +1091,7 @@ pub async fn zero_argument_tool<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1134,7 +1134,7 @@ pub async fn tool_output_serialization<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1189,7 +1189,7 @@ pub async fn complex_tool_arguments<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1242,7 +1242,7 @@ pub async fn buffered_streaming_text_parity<W, T>(
     model: rig_core::driver::Model<W, T>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     const SCENARIO: &str = "buffered_streaming_text_parity";
@@ -1324,7 +1324,7 @@ pub async fn structured_extraction<W, T>(
     model: rig_core::driver::Model<W, T>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     const SCENARIO: &str = "structured_extraction";
@@ -1397,7 +1397,7 @@ pub async fn invalid_tool_recovery<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1590,7 +1590,7 @@ pub async fn hook_rewrites_and_request_patch<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1664,7 +1664,7 @@ pub async fn cancellation_and_max_turns<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1742,7 +1742,7 @@ pub async fn optional_argument<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1780,7 +1780,7 @@ pub async fn sequential_tools<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1822,7 +1822,7 @@ pub async fn streaming_tool<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1914,7 +1914,7 @@ pub async fn structured_after_tool<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
@@ -1950,7 +1950,7 @@ pub async fn tool_choice_modes<W, T>(
     model: rig_core::driver::Model<W, T>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let definition = |name: &str| ToolDefinition {
@@ -2056,7 +2056,7 @@ pub async fn streaming_structured_after_tool<W, T, F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {

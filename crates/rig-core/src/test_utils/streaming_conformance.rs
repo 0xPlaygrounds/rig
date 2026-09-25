@@ -1682,7 +1682,7 @@ pub mod fixtures {
         request: crate::completion::CompletionRequest,
     ) -> Result<DrainedStream, ProviderError>
     where
-        W: Wire<Op = Completion> + Clone,
+        W: Wire<Op = Completion>,
         T: Transport<W>,
     {
         let log = std::sync::Arc::new(crate::observe::ObservationLog::default());
@@ -1751,8 +1751,7 @@ pub mod fixtures {
         bind: fn(SequencedStreamingHttpClient) -> Model<W, SequencedStreamingHttpClient>,
     ) -> WireDriver
     where
-        W: Wire<Op = Completion, Payload = crate::wire::Encoded, Frame = crate::wire::WireFrame>
-            + Clone,
+        W: Wire<Op = Completion, Payload = crate::wire::Encoded, Frame = crate::wire::WireFrame>,
     {
         WireDriver::new(provider, move |chunks| {
             Box::pin(async move {

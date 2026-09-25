@@ -455,7 +455,7 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
 /// provider-native-versus-normalized checks below on a single cassette
 /// interaction.
 async fn raw_and_normalized_completion<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: &rig_core::driver::Model<W, T>,

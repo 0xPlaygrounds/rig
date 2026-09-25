@@ -83,7 +83,7 @@ async fn run<W, T>(
     streamed: bool,
 ) -> Vec<AssistantContent>
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     if !streamed {

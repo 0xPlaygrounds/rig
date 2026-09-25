@@ -399,7 +399,7 @@ pub(crate) fn open<W, T>(
     program: &Program,
 ) -> (App, Entity, EffectLogRecorder, Gates)
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let gate = program
@@ -425,7 +425,7 @@ pub(crate) fn open_gated<W, T>(
     gate: Option<bool>,
 ) -> (App, Entity, EffectLogRecorder, Gates)
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     open_inner(wire, cell, program, gate, None, None)
@@ -442,7 +442,7 @@ fn open_inner<W, T>(
     witness: Option<Arc<rig_core::observe::ObservationLog>>,
 ) -> (App, Entity, EffectLogRecorder, Gates)
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     one_thread_pool();
@@ -1737,7 +1737,7 @@ pub(crate) async fn run_world<W, T>(
     golden: impl FnOnce(&EffectLog),
 ) -> EffectLog
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let program = wire.program(cell);
@@ -2122,7 +2122,7 @@ pub(crate) async fn run_scripted<W, T>(
     golden: impl FnOnce(&EffectLog),
 ) -> EffectLog
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     super::agent::run_agent(&wire(), cell, |_| {}).await;

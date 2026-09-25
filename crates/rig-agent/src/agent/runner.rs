@@ -154,7 +154,7 @@ impl AgentRunner {
     /// and the run it produces: it leaves the bus when they drop.
     pub fn using_model_value<W, T>(mut self, model: rig_core::driver::Model<W, T>) -> Self
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     {
         let anonymous = self.config.bus.register_anonymous_model(model);

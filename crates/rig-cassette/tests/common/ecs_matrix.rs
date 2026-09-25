@@ -96,7 +96,7 @@ pub(crate) struct Wire<M> {
 
 impl<W, Tr> Wire<rig::driver::Model<W, Tr>>
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     Tr: rig::driver::Transport<W>,
 {
     /// The cell's program on this wire.

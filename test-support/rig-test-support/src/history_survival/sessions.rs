@@ -71,9 +71,9 @@ pub async fn run<W, T, Wm, Tr>(
     second: rig_core::driver::Model<Wm, Tr>,
     cell: Cell,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     Tr: rig_core::driver::Transport<Wm>,
 {
     let loaded = turn_one(&first, cell).await;
@@ -97,9 +97,9 @@ pub async fn run_checkpoint<W, T, Wm, Tr>(
     second: rig_core::driver::Model<Wm, Tr>,
     cell: Cell,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     Tr: rig_core::driver::Transport<Wm>,
 {
     use bevy_app::App;
@@ -177,7 +177,7 @@ pub async fn run_checkpoint<W, T, Wm, Tr>(
 /// JSON persistence round trip that must preserve it exactly.
 async fn turn_one<W, T>(first: &rig_core::driver::Model<W, T>, cell: Cell) -> Vec<Message>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let prompt = Message::user(
@@ -290,7 +290,7 @@ fn assert_answer(cell: Cell, choice: &[AssistantContent]) {
 /// prompt's request is built from what the agent wrote to memory.
 pub async fn run_memory<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell, streamed: bool)
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     use futures::StreamExt;

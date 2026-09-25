@@ -26,7 +26,7 @@ struct RedisVectorStore<W, Tr> {
 
 impl<W, Tr> RedisVectorStore<W, Tr>
 where
-    W: Wire<Op = Embedding> + Clone,
+    W: Wire<Op = Embedding>,
     Tr: Transport<W>,
 {
     async fn new(
@@ -81,7 +81,7 @@ where
 
 impl<W, Tr> VectorStoreIndex for RedisVectorStore<W, Tr>
 where
-    W: Wire<Op = Embedding> + Clone,
+    W: Wire<Op = Embedding>,
     Tr: Transport<W>,
 {
     // Irrelevant for our program, but if we wanted to filter out query results

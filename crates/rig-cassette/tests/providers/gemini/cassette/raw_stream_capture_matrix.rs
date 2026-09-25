@@ -100,7 +100,7 @@ struct Drained {
 /// [`capture_text_and_sole_terminal`](crate::raw_capture::capture_text_and_sole_terminal)
 /// makes for this file's text-only cells.
 async fn drain_stream<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: &rig_core::driver::Model<W, T>,

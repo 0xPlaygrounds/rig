@@ -54,7 +54,7 @@ where
     /// Register `model` on the extractor's bus and use it.
     pub fn with_model<W, Tr>(mut self, model: rig_core::driver::Model<W, Tr>) -> Self
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         Tr: rig_core::driver::Transport<W>,
     {
         self.agent.set_model(model);
@@ -117,7 +117,7 @@ where
     /// An extractor of `T` over `model`.
     pub fn new<W, Tr>(model: rig_core::driver::Model<W, Tr>) -> Self
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         Tr: rig_core::driver::Transport<W>,
     {
         Self::from_agent_builder(AgentBuilder::new(model))

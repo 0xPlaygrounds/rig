@@ -413,7 +413,7 @@ impl Agent {
         model: rig_core::driver::Model<W, T>,
     ) -> ModelRef
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     {
         let label = label.into();
@@ -434,7 +434,7 @@ impl Agent {
     /// leaves the bus when the last of them drops or selects another model.
     pub fn set_model<W, T>(&mut self, model: rig_core::driver::Model<W, T>)
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     {
         let anonymous = self.config.bus.register_anonymous_model(model);
@@ -459,7 +459,7 @@ impl Agent {
     /// [`Agent::set_model`] by value.
     pub fn with_model<W, T>(mut self, model: rig_core::driver::Model<W, T>) -> Self
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     {
         self.set_model(model);

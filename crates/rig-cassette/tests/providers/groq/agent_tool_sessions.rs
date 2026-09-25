@@ -493,7 +493,7 @@ impl RawResponseMetadata {
 /// provider's reply verbatim, so reading it back as the shared OpenAI type
 /// keeps both views on a single cassette interaction.
 async fn raw_and_normalized_completion<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: &rig_core::driver::Model<W, T>,

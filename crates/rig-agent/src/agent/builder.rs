@@ -6,7 +6,7 @@
 //! use rig_agent::{Agent, AgentBuilder};
 //! fn assistant<W, T>(model: Model<W, T>) -> Agent
 //! where
-//!     W: Wire<Op = Completion> + Clone,
+//!     W: Wire<Op = Completion>,
 //!     T: Transport<W>,
 //! {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
@@ -327,7 +327,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         model: rig_core::driver::Model<W, T>,
     ) -> Self
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     {
         let label = label.into();
@@ -536,7 +536,7 @@ impl AgentBuilder<NoToolConfig> {
     /// model (label `default`).
     pub fn new<W, T>(model: rig_core::driver::Model<W, T>) -> Self
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     {
         Self::named_model("default", model)
@@ -549,7 +549,7 @@ impl AgentBuilder<NoToolConfig> {
         model: rig_core::driver::Model<W, T>,
     ) -> Self
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     {
         let label = label.into();

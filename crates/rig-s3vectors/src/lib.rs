@@ -136,7 +136,7 @@ pub struct S3VectorsVectorStore<M> {
 
 impl<W, Tr> S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     pub fn new(
@@ -233,7 +233,7 @@ where
 
 impl<W, Tr> InsertDocuments for S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + WasmCompatSend>(
@@ -328,7 +328,7 @@ fn document_to_json_value(value: &Document) -> Value {
 
 impl<W, Tr> VectorStoreIndex for S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = S3SearchFilter;

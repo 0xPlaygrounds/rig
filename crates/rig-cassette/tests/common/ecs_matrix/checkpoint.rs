@@ -340,7 +340,7 @@ pub(crate) async fn run_agent<W, T>(
     golden: impl FnOnce(&EffectLog),
 ) -> EffectLog
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let audit = std::env::var_os("CHECKPOINT_AUDIT_REPLAY").is_some();

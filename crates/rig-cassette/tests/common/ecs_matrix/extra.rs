@@ -74,7 +74,7 @@ pub(crate) async fn error_facts<W, T>(
     probe: ErrorProbe,
     golden: impl FnOnce(&EffectLog),
 ) where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let mut ecs = EcsAgent::new(model, "", 2);
@@ -175,7 +175,7 @@ pub(crate) async fn batch_hold<W, T>(
     approval: Approval,
     golden: impl FnOnce(&EffectLog),
 ) where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_ONE;
@@ -283,7 +283,7 @@ pub(crate) async fn minted_ids<W, T>(
     golden: impl FnOnce(&EffectLog),
 ) -> Vec<String>
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_TWO;
@@ -458,7 +458,7 @@ pub(crate) async fn despawn_waits_for_the_stream<W, T>(
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
 ) where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     cancel_at(wire, cell, Cut::FirstTextDelta, golden).await;
@@ -476,7 +476,7 @@ pub(crate) async fn cancel_at<W, T>(
     cut: Cut,
     golden: impl FnOnce(&EffectLog),
 ) where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     // The delta hook's cell without the hook: no delta gate on the model,

@@ -63,7 +63,7 @@ pub async fn generate<W, T>(
     params: Option<Value>,
 ) -> Vec<u8>
 where
-    W: rig::wire::Wire<Op = rig::operation::ImageGeneration> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::ImageGeneration>,
     T: rig::driver::Transport<W>,
 {
     let mut builder = ImageGenerationRequestBuilder::new(PROMPT);
@@ -87,7 +87,7 @@ pub async fn as_user_content<W, T>(
     bytes: &[u8],
     params: Option<Value>,
 ) where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let message = Message::User {
@@ -109,7 +109,7 @@ pub async fn as_tool_result<W, T>(
     bytes: &[u8],
     params: Option<Value>,
 ) where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let tool = ToolDefinition {

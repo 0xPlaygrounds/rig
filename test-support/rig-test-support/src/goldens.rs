@@ -517,7 +517,7 @@ pub async fn facts_index<W, Tr>(
     rig_core::driver::Model<W, Tr>,
 >
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     let store = if facts.is_empty() {
@@ -545,7 +545,7 @@ pub async fn tool_index<W, Tr>(
     rig_core::driver::Model<W, Tr>,
 >
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     let embeddings = rig_core::embeddings::EmbeddingsBuilder::new(model.clone())

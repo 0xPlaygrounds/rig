@@ -378,8 +378,10 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
 /// No transport, no future, no type parameter. Implementations are plain
 /// data (`Clone + PartialEq + Debug + Serialize + Deserialize`, with
 /// credentials held in [`Secret`]), so a host can store one in a scene, a
-/// component, or a config file.
-pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
+/// component, or a config file. `Clone` is a supertrait: the driver clones
+/// the wire for every call, so a paged reply gets a fresh decoder per page
+/// inside a `'static` stream.
+pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     /// The operation this wire performs.
     type Op: Operation;
     /// What [`Self::encode`] produces for the transport to send.

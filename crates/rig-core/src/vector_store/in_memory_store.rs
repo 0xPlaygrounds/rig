@@ -366,7 +366,7 @@ type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
 impl<D: Serialize> InMemoryVectorStore<D> {
     pub fn index<W, T>(self, model: Model<W, T>) -> InMemoryVectorIndex<D, Model<W, T>>
     where
-        W: Wire<Op = EmbeddingOp> + Clone,
+        W: Wire<Op = EmbeddingOp>,
         T: Transport<W>,
     {
         InMemoryVectorIndex::new(model, self)
@@ -419,7 +419,7 @@ impl<D: Serialize, M> InMemoryVectorIndex<D, M> {
 impl<D, W, Tr> VectorStoreIndex for InMemoryVectorIndex<D, Model<W, Tr>>
 where
     D: Serialize + WasmCompatSend + WasmCompatSync + Eq,
-    W: Wire<Op = EmbeddingOp> + Clone,
+    W: Wire<Op = EmbeddingOp>,
     Tr: Transport<W>,
 {
     type Filter = Filter<serde_json::Value>;

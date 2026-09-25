@@ -47,7 +47,7 @@ pub async fn capture_completion<W, T>(
     sink: Observed<CompletionResponse>,
 ) -> Result<(), ProviderError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     sink.put(model.call(request).await?);
@@ -67,7 +67,7 @@ pub async fn capture_completion_pair<W, T>(
     sink: Observed<(CompletionResponse, CompletionResponse)>,
 ) -> Result<(), ProviderError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let first = model.call(request.clone()).await?;
@@ -84,7 +84,7 @@ pub async fn capture_text_and_terminal<W, T>(
     sink: Observed<(String, StreamFinal)>,
 ) -> Result<(), ProviderError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let (text, terminal) = collect_text_and_terminal(model.stream(request)?).await;
@@ -107,7 +107,7 @@ pub async fn capture_terminal<W, T>(
     sink: Observed<StreamFinal>,
 ) -> Result<(), ProviderError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     sink.put(collect_required_terminal(model.stream(request)?).await);
@@ -122,7 +122,7 @@ pub async fn capture_sole_terminal<W, T>(
     sink: Observed<StreamFinal>,
 ) -> Result<(), ProviderError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     sink.put(collect_sole_terminal(model.stream(request)?).await);
@@ -142,7 +142,7 @@ pub async fn capture_text_and_sole_terminal<W, T>(
     sink: Observed<(String, StreamFinal)>,
 ) -> Result<(), ProviderError>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     sink.put(collect_text_and_sole_terminal(model.stream(request)?).await);
