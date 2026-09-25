@@ -383,6 +383,11 @@ pub enum ProviderError {
         /// The provider's reply.
         response: ProviderResponseError,
     },
+    /// A tool block the wire declared complete carried invalid JSON. The
+    /// payload keeps the call's identity and the raw input for recovery; a
+    /// stream carries it as the report's [`ErrorDetail::MalformedToolInput`].
+    #[error("tool call `{}` arrived with malformed JSON input: {}", .0.name, .0.error)]
+    MalformedToolInput(MalformedToolInput),
     /// The provider returned vectors of a width other than the one the caller
     /// declared through an embedding wire's `ndims` argument. Raised only
     /// when the width was set explicitly.
@@ -434,7 +439,9 @@ impl ProviderError {
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
             Self::Request(_) => ErrorKind::Request,
-            Self::Response(_) | Self::MismatchedDimensions { .. } => ErrorKind::Response,
+            Self::Response(_) | Self::MismatchedDimensions { .. } | Self::MalformedToolInput(_) => {
+                ErrorKind::Response
+            }
             Self::Provider(_) => ErrorKind::Provider,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
@@ -653,7 +660,12 @@ impl From<&ProviderError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: response.and_then(|response| response.provider_request_id.clone()),
             provider_response: response.cloned(),
-            detail: None,
+            detail: match error {
+                ProviderError::MalformedToolInput(detail) => {
+                    Some(ErrorDetail::MalformedToolInput(detail.clone()))
+                }
+                _ => None,
+            },
         }
     }
 }

@@ -235,7 +235,7 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
         "local",
         serde_json::json!({}),
     );
-    let mut accumulator = crate::streaming::BlockAccumulator::new();
+    let mut fold = crate::operation::CompletionFold::default();
     let mut published = Vec::new();
     let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
         serde_json::to_value(re_emitted_events(&response)).expect("serialize events"),
@@ -243,16 +243,21 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
     .expect("deserialize events");
     for event in events {
         let event = event.expect("response reemits");
-        if let Some((_, content)) = accumulator.apply(&event).expect("event folds") {
-            published.push(content);
+        if let StreamEvent::BlockEnd {
+            block: Some(content),
+            ..
+        } = &event
+        {
+            published.push(content.clone());
         }
+        crate::wire::Fold::absorb(&mut fold, &event).expect("event folds");
     }
     assert_eq!(
         published, calls,
         "completed events preserve local identities"
     );
     assert_eq!(
-        accumulator.finish(),
+        fold.snapshot(),
         calls,
         "final response preserves local identities"
     );

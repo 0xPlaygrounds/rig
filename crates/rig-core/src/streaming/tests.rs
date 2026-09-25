@@ -27,12 +27,36 @@ fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
     StreamFinal::new(TEST_PROVIDER, usage, serde_json::json!({}))
 }
 
-/// A stream a provider opened over `events`, its errors converted as the
-/// driver converts them.
+/// A stream a provider opened over `events`, made canonical by the sink
+/// as the driver's are (a failure closes what is open, so does EOF), its
+/// errors converted as the driver converts them.
 fn opened(
     provider: &str,
     events: impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
 ) -> CompletionStream {
+    use crate::wire::Sink as _;
+    let out = std::sync::Arc::new(std::sync::Mutex::new(AdapterOutput::new()));
+    let at_eof = out.clone();
+    let events = events
+        .flat_map(move |item| {
+            let mut out = out.lock().expect("sink");
+            match item {
+                Ok(event) => out.push(Ok(event)),
+                Err(error) => {
+                    out.finish();
+                    out.error(error);
+                }
+            }
+            futures::stream::iter(out.drain().collect::<Vec<_>>())
+        })
+        .chain(futures::stream::iter(std::iter::from_fn(move || None).chain({
+            let at_eof = at_eof.clone();
+            std::iter::once(()).flat_map(move |()| {
+                let mut out = at_eof.lock().expect("sink");
+                out.finish();
+                out.drain().collect::<Vec<_>>()
+            })
+        })));
     CompletionStream::opened(
         CompletionFold::opened(provider, None),
         Box::pin(events.map(|item| item.map_err(|error| ErrorReport::from(&error)))),
@@ -40,10 +64,13 @@ fn opened(
 }
 
 /// Script a provider's output through the same helpers adapters use, so
-/// the scripted events speak exactly the grammar a wire would.
+/// the scripted events speak exactly the grammar a wire would; the reply's
+/// end closes what the script left open, as the driver's does.
 fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, ProviderError>> {
+    use crate::wire::Sink as _;
     let mut out = AdapterOutput::new();
     build(&mut out);
+    out.finish();
     out.into_items()
 }
 
@@ -888,7 +915,7 @@ async fn full_reasoning_block_with_a_different_id_appends() {
 /// anthropic's `content_block_stop` on an unsigned thinking block); a
 /// bare end an adapter synthesized stays silent.
 #[tokio::test]
-async fn wire_sent_bare_end_yields_the_completed_block_synthesized_stays_silent() {
+async fn a_bare_end_carries_the_completed_block_wire_sent_or_synthesized() {
     let run = |wire_sent: bool| async move {
         let mut stream = scripted(|out| {
             let key = BlockId::minted(MintKind::Block, 0);
@@ -913,10 +940,12 @@ async fn wire_sent_bare_end_yields_the_completed_block_synthesized_stays_silent(
     ));
 
     let synthesized = run(false).await;
-    assert!(
-        synthesized.is_empty(),
-        "a synthesized bare end fabricates nothing: {synthesized:?}"
+    assert_eq!(
+        synthesized.len(),
+        1,
+        "a synthesized bare end closes the part it opened, and carries it"
     );
+    assert_eq!(synthesized, wire, "the boundary's origin changes nothing");
 }
 
 /// The completed reasoning event restates the block id its deltas
@@ -1013,8 +1042,12 @@ async fn late_signature_after_synthesized_end_restates_the_delta_block_id() {
         completed.extend(completed_reasoning(&event));
     }
 
-    assert_eq!(completed.len(), 1, "one signed completion, no duplicate");
-    let (block, reasoning) = completed.first().expect("one completed block");
+    assert_eq!(
+        completed.len(),
+        2,
+        "the synthesized end carries the part, the late signature restates it"
+    );
+    let (block, reasoning) = completed.last().expect("the restated block");
     assert_eq!(
         Some(block),
         delta_ids.first(),

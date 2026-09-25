@@ -325,16 +325,16 @@ impl Embedded {
 }
 
 impl Fold<Embedding> for Embedded {
-    fn absorb(&mut self, reply: crate::embeddings::EmbeddingResponse) -> Result<(), ProviderError> {
+    fn absorb(&mut self, reply: &crate::embeddings::EmbeddingResponse) -> Result<(), ProviderError> {
         self.absorb_parts(
-            reply.embeddings,
+            reply.embeddings.iter().cloned(),
             reply.usage,
             Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
+                provider: reply.provider.clone(),
+                model: reply.model.clone(),
+                response_id: reply.response_id.clone(),
+                provider_request_id: reply.provider_request_id.clone(),
+                raw: reply.raw.clone(),
             },
         );
         Ok(())
@@ -359,17 +359,17 @@ impl Fold<Embedding> for Embedded {
 impl Fold<ImageEmbedding> for Embedded {
     fn absorb(
         &mut self,
-        reply: crate::embeddings::ImageEmbeddingResponse,
+        reply: &crate::embeddings::ImageEmbeddingResponse,
     ) -> Result<(), ProviderError> {
         self.absorb_parts(
-            reply.embeddings,
+            reply.embeddings.iter().cloned(),
             reply.usage,
             Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
+                provider: reply.provider.clone(),
+                model: reply.model.clone(),
+                response_id: reply.response_id.clone(),
+                provider_request_id: reply.provider_request_id.clone(),
+                raw: reply.raw.clone(),
             },
         );
         Ok(())

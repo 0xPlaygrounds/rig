@@ -1,7 +1,9 @@
 use super::*;
 use rig_core::{
     message::Message,
-    streaming::{BlockAccumulator, BlockClose, BlockKind, StreamEvent},
+    operation::{AdapterOutput, CompletionFold},
+    streaming::{BlockClose, BlockKind, StreamEvent},
+    wire::Fold as _,
 };
 
 /// Pure parse/emission regression: no model artifact or provider call is needed.
@@ -23,7 +25,7 @@ fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission
     let parsed = crate::protocol::parse_assistant(raw, &request, ConversationProtocol::Qwen3)
         .expect("valid parsed tool event");
     let expected = parsed.items.clone();
-    let mut accumulator = BlockAccumulator::new();
+    let mut out = AdapterOutput::new();
     let mut count = 0;
     emit_parsed_items(parsed.items, |event| {
         let GenerationEvent::ToolCall { id, end } = event else {
@@ -37,26 +39,27 @@ fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission
             assert!(end.tool_id.is_none());
             assert!(end.call_id.is_none());
         }
-        accumulator
-            .apply(&StreamEvent::BlockStart {
-                id: id.clone(),
-                kind: BlockKind::ToolCall,
-            })
-            .expect("valid parsed tool event");
-        accumulator
-            .apply(&StreamEvent::BlockEnd {
-                id,
-                end: BlockClose::ToolCall(end),
-                block: None,
-            })
-            .expect("valid parsed tool event");
+        out.push(Ok(StreamEvent::BlockStart {
+            id: id.clone(),
+            kind: BlockKind::ToolCall,
+        }));
+        out.push(Ok(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::ToolCall(end),
+            block: None,
+        }));
         count += 1;
         Ok(())
     })
     .expect("valid parsed tool event");
     assert_eq!(count, 3);
+    let mut fold = CompletionFold::default();
+    for item in out.drain() {
+        fold.absorb(&item.expect("valid parsed tool event"))
+            .expect("valid parsed tool event");
+    }
     assert_eq!(
-        serde_json::to_value(accumulator.finish()).expect("valid parsed tool event"),
+        serde_json::to_value(fold.snapshot()).expect("valid parsed tool event"),
         serde_json::to_value(expected).expect("valid parsed tool event")
     );
 }

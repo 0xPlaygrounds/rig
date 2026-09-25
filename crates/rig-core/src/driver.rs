@@ -382,7 +382,7 @@ where
                 driver.finish();
                 let mut failure = None;
                 for item in driver.drain() {
-                    let absorbed = item.and_then(|event| fold.absorb(event));
+                    let absorbed = item.and_then(|event| fold.absorb(&event));
                     if let Err(error) = absorbed {
                         failure = Some(error);
                         break;
@@ -649,6 +649,7 @@ where
             observation.fail(&error);
         }
         self.decoder.flush_before_terminal_error(&mut self.out);
+        self.out.finish();
         self.collect();
         self.ready.push(Err(error));
         self.done = true;
@@ -664,6 +665,7 @@ where
             observation.transport_eof(self.frames);
         }
         self.decoder.finish(&mut self.out);
+        self.out.finish();
         self.out.check_laws(&mut self.laws);
         self.collect();
         if let Some(observation) = &self.observation {

@@ -1,21 +1,12 @@
-//! Accumulates stream events into ordered assistant content without owning a
-//! transport. Authoritative end payloads replace assembled fragments; repeated
-//! tool ends are ignored until a new start or delta reopens the key.
-//!
-//! ```
-//! use rig_core::streaming::{BlockAccumulator, BlockId, MintKind, StreamEvent};
-//!
-//! # fn example() -> Result<(), rig_core::error::ErrorReport> {
-//! let mut accumulator = BlockAccumulator::new();
-//! accumulator.apply(&StreamEvent::text(BlockId::minted(MintKind::Text, 0), "Hi"))?;
-//! assert_eq!(accumulator.snapshot(), accumulator.finish());
-//! # Ok(())
-//! # }
-//! ```
+//! Assembles the blocks of one completion reply from the events a decoder
+//! writes, so every `BlockEnd` the sink emits carries the block it closed.
+//! Authoritative end payloads replace assembled fragments; repeated tool
+//! ends are ignored until a new start or delta reopens the key. Private to
+//! the sink: consumers see finalized blocks, never fragments.
 
 use std::collections::{HashMap, HashSet};
 
-use crate::error::{ErrorDetail, ErrorKind, ErrorReport, MalformedToolInput};
+use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
 use crate::streaming::UnparseableToolInput;
 use crate::streaming::block_id::BlockId;
@@ -23,11 +14,10 @@ use crate::streaming::event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCal
 
 /// Accumulates the streamed parts of one assistant choice, in arrival order.
 ///
-/// Owns every aggregation decision the streaming surfaces make. Consumers
-/// feed events through [`BlockAccumulator::apply`] and read the choice with
-/// [`BlockAccumulator::snapshot`] or [`BlockAccumulator::finish`].
-#[derive(Default)]
-pub struct BlockAccumulator {
+/// Owns every aggregation decision the sink makes. The sink feeds events
+/// through [`BlockAccumulator::apply`] and publishes what an end finalized.
+#[derive(Debug, Default)]
+pub(crate) struct BlockAccumulator {
     /// Accumulated parts in insertion order.
     parts: Vec<AssistantContent>,
     /// Open reasoning entities: key → index in `parts`. Invariant: every
@@ -53,6 +43,7 @@ pub struct BlockAccumulator {
 }
 
 /// A tool call under fragment assembly.
+#[derive(Debug)]
 struct OpenToolInput {
     /// Assembly key: every fragment of one call carries this key.
     id: BlockId,
@@ -70,22 +61,24 @@ const MAX_TOOL_INPUT_BYTES: usize = 32 * 1024 * 1024;
 
 impl BlockAccumulator {
     /// An empty accumulator.
-    pub fn new() -> Self {
+    #[cfg(test)]
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Fold one event into the accumulated choice.
     ///
-    /// Returns the block a `BlockEnd` finalized for consumers, keyed by the
-    /// block id it must be published under (the assembly key a whole call
-    /// adopted, which can differ from the end event's own id), or `None`
-    /// when the event finalized nothing to publish. An `Err` is a malformed
-    /// complete tool input under [`UnparseableToolInput::Error`]; the
-    /// accumulator stays consistent and the stream keeps consuming.
-    pub fn apply(
+    /// Returns the block a `BlockEnd` finalized, keyed by the block id it
+    /// must be published under (the assembly key a whole call adopted, which
+    /// can differ from the end event's own id), or `None` when the event
+    /// finalized nothing (a dropped call, an empty text block, a repeated
+    /// end). An `Err` is a malformed complete tool input under
+    /// [`UnparseableToolInput::Error`]; the accumulator stays consistent and
+    /// the reply keeps decoding.
+    pub(crate) fn apply(
         &mut self,
         event: &StreamEvent,
-    ) -> Result<Option<(BlockId, AssistantContent)>, ErrorReport> {
+    ) -> Result<Option<Finalized>, ProviderError> {
         match event {
             StreamEvent::BlockStart { id, kind } => {
                 match kind {
@@ -115,27 +108,33 @@ impl BlockAccumulator {
                 Ok(None)
             }
             StreamEvent::BlockEnd { id, end, .. } => match end {
-                BlockClose::Text => Ok(None),
+                // The end closes the key: a later delta under it opens a
+                // new block rather than extending a finalized one.
+                BlockClose::Text => Ok(self
+                    .text_ids
+                    .remove(id)
+                    .and_then(|index| self.parts.get(index))
+                    .filter(|part| Self::survives(part))
+                    .cloned()
+                    .map(|part| Finalized::restated(id.clone(), part))),
                 BlockClose::Reasoning {
                     reasoning,
                     signature,
-                    wire_sent,
-                } => {
-                    // Synthesized bare ends must not add completed-block events
-                    // that the provider never emitted.
-                    let authoritative = reasoning.is_some() || signature.is_some() || *wire_sent;
-                    let completed = self.reasoning_end(id, reasoning.clone(), signature.clone());
-                    Ok(completed
-                        .filter(|_| authoritative)
-                        .map(|reasoning| (id.clone(), AssistantContent::Reasoning(reasoning))))
-                }
+                    ..
+                } => Ok(self
+                    .reasoning_end(id, reasoning.clone(), signature.clone())
+                    .map(|(reasoning, fresh)| Finalized {
+                        id: id.clone(),
+                        block: AssistantContent::Reasoning(reasoning),
+                        fresh,
+                    })),
                 BlockClose::ToolCall(end) => Ok(self
                     .tool_end(id, end.clone())?
-                    .map(|(id, call)| (id, AssistantContent::ToolCall(call)))),
+                    .map(|(id, call)| Finalized::restated(id, AssistantContent::ToolCall(call)))),
                 BlockClose::Image(image) => {
                     let image = AssistantContent::Image(image.clone());
                     self.parts.push(image.clone());
-                    Ok(Some((id.clone(), image)))
+                    Ok(Some(Finalized::restated(id.clone(), image)))
                 }
             },
             StreamEvent::Final(_) | StreamEvent::Unknown(_) => Ok(None),
@@ -240,7 +239,7 @@ impl BlockAccumulator {
         id: &BlockId,
         restatement: Option<Reasoning>,
         signature: Option<String>,
-    ) -> Option<Reasoning> {
+    ) -> Option<(Reasoning, bool)> {
         if let Some(index) = self.open_reasoning.remove(id) {
             if let Some(mut restatement) = restatement
                 && let Some(part) = self.parts.get_mut(index)
@@ -259,7 +258,7 @@ impl BlockAccumulator {
                 attach_signature(part, signature);
             }
             self.finished_reasoning.insert(id.clone(), index);
-            return self.reasoning_at(index);
+            return self.reasoning_at(index).map(|reasoning| (reasoning, false));
         }
 
         if let Some(&index) = self.finished_reasoning.get(id) {
@@ -276,25 +275,34 @@ impl BlockAccumulator {
                             ))
                     );
                     if part_already_signed {
-                        return self.finish_signature_only(id, signature);
+                        return self
+                            .finish_signature_only(id, signature)
+                            .map(|reasoning| (reasoning, true));
                     }
                     if let Some(part) = self.parts.get_mut(index) {
                         attach_signature(part, signature);
                     }
-                    return self.reasoning_at(index);
+                    return self.reasoning_at(index).map(|reasoning| (reasoning, false));
                 }
                 (None, None) => return None,
                 (Some(restatement), signature) => {
-                    return self.finish_restated(id, restatement, signature);
+                    return self
+                        .finish_restated(id, restatement, signature)
+                        .map(|reasoning| (reasoning, true));
                 }
             }
         }
 
+        // An unseen key: the block is the key's own, not a sibling.
         match (restatement, signature) {
-            (Some(restatement), signature) => self.finish_restated(id, restatement, signature),
+            (Some(restatement), signature) => self
+                .finish_restated(id, restatement, signature)
+                .map(|reasoning| (reasoning, false)),
             // Signature-only stream: replay-required provider state with
             // nothing streamed to sign. Record it alone.
-            (None, Some(signature)) => self.finish_signature_only(id, signature),
+            (None, Some(signature)) => self
+                .finish_signature_only(id, signature)
+                .map(|reasoning| (reasoning, false)),
             (None, None) => None,
         }
     }
@@ -390,7 +398,7 @@ impl BlockAccumulator {
     }
 
     /// Whether any completed tool call was recorded on this stream.
-    pub fn saw_tool_call(&self) -> bool {
+    pub(crate) fn saw_tool_call(&self) -> bool {
         self.saw_tool_call
     }
 
@@ -449,7 +457,7 @@ impl BlockAccumulator {
         &mut self,
         id: &BlockId,
         end: ToolCallEnd,
-    ) -> Result<Option<(BlockId, ToolCall)>, ErrorReport> {
+    ) -> Result<Option<(BlockId, ToolCall)>, ProviderError> {
         let position = self
             .open_tool_inputs
             .iter()
@@ -564,13 +572,7 @@ impl BlockAccumulator {
                             UnparseableToolInput::Error => {
                                 self.finished_tools.insert(id.clone());
                                 self.finished_tools.insert(published.clone());
-                                return Err(ErrorReport::new(
-                                    ErrorKind::Response,
-                                    format!(
-                                        "tool call `{name}` arrived with malformed JSON input: {err}"
-                                    ),
-                                )
-                                .with_detail(ErrorDetail::MalformedToolInput(
+                                return Err(ProviderError::MalformedToolInput(
                                     MalformedToolInput {
                                         name,
                                         id: durable_id,
@@ -578,7 +580,7 @@ impl BlockAccumulator {
                                         raw: buffer,
                                         error: err.to_string(),
                                     },
-                                )));
+                                ));
                             }
                             // A completion probe: the input may still be extended.
                             UnparseableToolInput::Keep => {
@@ -632,7 +634,8 @@ impl BlockAccumulator {
     /// Clones the accumulated choice without changing state. Omits unfinished
     /// tool calls and text with neither content nor metadata; retains open
     /// reasoning. Repeated snapshots without new events are equal.
-    pub fn snapshot(&self) -> Vec<AssistantContent> {
+    #[cfg(test)]
+    pub(crate) fn snapshot(&self) -> Vec<AssistantContent> {
         self.parts
             .iter()
             .filter(|part| Self::survives(part))
@@ -642,7 +645,8 @@ impl BlockAccumulator {
 
     /// Returns the same parts as [`Self::snapshot`] and resets all state.
     /// A stream with no content produces an empty vector.
-    pub fn finish(&mut self) -> Vec<AssistantContent> {
+    #[cfg(test)]
+    pub(crate) fn finish(&mut self) -> Vec<AssistantContent> {
         let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
             .into_iter()
             .filter(Self::survives)
@@ -664,6 +668,26 @@ impl BlockAccumulator {
             AssistantContent::ToolCall(_)
             | AssistantContent::Reasoning(_)
             | AssistantContent::Image(_) => true,
+        }
+    }
+}
+
+/// What an end finalized: the block, the key it is published under, and
+/// whether it is a new part under a key that already finished one (a
+/// sibling), rather than that key's own block or its restatement.
+#[derive(Debug)]
+pub(crate) struct Finalized {
+    pub(crate) id: BlockId,
+    pub(crate) block: AssistantContent,
+    pub(crate) fresh: bool,
+}
+
+impl Finalized {
+    fn restated(id: BlockId, block: AssistantContent) -> Self {
+        Self {
+            id,
+            block,
+            fresh: false,
         }
     }
 }

@@ -309,7 +309,7 @@ fn folded_stream_events(
         provider_request_id: raw_response.provider_request_id.clone(),
     };
     let mut fold = <Completion as Operation>::Fold::default();
-    for event in events {
+    for event in &events {
         fold.absorb(event)?;
     }
     fold.finish(reply)
@@ -2587,6 +2587,10 @@ async fn malformed_frame_surfaces_error_and_stream_still_completes() {
             // first fragment.
             Ok(StreamEvent::BlockStart {
                 kind: BlockKind::Text { .. },
+                ..
+            })
+            | Ok(StreamEvent::BlockEnd {
+                end: BlockClose::Text,
                 ..
             }) => {}
             Ok(other) => panic!("unexpected stream item: {other:?}"),

@@ -45,8 +45,8 @@ pub struct ModelListingFold {
 }
 
 impl Fold<ModelListing> for ModelListingFold {
-    fn absorb(&mut self, page: ModelList) -> Result<(), ProviderError> {
-        self.models.extend(page);
+    fn absorb(&mut self, page: &ModelList) -> Result<(), ProviderError> {
+        self.models.extend(page.iter().cloned());
         Ok(())
     }
 

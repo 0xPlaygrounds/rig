@@ -50,7 +50,7 @@ fn reasoning_end(accumulator: &mut BlockAccumulator, key: &BlockId) -> Option<As
             block: None,
         })
         .expect("reasoning ends never fail")
-        .map(|(_, block)| block)
+        .map(|finalized| finalized.block)
 }
 
 fn tool_name_delta(accumulator: &mut BlockAccumulator, key: &BlockId, name: &str) {
@@ -86,7 +86,7 @@ fn tool_end(
             end: BlockClose::ToolCall(end),
             block: None,
         })?
-        .and_then(|(_, block)| match block {
+        .and_then(|finalized| match finalized.block {
             AssistantContent::ToolCall(call) => Some(call),
             _ => None,
         }))

@@ -45,12 +45,12 @@ pub enum StreamEvent {
         id: BlockId,
         /// What the wire said at the boundary.
         end: BlockClose,
-        /// The block as finalized by the accumulator, when the end
-        /// finalized one that consumers need whole (a completed tool call, a
-        /// completed reasoning item). `None` from an adapter; `None` from
-        /// the accumulator when the end finalized nothing (a dropped call, a
-        /// silent synthesized boundary) or when the block is text (its
-        /// deltas are the content).
+        /// The block this end finalized, as the sink assembled it: the
+        /// text, the completed tool call, the reasoning item, the image.
+        /// `None` only when the end finalized nothing (a dropped call, an
+        /// empty text block, a repeated end). A decoder writes `None`; the
+        /// sink fills it, so every consumer reads whole blocks and assembles
+        /// nothing.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         block: Option<AssistantContent>,
     },

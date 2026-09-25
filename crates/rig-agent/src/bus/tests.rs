@@ -1770,13 +1770,11 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
         assert!(ends.contains(id), "block {id} ends before the terminal");
     }
     assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    let mut accumulator = rig_core::streaming::BlockAccumulator::new();
+    let mut fold = rig_core::operation::CompletionFold::default();
     for event in &events {
-        accumulator
-            .apply(event)
-            .expect("the accumulator accepts every event");
+        rig_core::wire::Fold::absorb(&mut fold, event).expect("the fold accepts every event");
     }
-    let choice = accumulator.finish();
+    let choice = fold.snapshot();
     assert_eq!(
         choice.len(),
         4,

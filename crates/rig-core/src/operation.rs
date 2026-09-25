@@ -59,7 +59,9 @@ impl<Op: Operation> Sink<Op> for One<Op> {
 }
 
 /// Retains the first event and ignores later events. Finishing without an
-/// event returns a decode error; otherwise reply metadata is stamped on the response.
+/// event returns a decode error; otherwise reply metadata is stamped on the
+/// response. The one event is cloned once: the fold sees it by reference and
+/// the reply is that event.
 pub struct Take<Op: Operation> {
     value: Option<Op::Event>,
 }
@@ -73,11 +75,11 @@ impl<Op: Operation> Default for Take<Op> {
 impl<Op> Fold<Op> for Take<Op>
 where
     Op: Operation,
-    Op::Event: Into<Op::Response>,
+    Op::Event: Clone + Into<Op::Response>,
 {
-    fn absorb(&mut self, event: Op::Event) -> Result<(), ProviderError> {
+    fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError> {
         if self.value.is_none() {
-            self.value = Some(event);
+            self.value = Some(event.clone());
         }
         Ok(())
     }

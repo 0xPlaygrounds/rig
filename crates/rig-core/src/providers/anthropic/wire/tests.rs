@@ -76,7 +76,7 @@ fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
     let mut fold = <Completion as crate::wire::Operation>::fold(&request());
     for item in driver.drain() {
         let event = item.expect("the recorded reply decodes without an in-band error");
-        fold.absorb(event).expect("the fold accepts every event");
+        fold.absorb(&event).expect("the fold accepts every event");
     }
     Fold::<Completion>::finish(
         fold,

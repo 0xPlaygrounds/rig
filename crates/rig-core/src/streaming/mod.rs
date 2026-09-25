@@ -17,7 +17,8 @@ use crate::error::ErrorReport;
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
 use crate::operation::CompletionFold;
-pub use accumulator::BlockAccumulator;
+use crate::wire::Fold;
+pub(crate) use accumulator::{BlockAccumulator, Finalized};
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 pub use event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
 use futures::Stream;
@@ -38,19 +39,19 @@ pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<Assis
         .collect()
 }
 
-/// The folded completion response: the aggregated choice, its reasoning
+/// The folded completion response: the collected blocks, their reasoning
 /// stamped with `issuer`, plus the terminal record's usage and metadata,
 /// carrying `raw` as the provider's document for the turn. Usage reports no
 /// counter when the reply produced no terminal record.
 pub(crate) fn fold_finish(
-    mut accumulator: BlockAccumulator,
+    blocks: Vec<AssistantContent>,
     terminal: Option<&StreamFinal>,
     message_id: Option<String>,
     provider: String,
     issuer: &str,
     raw: serde_json::Value,
 ) -> CompletionResponse {
-    let choice = stamp_reasoning(accumulator.finish(), issuer);
+    let choice = stamp_reasoning(blocks, issuer);
     CompletionResponse::new(
         choice,
         terminal.map(|response| response.usage).unwrap_or_default(),
@@ -292,12 +293,12 @@ mod unknown_payload_tests;
 pub type StreamEvents =
     crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
 
-/// A completion reply's events after the fold step, and the fold itself.
+/// A completion reply's canonical events, and the fold collecting them.
 ///
-/// It yields each event as [`CompletionFold`] rewrote it: a closing
+/// The events are what the sink made of the reply: a closing
 /// [`StreamEvent::BlockEnd`] carries its finalized block, the terminal's
 /// finish reason is reconciled with the completed tool calls, duplicate
-/// terminals are dropped, and a malformed block surfaces as an in-band
+/// terminals are gone, and a malformed block is an in-band
 /// [`ErrorReport`]. Stop polling to pause; drop the stream to cancel.
 pub struct CompletionStream {
     events: StreamEvents,
@@ -349,9 +350,9 @@ impl Stream for CompletionStream {
                     Poll::Ready(None)
                 }
                 Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error))),
-                Poll::Ready(Some(Ok(event))) => match stream.fold.step(event) {
-                    Some(item) => Poll::Ready(Some(item)),
-                    None => continue,
+                Poll::Ready(Some(Ok(event))) => match stream.fold.absorb(&event) {
+                    Ok(()) => Poll::Ready(Some(Ok(event))),
+                    Err(error) => Poll::Ready(Some(Err(ErrorReport::from(&error)))),
                 },
             };
         }

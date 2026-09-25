@@ -51,6 +51,7 @@ fn assert_request_building(case: &str, error: &ProviderError) {
         | ProviderError::ProviderResponse(_)
         | ProviderError::InvalidAuthentication(_)
         | ProviderError::CacheExpired { .. }
+        | ProviderError::MalformedToolInput(_)
         | ProviderError::MismatchedDimensions { .. } => {
             panic!("{case}: an encode failure must not classify as {error:?}")
         }

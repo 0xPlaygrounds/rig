@@ -1,8 +1,10 @@
 //! Portable streaming types re-exported for classic runtime users.
 //!
 //! ```
-//! let accumulator = rig_agent::streaming::BlockAccumulator::new();
-//! assert!(accumulator.snapshot().is_empty());
+//! use rig_agent::streaming::{StreamEvent, StreamFinal};
+//!
+//! let terminal = StreamEvent::Final(StreamFinal::new("mock", Default::default(), serde_json::Value::Null));
+//! assert!(matches!(terminal, StreamEvent::Final(_)));
 //! ```
 
 pub use rig_core::streaming::*;

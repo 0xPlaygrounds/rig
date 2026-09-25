@@ -287,13 +287,19 @@ pub trait Sink<Op: Operation>: Default {
 
     /// Check the operation's sequence laws over this batch.
     fn check_laws(&self, _laws: &mut Self::Laws) {}
+
+    /// The reply reached its end without a terminal: close what is still
+    /// open, so nothing the decoder wrote is lost. The default has nothing
+    /// to close.
+    fn finish(&mut self) {}
 }
 
-/// The fold from a reply's events to its response.
+/// The fold from a reply's canonical events to its response. It never
+/// rewrites, drops or validates an event: the sink already did. It sees
+/// each event once, by reference, and keeps what it needs.
 pub trait Fold<Op: Operation>: Default {
-    /// Absorb one event. An error fails the whole operation: a buffered
-    /// reply has no stream to carry an in-band defect.
-    fn absorb(&mut self, event: Op::Event) -> Result<(), ProviderError>;
+    /// Absorb one event. An error fails the whole operation.
+    fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError>;
 
     /// The folded response.
     fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError>;
