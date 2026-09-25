@@ -60,7 +60,7 @@ fn opened(
             }),
         ));
     CompletionStream::opened(
-        CompletionFold::opened(provider, None),
+        CompletionFold::opened(provider, None, crate::wire::Mode::Streaming),
         Box::pin(events.map(|item| item.map_err(|error| ErrorReport::from(&error)))),
     )
 }

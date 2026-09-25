@@ -241,9 +241,13 @@ impl StreamTap {
             return Some(Err(ErrorReport::from(&error)));
         }
         matches!(event, StreamEvent::Final(_)).then(|| {
-            std::mem::take(self)
-                .fold
-                .finish_stream()
+            let fold = std::mem::take(self).fold;
+            let reply = crate::wire::Reply {
+                provider: fold.provider().to_owned(),
+                raw: serde_json::Value::Null,
+                provider_request_id: None,
+            };
+            crate::wire::Fold::finish(fold, reply)
                 .map(Outcome::Completion)
                 .map_err(|error| ErrorReport::from(&error))
         })

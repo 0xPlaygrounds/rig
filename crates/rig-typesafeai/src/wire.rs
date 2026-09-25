@@ -2,7 +2,7 @@
 
 use rig_core::client::{EnvError, env};
 use rig_core::error::EncodeError;
-use rig_core::operation::{One, Take};
+use rig_core::operation::{Events, Take};
 use rig_core::wire::{
     Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
     WireFrame,
@@ -19,7 +19,7 @@ impl Operation for Evaluation {
     type Event = Response;
     type Response = Response;
     type Capabilities = ();
-    type Output = One<Self>;
+    type Output = Events<Self>;
     type Fold = Take<Self>;
     type Telemetry = ();
     const NAME: &'static str = "evaluation";
@@ -27,9 +27,14 @@ impl Operation for Evaluation {
     fn is_terminal(_event: &Response) -> bool {
         true
     }
-    fn telemetry(_streaming: bool) {}
-    fn stamp_reply(response: &mut Response, reply: Reply) {
-        response.provider_request_id = reply.provider_request_id;
+    fn fold<W: Wire<Op = Self>>(_request: &Request, _wire: &W, _mode: Mode) -> Self::Fold {
+        Take::default()
+    }
+    fn telemetry(_mode: Mode) {}
+    fn stamp_reply(response: &mut Response, reply: &Reply) {
+        response
+            .provider_request_id
+            .clone_from(&reply.provider_request_id);
     }
 }
 

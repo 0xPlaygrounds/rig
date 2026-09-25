@@ -17,7 +17,7 @@ use crate::streaming::{
     StreamFinal, SyntheticIds, ToolCallEnd, UnknownPayload,
 };
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Fold, Operation, Reply, Sink};
+use crate::wire::{Fold, Mode, Operation, Reply, Sink};
 
 /// Generating an assistant turn, unary or streamed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,11 +41,48 @@ impl Operation for Completion {
         matches!(event, StreamEvent::Final(_))
     }
 
-    fn telemetry(streaming: bool) -> Self::Telemetry {
-        if streaming {
-            GenAiOperation::ChatStreaming
-        } else {
-            GenAiOperation::Chat
+    fn telemetry(mode: Mode) -> Self::Telemetry {
+        match mode {
+            Mode::Streaming => GenAiOperation::ChatStreaming,
+            Mode::Unary => GenAiOperation::Chat,
+        }
+    }
+
+    /// The fold names the provider and the reasoning issuer up front, so
+    /// reasoning streamed before the terminal record records its issuer.
+    fn fold<W: crate::wire::Wire<Op = Self>>(
+        request: &Self::Request,
+        wire: &W,
+        mode: Mode,
+    ) -> Self::Fold {
+        let issuer = wire
+            .reasoning_issuer(request.model.as_deref().or(wire.id()))
+            .map(str::to_owned);
+        CompletionFold::opened(wire.name(), issuer, mode)
+    }
+
+    /// The transport request id fills a gap on the terminal record.
+    fn stamp_event(event: &mut Self::Event, reply: &Reply) {
+        if let StreamEvent::Final(terminal) = event
+            && terminal.provider_request_id.is_none()
+        {
+            terminal
+                .provider_request_id
+                .clone_from(&reply.provider_request_id);
+        }
+    }
+
+    /// The terminal record is what a stream records.
+    fn record_event(span: &tracing::Span, event: &Self::Event) {
+        if let StreamEvent::Final(terminal) = event {
+            span.record_response(
+                terminal
+                    .response_id
+                    .as_deref()
+                    .or(terminal.message_id.as_deref()),
+                terminal.model.as_deref(),
+                &terminal.usage,
+            );
         }
     }
 
@@ -149,15 +186,25 @@ pub struct CompletionFold {
     /// The issuer of this reply's reasoning when a wire names it before the
     /// terminal record.
     reasoning_issuer: Option<String>,
+    /// Whether the reply arrived whole. A whole reply that named no
+    /// terminal is the provider answering with nothing; a stream that ended
+    /// the same way was cut short and is refused.
+    whole: bool,
 }
 
 impl CompletionFold {
-    /// The fold of a stream a wire opened, under its provider name and
-    /// the reasoning issuer it names up front.
-    pub(crate) fn opened(provider: impl Into<String>, reasoning_issuer: Option<String>) -> Self {
+    /// The fold of a reply `provider` opened in `mode`, naming the reasoning
+    /// issuer it knows up front. [`Operation::fold`] builds it from the
+    /// wire; a caller folding a reply it decoded itself names the provider.
+    pub fn opened(
+        provider: impl Into<String>,
+        reasoning_issuer: Option<String>,
+        mode: Mode,
+    ) -> Self {
         Self {
             provider: provider.into(),
             reasoning_issuer,
+            whole: mode == Mode::Unary,
             ..Self::default()
         }
     }
@@ -254,27 +301,6 @@ impl CompletionFold {
                 .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
         }
     }
-
-    /// The streamed turn: the collected blocks with the terminal record's
-    /// usage, metadata and document as `raw`. A stream that produced no
-    /// terminal record is truncated and is refused.
-    pub(crate) fn finish_stream(self) -> Result<CompletionResponse, ProviderError> {
-        let Some(terminal) = self.terminal.as_ref() else {
-            return Err(ProviderError::Response(
-                "provider stream ended without a terminal record; treating the turn as truncated"
-                    .to_owned(),
-            ));
-        };
-        let issuer = terminal.issuer().to_owned();
-        Ok(crate::streaming::fold_finish(
-            self.snapshot(),
-            Some(terminal),
-            self.message_id.clone(),
-            self.provider.clone(),
-            &issuer,
-            terminal.raw.clone(),
-        ))
-    }
 }
 
 impl Fold<Completion> for CompletionFold {
@@ -315,22 +341,32 @@ impl Fold<Completion> for CompletionFold {
         Ok(())
     }
 
+    /// The turn: the collected blocks with the terminal record's usage and
+    /// metadata. A whole reply's document is the response's `raw`; a
+    /// stream's is its terminal record's. A stream that produced no
+    /// terminal record was cut short and is refused.
     fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
-        // The buffered reply's document is the response's `raw`, not the
-        // terminal record's: the wire decoded the whole body at once.
-        let issuer = self
-            .terminal
-            .as_ref()
-            .map_or(reply.provider.clone(), |terminal| {
-                terminal.issuer().to_owned()
-            });
+        let terminal = self.terminal.as_ref();
+        if !self.whole && terminal.is_none() {
+            return Err(ProviderError::Response(
+                "provider stream ended without a terminal record; treating the turn as truncated"
+                    .to_owned(),
+            ));
+        }
+        let issuer = terminal.map_or(self.provider.clone(), |terminal| {
+            terminal.issuer().to_owned()
+        });
+        let raw = match (self.whole, terminal) {
+            (false, Some(terminal)) => terminal.raw.clone(),
+            _ => reply.raw,
+        };
         let response = crate::streaming::fold_finish(
             self.snapshot(),
-            self.terminal.as_ref(),
-            self.message_id,
-            reply.provider,
+            terminal,
+            self.message_id.clone(),
+            self.provider.clone(),
             &issuer,
-            reply.raw,
+            raw,
         );
         // The terminal's own id wins; the reply headers only fill a gap.
         if response.provider_request_id.is_none() {

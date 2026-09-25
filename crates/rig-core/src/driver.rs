@@ -27,7 +27,6 @@ use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
 use crate::operation::{Completion, CompletionFold};
 use crate::providers::internal::wire::WireEvent;
 use crate::streaming::{CompletionStream, StreamEvent};
-use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
     Decoder, Fold, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire,
@@ -191,7 +190,7 @@ where
         request: Request<W>,
         observation: Option<AdapterContext>,
     ) -> Result<Response<W>, ProviderError> {
-        let span = self.span(&request, false);
+        let span = self.span(&request, Mode::Unary);
         let result = self.fold(request, observation, &span).await;
         if let Err(error) = &result {
             record_request_id(&span, error.provider_request_id());
@@ -215,7 +214,7 @@ where
         ),
         ProviderError,
     > {
-        let span = self.span(&request, mode == Mode::Streaming);
+        let span = self.span(&request, mode);
         let steps = self.run(request, mode, observation, span.clone())?;
         Ok((span, Box::pin(steps)))
     }
@@ -239,11 +238,11 @@ where
         )))
     }
 
-    fn span(&self, request: &Request<W>, streaming: bool) -> tracing::Span {
+    fn span(&self, request: &Request<W>, mode: Mode) -> tracing::Span {
         <W::Op as Operation>::span(
             self.wire.name(),
             self.wire.id(),
-            self.wire.telemetry(streaming),
+            self.wire.telemetry(mode),
             request,
         )
     }
@@ -295,7 +294,7 @@ where
     > {
         let wire = self.wire.clone();
         let transport = self.transport.clone();
-        let mut fold = <W::Op as Operation>::fold(&request);
+        let mut fold = <W::Op as Operation>::fold(&request, &wire, mode);
         let mut request = request;
         <W::Op as Operation>::scope_to_wire(&mut request, &wire);
         let payload = wire.encode(request, mode)?;
@@ -497,22 +496,18 @@ where
         request: crate::completion::CompletionRequest,
         observation: Option<AdapterContext>,
     ) -> Result<CompletionStream, ProviderError> {
-        let issuer = self
-            .wire
-            .reasoning_issuer(request.model.as_deref().or(self.wire.id()))
-            .map(str::to_owned);
+        let fold = Completion::fold(&request, &self.wire, Mode::Streaming);
         let (span, steps) = self.steps(request, Mode::Streaming, observation)?;
-        Ok(completion_stream(span, self.wire.name(), issuer, steps))
+        Ok(completion_stream(span, fold, steps))
     }
 }
 
 /// The completion stream over the driver's streamed steps: events under
 /// `span`, the terminal record and errors stamped with the transport request
-/// id, folded under `provider` and the reasoning `issuer` named up front.
+/// id, collected by `fold`.
 pub(crate) fn completion_stream(
     span: tracing::Span,
-    provider: &str,
-    issuer: Option<String>,
+    fold: CompletionFold,
     steps: impl futures::Stream<Item = Result<Step<Completion>, ProviderError>>
     + WasmCompatSend
     + 'static,
@@ -530,19 +525,13 @@ pub(crate) fn completion_stream(
                 None
             }
             Ok(Step::Event(mut event)) => {
-                if let StreamEvent::Final(terminal) = &mut event {
-                    if terminal.provider_request_id.is_none() {
-                        terminal.provider_request_id = request_id.clone();
-                    }
-                    recorder.record_response(
-                        terminal
-                            .response_id
-                            .as_deref()
-                            .or(terminal.message_id.as_deref()),
-                        terminal.model.as_deref(),
-                        &terminal.usage,
-                    );
-                }
+                let reply = Reply {
+                    provider: String::new(),
+                    raw: serde_json::Value::Null,
+                    provider_request_id: request_id.clone(),
+                };
+                Completion::stamp_event(&mut event, &reply);
+                Completion::record_event(&recorder, &event);
                 Some(Ok::<StreamEvent, _>(event))
             }
             Ok(Step::Done(_)) => None,
@@ -553,7 +542,6 @@ pub(crate) fn completion_stream(
             }
         })
     });
-    let fold = CompletionFold::opened(provider, issuer);
     CompletionStream::opened(fold, Box::pin(events))
 }
 

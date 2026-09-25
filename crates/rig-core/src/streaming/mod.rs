@@ -330,7 +330,12 @@ impl CompletionStream {
     /// The assembled turn. A stream that yielded no terminal record is
     /// truncated and is refused. Events not yet polled are not part of it.
     pub fn finish(self) -> Result<CompletionResponse, ProviderError> {
-        self.fold.finish_stream()
+        let reply = crate::wire::Reply {
+            provider: self.fold.provider().to_owned(),
+            raw: serde_json::Value::Null,
+            provider_request_id: None,
+        };
+        self.fold.finish(reply)
     }
 }
 

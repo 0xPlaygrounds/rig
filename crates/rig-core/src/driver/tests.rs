@@ -807,11 +807,11 @@ async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
 #[test]
 fn the_completion_operation_names_its_span_by_mode() {
     assert_eq!(
-        Completion::telemetry(false),
+        Completion::telemetry(Mode::Unary),
         crate::telemetry::GenAiOperation::Chat
     );
     assert_eq!(
-        Completion::telemetry(true),
+        Completion::telemetry(Mode::Streaming),
         crate::telemetry::GenAiOperation::ChatStreaming
     );
 }

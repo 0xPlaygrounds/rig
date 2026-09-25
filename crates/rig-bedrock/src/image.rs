@@ -16,7 +16,7 @@ use aws_smithy_types::Blob;
 use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
-use rig_core::operation::{ImageGeneration, One};
+use rig_core::operation::{Events, ImageGeneration};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::wire::{Decoder, Mode, Sink, Wire};
 
@@ -129,7 +129,7 @@ impl Decoder<ImageGeneration, Vec<u8>> for ImagesDecoder {
         wire::classify_typed_event(TypedEvent::Modeled(body))
     }
 
-    fn interpret(&mut self, body: Vec<u8>, out: &mut One<ImageGeneration>) {
+    fn interpret(&mut self, body: Vec<u8>, out: &mut Events<ImageGeneration>) {
         let decoded = String::from_utf8(body)
             .map_err(|error| ProviderError::Response(error.to_string()))
             .and_then(|body| {

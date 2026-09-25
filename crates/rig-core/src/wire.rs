@@ -201,24 +201,28 @@ pub trait Operation: Sized + 'static {
     /// Whether this event signals provider completion and stops driver consumption.
     fn is_terminal(event: &Self::Event) -> bool;
 
-    /// Creates a response fold, optionally retaining request data needed to
-    /// associate output with input. Defaults to an empty fold.
-    fn fold(_request: &Self::Request) -> Self::Fold {
-        Self::Fold::default()
-    }
+    /// The fold for one reply. It knows the wire and the mode from birth,
+    /// as [`Wire::decoder`] does: what EOF means is fixed before the first
+    /// frame, and a fold that names its provider up front reads it off the
+    /// wire.
+    fn fold<W: Wire<Op = Self>>(request: &Self::Request, wire: &W, mode: Mode) -> Self::Fold;
 
     /// Scope a request to the wire about to encode it: drop request content
     /// that no issuer the wire replays for the request's model can
     /// interpret. Operations with no such content do nothing.
     fn scope_to_wire<W: Wire<Op = Self>>(_request: &mut Self::Request, _wire: &W) {}
 
-    /// Stamp what the driver learned about a unary reply beyond its events.
-    fn stamp_reply(_response: &mut Self::Response, _reply: Reply) {}
+    /// Stamp what the driver learned about the whole reply beyond its
+    /// events onto the response.
+    fn stamp_reply(_response: &mut Self::Response, _reply: &Reply) {}
 
-    /// The canonical telemetry operation for a unary (`false`) or streaming
-    /// (`true`) call. A wire whose endpoint has its own canonical name
-    /// overrides [`Wire::telemetry`].
-    fn telemetry(streaming: bool) -> Self::Telemetry;
+    /// Stamp what the driver learned about the reply so far onto one of
+    /// its events: the transport request id onto a terminal record.
+    fn stamp_event(_event: &mut Self::Event, _reply: &Reply) {}
+
+    /// The canonical telemetry operation for a call in `mode`. A wire whose
+    /// endpoint has its own canonical name overrides [`Wire::telemetry`].
+    fn telemetry(mode: Mode) -> Self::Telemetry;
 
     /// The operation's telemetry span. The default is no span: an operation
     /// with nothing to record (verification, model listing) opens none.
@@ -231,8 +235,13 @@ pub trait Operation: Sized + 'static {
         tracing::Span::none()
     }
 
-    /// Record the folded response onto the operation's span.
+    /// Record the folded response onto the operation's span: what a call
+    /// records when it finishes.
     fn record(_span: &tracing::Span, _response: &Self::Response) {}
+
+    /// Record one streamed event onto the operation's span: what a stream
+    /// records at its terminal, since it may never finish.
+    fn record_event(_span: &tracing::Span, _event: &Self::Event) {}
 
     /// Adds the provider and request path to a failed reply's error. The
     /// default adds nothing.
@@ -296,8 +305,9 @@ pub trait Sink<Op: Operation>: Default {
 
 /// The fold from a reply's canonical events to its response. It never
 /// rewrites, drops or validates an event: the sink already did. It sees
-/// each event once, by reference, and keeps what it needs.
-pub trait Fold<Op: Operation>: Default {
+/// each event once, by reference, and keeps what it needs. Built by
+/// [`Operation::fold`], which fixes what EOF means before the first event.
+pub trait Fold<Op: Operation> {
     /// Absorb one event. An error fails the whole operation.
     fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError>;
 
@@ -456,8 +466,8 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
 
     /// The canonical telemetry operation this wire performs. Override when
     /// the endpoint has its own name (Gemini `generate_content`).
-    fn telemetry(&self, streaming: bool) -> Telemetry<Self> {
-        <Self::Op as Operation>::telemetry(streaming)
+    fn telemetry(&self, mode: Mode) -> Telemetry<Self> {
+        <Self::Op as Operation>::telemetry(mode)
     }
 }
 

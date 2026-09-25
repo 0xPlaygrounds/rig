@@ -6,7 +6,7 @@
 //! assert_eq!(ContextCache::NAME, "cached_content");
 //! ```
 
-use super::One;
+use super::Events;
 use crate::error::ProviderError;
 use crate::providers::gemini::cached_content::{CachedContentReply, CachedContentRequest};
 use crate::wire::{Fold, Operation, Reply};
@@ -21,7 +21,7 @@ impl Operation for ContextCache {
     type Event = CachedContentReply;
     type Response = CachedContentReply;
     type Capabilities = ();
-    type Output = One<Self>;
+    type Output = Events<Self>;
     type Fold = CachedContentFold;
     type Telemetry = ();
 
@@ -31,7 +31,15 @@ impl Operation for ContextCache {
         true
     }
 
-    fn telemetry(_streaming: bool) -> Self::Telemetry {}
+    fn fold<W: crate::wire::Wire<Op = Self>>(
+        _request: &Self::Request,
+        _wire: &W,
+        _mode: crate::wire::Mode,
+    ) -> Self::Fold {
+        CachedContentFold::default()
+    }
+
+    fn telemetry(_mode: crate::wire::Mode) -> Self::Telemetry {}
 }
 
 /// Concatenates listing pages in arrival order or retains the first resource.

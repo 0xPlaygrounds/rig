@@ -22,9 +22,9 @@ pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
 
     fn id(&self) -> Option<&str>;
 
-    fn reasoning_issuer(&self, model: Option<&str>) -> Option<&str>;
-
     fn capabilities(&self) -> Op::Capabilities;
+
+    fn fold(&self, request: &Op::Request, mode: Mode) -> Op::Fold;
 
     fn call(
         &self,
@@ -59,12 +59,16 @@ where
         self.wire.id()
     }
 
-    fn reasoning_issuer(&self, model: Option<&str>) -> Option<&str> {
-        self.wire.reasoning_issuer(model)
-    }
-
     fn capabilities(&self) -> <W::Op as Operation>::Capabilities {
         self.wire.capabilities()
+    }
+
+    fn fold(
+        &self,
+        request: &<W::Op as Operation>::Request,
+        mode: Mode,
+    ) -> <W::Op as Operation>::Fold {
+        <W::Op as Operation>::fold(request, &self.wire, mode)
     }
 
     fn call(
@@ -218,12 +222,9 @@ impl DynModel<Completion> {
         request: CompletionRequest,
         observation: Option<AdapterContext>,
     ) -> Result<CompletionStream, ProviderError> {
-        let issuer = self
-            .inner
-            .reasoning_issuer(request.model.as_deref().or(self.id()))
-            .map(str::to_owned);
+        let fold = self.inner.fold(&request, Mode::Streaming);
         let (span, steps) = self.inner.steps(request, Mode::Streaming, observation)?;
-        Ok(completion_stream(span, self.name(), issuer, steps))
+        Ok(completion_stream(span, fold, steps))
     }
 }
 

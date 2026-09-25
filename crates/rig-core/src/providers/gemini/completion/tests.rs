@@ -1980,10 +1980,13 @@ fn the_mode_chooses_the_endpoint_and_the_framing() {
 fn the_wire_keeps_its_span_names() {
     let wire = wire("gemini-2.5-flash");
     assert_eq!(
-        Wire::telemetry(&wire, false),
+        Wire::telemetry(&wire, Mode::Unary),
         GenAiOperation::GenerateContent
     );
-    assert_eq!(Wire::telemetry(&wire, true), GenAiOperation::ChatStreaming);
+    assert_eq!(
+        Wire::telemetry(&wire, Mode::Streaming),
+        GenAiOperation::ChatStreaming
+    );
 }
 
 /// An `inlineData` part is model output the *stream* vocabulary cannot

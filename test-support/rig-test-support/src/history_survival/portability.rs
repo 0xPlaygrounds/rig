@@ -44,7 +44,7 @@ where
     let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(body.to_owned()));
     driver.finish();
-    let mut fold = CompletionFold::default();
+    let mut fold = CompletionFold::opened(wire.name(), None, Mode::Unary);
     for item in driver.drain() {
         fold.absorb(&item?)?;
     }
