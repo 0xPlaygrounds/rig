@@ -3,12 +3,11 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::prelude::*;
-
 use super::super::support::with_ollama_cassette;
 use crate::support::{
     STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_smoke_structured_output,
 };
+use rig::wire::Wire as _;
 
 const MODEL: &str = "qwen3:4b";
 
@@ -17,8 +16,7 @@ async fn structured_output_smoke() {
     with_ollama_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .output_schema::<SmokeStructuredOutput>()
                 .additional_params(serde_json::json!({ "think": false }))
                 .build();

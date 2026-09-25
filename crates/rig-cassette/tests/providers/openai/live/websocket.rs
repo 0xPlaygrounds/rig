@@ -1,7 +1,6 @@
 //! Migrated from `examples/openai_websocket_mode.rs`.
 
 use anyhow::Result;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -10,6 +9,7 @@ use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseCh
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 
 use crate::support::assert_nonempty_response;
+use rig::completion::CompletionRequestBuilder;
 
 fn extract_text(choice: &[AssistantContent]) -> String {
     choice
@@ -25,23 +25,20 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn websocket_session_roundtrip() -> Result<()> {
-    let client = OpenAI::from_env()
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
-    let model = client.responses(openai::GPT_4O_MINI);
+    let client = OpenAI::from_env().expect("config should build from env");
+    let model = client.responses(openai::GPT_4O_MINI).on(rig::transport());
     let mut session = model.responses_websocket().await?;
 
-    let warmup_request = model
-        .completion_request("You will answer a follow-up question about websocket mode.")
-        .preamble("Be precise and concise.".to_string())
-        .build();
+    let warmup_request =
+        CompletionRequestBuilder::new("You will answer a follow-up question about websocket mode.")
+            .preamble("Be precise and concise.".to_string())
+            .build();
     let warmup_id = session.warmup(warmup_request).await?;
     anyhow::ensure!(!warmup_id.is_empty(), "warmup should return a response id");
 
-    let request = model
-        .completion_request("Explain the benefit of websocket mode in one sentence.")
-        .build();
+    let request =
+        CompletionRequestBuilder::new("Explain the benefit of websocket mode in one sentence.")
+            .build();
     session.send(request).await?;
 
     let mut streamed_text = String::new();
@@ -71,9 +68,9 @@ async fn websocket_session_roundtrip() -> Result<()> {
     }
     assert_nonempty_response(&streamed_text);
 
-    let chained_request = model
-        .completion_request("Now restate that as three very short bullet points.")
-        .build();
+    let chained_request =
+        CompletionRequestBuilder::new("Now restate that as three very short bullet points.")
+            .build();
     let response = session.completion(chained_request).await?;
     let text = extract_text(&response.choice);
     assert_nonempty_response(&text);

@@ -6,13 +6,12 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = anthropic::Anthropic::from_env()?;
 //!
-//! let sonnet = provider.messages(anthropic::completion::CLAUDE_SONNET_4_6);
+//! let sonnet = provider.completion(anthropic::completion::CLAUDE_SONNET_4_6);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! Bind a wire with `.bind(transport)` to obtain a [`Bound`](crate::driver::Bound)
-//! implementing the consumer-facing model traits.
+//! Pair a wire with a transport in a [`Model`](crate::Model) to send it.
 
 pub mod completion;
 pub mod streaming;

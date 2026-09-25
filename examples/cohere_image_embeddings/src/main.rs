@@ -7,9 +7,8 @@
 //! ```
 
 use anyhow::{Context, Result};
-use rig::embeddings::ImageEmbeddingModel;
-use rig::prelude::*;
 use rig::providers::cohere::Cohere;
+use rig::wire::Wire as _;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -19,11 +18,16 @@ async fn main() -> Result<()> {
     let image = std::fs::read(&path)
         .with_context(|| format!("failed to read image at {}", path.to_string_lossy()))?;
 
-    let cohere = Cohere::from_env()?.bound()?;
+    let cohere = Cohere::from_env()?;
     // Embed v3 embeds images with one fixed model at one fixed width, so the
     // image-embedding wire takes neither a model name nor a dimension count.
-    let model = cohere.image_embedding("", None);
-    let embedding = model.embed_image(&image).await?;
+    let model = cohere.image_embedding().on(rig::transport());
+    let response = model.call(vec![image.clone()]).await?;
+    let embedding = response
+        .embeddings
+        .into_iter()
+        .next()
+        .context("the provider returned no embedding")?;
 
     println!(
         "embedded {} bytes into {} dimensions",

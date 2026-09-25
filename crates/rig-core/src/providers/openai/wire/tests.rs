@@ -100,6 +100,15 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
     assert_eq!(restored.provider.dialect, chatgpt);
 }
 
+/// The endpoint template a wire's encoded request declares.
+fn route_of(wire: &OpenAiWire) -> Option<&'static str> {
+    use crate::wire::Wire as _;
+    let request = crate::completion::CompletionRequestBuilder::new("hi").build();
+    wire.encode(request, crate::wire::Mode::Unary)
+        .expect("the request encodes")
+        .route
+}
+
 /// The default completion wire is the dialect's flagship route, and it is
 /// data like the two wires it chooses between: it stores without the
 /// credential and loads back onto the same route.
@@ -110,8 +119,8 @@ fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
     let groq = OpenAI::with_key(&GROQ, "gsk-secret").completion("llama-3.3-70b-versatile");
     assert!(matches!(openai, OpenAiWire::Responses(_)), "{openai:?}");
     assert!(matches!(groq, OpenAiWire::Chat(_)), "{groq:?}");
-    assert_eq!(openai.route(), Some("/responses"));
-    assert_eq!(groq.route(), Some("/chat/completions"));
+    assert_eq!(route_of(&openai), Some("/responses"));
+    assert_eq!(route_of(&groq), Some("/chat/completions"));
 
     for (wire, secret) in [(openai, "sk-secret"), (groq, "gsk-secret")] {
         let json = serde_json::to_string(&wire).expect("the wire serializes");
@@ -133,16 +142,18 @@ fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
 /// would not survive a round trip.
 #[test]
 fn a_configured_route_overrides_the_dialects_and_round_trips() {
-    use crate::wire::Wire as _;
     let on_chat = OpenAI::new("sk-secret").with_route(Route::Chat);
     let on_responses = OpenAI::with_key(&GROQ, "gsk-secret").with_route(Route::Responses);
     assert_eq!(on_chat.completion_route(), Route::Chat);
     assert_eq!(on_responses.completion_route(), Route::Responses);
     assert_eq!(
-        on_chat.completion("gpt-5.2").route(),
+        route_of(&on_chat.completion("gpt-5.2")),
         Some("/chat/completions")
     );
-    assert_eq!(on_responses.completion("llama").route(), Some("/responses"));
+    assert_eq!(
+        route_of(&on_responses.completion("llama")),
+        Some("/responses")
+    );
 
     let restored: OpenAI =
         serde_json::from_str(&serde_json::to_string(&on_chat).expect("serializes"))
@@ -258,16 +269,11 @@ fn a_dialect_without_a_verify_endpoint_refuses_to_invent_one() {
 
     assert!(
         OpenAI::with_key(&PERPLEXITY, "k")
-            .verify_wire()
+            .verify()
             .encode((), Mode::Unary)
             .is_err()
     );
-    assert!(
-        OpenAI::new("k")
-            .verify_wire()
-            .encode((), Mode::Unary)
-            .is_ok()
-    );
+    assert!(OpenAI::new("k").verify().encode((), Mode::Unary).is_ok());
 }
 
 /// Azure accepts an account key *or* an Entra bearer token, and they are not
@@ -380,14 +386,14 @@ fn only_a_dialect_with_a_rerank_path_reranks() {
     };
     assert!(
         OpenAI::new("k")
-            .reranker("any")
+            .rerank("any")
             .encode(request(), Mode::Unary)
             .is_err(),
         "OpenAI has no reranking endpoint"
     );
     assert!(
         OpenAI::with_key(&LLAMACPP, "")
-            .reranker("bge-reranker-v2-m3")
+            .rerank("bge-reranker-v2-m3")
             .encode(request(), Mode::Unary)
             .is_ok()
     );

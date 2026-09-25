@@ -1,18 +1,79 @@
-//! `raw_completion` is the escape hatch for everything rig does not
-//! normalize, so what Bedrock sends has to survive the trip through
-//! `InternalConverseOutput`. It did not: the conversion's rest pattern
-//! discarded the guardrail trace, the performance configuration, the service
-//! tier and the AWS request id.
+//! The unary Converse frame, `InternalConverseOutput`, carries everything
+//! rig does not normalize, so what Bedrock sends has to survive the trip
+//! into it. A transport decorator reads it off the frame stream, SDK-typed
+//! fields included.
 //!
 //! The guardrail trace is the one that costs a caller real information. A
 //! blocked turn normalizes to `FinishReason::ContentFilter` and nothing else;
 //! only the trace says which policy fired and on what text.
 
+use rig::wire::Wire as _;
+use std::sync::{Arc, Mutex};
+
+use futures::StreamExt;
 use rig::bedrock;
-use rig::completion::CompletionModel;
-use rig::prelude::*;
+use rig::bedrock::client::BedrockRuntime;
+use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
+use rig::bedrock::types::converse_output::InternalConverseOutput;
+use rig::driver::{Observation, Opened, Transport};
+use rig::error::ProviderError;
+use rig::wire::Mode;
 
 use super::super::support::with_bedrock_cassette;
+use rig::completion::CompletionRequestBuilder;
+
+/// Keeps every unary Converse output the runtime returns.
+#[derive(Clone)]
+struct Keep {
+    runtime: BedrockRuntime,
+    outputs: Arc<Mutex<Vec<InternalConverseOutput>>>,
+}
+
+impl Keep {
+    fn new(runtime: BedrockRuntime) -> Self {
+        Self {
+            runtime,
+            outputs: Arc::default(),
+        }
+    }
+
+    fn output(&self) -> InternalConverseOutput {
+        self.outputs
+            .lock()
+            .expect("kept outputs should not be poisoned")
+            .pop()
+            .expect("the call should return a unary Converse output")
+    }
+}
+
+impl Transport<Converse> for Keep {
+    fn send(
+        &self,
+        payload: ConverseRequest,
+        mode: Mode,
+        observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let sent = Transport::<Converse>::send(&self.runtime, payload, mode, observation)?;
+        let outputs = Arc::clone(&self.outputs);
+        Ok(async move {
+            let mut opened = sent.await;
+            opened.frames = Box::pin(opened.frames.inspect(
+                move |frame: &Result<ConverseFrame, ProviderError>| {
+                    if let Ok(ConverseFrame::Whole(output)) = frame {
+                        outputs
+                            .lock()
+                            .expect("kept outputs should not be poisoned")
+                            .push((**output).clone());
+                    }
+                },
+            ));
+            opened
+        })
+    }
+}
 
 /// The guardrail this scenario was recorded against. It is an account-scoped
 /// resource name, not a credential, and the guardrail itself was deleted after
@@ -23,29 +84,31 @@ const GUARDRAIL_VERSION: &str = "DRAFT";
 /// Recorded against a guardrail that blocks a specific phrase: Bedrock stops
 /// the turn with `guardrail_intervened` and explains itself in `trace`.
 #[tokio::test]
-async fn guardrail_trace_survives_into_raw_completion() {
+async fn guardrail_trace_survives_into_the_converse_frame() {
     with_bedrock_cassette(
         "raw_provider_data/guardrail_trace_survives_into_raw_completion",
         |client| async move {
-            let model = client
-                .completion(bedrock::completion::AMAZON_NOVA_LITE)
+            let keep = Keep::new(client.0);
+            let model = Converse::new(bedrock::completion::AMAZON_NOVA_LITE)
                 .with_guardrail(
                     GUARDRAIL_ID,
                     GUARDRAIL_VERSION,
                     aws_sdk_bedrockruntime::types::GuardrailTrace::Enabled,
-                );
+                )
+                .on(keep.clone());
 
-            let request = model
-                .completion_request("Explain a gravitational singularity in one sentence.")
-                .max_tokens(64)
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Explain a gravitational singularity in one sentence.",
+            )
+            .max_tokens(64)
+            .build();
 
-            let response = model
-                .raw_completion(request)
+            model
+                .call(request)
                 .await
                 .expect("guardrail-intervened completion should still return a response");
 
-            let output = &response.0;
+            let output = keep.output();
             assert!(
                 matches!(
                     output.stop_reason,
@@ -57,7 +120,7 @@ async fn guardrail_trace_survives_into_raw_completion() {
 
             let trace = output
                 .trace()
-                .expect("the guardrail trace must reach raw_completion");
+                .expect("the guardrail trace must reach the Converse frame");
             let guardrail = trace
                 .guardrail()
                 .expect("a guardrail-intervened turn carries a guardrail assessment");
@@ -92,12 +155,11 @@ async fn request_id_survives_into_streamed_terminal() {
         "raw_provider_data/request_id_survives_into_streamed_terminal",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
-                .completion_request("Reply with the single word: ready.")
+            let request = CompletionRequestBuilder::new("Reply with the single word: ready.")
                 .max_tokens(16)
                 .build();
 
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
@@ -122,25 +184,26 @@ async fn request_id_survives_into_streamed_terminal() {
 /// The AWS request id rides an HTTP header, so it is present on every call —
 /// including the ordinary ones — and it is what AWS support asks for.
 #[tokio::test]
-async fn request_id_survives_into_raw_completion() {
+async fn request_id_survives_into_the_converse_frame() {
     with_bedrock_cassette(
         "raw_provider_data/request_id_survives_into_raw_completion",
         |client| async move {
-            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
-                .completion_request("Reply with the single word: ready.")
+            let keep = Keep::new(client.0);
+            let model = Converse::new(bedrock::completion::AMAZON_NOVA_LITE).on(keep.clone());
+            let request = CompletionRequestBuilder::new("Reply with the single word: ready.")
                 .max_tokens(16)
                 .build();
 
             let response = model
-                .raw_completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
-            let request_id = response
-                .0
+            let output = keep.output();
+            let request_id = output
                 .request_id()
-                .expect("the AWS request id must reach raw_completion");
+                .expect("the AWS request id must reach the Converse frame");
+            assert_eq!(response.provider_request_id.as_deref(), Some(request_id));
             assert!(
                 !request_id.trim().is_empty(),
                 "expected a non-empty AWS request id"

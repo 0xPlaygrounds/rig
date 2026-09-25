@@ -22,18 +22,9 @@ fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
 }
 
 impl AwsCompletionRequest {
-    /// A Converse request for `model`, with reasoning another issuer
-    /// produced dropped from the history
-    /// ([`crate::types::assistant_content::reasoning_issuer`]).
-    pub fn for_model(
-        mut inner: rig_core::completion::CompletionRequest,
-        model: &str,
-        prompt_caching: bool,
-    ) -> Self {
-        rig_core::message::retain_replayable_reasoning(
-            &mut inner.chat_history,
-            &[crate::types::assistant_content::reasoning_issuer(model)],
-        );
+    /// A Converse request over `inner`, whose history the driver already
+    /// scoped to the reasoning this model can replay.
+    pub fn new(inner: rig_core::completion::CompletionRequest, prompt_caching: bool) -> Self {
         Self {
             inner,
             prompt_caching,

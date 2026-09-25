@@ -1,9 +1,10 @@
 //! Cassette-backed Venice text-to-speech smoke test.
 
-use rig::audio_generation::AudioGenerationModel;
 use rig::providers::venice;
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_direct_cassette;
+use rig::audio_generation::AudioGenerationRequestBuilder;
 
 /// Venice's `response_format` has no field on Rig's audio request, so it
 /// travels through `additional_params` — which is also what this pins.
@@ -16,13 +17,15 @@ use super::super::support::with_venice_direct_cassette;
 async fn audio_generation_smoke() {
     with_venice_direct_cassette(
         "audio_generation/audio_generation_smoke",
-        |client| async move {
-            let model = client.audio_generation(venice::TTS_KOKORO);
+        |client, http| async move {
+            let model = client.audio_generation(venice::TTS_KOKORO).on(http.clone());
             let response = model
-                .audio_generation_request("Rig speaks.", "af_sky")
-                .speed(1.0)
-                .additional_params(serde_json::json!({ "response_format": "mp3" }))
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new("Rig speaks.", "af_sky")
+                        .speed(1.0)
+                        .additional_params(serde_json::json!({ "response_format": "mp3" }))
+                        .build(),
+                )
                 .await
                 .expect("Venice speech synthesis should succeed");
 

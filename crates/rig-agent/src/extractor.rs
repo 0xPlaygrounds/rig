@@ -1,14 +1,14 @@
 //! Typed extraction through an agent's `submit` output tool, with configurable retries.
 //!
 //! ```no_run
-//! use rig_agent::prelude::*;
+//! use rig_core::wire::Wire as _;
+//! use rig_agent::extractor::ExtractorBuilder;
 //! use rig_core::providers::openai::{self, OpenAI};
-//! use rig_reqwest::prelude::*;
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person { name: String, age: u8 }
-//! let provider = OpenAI::from_env()?.bound()?;
-//! let extractor = provider.extractor::<Person>(openai::GPT_4O).retries(2).build();
+//! let model = OpenAI::from_env()?.completion(openai::GPT_4O).on(rig_reqwest::shared());
+//! let extractor = ExtractorBuilder::<Person>::new(model).retries(2).build();
 //! let person = extractor.extract("John is 30.").await?.output;
 //! # Ok(())
 //! # }
@@ -25,10 +25,7 @@ use rig_core::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-use crate::{
-    agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun},
-    completion::CompletionModel,
-};
+use crate::agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun};
 
 const SUBMIT_TOOL_NAME: &str = "submit";
 
@@ -56,10 +53,10 @@ where
     }
 
     /// Register `model` on the extractor's bus and use it.
-    pub fn with_model<M>(mut self, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn with_model(
+        mut self,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         self.agent.set_model(model);
         self
     }
@@ -118,10 +115,7 @@ where
     T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// An extractor of `T` over `model`.
-    pub fn new<M>(model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn new(model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>) -> Self {
         Self::from_agent_builder(AgentBuilder::new(model))
     }
 

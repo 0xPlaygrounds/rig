@@ -6,7 +6,8 @@ use super::chat_tool_lifecycle_matrix::{
 };
 use crate::ecs_agent::EcsAgent;
 use anyhow::Result;
-use rig::{prelude::*, providers::openai, tool::Tool};
+use rig::wire::Wire as _;
+use rig::{providers::openai, tool::Tool};
 use rig_ecs::{
     agent::{AdditionalParams, Failure, MaxTokens, ToolCallSlot},
     bus::{PendingEffect, Streamed},
@@ -87,13 +88,17 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_cell(
-    client: Bound<openai::wire::OpenAI>,
+    client: openai::wire::OpenAI,
     cell: Cell,
     observed: SharedObservation,
 ) -> Result<()> {
     assert_eq!(cell.surface, Surface::Agent);
     let invocations = InvocationLog::default();
-    let mut ecs = EcsAgent::new(client.chat(model_name(cell.model)), PREAMBLE, 1);
+    let mut ecs = EcsAgent::new(
+        client.chat(model_name(cell.model)).on(rig::transport()),
+        PREAMBLE,
+        1,
+    );
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         MaxTokens(Some(128)),
         AdditionalParams(Some(

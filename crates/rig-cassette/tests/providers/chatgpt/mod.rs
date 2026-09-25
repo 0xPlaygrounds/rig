@@ -26,11 +26,9 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
-use rig::driver::{Bind as _, Bound};
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -85,9 +83,9 @@ async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
     provider
 }
 
-pub(crate) async fn live_client() -> Bound<OpenAI> {
-    let http = bundled().expect("the bundled transport should build");
-    live_provider(&http).await.bind(http)
+pub(crate) async fn live_client() -> OpenAI {
+    let http = rig::rig_reqwest::shared();
+    live_provider(&http).await
 }
 
 fn has_usable_oauth_cache() -> bool {

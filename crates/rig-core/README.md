@@ -17,7 +17,7 @@ More information about this crate can be found in the [crate documentation](http
 - Portable contracts for agent runtimes, including completions, messages, tools, and memory
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
-- Built-in providers selectable as data: `providers::registry` names a vendor and a protocol family (`deepseek/openai:deepseek-chat`) or carries a whole typed configuration, and both round-trip through serde without a credential. Model references discard embedded credentials and reject empty identifiers; a configuration's `id()` returns a catalog selection only when its dialect name is registered. Providers outside this catalog can use `CompletionModel` and `CompletionAdapter` directly.
+- Built-in providers selectable as data: `providers::registry` names a vendor and a protocol family (`deepseek/openai:deepseek-chat`) or carries a whole typed configuration, and both round-trip through serde without a credential. Model references discard embedded credentials and reject empty identifiers; a configuration's `id()` returns a catalog selection only when its dialect name is registered. Providers outside this catalog can use a `Model` and `ModelAdapter` directly.
 - 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
@@ -38,23 +38,24 @@ Node.js 19 or later do. WASI targets are not supported.
 
 ## Simple example
 ```rust
+use rig_core::wire::Wire;
 use rig_core::{
-    completion::{AssistantContent, CompletionModel},
+    Model,
+    completion::{AssistantContent, CompletionRequestBuilder},
     providers::openai::{self, OpenAI},
 };
-// rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
-use rig_reqwest::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
-    // transport, and pick a model: a model is a wire plus its socket.
+    // Read `OPENAI_API_KEY` into the provider's configuration and pick a
+    // model's wire; a model is a wire on a transport. rig-core ships no
+    // transport, so this uses rig-reqwest's shared one.
     // OpenAI's default completion route is the Responses API;
     // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
-    let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
+    let model = OpenAI::from_env()?.completion(openai::GPT_5_2).on(rig_reqwest::shared());
 
-    let request = model.completion_request("Who are you?").build();
-    let response = model.completion(request).await?;
+    let request = CompletionRequestBuilder::new("Who are you?").build();
+    let response = model.call(request).await?;
     for item in response.choice {
         if let AssistantContent::Text(text) = item {
             println!("{}", text.text);
@@ -149,14 +150,15 @@ self-describing format such as JSON.
 Copilot presets accept already-exchanged session tokens and derive their endpoint
 from those tokens. Explicit configurations keep their host and instruction
 placement. Token exchange and asynchronous SDK setup belong to the host. The
-catalog is not exhaustive: other models can use `CompletionAdapter` directly.
+catalog is not exhaustive: other models can use `ModelAdapter` directly.
 Registry-qualified names do not replace the provider names used in telemetry.
 
 ## Provider implementation
 
-Provider configuration and endpoint wires are separate from transports. A `Has*`
-implementation exposes each supported capability, while `Bound` supplies shared
-execution. Chat-compatible dialects use the shared `Chat` wire and decoder with
+Provider configuration and endpoint wires are separate from transports. A
+configuration's inherent methods return one wire per capability, and `Model`
+pairs a wire with the `Transport` that sends it; one driver runs every model.
+Chat-compatible dialects use the shared `Chat` wire and decoder with
 `Dialect` data and `BodyRewrite` hooks rather than duplicating request conversion.
 This keeps normalization, retry classification, and telemetry consistent.
 
@@ -244,15 +246,12 @@ mapping, so authorization failures do not become recreation loops.
 
 `observe::AdapterContext` carries a caller-owned operation identity and a
 `Witness` sink. Pass it separately from request data through
-`CompletionModel::completion_with_context(request, Some(context))` or
-`stream_with_context(request, Some(context))`. Ordinary `completion(request)`
-and `stream(request)` are the required provider methods. The observed methods
-have defaults that delegate to them without emitting facts, so ordinary providers
-need no context boilerplate. Request builders and
-request literals contain only provider request data.
+`Model::call_observed(request, context)` or `Model::stream_observed(request,
+context)`; `Model::call` and `Model::stream` record nothing. Request builders
+and request literals contain only provider request data.
 
-Bus-backed `ModelHandle` calls use `complete_with_context` and
-`stream_with_context`. `CompletionAdapter` forwards `Dispatch::adapter_context`;
+Bus-backed `ModelHandle::complete_observed` and `ModelHandle::stream_observed`
+take the same context. `ModelAdapter` forwards `Dispatch::adapter_context`;
 explicit caller context takes precedence over Recorder/Observe context for
 that invocation, including through handler layers. It is never serialized into
 provider data or effect records and is not inherited by child calls.

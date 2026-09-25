@@ -6,9 +6,10 @@
 //! populate them") makes capture, not documentation, the fix.
 
 use anyhow::Result;
-use rig::completion::CompletionModel;
+use rig::wire::Wire as _;
 
 use super::support::with_groq_cassette_result;
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = "openai/gpt-oss-120b";
 
@@ -17,10 +18,9 @@ async fn blocking_response_carries_identity() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/blocking_response_carries_identity",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await?;
             anyhow::ensure!(
                 response
@@ -44,11 +44,10 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/streaming_terminal_carries_identity",
         |client| async move {
-            let model = client.completion(MODEL);
-            let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
-                .await?;
+            let model = client.completion(MODEL).on(rig::transport());
+            let mut stream = model.stream(
+                CompletionRequestBuilder::new("Reply with exactly: stream identity probe").build(),
+            )?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(final_record) = item? {
@@ -77,10 +76,11 @@ async fn provider_error_response_carries_request_id() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/provider_error_response_carries_request_id",
         |client| async move {
-            let model = client.completion("groq-nonexistent-model-for-identity-edge");
+            let model = client
+                .completion("groq-nonexistent-model-for-identity-edge")
+                .on(rig::transport());
             let error = model
-                .completion_request("Never answered")
-                .send()
+                .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
                 .expect_err("a nonexistent model must fail");
             anyhow::ensure!(
@@ -104,10 +104,9 @@ async fn auth_rejection_classifies_with_contract() -> Result<()> {
     with_groq_cassette_bogus_key_result(
         "response_identity_edge/auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             let error = model
-                .completion_request("Never authenticated")
-                .send()
+                .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await
                 .expect_err("a bogus key must be rejected");
             anyhow::ensure!(

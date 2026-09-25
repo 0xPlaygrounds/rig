@@ -1,6 +1,7 @@
 //! Adversarial handle round-trips on Anthropic: see
 //! `rig_test_support::history_survival::adversarial`.
 
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -24,7 +25,12 @@ const LOOKUP: &str =
 async fn colliding_ids() {
     const SCENARIO: &str = "adversarial/colliding_ids";
     with_anthropic_cassette("adversarial/colliding_ids", |client| async move {
-        adversarial::colliding_ids(&client.completion("claude-haiku-4-5"), "toolu_dup", None).await;
+        adversarial::colliding_ids(
+            client.completion("claude-haiku-4-5").on(rig::transport()),
+            "toolu_dup",
+            None,
+        )
+        .await;
     })
     .await;
     adversarial::assert_colliding_recorded("anthropic", SCENARIO);
@@ -34,7 +40,11 @@ async fn colliding_ids() {
 async fn out_of_order_results() {
     const SCENARIO: &str = "adversarial/out_of_order_results";
     with_anthropic_cassette("adversarial/out_of_order_results", |client| async move {
-        adversarial::out_of_order_results(&client.completion("claude-haiku-4-5"), thinking()).await;
+        adversarial::out_of_order_results(
+            client.completion("claude-haiku-4-5").on(rig::transport()),
+            thinking(),
+        )
+        .await;
     })
     .await;
     adversarial::assert_carried("anthropic", SCENARIO, "signature", 1);
@@ -45,7 +55,7 @@ async fn empty_signed_reasoning() {
     const SCENARIO: &str = "adversarial/empty_signed_reasoning";
     with_anthropic_cassette("adversarial/empty_signed_reasoning", |client| async move {
         let first = adversarial::reasoning_round_trip(
-            &client.completion("claude-sonnet-4-6"),
+            client.completion("claude-sonnet-4-6").on(rig::transport()),
             LOOKUP,
             omitted_thinking(),
             4096,
@@ -69,7 +79,7 @@ async fn empty_signed_reasoning_streamed() {
         "adversarial/empty_signed_reasoning_streamed",
         |client| async move {
             let first = adversarial::reasoning_round_trip(
-                &client.completion("claude-sonnet-4-6"),
+                client.completion("claude-sonnet-4-6").on(rig::transport()),
                 LOOKUP,
                 omitted_thinking(),
                 4096,
@@ -109,7 +119,7 @@ async fn three_provider_round_trip() {
         "adversarial/three_provider_round_trip",
         |client| async move {
             adversarial::round_trip_hop(
-                &client.completion("claude-sonnet-4-6"),
+                client.completion("claude-sonnet-4-6").on(rig::transport()),
                 Hop::Anthropic,
                 thinking(),
             )

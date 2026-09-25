@@ -1,17 +1,17 @@
 //! Ollama history survival: `thinking`, daemon-issued tool-call ids and
 //! name-correlated results across three prompts against a local daemon.
 
-use rig::completion::CompletionModel;
-
-use super::super::support::{BoundOllama, with_ollama_cassette};
+use super::super::support::with_ollama_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::ollama::wire::Ollama;
+use rig::wire::Wire as _;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "think": true }))
 }
 
-fn model(client: BoundOllama, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+fn model(client: Ollama, cell: Cell) -> rig::Model<rig::providers::ollama::wire::Chat> {
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

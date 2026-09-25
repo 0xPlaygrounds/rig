@@ -35,17 +35,19 @@
 //! with itself"; the harness replays interactions in order and fails on an
 //! interaction nothing consumed, so both turns are still issued.
 
-use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
+use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{with_gemini_cassette, with_gemini_interactions_cassette};
 use crate::raw_capture::{assert_no_request_id, capture_completion_pair};
 use crate::support::{Observed, assistant_text};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "gemini";
 const REST_MODEL: &str = "gemini-2.5-flash-lite";
@@ -55,8 +57,10 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: parity"
 /// The one request both cells send, twice: the same built request through one
 /// seam is what makes "the same bytes went out twice" a claim about `encode`
 /// rather than about the cell.
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).temperature(0.0).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .temperature(0.0)
+        .build()
 }
 
 /// The parity a caller can rely on across two turns of identical bytes:
@@ -146,9 +150,13 @@ async fn rest_raw_try_into_matches_completion() {
     with_gemini_cassette(
         "raw_completion_parity_matrix/rest_raw_try_into_matches_completion",
         |client| async move {
-            capture_completion_pair(client.completion(REST_MODEL), request, sink)
-                .await
-                .expect("both turns of the same request should succeed");
+            capture_completion_pair(
+                client.completion(REST_MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("both turns of the same request should succeed");
         },
     )
     .await;
@@ -207,8 +215,8 @@ async fn interactions_raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/interactions_raw_try_into_matches_completion",
         |client| async move {
             capture_completion_pair(
-                client.map_wire(|config| config.interactions(INTERACTIONS_MODEL)),
-                request,
+                client.interactions(INTERACTIONS_MODEL).on(rig::transport()),
+                request(),
                 sink,
             )
             .await

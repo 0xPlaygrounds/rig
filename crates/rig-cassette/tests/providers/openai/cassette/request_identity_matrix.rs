@@ -3,6 +3,7 @@
 
 use super::super::support::with_openai_cassette;
 use crate::request_identity;
+use rig::wire::Wire as _;
 
 const REJECTED: &str = "gpt-no-such-model";
 
@@ -16,8 +17,8 @@ async fn chat_completions() {
         |client| async move {
             request_identity::run(
                 cell,
-                client.openai.chat("gpt-4.1-nano"),
-                client.openai.chat(REJECTED),
+                client.openai.chat("gpt-4.1-nano").on(rig::transport()),
+                client.openai.chat(REJECTED).on(rig::transport()),
                 None,
                 |request| request,
             )
@@ -37,8 +38,8 @@ async fn responses() {
     with_openai_cassette("request_identity_matrix/responses", |client| async move {
         request_identity::run(
             cell,
-            client.openai.responses("gpt-4.1-nano"),
-            client.openai.responses(REJECTED),
+            client.openai.responses("gpt-4.1-nano").on(rig::transport()),
+            client.openai.responses(REJECTED).on(rig::transport()),
             Some(serde_json::json!({ "store": false })),
             |request| request,
         )

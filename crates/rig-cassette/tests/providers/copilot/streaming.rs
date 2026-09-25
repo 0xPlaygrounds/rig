@@ -1,17 +1,15 @@
 //! Copilot streaming coverage, including the migrated example path.
 
-use rig::prelude::*;
-
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn streaming_smoke() {
     with_copilot_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(LIVE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport()))
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -28,8 +26,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_copilot_cassette("streaming/example_streaming_prompt", |client| async move {
-        let agent = client
-            .agent(LIVE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport()))
             .preamble("Be precise and concise.")
             .temperature(0.5)
             .build();

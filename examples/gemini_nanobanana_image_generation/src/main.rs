@@ -1,20 +1,24 @@
 use anyhow::Result;
-use rig::image_generation::ImageGenerationModel;
-use rig::prelude::*;
+use rig::image_generation::ImageGenerationRequestBuilder;
 use rig::providers::gemini::{self, Gemini};
+use rig::wire::Wire as _;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Gemini::from_env()?.bound()?;
-    let model = client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE);
+    let client = Gemini::from_env()?;
+    let model = client
+        .image_generation(gemini::GEMINI_2_5_FLASH_IMAGE)
+        .on(rig::transport());
 
     let response = model
-        .image_generation_request(
-            "Generate a simple flat icon of a yellow banana on a white background.",
+        .call(
+            ImageGenerationRequestBuilder::new(
+                "Generate a simple flat icon of a yellow banana on a white background.",
+            )
+            .width(512)
+            .height(512)
+            .build(),
         )
-        .width(512)
-        .height(512)
-        .send()
         .await?;
 
     let output_path = "/tmp/rig-nanobanana.png";

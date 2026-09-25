@@ -3,6 +3,7 @@
 //! tool-call recovery, per-call usage recording, and the built-in streaming
 //! driver divergences pinned by #1899.
 
+use rig::wire::Wire as _;
 use std::collections::{BTreeSet, VecDeque};
 
 use futures::StreamExt;
@@ -16,7 +17,6 @@ use rig::agent::{
 };
 use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent};
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
@@ -55,9 +55,8 @@ async fn run_streamed_turn(
     collected_text: &mut String,
 ) -> Result<TurnEnd, PromptError> {
     let mut stream = agent
-        .request(prompt, history)
-        .stream()
-        .await
+        .model
+        .stream(agent.request(prompt, history).build())
         .expect("gemini stream should open");
     let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
     let mut recorded = false;
@@ -98,8 +97,10 @@ async fn run_streamed_turn(
                     }
                 }
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial = assembler
-                        .partial_turn(stream.message_id.clone(), stream.reasoning_issuer());
+                    let partial = assembler.partial_turn(
+                        stream.folded().message_id().map(str::to_owned),
+                        stream.folded().reasoning_issuer(),
+                    );
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -150,16 +151,16 @@ async fn run_streamed_turn(
         "a stream that reached its end delivered its terminal record, which recorded the call"
     );
     let streamed_turn = assembler.finish(
-        stream.message_id.clone(),
-        &stream.snapshot(),
-        stream.reasoning_issuer(),
+        stream.folded().message_id().map(str::to_owned),
+        &stream.folded().snapshot(),
+        stream.folded().reasoning_issuer(),
     );
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }
 
 async fn drain_stream_terminal(
-    stream: &mut rig::streaming::StreamingCompletionResponse,
+    stream: &mut rig::streaming::CompletionStream,
 ) -> Option<rig::streaming::StreamFinal> {
     while let Some(item) = stream.next().await {
         if let Ok(StreamEvent::Final(final_response)) = item {
@@ -183,7 +184,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             );
 
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -269,7 +270,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
         "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -328,7 +329,9 @@ async fn streamed_repair_continues_the_same_stream() {
         "agent_run_streamed/streamed_repair_continues_the_same_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -400,7 +403,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
         "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,
@@ -498,12 +501,15 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
     with_gemini_cassette(
         "agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .tool(Add)
+            .tool_choice(ToolChoice::Required)
+            .build();
 
             let mut stream = agent
                 .prompt("What is 21 + 21? Use the add tool.")
@@ -571,12 +577,15 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
     with_gemini_cassette(
         "agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .tool(Add)
+            .tool_choice(ToolChoice::Required)
+            .build();
 
             let mut stream = agent
                 .prompt("What is 21 + 21? Use the add tool.")

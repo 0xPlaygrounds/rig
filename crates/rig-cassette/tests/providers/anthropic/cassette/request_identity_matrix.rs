@@ -2,6 +2,7 @@
 
 use super::super::support::with_anthropic_cassette;
 use crate::request_identity;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn messages() {
@@ -11,8 +12,10 @@ async fn messages() {
     with_anthropic_cassette("request_identity_matrix/messages", |client| async move {
         request_identity::run(
             cell,
-            client.completion("claude-haiku-4-5"),
-            client.completion("claude-no-such-model"),
+            client.completion("claude-haiku-4-5").on(rig::transport()),
+            client
+                .completion("claude-no-such-model")
+                .on(rig::transport()),
             None,
             |request| request,
         )

@@ -3,10 +3,10 @@
 
 use anyhow::Result;
 use rig::error::ProviderError;
-use rig::prelude::*;
 use rig::typesafeai::{
     Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -94,7 +94,7 @@ struct Ticket<'a> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Jev::from_env()?.bound()?;
+    let client = Jev::from_env()?.on(rig::transport());
     let ticket = Ticket {
         message: "My card shows two $49 charges after upgrading. Can you fix this?",
         recent_events: &[

@@ -3,8 +3,9 @@
 //! Run it to compare a plain structured extraction with a usage-aware one.
 
 use anyhow::Result;
-use rig::prelude::*;
+use rig::extractor::ExtractorBuilder;
 use rig::providers::openai::{self, OpenAI};
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +24,10 @@ const SECOND_INPUT: &str = "Jane Smith is a data scientist.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = OpenAI::from_env()?.bound()?;
-    let extractor = client.extractor::<Person>(openai::GPT_4).build();
+    let client = OpenAI::from_env()?;
+    let extractor =
+        ExtractorBuilder::<Person>::new(client.completion(openai::GPT_4).on(rig::transport()))
+            .build();
 
     let person = extractor.extract(FIRST_INPUT).await?.output;
     println!("{}", serde_json::to_string_pretty(&person)?);

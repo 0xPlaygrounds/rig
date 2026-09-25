@@ -1,17 +1,19 @@
 //! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
 //! through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
 //! record, usage, and finish reason.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::wire::Wire as _;
 
 use super::super::{
     CASSETTE_MODEL,
     support::{IntegerSubtract, with_cohere_cassette},
 };
+use rig::completion::CompletionRequestBuilder;
 
 /// Cohere's reasoning-capable Command model, which streams `thinking`-bearing
 /// content deltas before the answer text (the F8 cohere variant).
@@ -27,7 +29,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_delta: String::new(),
@@ -71,11 +73,11 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         }
     }
 
-    run.choice = stream.snapshot();
+    run.choice = stream.folded().snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.folded().terminal().cloned();
     run
 }
 
@@ -84,15 +86,14 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 #[tokio::test]
 async fn thinking_stream_keeps_reasoning_and_text_discrete() {
     with_cohere_cassette("streaming_grammar/thinking_stream", |client| async move {
-        let model = client.completion(REASONING_MODEL);
-        let request = model
-            .completion_request(
-                "How many positive integers n < 100 are divisible by 6? \
+        let model = client.completion(REASONING_MODEL).on(rig::transport());
+        let request = CompletionRequestBuilder::new(
+            "How many positive integers n < 100 are divisible by 6? \
                  Think it through, then answer with just the number.",
-            )
-            .max_tokens(1024)
-            .build();
-        let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+        )
+        .max_tokens(1024)
+        .build();
+        let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert!(!run.text.trim().is_empty(), "turn should produce text");
         assert_eq!(
@@ -165,16 +166,15 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
     with_cohere_cassette(
         "streaming_grammar/reasoning_then_tool_call",
         |client| async move {
-            let model = client.completion(REASONING_MODEL);
-            let request = model
-                .completion_request(
-                    "Think it through, then call the subtract tool to compute 2 - 5. \
+            let model = client.completion(REASONING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Think it through, then call the subtract tool to compute 2 - 5. \
                      Do not answer with normal text before the tool call.",
-                )
-                .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            )
+            .max_tokens(1024)
+            .tool(rig::tool::tool_definition(&IntegerSubtract))
+            .build();
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_eq!(
                 run.finals.len(),
@@ -228,14 +228,14 @@ async fn required_tool_choice_streams_tool_call() {
     with_cohere_cassette(
         "streaming_grammar/required_tool_choice_streams_tool_call",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Use the subtract tool to calculate 8 - 3.")
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .tool_choice(ToolChoice::Required)
-                .max_tokens(128)
-                .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
+            let request =
+                CompletionRequestBuilder::new("Use the subtract tool to calculate 8 - 3.")
+                    .tool(rig::tool::tool_definition(&IntegerSubtract))
+                    .tool_choice(ToolChoice::Required)
+                    .max_tokens(128)
+                    .build();
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(run.text.is_empty(), "tool-only turn should not emit text");
             assert_eq!(run.tool_calls.len(), 1, "expected one streamed tool call");
@@ -260,14 +260,15 @@ async fn none_tool_choice_streams_text() {
     with_cohere_cassette(
         "streaming_grammar/none_tool_choice_streams_text",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Calculate 8 - 3. Answer directly without calling a tool.")
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .tool_choice(ToolChoice::None)
-                .max_tokens(32)
-                .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Calculate 8 - 3. Answer directly without calling a tool.",
+            )
+            .tool(rig::tool::tool_definition(&IntegerSubtract))
+            .tool_choice(ToolChoice::None)
+            .max_tokens(32)
+            .build();
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "NONE should stream text");
             assert!(run.tool_calls.is_empty(), "NONE must suppress tool calls");

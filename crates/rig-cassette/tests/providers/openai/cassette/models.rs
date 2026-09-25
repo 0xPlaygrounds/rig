@@ -1,14 +1,14 @@
 //! OpenAI model listing smoke test.
 
 use rig::error::ProviderError;
-use rig::model::ModelLister;
+use rig::wire::Wire as _;
 
 use super::super::support::{with_openai_cassette, with_openai_cassette_bogus_key};
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_openai_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.openai.models().list_all().await {
+        let models = match client.openai.models().on(rig::transport()).call(()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!("listing OpenAI models should succeed\nDisplay: {error}\nDebug: {error:#?}")
@@ -36,7 +36,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
             let error = client
                 .openai
                 .models()
-                .list_all()
+                .on(rig::transport())
+                .call(())
                 .await
                 .expect_err("a bogus key must not list models");
 

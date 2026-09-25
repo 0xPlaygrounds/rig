@@ -14,13 +14,14 @@
 
 #![allow(dead_code)]
 
-use rig_core::driver::Bound;
+use rig_core::driver::Model;
 use rig_core::http_client;
 use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSession;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::wasm_compat::WasmBoxedFuture;
+use rig_core::wire::Wire as _;
 use rig_core::ws_client::{BoxedWebSocketConnection, CloseFrame, Frame, WebSocketConnection};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -30,7 +31,7 @@ use std::time::Duration;
 /// the tests build requests with. Its HTTP transport is never exercised (a
 /// websocket session borrows the wire only for its request mapping), so a
 /// recording stub stands in for it.
-pub type TestClient = Bound<Responses, RecordingHttpClient>;
+pub type TestClient = Model<Responses, RecordingHttpClient>;
 pub type TestSession = ResponsesWebSocketSession;
 
 /// What a scripted connection does once its scripted frames run out.
@@ -153,10 +154,9 @@ impl WebSocketConnection for ScriptedConnection {
 
 /// A bound wire whose HTTP transport is a stub: these tests never send one.
 pub fn test_client() -> TestClient {
-    Bound::new(
-        OpenAI::new("test-key").responses("gpt-4o"),
-        RecordingHttpClient::new("{}"),
-    )
+    OpenAI::new("test-key")
+        .responses("gpt-4o")
+        .on(RecordingHttpClient::new("{}"))
 }
 
 /// A session over `script`, with no event timeout.

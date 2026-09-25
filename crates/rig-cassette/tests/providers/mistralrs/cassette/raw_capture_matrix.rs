@@ -42,8 +42,9 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test mistralrs mistralrs::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_capture_matrix/`.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -53,6 +54,7 @@ use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{
     Observed, assert_matches_recorded_document, assert_wire_value_matches, normalized_without_raw,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// The plain OpenAI dialect names itself `openai`, and a normalized response
@@ -62,8 +64,8 @@ const NORMALIZED_PROVIDER: &str = "openai";
 /// the neighbouring mistral.rs cassettes do.
 const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(64).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
 }
 
 fn assert_recorded_envelope(body: &Value, scenario: &str) {
@@ -102,9 +104,13 @@ async fn raw_is_the_reply_document() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(client.chat(model_name()), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.chat(model_name()).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -144,9 +150,13 @@ async fn raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_exposes_envelope_fields",
         |client| async move {
-            capture_completion(client.chat(model_name()), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.chat(model_name()).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -193,9 +203,13 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.chat(model_name()), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.chat(model_name()).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;

@@ -1,5 +1,5 @@
-use rig::client::DefaultTransport as _;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use rig::sqlite::{
@@ -8,7 +8,7 @@ use rig::sqlite::{
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::{
     Embed,
-    driver::Bound,
+    driver::Model,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
@@ -147,16 +147,15 @@ async fn vector_search_test() {
             ));
     });
 
-    let openai_client = openai::wire::OpenAI::new("TEST")
-        .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     let embeddings = create_embeddings(model.clone()).await;
 
     // Initialize SQLite vector store
-    let vector_store = SqliteVectorStore::new(conn, &model)
+    let vector_store = SqliteVectorStore::new(conn, model.clone())
         .await
         .expect("Could not initialize SQLite vector store");
 
@@ -231,14 +230,13 @@ async fn insert_documents_test() {
         ));
     });
 
-    let openai_client = openai::wire::OpenAI::new("TEST")
-        .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
     let embeddings = create_embeddings(model.clone()).await;
 
-    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), &model)
+    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), model)
         .await
         .expect("Could not initialize SQLite vector store");
 
@@ -265,7 +263,7 @@ async fn insert_documents_test() {
     assert_eq!(embedding_count, 3);
 }
 
-async fn create_embeddings(model: Bound<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
+async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

@@ -157,16 +157,18 @@ impl AgentHook for ApprovalPolicy {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_4O)
-        .preamble(
-            "You are a banking assistant. Use the tools to carry out the user's request. \
+    let agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(openai::GPT_4O)
+            .on(rig::transport()),
+    )
+    .preamble(
+        "You are a banking assistant. Use the tools to carry out the user's request. \
              If a tool is denied by policy, explain the limit to the user instead of retrying.",
-        )
-        .tool(SearchWeb)
-        .tool(TransferFunds)
-        .build();
+    )
+    .tool(SearchWeb)
+    .tool(TransferFunds)
+    .build();
 
     let policy = ApprovalPolicy {
         auto_approve: HashSet::from([SearchWeb::NAME]),

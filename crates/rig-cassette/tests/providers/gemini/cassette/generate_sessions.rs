@@ -8,17 +8,18 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, Subtract, assert_mentions_expected_number,
     collect_stream_observation,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const SEQUENTIAL_TOOLS_PREAMBLE: &str = "\
 You are a calculator. Use the provided tools instead of doing arithmetic yourself. \
@@ -94,14 +95,17 @@ async fn sequential_tool_calls_ordering_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/sequential_tool_calls_ordering_nonstreaming",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .tool(Subtract)
-                .default_max_turns(6)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(Adder)
+            .tool(Subtract)
+            .default_max_turns(6)
+            .build();
             let mut history = Vec::<Message>::new();
 
             let result = agent
@@ -146,13 +150,16 @@ async fn sequential_tool_calls_ordering_streaming() {
     with_gemini_cassette(
         "generate_sessions/sequential_tool_calls_ordering_streaming",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .tool(Subtract)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(Adder)
+            .tool(Subtract)
+            .build();
 
             let mut stream = agent
                 .prompt(SEQUENTIAL_TOOLS_PROMPT)
@@ -194,48 +201,48 @@ async fn long_history_replay_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
 
             // A finished prior session replayed statelessly: Gemini pairs
             // functionResponse parts to functionCall parts by name, so a fully
             // client-constructed history (including model text before the
             // functionCall and after the functionResponse) must be accepted.
-            let request = model
-                .completion_request(
-                    "In one short sentence: what is my favorite color, and what was the \
+            let request = CompletionRequestBuilder::new(
+                "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
-                )
-                .preamble(
-                    "You are a concise assistant with perfect recall of this conversation."
-                        .to_string(),
-                )
-                .temperature(0.0)
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: vec![
-                        AssistantContent::text("Checking the harbor label now."),
-                        // Gemini issues no functionCall ids: an empty wire id
-                        // records no provider id and mints the correlation
-                        // handle, which never reaches the wire.
-                        AssistantContent::tool_call("", AlphaSignal::NAME, serde_json::json!({})),
-                    ],
-                })
-                .message(Message::tool_result(
-                    "",
-                    AlphaSignal::NAME,
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            )
+            .preamble(
+                "You are a concise assistant with perfect recall of this conversation.".to_string(),
+            )
+            .temperature(0.0)
+            .message(Message::user(
+                "My favorite color is teal. Please remember it.",
+            ))
+            .message(Message::assistant("Noted - your favorite color is teal."))
+            .message(Message::user("Now look up the harbor label with the tool."))
+            .message(Message::Assistant {
+                id: None,
+                content: vec![
+                    AssistantContent::text("Checking the harbor label now."),
+                    // Gemini issues no functionCall ids: an empty wire id
+                    // records no provider id and mints the correlation
+                    // handle, which never reaches the wire.
+                    AssistantContent::tool_call("", AlphaSignal::NAME, serde_json::json!({})),
+                ],
+            })
+            .message(Message::tool_result(
+                "",
+                AlphaSignal::NAME,
+                ALPHA_SIGNAL_OUTPUT,
+            ))
+            .message(Message::assistant("The harbor label is crimson-harbor."))
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("long history replay should be accepted by generateContent");
 
@@ -279,22 +286,23 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
     with_gemini_cassette(
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
                      Think it through, then answer in one short sentence.",
-                )
-                .temperature(0.0)
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
-                    }
-                }))
-                .build();
+            )
+            .temperature(0.0)
+            .additional_params(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
+                }
+            }))
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("thinking-enabled completion should succeed");
 

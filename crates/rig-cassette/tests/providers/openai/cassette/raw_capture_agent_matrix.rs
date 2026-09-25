@@ -46,6 +46,7 @@
 //! id — a run whose attempts did not each get their own provider response
 //! could not prove per-attempt capture.
 
+use rig::wire::Wire as _;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -57,7 +58,6 @@ use rig::agent::{
 };
 use rig::completion::ResponseIdentity;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::Value;
@@ -79,8 +79,12 @@ enum Route {
 impl Route {
     fn builder(self, client: OpenAiCassette) -> AgentBuilder {
         match self {
-            Route::Chat => client.chat.agent(MODEL),
-            Route::Responses => client.openai.agent(MODEL),
+            Route::Chat => {
+                rig::AgentBuilder::new(client.chat.completion(MODEL).on(rig::transport()))
+            }
+            Route::Responses => {
+                rig::AgentBuilder::new(client.openai.completion(MODEL).on(rig::transport()))
+            }
         }
     }
 
@@ -667,23 +671,22 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
     with_openai_cassette(
         "raw_capture_agent_matrix/chat_retried_turn_records_retried_attempt_raw",
         |client| async move {
-            let response = client
-                .chat
-                .agent(MODEL)
-                .preamble(
-                    "Follow this protocol exactly. For the initial request, reply exactly \
+            let response =
+                rig::AgentBuilder::new(client.chat.completion(MODEL).on(rig::transport()))
+                    .preamble(
+                        "Follow this protocol exactly. For the initial request, reply exactly \
                  `RETRY: incomplete draft`. If the latest user message asks you to \
                  replace the rejected response, reply exactly `ACCEPTED`.",
-                )
-                .temperature(0.0)
-                .build()
-                .prompt("Begin the retry-hook demonstration.")
-                .max_turns(2)
-                .add_hook(hook_probe)
-                .add_hook(RetryOnceOnMarker)
-                .run()
-                .await
-                .expect("the feedback retry should recover");
+                    )
+                    .temperature(0.0)
+                    .build()
+                    .prompt("Begin the retry-hook demonstration.")
+                    .max_turns(2)
+                    .add_hook(hook_probe)
+                    .add_hook(RetryOnceOnMarker)
+                    .run()
+                    .await
+                    .expect("the feedback retry should recover");
             *sink.lock().expect("observation mutex") = Some(RunObservation {
                 calls: response.completion_calls,
                 output: response.output,

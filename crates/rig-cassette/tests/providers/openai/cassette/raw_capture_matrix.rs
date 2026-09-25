@@ -58,11 +58,11 @@
 //! `system_fingerprint`.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    ToolDefinition,
+    AssistantContent, CompletionRequest, CompletionResponse, FinishReason, ToolDefinition,
 };
 use rig::message::ToolChoice;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::Deserialize as _;
 use serde_json::{Value, json};
@@ -70,6 +70,7 @@ use serde_json::{Value, json};
 use super::super::support::with_openai_cassette_result;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion, chat, responses};
 use crate::support::{Observed, assert_matches_recorded_token, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -86,9 +87,8 @@ const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 const STRUCTURED_PROMPT: &str = "Put the single word pong in the `word` field.";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -98,9 +98,8 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 /// (`effort: "medium"`), with a summary asked for so the reasoning item
 /// carries `summary` as well as the `encrypted_content` the provider adds to
 /// `include` on every reasoning request.
-fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(REASONING_PROMPT)
+fn reasoning_request() -> CompletionRequest {
+    CompletionRequestBuilder::new(REASONING_PROMPT)
         .additional_params(json!({
             "reasoning": { "effort": "medium", "summary": "auto" }
         }))
@@ -117,9 +116,8 @@ fn ping_tool() -> ToolDefinition {
 
 /// The forced tool call `raw_completion_parity_matrix` records: `required`
 /// leaves the model no text-only exit.
-fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .tool(ping_tool())
         .tool_choice(ToolChoice::Required)
         .temperature(0.0)
@@ -134,9 +132,8 @@ struct Answer {
     word: String,
 }
 
-fn structured_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(STRUCTURED_PROMPT)
+fn structured_request() -> CompletionRequest {
+    CompletionRequestBuilder::new(STRUCTURED_PROMPT)
         .output_schema(schemars::schema_for!(Answer))
         .temperature(0.0)
         .max_tokens(32)
@@ -263,7 +260,11 @@ async fn chat_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_capture_matrix/chat_raw_round_trips_typed";
     let observed = Observed::default();
     with_openai_cassette_result("raw_capture_matrix/chat_raw_round_trips_typed", |client| {
-        capture_completion(client.openai.chat(MODEL), request, observed.clone())
+        capture_completion(
+            client.openai.chat(MODEL).on(rig::transport()),
+            request(),
+            observed.clone(),
+        )
     })
     .await
     .expect("chat_raw_round_trips_typed should replay from its cassette");
@@ -310,7 +311,13 @@ async fn chat_raw_exposes_service_tier() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_capture_matrix/chat_raw_exposes_service_tier",
-        |client| capture_completion(client.openai.chat(MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.openai.chat(MODEL).on(rig::transport()),
+                request(),
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("chat_raw_exposes_service_tier should replay from its cassette");
@@ -353,7 +360,13 @@ async fn responses_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_capture_matrix/responses_raw_round_trips_typed",
-        |client| capture_completion(client.openai.completion(MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.openai.completion(MODEL).on(rig::transport()),
+                request(),
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("responses_raw_round_trips_typed should replay from its cassette");
@@ -398,7 +411,13 @@ async fn responses_raw_exposes_service_tier_and_store() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_capture_matrix/responses_raw_exposes_service_tier_and_store",
-        |client| capture_completion(client.openai.completion(MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.openai.completion(MODEL).on(rig::transport()),
+                request(),
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("responses_raw_exposes_service_tier_and_store should replay from its cassette");
@@ -470,8 +489,11 @@ async fn responses_reasoning_raw_round_trips_typed() {
         "raw_capture_matrix/responses_reasoning_raw_round_trips_typed",
         |client| {
             capture_completion(
-                client.openai.completion(REASONING_MODEL),
-                reasoning_request,
+                client
+                    .openai
+                    .completion(REASONING_MODEL)
+                    .on(rig::transport()),
+                reasoning_request(),
                 observed.clone(),
             )
         },
@@ -569,7 +591,13 @@ async fn chat_tool_call_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_capture_matrix/chat_tool_call_raw_round_trips_typed",
-        |client| capture_completion(client.openai.chat(MODEL), tool_request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.openai.chat(MODEL).on(rig::transport()),
+                tool_request(),
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("chat_tool_call_raw_round_trips_typed should replay from its cassette");
@@ -676,8 +704,8 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
         "raw_capture_matrix/chat_structured_output_raw_exposes_system_fingerprint",
         |client| {
             capture_completion(
-                client.openai.chat(MODEL),
-                structured_request,
+                client.openai.chat(MODEL).on(rig::transport()),
+                structured_request(),
                 observed.clone(),
             )
         },

@@ -11,11 +11,11 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::OutputMode;
-use rig::prelude::*;
 use serde_json::json;
 
 use super::super::support::with_ollama_cassette;
@@ -58,8 +58,7 @@ async fn structured_output_raw_with_thinking() {
             "required": ["title", "summary"]
         }));
 
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
             .output_schema_raw(schema)
             .additional_params(json!({ "think": true }))
             .build();
@@ -111,8 +110,7 @@ async fn structured_output_with_tools_and_thinking() {
                 "required": ["city", "summary"]
             }));
 
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(
                     "You are a weather assistant. Use the get_weather tool to look up weather, \
                      then answer.",
@@ -175,8 +173,7 @@ async fn streaming_structured_output_with_tools() {
                 "required": ["city", "summary"]
             }));
 
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(
                     "You are a weather assistant. Use the get_weather tool to look up weather, \
                      then answer.",
@@ -234,8 +231,7 @@ async fn native_mode_emits_structured_output() {
             "required": ["city", "summary"]
         }));
 
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
             .preamble("You are a weather assistant.")
             .tool(WeatherTool::new(call_count.clone()))
             .output_schema_raw(schema)
@@ -276,8 +272,7 @@ async fn prompted_mode_returns_parseable_json() {
             "required": ["title", "summary"]
         }));
 
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
             .output_schema_raw(schema)
             .output_mode(OutputMode::Prompted)
             .additional_params(json!({ "think": false }))

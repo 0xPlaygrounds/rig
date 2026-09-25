@@ -9,12 +9,12 @@
 //! for #1926 (non-streaming responses used to drop `thinking`, so it never
 //! entered history and was never sent back to Ollama).
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 
 use super::super::support::with_ollama_cassette;
 use crate::reasoning::{self, WeatherTool};
@@ -31,8 +31,7 @@ async fn nonstreaming() {
     with_ollama_cassette(
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(think_params())
@@ -71,8 +70,7 @@ async fn nonstreaming() {
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     with_ollama_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .tool(WeatherTool::new(call_count.clone()))
             .additional_params(think_params())

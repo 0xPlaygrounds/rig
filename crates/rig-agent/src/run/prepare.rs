@@ -89,7 +89,7 @@ impl PreparedRequest {
     /// sampling fields (`temperature`, `max_tokens`, `output_schema`)
     /// overwrite whatever the driver set on it, while messages, documents,
     /// tools and additional parameters accumulate.
-    pub fn apply<M>(self, builder: CompletionRequestBuilder<M>) -> CompletionRequestBuilder<M> {
+    pub fn apply(self, builder: CompletionRequestBuilder) -> CompletionRequestBuilder {
         let builder = builder
             .messages(self.chat_history)
             .temperature(self.temperature)

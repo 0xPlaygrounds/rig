@@ -6,14 +6,15 @@
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop};
-use rig::completion::CompletionModel;
-use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 
-fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.completion("claude-haiku-4-5-20251001"),
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

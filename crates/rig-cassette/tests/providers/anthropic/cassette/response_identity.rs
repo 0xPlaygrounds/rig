@@ -2,18 +2,19 @@
 //! transport request id (`request-id` response header) reach every observer
 //! surface, with blocking/streaming parity.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
-use rig::completion::{CompletionModel, Message};
-use rig::prelude::*;
+use rig::completion::Message;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
+use rig::completion::CompletionRequestBuilder;
 
 fn assert_request_id(id: Option<&str>, context: &str) {
     assert!(
@@ -28,11 +29,13 @@ async fn nonstreaming_response_carries_identity() {
     with_anthropic_cassette(
         "response_identity/nonstreaming_response_carries_identity",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .max_tokens(32)
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe")
+                        .max_tokens(32)
+                        .build(),
+                )
                 .await
                 .expect("completion should succeed");
 
@@ -55,12 +58,13 @@ async fn streaming_terminal_carries_identity() {
     with_anthropic_cassette(
         "response_identity/streaming_terminal_carries_identity",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .max_tokens(32)
-                .stream()
-                .await
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .max_tokens(32)
+                        .build(),
+                )
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -132,13 +136,13 @@ async fn agent_run_records_per_attempt_identity() {
         "response_identity/agent_run_records_per_attempt_identity",
         |client| async move {
             let hook = IdentityCapture::default();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .preamble(TOOLS_PREAMBLE)
-                .max_tokens(1024)
-                .tool(Adder)
-                .add_hook(hook.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble(TOOLS_PREAMBLE)
+                    .max_tokens(1024)
+                    .tool(Adder)
+                    .add_hook(hook.clone())
+                    .build();
 
             let response = agent
                 .prompt("What is 2 + 3? Use the tool, then state the result.")
@@ -200,12 +204,12 @@ async fn streamed_agent_run_hook_observes_identity() {
         "response_identity/streamed_agent_run_hook_observes_identity",
         |client| async move {
             let hook = IdentityCapture::default();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .preamble("You are a terse assistant.")
-                .max_tokens(64)
-                .add_hook(hook.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("You are a terse assistant.")
+                    .max_tokens(64)
+                    .add_hook(hook.clone())
+                    .build();
 
             let mut stream = agent
                 .prompt(Message::user(
@@ -254,13 +258,13 @@ async fn streamed_agent_tool_run_reports_per_attempt_identity() {
         "response_identity/streamed_agent_tool_run_reports_per_attempt_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .preamble(TOOLS_PREAMBLE)
-                .max_tokens(1024)
-                .tool(Adder)
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble(TOOLS_PREAMBLE)
+                    .max_tokens(1024)
+                    .tool(Adder)
+                    .add_hook(probe.clone())
+                    .build();
 
             let mut stream = agent
                 .prompt(Message::user(

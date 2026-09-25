@@ -1,19 +1,60 @@
 //! Wire-conformance suite for the Bedrock Converse typed-event wire.
 //!
 //! Events-first (`WireInput::Event`): fixture frames are already-typed SDK
-//! events driven through `rig::bedrock::streaming::stream_from_events` — the
-//! shared driver, canonical grammar, and terminal normalization — with no AWS
-//! transport. Frame-level malformed/unknown scenarios self-report as skipped:
+//! events replayed by a scripted transport through the Converse wire and the
+//! shared driver, with no AWS client. Frame-level malformed/unknown scenarios self-report as skipped:
 //! the SDK surfaces decode failures as transport errors, and its
 //! non-exhaustive `Unknown` union variant is not constructible from outside
 //! the SDK.
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::FinishReason;
+use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
+use rig::wire::Wire as _;
+use rig_core::completion::{CompletionRequestBuilder, FinishReason};
+use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
 };
+use rig_core::wire::Mode;
+
+type Events = Vec<Result<aws_bedrock::ConverseStreamOutput, ProviderError>>;
+
+/// Replays scripted Converse events after the frame naming the model.
+#[derive(Clone)]
+struct Scripted(std::sync::Arc<std::sync::Mutex<Events>>);
+
+impl Transport<Converse> for Scripted {
+    fn send(
+        &self,
+        payload: ConverseRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let events = std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
+        );
+        let opened = ConverseFrame::Opened {
+            model: payload.model,
+            request_id: None,
+        };
+        Ok(async move {
+            Opened::new(futures::stream::iter(
+                std::iter::once(Ok(opened)).chain(
+                    events
+                        .into_iter()
+                        .map(|event| event.map(ConverseFrame::Event)),
+                ),
+            ))
+        })
+    }
+}
 
 fn driver() -> WireDriver {
     WireDriver::new("aws_bedrock", |chunks| {
@@ -32,7 +73,9 @@ fn driver() -> WireDriver {
                     Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
-            let stream = rig::bedrock::streaming::stream_from_events(futures::stream::iter(events));
+            let model = Converse::new("amazon.nova-lite-v1:0")
+                .on(Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))));
+            let stream = model.stream(CompletionRequestBuilder::new("hi").build())?;
             Ok(drain(stream).await)
         })
     })

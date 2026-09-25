@@ -1,20 +1,18 @@
 //! Cassette-backed Venice streaming tool coverage.
 
-use rig::prelude::*;
-
 use super::super::{TOOL_MODEL, support::with_venice_cassette};
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, collect_stream_final_response,
 };
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_venice_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .agent(TOOL_MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)

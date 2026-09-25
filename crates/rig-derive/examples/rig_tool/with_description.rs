@@ -2,7 +2,6 @@ use rig_agent::prelude::*;
 use rig_core::providers;
 use rig_core::providers::openai::OpenAI;
 use rig_derive::rig_tool;
-use rig_reqwest::prelude::*;
 
 // Demonstrates explicit attribute override.
 // The description and params() attributes override any doc comments.
@@ -41,13 +40,15 @@ fn calculator(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let calculator_agent = OpenAI::from_env()?
-        .bound()?
-        .agent(providers::openai::GPT_4O)
-        .preamble("You are an agent with tools access, always use the tools")
-        .max_tokens(1024)
-        .tool(Calculator)
-        .build();
+    let calculator_agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(providers::openai::GPT_4O)
+            .on(rig_reqwest::shared()),
+    )
+    .preamble("You are an agent with tools access, always use the tools")
+    .max_tokens(1024)
+    .tool(Calculator)
+    .build();
 
     println!("Tool definition:");
     println!(

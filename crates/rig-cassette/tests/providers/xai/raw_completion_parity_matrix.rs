@@ -1,6 +1,6 @@
 //! View parity on xAI: the provider-native fields in
 //! [`rig::completion::CompletionResponse::raw`] are what
-//! `CompletionModel::completion` reports.
+//! `Model::call` reports.
 //!
 //! **The contract.** xAI runs on the shared Responses model, so the provider
 //! reply captured in `raw` is the Responses [`CompletionResponse`] — a type
@@ -31,11 +31,10 @@
 //! contract, [`crate::raw_capture::responses`]; what stays here is the
 //! per-interaction bookkeeping and the header premise.
 
-use rig::completion::{CompletionModel, CompletionRequest};
-use rig::driver::Bound;
+use rig::completion::CompletionRequest;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 
 use super::support::with_xai_cassette_result;
@@ -44,14 +43,15 @@ use crate::raw_capture::{
     assert_contracted_request_id, capture_completion, capture_completion_pair, responses,
 };
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
-    model.completion_request(PROMPT).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).build()
 }
 
 /// The `x-request-id` the recorded interaction at `index` carried — the
@@ -84,7 +84,13 @@ async fn raw_normalize_reproduces_completion() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
-        |client| capture_completion_pair(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion_pair(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_normalize_reproduces_completion should replay from its cassette");
@@ -134,7 +140,13 @@ async fn raw_completion_carries_request_id_on_the_type() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_completion_carries_request_id_on_the_type should replay from its cassette");

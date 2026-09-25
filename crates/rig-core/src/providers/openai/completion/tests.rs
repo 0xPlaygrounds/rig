@@ -81,7 +81,6 @@ fn minted_tool_ids_replay_as_a_consistent_pair() {
 use super::*;
 use crate::completion::CompletionRequestBuilder;
 use crate::error::ProviderError;
-use crate::test_utils::MockCompletionModel;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -448,7 +447,7 @@ fn test_openai_request_uses_default_model_when_override_unset() {
 
 #[test]
 fn openai_chat_request_keeps_documents_after_system_messages() {
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
+    let request = CompletionRequestBuilder::new("Prompt")
         .message(crate::completion::Message::system("System prompt"))
         .message(crate::completion::Message::user("Earlier user turn"))
         .message(crate::completion::Message::assistant(
@@ -1892,7 +1891,7 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
 /// overrides the typed value (`build` warns about it; it does not stop it).
 #[test]
 fn additional_params_override_typed_fields_on_the_wire() {
-    let rig_request = crate::completion::CompletionRequestBuilder::unbound("hi")
+    let rig_request = crate::completion::CompletionRequestBuilder::new("hi")
         .temperature(0.1)
         .additional_params(serde_json::json!({"temperature": 0.9, "top_p": 0.5}))
         .build();

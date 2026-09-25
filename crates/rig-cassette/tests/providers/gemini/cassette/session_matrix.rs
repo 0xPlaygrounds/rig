@@ -1,10 +1,11 @@
 //! Reasoning across a session boundary on Gemini: see
 //! `rig_test_support::history_survival::sessions`.
 
-use super::super::support::{BoundGemini, with_gemini_cassette};
-use rig::completion::CompletionModel;
+use super::super::support::with_gemini_cassette;
+use rig::wire::Wire as _;
 
 use crate::history_survival::sessions::{self, Cell};
+use rig::providers::gemini::Gemini;
 
 fn params() -> Option<serde_json::Value> {
     Some(
@@ -20,16 +21,27 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: BoundGemini,
+    client: Gemini,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
 ) {
     (
-        client.completion("gemini-2.5-flash"),
-        client.completion("gemini-2.5-flash"),
-        client.completion("gemini-3-flash-preview"),
+        client.completion("gemini-2.5-flash").on(rig::transport()),
+        client.completion("gemini-2.5-flash").on(rig::transport()),
+        client
+            .completion("gemini-3-flash-preview")
+            .on(rig::transport()),
     )
 }
 

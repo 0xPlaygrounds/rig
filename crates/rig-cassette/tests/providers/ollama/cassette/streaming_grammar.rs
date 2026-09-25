@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Ollama's native chat wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
+//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
 //! record, usage, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -16,15 +16,17 @@
 //! daemon id and by structure — and assemble with uncorrupted arguments.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::wire::Wire as _;
 
 use super::super::support::with_ollama_cassette;
 use crate::support::{
     Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
     TWO_TOOL_STREAM_PREAMBLE,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = "qwen3:4b";
 
@@ -38,7 +40,7 @@ struct StreamRun {
     response: Option<StreamFinal>,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
         reasoning_blocks: Vec::new(),
@@ -79,11 +81,11 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         }
     }
 
-    run.choice = stream.snapshot();
+    run.choice = stream.folded().snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.response.clone();
+    run.response = stream.folded().terminal().cloned();
     run
 }
 
@@ -116,14 +118,13 @@ async fn thinking_and_tool_call_in_one_stream() {
     with_ollama_cassette(
         "streaming_grammar/thinking_and_tool_call",
         |client| async move {
-            let model = client.completion(MODEL);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let model = client.completion(MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(serde_json::json!({ "think": true }))
                 .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
@@ -181,19 +182,18 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
     with_ollama_cassette(
         "streaming_grammar/parallel_tool_calls",
         |client| async move {
-            let model = client.completion(MODEL);
-            let request = model
-                .completion_request(
-                    "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
+            let model = client.completion(MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
                      together in this single reply, before writing any text. Emit the two tool \
                      calls in one turn — do not wait for results between them.",
-                )
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .additional_params(serde_json::json!({ "think": false }))
-                .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            )
+            .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .tool(rig::tool::tool_definition(&BetaSignal))
+            .additional_params(serde_json::json!({ "think": false }))
+            .build();
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             let aggregated: Vec<&ToolCall> = run
@@ -265,9 +265,8 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
 #[tokio::test]
 async fn same_tool_called_twice_in_one_turn_stays_distinct() {
     with_ollama_cassette("streaming_grammar/same_tool_twice", |client| async move {
-        let model = client.completion(MODEL);
-        let request = model
-            .completion_request(
+        let model = client.completion(MODEL).on(rig::transport());
+        let request = CompletionRequestBuilder::new(
                 "/no_think Use the `add` tool twice in this single reply, before any text: \
                  first add 2 and 3, then add 10 and 20. Emit both tool calls together in \
                  this one turn — do not wait for results between them, and do not compute \
@@ -279,9 +278,8 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
                     .to_string(),
             )
             .tool(rig::tool::tool_definition(&Adder))
-            .additional_params(serde_json::json!({ "think": false }))
-            .build();
-        let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            .additional_params(serde_json::json!({ "think": false })).build();
+        let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
         let add_calls: Vec<&ToolCall> = run
@@ -350,7 +348,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
     with_ollama_cassette(
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             let history = vec![
                 rig::message::Message::user(
                     "/no_think Use the add tool to compute 2 + 3, then state the result.",
@@ -384,16 +382,15 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     )],
                 },
             ];
-            let request = model
-                .completion_request("/no_think State the final result in one short sentence.")
-                .preamble(
-                    "You are a calculator assistant. Report tool results faithfully.".to_string(),
-                )
-                .tool(rig::tool::tool_definition(&Adder))
-                .messages(history)
-                .additional_params(serde_json::json!({ "think": false }))
-                .build();
-            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            let request = CompletionRequestBuilder::new(
+                "/no_think State the final result in one short sentence.",
+            )
+            .preamble("You are a calculator assistant. Report tool results faithfully.".to_string())
+            .tool(rig::tool::tool_definition(&Adder))
+            .messages(history)
+            .additional_params(serde_json::json!({ "think": false }))
+            .build();
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),
                 "the model should answer from the replayed tool result, got {:?}",

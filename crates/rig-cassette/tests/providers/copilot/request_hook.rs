@@ -1,6 +1,7 @@
 //! Preserves the live request-hook example as Copilot regression coverage.
 
 use anyhow::{Result, anyhow};
+use rig::wire::Wire as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -9,7 +10,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette_result};
 use crate::support::assert_nonempty_response;
@@ -74,8 +74,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_copilot_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
-            let agent = client
-                .agent(LIVE_MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport()))
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();
 

@@ -4,16 +4,16 @@
 //! have a producer here; a scripted row's oracle is the runner in the world
 //! cell's own test.
 
-use rig::completion::CompletionModel;
 use rig::providers::openai::GPT_5_MINI;
+use rig::wire::Wire as _;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_5_MINI),
+        model: client.openai.completion(GPT_5_MINI).on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,
@@ -21,10 +21,13 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion("gpt-4o-mini-nonexistent-rig-test"),
+        model: client
+            .openai
+            .completion("gpt-4o-mini-nonexistent-rig-test")
+            .on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,

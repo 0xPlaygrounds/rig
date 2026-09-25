@@ -1,15 +1,16 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses wire.
 
 use rig::agent::AgentBuilder;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::wire::Responses;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn responses_api_no_think_returns_text() {
@@ -18,9 +19,9 @@ async fn responses_api_no_think_returns_text() {
         |client| async move {
             // mistral.rs does not accept top-level `instructions`, so the
             // placement is a wire option rather than a client setting.
-            let model = client
-                .responses(model_name())
-                .map_wire(Responses::with_system_instructions_as_messages);
+            let model =
+                Responses::with_system_instructions_as_messages(client.responses(model_name()))
+                    .on(rig::transport());
             let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
@@ -43,23 +44,19 @@ async fn responses_api_reasoning_plus_answer_completes() {
     with_mistralrs_cassette(
         "responses_api/responses_api_reasoning_plus_answer_completes",
         |client| async move {
-            let model = client
-                .responses(model_name())
-                .map_wire(Responses::with_system_instructions_as_messages);
-            let request = model
-                .completion_request(
+            let model = Responses::with_system_instructions_as_messages(client.responses(model_name())).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
                     "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
                 )
                 .preamble(SYSTEM_PROMPT.to_owned())
-                .max_tokens(512)
-                .build();
+                .max_tokens(512).build();
             // One cassette interaction, two views of it: the normalized
             // response the decoder folded, and — through the typed escape
             // hatch over its captured `raw` — the Responses reply document
             // whose reasoning fields are provider-specific and not
             // normalized.
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
             let raw = responses_api::CompletionResponse::deserialize(&response.raw)
@@ -92,9 +89,9 @@ async fn responses_api_multi_turn_replays_history() {
     with_mistralrs_cassette(
         "responses_api/responses_api_multi_turn_replays_history",
         |client| async move {
-            let model = client
-                .responses(model_name())
-                .map_wire(Responses::with_system_instructions_as_messages);
+            let model =
+                Responses::with_system_instructions_as_messages(client.responses(model_name()))
+                    .on(rig::transport());
             let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(256)

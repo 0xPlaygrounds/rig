@@ -2,13 +2,17 @@
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
+use rig::wire::Wire as _;
 #[tokio::test]
 async fn extractor_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_copilot_cassette("extractor/extractor_smoke", |client| async move {
-                let mut extractor =
-                    EcsExtractor::<SmokePerson>::new(client.completion(LIVE_MODEL), None, None);
+                let mut extractor = EcsExtractor::<SmokePerson>::new(
+                    client.completion(LIVE_MODEL).on(rig::transport()),
+                    None,
+                    None,
+                );
                 let response = extractor
                     .extract(EXTRACTOR_TEXT, &[])
                     .await

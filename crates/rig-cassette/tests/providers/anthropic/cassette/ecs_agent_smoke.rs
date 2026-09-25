@@ -2,6 +2,7 @@
 //! answers, its record is one completion (with memory around it where the
 //! agent remembers), and the wire reported usage.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 
 use rig::{
@@ -26,8 +27,11 @@ use crate::{
 async fn completion_smoke_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_cassette("agent/completion_smoke", |client| async move {
-            let mut ecs =
-                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
+            let mut ecs = EcsAgent::for_golden(
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
+                BASIC_PREAMBLE,
+                false,
+            );
             assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
             let log = ecs.effect_log();
             crate::goldens::world_golden_effects(
@@ -55,7 +59,7 @@ async fn memory_conversation_effect_log() {
         with_anthropic_cassette("agent/completion_smoke", |client| async move {
             let mut memory = None;
             let mut ecs = EcsAgent::for_golden_with_setup(
-                client.completion(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                 BASIC_PREAMBLE,
                 false,
                 |world| {

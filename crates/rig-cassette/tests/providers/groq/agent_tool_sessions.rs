@@ -5,13 +5,13 @@
 //! owned history, JSON response formats, explicit tool choice, usage accounting,
 //! and provider metadata preservation.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{Delta, StreamEvent};
 use rig::tool::Tool;
@@ -27,6 +27,7 @@ use crate::support::{
 };
 
 use super::support::with_groq_cassette_result;
+use rig::completion::CompletionRequestBuilder;
 
 const SESSION_MODEL: &str = "qwen/qwen3.8-27b";
 /// Groq rejects `qwen/qwen3.8-27b` requests whose output cap exceeds its
@@ -492,11 +493,14 @@ impl RawResponseMetadata {
 /// (`system_fingerprint`, Groq's queue and total timings): it holds the
 /// provider's reply verbatim, so reading it back as the shared OpenAI type
 /// keeps both views on a single cassette interaction.
-async fn raw_and_normalized_completion(
-    model: &(impl CompletionModel + Clone),
+async fn raw_and_normalized_completion<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &rig_core::driver::Model<W, T>,
     request: rig::completion::CompletionRequest,
 ) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
-    let normalized = model.completion(request).await?;
+    let normalized = model.call(request).await?;
     let raw = openai::CompletionResponse::deserialize(&normalized.raw)
         .map_err(|error| anyhow::anyhow!("captured raw is the shared OpenAI reply: {error}"))?;
     let metadata = RawResponseMetadata::capture(&raw);
@@ -561,10 +565,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-groq with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
@@ -572,10 +575,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
-                .max_tokens(SESSION_MAX_TOKENS)
-                .build();
+                .max_tokens(SESSION_MAX_TOKENS).build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -607,17 +609,13 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/tool_choice_auto_required_specific_and_none",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
 
             let auto = model
-                .completion(
-                    model
-                        .completion_request("Call lookup_harbor_label exactly once with an empty object.")
+                .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Auto)
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(),
-                )
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             anyhow::ensure!(
                 auto.choice.iter().any(|content| matches!(
@@ -630,14 +628,10 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
             );
 
             let required = model
-                .completion(
-                    model
-                        .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
+                .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(),
-                )
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -650,17 +644,13 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
-                    model
-                        .completion_request("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
+                .call(CompletionRequestBuilder::new("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(),
-                )
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             let specific_calls = specific
                 .choice
@@ -675,16 +665,12 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 "specific tool choice should force only lookup_orchard_label, saw {specific_calls:?}"
             );
 
-            let none_model = client.completion(TOOL_CHOICE_NONE_MODEL);
+            let none_model = client.completion(TOOL_CHOICE_NONE_MODEL).on(rig::transport());
             let none = none_model
-                .completion(
-                    none_model
-                        .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
+                .call(CompletionRequestBuilder::new("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(),
-                )
+                        .max_tokens(SESSION_MAX_TOKENS).build())
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -707,15 +693,13 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.completion(JSON_OBJECT_MODEL);
-            let request = model
-                .completion_request(
+            let model = client.completion(JSON_OBJECT_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
                 .preamble("Return only valid JSON. No markdown.".to_string())
                 .additional_params(json!({"response_format": { "type": "json_object" }}))
-                .max_tokens(128)
-                .build();
+                .max_tokens(128).build();
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -753,15 +737,14 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model = client.completion(JSON_SCHEMA_MODEL);
-            let request = model
-                .completion_request(
-                    "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
-                )
-                .preamble("Return only the requested structured object.".to_string())
-                .output_schema(schemars::schema_for!(StructuredReleasePlan))
-                .max_tokens(128)
-                .build();
+            let model = client.completion(JSON_SCHEMA_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
+            )
+            .preamble("Return only the requested structured object.".to_string())
+            .output_schema(schemars::schema_for!(StructuredReleasePlan))
+            .max_tokens(128)
+            .build();
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -785,18 +768,14 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
             let mut stream = model
-                .stream(
-                    model
-                        .completion_request(
+                .stream(CompletionRequestBuilder::new(
                             "Reply with exactly this comma-separated sequence and no extra words: alpha,beta,gamma,delta,epsilon,zeta,eta,theta",
                         )
                         .preamble("Stream the requested short sequence exactly.".to_string())
-                        .max_tokens(64)
-                        .build(),
-                )
-                .await?;
+                        .max_tokens(64).build())
+                ?;
 
             let mut text_chunks = 0usize;
             let mut final_usage = None;

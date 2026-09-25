@@ -1,7 +1,7 @@
 //! Cohere streaming tools smoke test.
 
-use rig::prelude::*;
 use rig::providers::cohere::{self, wire::Cohere};
+use rig::wire::Wire as _;
 
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
@@ -11,16 +11,16 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]
 async fn streaming_tools_smoke() {
-    let cohere = Cohere::from_env()
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
-    let agent = cohere
-        .agent(cohere::COMMAND_A_03_2025)
-        .preamble(STREAMING_TOOLS_PREAMBLE)
-        .tool(Adder)
-        .tool(Subtract)
-        .build();
+    let cohere = Cohere::from_env().expect("config should build from env");
+    let agent = rig::AgentBuilder::new(
+        cohere
+            .completion(cohere::COMMAND_A_03_2025)
+            .on(rig::transport()),
+    )
+    .preamble(STREAMING_TOOLS_PREAMBLE)
+    .tool(Adder)
+    .tool(Subtract)
+    .build();
 
     let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)

@@ -17,6 +17,7 @@
 //! | a full sink is incomplete, never silently equal | `a_full_sink_reports_incompleteness` |
 
 use crate::bus_support;
+use rig_core::wire::Wire as _;
 
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ use bevy_ecs::prelude::*;
 use bus_support::*;
 use rig_cassette::ecs::EffectLogResource;
 use rig_cassette::effect_log::EffectLogRecorder;
+use rig_core::completion::CompletionRequestBuilder;
 use rig_core::test_utils::observations::{Comparison, compare};
 use rig_core::{
     effect::{EffectFamily, EffectId, EffectKind, Outcome},
@@ -126,10 +128,8 @@ fn empty_and_error_first_streams_keep_error_outcomes() {
 #[test]
 fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
     use rig_core::{
-        completion::CompletionModel as _,
-        driver::Bind,
         observe::{AdapterContext, AdapterEvent},
-        serve::adapters::CompletionAdapter,
+        serve::adapters::ModelAdapter,
         test_utils::RecordingHttpClient,
     };
     let mut app = app();
@@ -138,14 +138,10 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
     let model = rig_core::providers::gemini::Gemini::new("test-key")
-        .bind(http.clone())
-        .completion("test-model");
-    let request = model.completion_request("identical call").build();
-    register(
-        &mut app,
-        "model",
-        CompletionAdapter::new("test-model", model),
-    );
+        .completion("test-model")
+        .on(http.clone());
+    let request = CompletionRequestBuilder::new("identical call").build();
+    register(&mut app, "model", ModelAdapter::new("test-model", model));
     let operation = AdapterContext::new(log.clone(), Subject::default(), "logical-call");
     let mut entities = Vec::new();
     for host in [1u64, 2] {
@@ -1345,10 +1341,7 @@ fn despawning_a_held_intent_is_a_cancellation_not_a_release() {
 
 #[test]
 fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
-    use rig_core::{
-        completion::CompletionModel as _, driver::Bind, serve::adapters::CompletionAdapter,
-        test_utils::RecordingHttpClient,
-    };
+    use rig_core::{serve::adapters::ModelAdapter, test_utils::RecordingHttpClient};
     let mut app = app();
     let log = witnessed(&mut app);
     let recorder = EffectLogRecorder::new();
@@ -1357,18 +1350,18 @@ fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
     let model = rig_core::providers::gemini::Gemini::new("test-key")
-        .bind(http)
-        .completion("test-model");
-    let request = model.completion_request("same pass").build();
+        .completion("test-model")
+        .on(http);
+    let request = CompletionRequestBuilder::new("same pass").build();
     register(
         &mut app,
         "parent",
-        CompletionAdapter::new("test-model", model.clone()),
+        ModelAdapter::new("test-model", model.clone()),
     );
     register(
         &mut app,
         "child",
-        ErasedHandler::new(CompletionAdapter::new("test-model", model)).layered(Warmer),
+        ErasedHandler::new(ModelAdapter::new("test-model", model)).layered(Warmer),
     );
     let kind = EffectKind::Completion {
         request,

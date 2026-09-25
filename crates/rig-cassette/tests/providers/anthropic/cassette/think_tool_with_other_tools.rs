@@ -1,12 +1,12 @@
 //! Migrated from `examples/anthropic_think_tool_with_other_tools.rs`.
 
+use rig::wire::Wire as _;
 use std::iter::Peekable;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig::tool::builtin::ThinkTool;
@@ -278,8 +278,7 @@ async fn think_tool_with_other_tools() -> Result<()> {
 
     super::super::support::with_anthropic_cassette_result("think_tool_with_other_tools/think_tool_with_other_tools", |client| async move {
 
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let agent = rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6).on(rig::transport()))
         .name("Customer Service Agent")
         .preamble(
             "You are a customer service agent for an online store.

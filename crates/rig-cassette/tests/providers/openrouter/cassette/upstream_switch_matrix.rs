@@ -12,11 +12,13 @@
 //! carries.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
-use super::super::support::{BoundOpenRouter, with_openrouter_cassette};
+use super::super::support::with_openrouter_cassette;
+use rig::providers::openai::OpenAI;
 
 const CLAUDE: &str = "anthropic/claude-haiku-4.5";
 const CLAUDE_SONNET: &str = "anthropic/claude-sonnet-4.6";
@@ -63,7 +65,7 @@ enum Route {
 }
 
 async fn turn(
-    client: &BoundOpenRouter,
+    client: &OpenAI,
     route: Route,
     model: &str,
     history: Vec<Message>,
@@ -71,25 +73,43 @@ async fn turn(
 ) -> Vec<AssistantContent> {
     let request = request(route, history);
     match route {
-        Route::Chat => run(client.completion(model), request, streamed).await,
-        Route::Responses => run(client.responses(model), request, streamed).await,
+        Route::Chat => {
+            run(
+                client.completion(model).on(rig::transport()),
+                request,
+                streamed,
+            )
+            .await
+        }
+        Route::Responses => {
+            run(
+                client.responses(model).on(rig::transport()),
+                request,
+                streamed,
+            )
+            .await
+        }
     }
 }
 
-async fn run<M: CompletionModel>(
-    model: M,
+async fn run<W, T>(
+    model: rig::driver::Model<W, T>,
     request: CompletionRequest,
     streamed: bool,
-) -> Vec<AssistantContent> {
+) -> Vec<AssistantContent>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     if !streamed {
         return model
-            .completion(request)
+            .call(request)
             .await
             .expect("the turn completes")
             .choice
             .to_vec();
     }
-    let mut stream = model.stream(request).await.expect("the stream opens");
+    let mut stream = model.stream(request).expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("a stream item");
     }
@@ -107,7 +127,7 @@ fn text(choice: &[AssistantContent]) -> String {
 }
 
 /// A Claude tool turn answered: the prompt, the reply, and the result.
-async fn claude_tool_turn(client: &BoundOpenRouter, route: Route, streamed: bool) -> Vec<Message> {
+async fn claude_tool_turn(client: &OpenAI, route: Route, streamed: bool) -> Vec<Message> {
     let prompt = Message::user("Think it through, then call lookup_code for record alpha.");
     let first = turn(client, route, CLAUDE, vec![prompt.clone()], streamed).await;
     let call = first
@@ -138,7 +158,7 @@ async fn claude_tool_turn(client: &BoundOpenRouter, route: Route, streamed: bool
     ]
 }
 
-async fn switch(client: BoundOpenRouter, route: Route, streamed: bool) {
+async fn switch(client: OpenAI, route: Route, streamed: bool) {
     let mut history = claude_tool_turn(&client, route, streamed).await;
     history.push(Message::user(
         "Without calling any tool, repeat the code you were given, exactly.",
@@ -159,7 +179,7 @@ async fn switch(client: BoundOpenRouter, route: Route, streamed: bool) {
     );
 }
 
-async fn same_family(client: BoundOpenRouter, route: Route, streamed: bool) {
+async fn same_family(client: OpenAI, route: Route, streamed: bool) {
     let mut history = claude_tool_turn(&client, route, streamed).await;
     history.push(Message::user(
         "Now report the code, without calling any tool.",

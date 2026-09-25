@@ -22,7 +22,6 @@ use lancedb::{
     query::{QueryBase, VectorQuery},
 };
 use rig_core::{
-    embeddings::embedding::EmbeddingModel,
     vector_store::{
         VectorStoreError, VectorStoreIndex,
         request::{FilterError, SearchFilter, VectorSearchRequest},
@@ -37,29 +36,29 @@ mod utils;
 
 /// Vector index over a LanceDB table.
 ///
-/// Queries are embedded with the same model `M` that populated the table, so
+/// Queries are embedded with the same model that populated the table, so
 /// results are meaningless under another model. See [`LanceDbVectorIndex::top_n`]
 /// for a worked example.
-pub struct LanceDbVectorIndex<M> {
-    model: M,
+pub struct LanceDbVectorIndex {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     table: lancedb::Table,
     /// Column holding each record's id.
     id_field: String,
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
+impl LanceDbVectorIndex {
     /// Creates an index over an existing table whose ids live in `id_field`.
     /// The table is not inspected, so a wrong column surfaces at query time.
     pub async fn new(
         table: lancedb::Table,
-        model: M,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         id_field: &str,
         search_params: SearchParams,
     ) -> Result<Self, lancedb::Error> {
         Ok(Self {
             table,
-            model,
+            model: model.into(),
             id_field: id_field.to_string(),
             search_params,
         })
@@ -351,7 +350,7 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
+impl VectorStoreIndex for LanceDbVectorIndex {
     type Filter = LanceDBFilter;
 
     /// Returns matches as `(distance, id, row)` with embedding columns projected
@@ -360,15 +359,16 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     ///
     /// # Example
     /// ```no_run
+    /// use rig_core::wire::Wire as _;
     /// use rig_core::providers::openai::{self, wire::OpenAI};
     /// use rig_core::vector_store::VectorStoreIndex;
     /// use rig_core::vector_store::request::VectorSearchRequest;
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig_reqwest::prelude::*;
     ///
     /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
-    /// let openai_client = OpenAI::from_env()?.bound()?;
-    /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    /// let openai_client = OpenAI::from_env()?;
+    /// let http = rig_reqwest::shared();
+    /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None).on(http);
     /// let vector_store_index =
     ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///

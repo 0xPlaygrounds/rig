@@ -3,6 +3,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -22,7 +23,8 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
             let model = client
                 .openai
                 .responses(openai::GPT_5_2)
-                .map_wire(|wire| wire.with_system_instructions_as_messages());
+                .with_system_instructions_as_messages()
+                .on(rig::transport());
             let agent = AgentBuilder::new(model)
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)

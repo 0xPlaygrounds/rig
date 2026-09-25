@@ -1,17 +1,17 @@
 //! Groq continues histories other wires produced: Anthropic-signed and
 //! Gemini-signed reasoning beside a tool exchange.
 
-use rig::completion::CompletionModel;
-
-use super::support::{BoundGroq, with_groq_cassette_result};
+use super::support::with_groq_cassette_result;
 use crate::history_survival::portability::{Cell, Source};
+use rig::providers::openai::OpenAI;
+use rig::wire::Wire as _;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundGroq, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(source: Source) -> Cell {

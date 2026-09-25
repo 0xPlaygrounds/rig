@@ -67,20 +67,20 @@
 //! those cells pin the normalized shape rather than the new field.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel as _;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
-use rig::driver::Bound;
-use rig::prelude::*;
+use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::StreamEvent;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
+use rig::completion::CompletionRequestBuilder;
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages>;
 
 /// Emits `alpha`, `bravo`, `charlie`, `delta` on separate lines, so a stop
 /// sequence naming any of them cuts the turn at a known point.
@@ -95,14 +95,8 @@ const MIXED_CASE_PROMPT: &str = "Reply with exactly this and nothing else: alpha
 const IMMEDIATE_PROMPT: &str = "Reply with exactly this one word and nothing else: alpha";
 const TOOL_PROMPT: &str = "What is the weather in Paris? Use the get_weather tool.";
 
-fn request(
-    model: &AnthropicModel,
-    prompt: &str,
-    stop_sequences: &[&str],
-    max_tokens: u64,
-) -> CompletionRequest {
-    model
-        .completion_request(prompt)
+fn request(prompt: &str, stop_sequences: &[&str], max_tokens: u64) -> CompletionRequest {
+    CompletionRequestBuilder::new(prompt)
         .max_tokens(max_tokens)
         .additional_params(json!({ "stop_sequences": stop_sequences }))
         .build()
@@ -127,7 +121,6 @@ async fn raw_terminal(
 ) -> StreamingCompletionResponse {
     let mut stream = model
         .stream(request)
-        .await
         .expect("stop-sequence stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -147,7 +140,7 @@ async fn provider_response(
     request: CompletionRequest,
 ) -> anthropic::completion::CompletionResponse {
     let response = model
-        .completion(request)
+        .call(request)
         .await
         .expect("blocking stop-sequence request should succeed");
     anthropic::completion::CompletionResponse::deserialize(&response.raw)
@@ -277,9 +270,10 @@ async fn raw_single_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_single_sequence_fires",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal =
-                raw_terminal(&model, request(&model, LIST_PROMPT, &["charlie"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LIST_PROMPT, &["charlie"], 64)).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
     )
@@ -296,12 +290,11 @@ async fn raw_first_listed_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_first_listed_sequence_fires",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal = raw_terminal(
-                &model,
-                request(&model, LIST_PROMPT, &["charlie", "delta"], 64),
-            )
-            .await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal =
+                raw_terminal(&model, request(LIST_PROMPT, &["charlie", "delta"], 64)).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
     )
@@ -318,12 +311,11 @@ async fn raw_second_listed_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_second_listed_sequence_fires",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal = raw_terminal(
-                &model,
-                request(&model, LIST_PROMPT, &["zulu", "charlie"], 64),
-            )
-            .await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal =
+                raw_terminal(&model, request(LIST_PROMPT, &["zulu", "charlie"], 64)).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
     )
@@ -340,14 +332,13 @@ async fn raw_earliest_in_output_wins() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_earliest_in_output_wins",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
             // `charlie` is listed first but `bravo` appears first in the output:
             // the reported sequence must be the one that actually matched.
-            let terminal = raw_terminal(
-                &model,
-                request(&model, LIST_PROMPT, &["charlie", "bravo"], 64),
-            )
-            .await;
+            let terminal =
+                raw_terminal(&model, request(LIST_PROMPT, &["charlie", "bravo"], 64)).await;
             assert_terminal(&terminal, Some("bravo"), "stop_sequence");
         },
     )
@@ -364,15 +355,12 @@ async fn raw_four_sequences() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_four_sequences",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
             let terminal = raw_terminal(
                 &model,
-                request(
-                    &model,
-                    LIST_PROMPT,
-                    &["zulu", "yankee", "xray", "charlie"],
-                    64,
-                ),
+                request(LIST_PROMPT, &["zulu", "yankee", "xray", "charlie"], 64),
             )
             .await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
@@ -395,9 +383,10 @@ async fn raw_newline_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_newline_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal =
-                raw_terminal(&model, request(&model, LIST_PROMPT, &["\nbravo"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LIST_PROMPT, &["\nbravo"], 64)).await;
             assert_terminal(&terminal, Some("\nbravo"), "stop_sequence");
         },
     )
@@ -414,9 +403,10 @@ async fn raw_whitespace_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_whitespace_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal =
-                raw_terminal(&model, request(&model, LINE_PROMPT, &["bravo charlie"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LINE_PROMPT, &["bravo charlie"], 64)).await;
             assert_terminal(&terminal, Some("bravo charlie"), "stop_sequence");
         },
     )
@@ -433,8 +423,10 @@ async fn raw_unicode_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_unicode_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal = raw_terminal(&model, request(&model, UNICODE_PROMPT, &["🌊"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(UNICODE_PROMPT, &["🌊"], 64)).await;
             assert_terminal(&terminal, Some("🌊"), "stop_sequence");
         },
     )
@@ -451,9 +443,10 @@ async fn raw_punctuation_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_punctuation_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal =
-                raw_terminal(&model, request(&model, PUNCTUATION_PROMPT, &["###"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(PUNCTUATION_PROMPT, &["###"], 64)).await;
             assert_terminal(&terminal, Some("###"), "stop_sequence");
         },
     )
@@ -470,9 +463,10 @@ async fn raw_case_sensitive_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_case_sensitive_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal =
-                raw_terminal(&model, request(&model, MIXED_CASE_PROMPT, &["BRAVO"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(MIXED_CASE_PROMPT, &["BRAVO"], 64)).await;
             assert_terminal(&terminal, Some("BRAVO"), "stop_sequence");
         },
     )
@@ -493,10 +487,11 @@ async fn raw_case_mismatch_does_not_fire() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_case_mismatch_does_not_fire",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
             // The output says `BRAVO`; a lowercase sequence must not match.
-            let terminal =
-                raw_terminal(&model, request(&model, MIXED_CASE_PROMPT, &["bravo"], 64)).await;
+            let terminal = raw_terminal(&model, request(MIXED_CASE_PROMPT, &["bravo"], 64)).await;
             assert_terminal(&terminal, None, "end_turn");
         },
     )
@@ -513,8 +508,10 @@ async fn raw_end_turn_control() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_end_turn_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal = raw_terminal(&model, request(&model, LIST_PROMPT, &["zulu"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LIST_PROMPT, &["zulu"], 64)).await;
             assert_terminal(&terminal, None, "end_turn");
         },
     )
@@ -531,8 +528,10 @@ async fn raw_max_tokens_control() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_max_tokens_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal = raw_terminal(&model, request(&model, LIST_PROMPT, &["zulu"], 3)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LIST_PROMPT, &["zulu"], 3)).await;
             assert_terminal(&terminal, None, "max_tokens");
         },
     )
@@ -549,9 +548,10 @@ async fn raw_tool_use_control() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_tool_use_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = model
-                .completion_request(TOOL_PROMPT)
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(TOOL_PROMPT)
                 .max_tokens(256)
                 .tool(weather_tool())
                 .additional_params(json!({ "stop_sequences": ["zulu"] }))
@@ -577,9 +577,10 @@ async fn raw_empty_content_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_empty_content_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal =
-                raw_terminal(&model, request(&model, IMMEDIATE_PROMPT, &["alpha"], 32)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(IMMEDIATE_PROMPT, &["alpha"], 32)).await;
             assert_terminal(&terminal, Some("alpha"), "stop_sequence");
         },
     )
@@ -596,11 +597,12 @@ async fn raw_with_tools_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_with_tools_sequence_fires",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
             // Tools advertised but unused: the streaming body's `tool_choice`
             // reconciliation runs, and the terminal must be unaffected.
-            let request = model
-                .completion_request(LIST_PROMPT)
+            let request = CompletionRequestBuilder::new(LIST_PROMPT)
                 .max_tokens(64)
                 .tool(weather_tool())
                 .additional_params(json!({ "stop_sequences": ["charlie"] }))
@@ -624,9 +626,9 @@ async fn raw_with_prompt_caching_sequence_fires() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
-                .map_wire(|wire| wire.with_prompt_caching());
-            let terminal =
-                raw_terminal(&model, request(&model, LIST_PROMPT, &["charlie"], 64)).await;
+                .with_prompt_caching()
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LIST_PROMPT, &["charlie"], 64)).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
     )
@@ -650,9 +652,10 @@ async fn raw_with_preamble_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_with_preamble_sequence_fires",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = model
-                .completion_request(LIST_PROMPT)
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(LIST_PROMPT)
                 .preamble("You follow formatting instructions exactly.".to_string())
                 .max_tokens(64)
                 .additional_params(json!({ "stop_sequences": ["charlie"] }))
@@ -674,9 +677,10 @@ async fn raw_sonnet_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_sonnet_sequence_fires",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let terminal =
-                raw_terminal(&model, request(&model, LIST_PROMPT, &["charlie"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LIST_PROMPT, &["charlie"], 64)).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
     )
@@ -693,9 +697,10 @@ async fn raw_long_multi_token_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/raw_long_multi_token_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let terminal =
-                raw_terminal(&model, request(&model, LINE_PROMPT, &["charlie delta"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let terminal = raw_terminal(&model, request(LINE_PROMPT, &["charlie delta"], 64)).await;
             assert_terminal(&terminal, Some("charlie delta"), "stop_sequence");
         },
     )
@@ -716,9 +721,10 @@ async fn blocking_single_sequence_parity() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/blocking_single_sequence_parity",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let raw =
-                provider_response(&model, request(&model, LIST_PROMPT, &["charlie"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let raw = provider_response(&model, request(LIST_PROMPT, &["charlie"], 64)).await;
             assert_eq!(raw.stop_reason.as_deref(), Some("stop_sequence"));
             assert_eq!(raw.stop_sequence.as_deref(), Some("charlie"));
         },
@@ -740,12 +746,11 @@ async fn blocking_second_listed_sequence_parity() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/blocking_second_listed_sequence_parity",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let raw = provider_response(
-                &model,
-                request(&model, LIST_PROMPT, &["zulu", "charlie"], 64),
-            )
-            .await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let raw =
+                provider_response(&model, request(LIST_PROMPT, &["zulu", "charlie"], 64)).await;
             assert_eq!(raw.stop_sequence.as_deref(), Some("charlie"));
         },
     )
@@ -765,8 +770,10 @@ async fn blocking_end_turn_control() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/blocking_end_turn_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let raw = provider_response(&model, request(&model, LIST_PROMPT, &["zulu"], 64)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let raw = provider_response(&model, request(LIST_PROMPT, &["zulu"], 64)).await;
             assert_eq!(raw.stop_reason.as_deref(), Some("end_turn"));
             assert_eq!(raw.stop_sequence, None);
         },
@@ -784,8 +791,10 @@ async fn blocking_max_tokens_control() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/blocking_max_tokens_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let raw = provider_response(&model, request(&model, LIST_PROMPT, &["zulu"], 3)).await;
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let raw = provider_response(&model, request(LIST_PROMPT, &["zulu"], 3)).await;
             assert_eq!(raw.stop_reason.as_deref(), Some("max_tokens"));
             assert_eq!(raw.stop_sequence, None);
         },
@@ -809,18 +818,17 @@ async fn normalized_stream_single_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/normalized_stream_single_sequence",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let mut stream = rig::completion::CompletionModel::stream(
-                &model,
-                request(&model, LIST_PROMPT, &["charlie"], 64),
-            )
-            .await
-            .expect("normalized stream should open");
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .on(rig::transport());
+            let mut stream = model
+                .stream(request(LIST_PROMPT, &["charlie"], 64))
+                .expect("normalized stream should open");
             while stream.next().await.is_some() {}
 
             let final_record = stream
-                .response
-                .as_ref()
+                .folded()
+                .terminal()
                 .expect("normalized stream should carry a terminal");
             // rig's normalized terminal deliberately has no `stop_sequence`:
             // the field is provider-specific and lives on the raw record. What
@@ -842,11 +850,14 @@ async fn agent_stream_single_sequence() {
     with_anthropic_stop_sequence_cassette(
         "stop_sequence_terminal_matrix/agent_stream_single_sequence",
         |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                .max_tokens(64)
-                .additional_params(json!({ "stop_sequences": ["charlie"] }))
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
+            )
+            .max_tokens(64)
+            .additional_params(json!({ "stop_sequences": ["charlie"] }))
+            .build();
 
             let mut stream = agent.prompt(LIST_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =

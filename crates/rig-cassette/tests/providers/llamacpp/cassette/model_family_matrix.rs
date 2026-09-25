@@ -55,8 +55,8 @@
 //! defect — it is the model choice — so the cell records the shape and the
 //! streaming twin is dropped with this as its reason.
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use crate::cassettes::{
@@ -65,6 +65,7 @@ use crate::cassettes::{
 use crate::support::{Subtract, assistant_text_response};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 const TOOL_PROMPT: &str = "Calculate 2 - 5 using the tool.";
 
@@ -166,11 +167,10 @@ async fn llama_family_calls_a_tool() {
     with_llamacpp_llama_family_cassette(
         "model_family_matrix/llama_blocking_tool_call",
         |client| async move {
-            let model = client.completion(CASSETTE_LLAMA_MODEL);
+            let model = client.completion(CASSETTE_LLAMA_MODEL).on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request(TOOL_PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(TOOL_PROMPT)
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(512)
                         .build(),
@@ -209,17 +209,15 @@ async fn llama_family_streams_tool_call_arguments_as_deltas() {
     with_llamacpp_llama_family_cassette(
         "model_family_matrix/llama_streaming_tool_call",
         |client| async move {
-            let model = client.completion(CASSETTE_LLAMA_MODEL);
+            let model = client.completion(CASSETTE_LLAMA_MODEL).on(rig::transport());
             let observation = crate::support::collect_raw_stream_observation(
                 model
                     .stream(
-                        model
-                            .completion_request(TOOL_PROMPT)
+                        CompletionRequestBuilder::new(TOOL_PROMPT)
                             .tool(rig::tool::tool_definition(&Subtract))
                             .max_tokens(512)
                             .build(),
                     )
-                    .await
                     .expect("raw stream should start"),
             )
             .await;
@@ -247,11 +245,12 @@ async fn mistral_family_calls_a_tool() {
     with_llamacpp_mistral_family_cassette(
         "model_family_matrix/mistral_blocking_tool_call",
         |client| async move {
-            let model = client.completion(CASSETTE_MISTRAL_MODEL);
+            let model = client
+                .completion(CASSETTE_MISTRAL_MODEL)
+                .on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request(TOOL_PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(TOOL_PROMPT)
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(512)
                         .build(),
@@ -284,17 +283,17 @@ async fn mistral_family_streams_tool_call_arguments_as_deltas() {
     with_llamacpp_mistral_family_cassette(
         "model_family_matrix/mistral_streaming_tool_call",
         |client| async move {
-            let model = client.completion(CASSETTE_MISTRAL_MODEL);
+            let model = client
+                .completion(CASSETTE_MISTRAL_MODEL)
+                .on(rig::transport());
             let observation = crate::support::collect_raw_stream_observation(
                 model
                     .stream(
-                        model
-                            .completion_request(TOOL_PROMPT)
+                        CompletionRequestBuilder::new(TOOL_PROMPT)
                             .tool(rig::tool::tool_definition(&Subtract))
                             .max_tokens(512)
                             .build(),
                     )
-                    .await
                     .expect("raw stream should start"),
             )
             .await;
@@ -331,11 +330,10 @@ async fn gemma_family_has_no_tool_calling_in_its_template() {
     with_llamacpp_gemma_family_cassette(
         "model_family_matrix/gemma_tool_request_degrades_to_text",
         |client| async move {
-            let model = client.completion(CASSETTE_GEMMA_MODEL);
+            let model = client.completion(CASSETTE_GEMMA_MODEL).on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request(TOOL_PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(TOOL_PROMPT)
                         .tool(rig::tool::tool_definition(&Subtract))
                         .max_tokens(256)
                         .build(),

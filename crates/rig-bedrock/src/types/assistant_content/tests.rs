@@ -5,13 +5,15 @@ use crate::types::{
     json::AwsDocument,
 };
 
-use super::AwsConverseOutput;
+use crate::completion::{Converse, ConverseFrame, ConverseRequest};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
+use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::error::ProviderError;
+use rig_core::wire::{Mode, Wire as _};
 use rig_core::{
     completion,
     message::{AssistantContent, ReasoningContent},
-    telemetry::ProviderResponseExt,
 };
 use serde_json::json;
 
@@ -21,15 +23,57 @@ fn mirrored(block: aws_bedrock::ContentBlock) -> ContentBlock {
     block.try_into().expect("the SDK block mirrors")
 }
 
-/// Helper: build an AwsConverseOutput with text content and optional usage.
-fn make_output(text: &str, usage: Option<aws_bedrock::TokenUsage>) -> AwsConverseOutput {
-    make_output_with_content(vec![aws_bedrock::ContentBlock::Text(text.into())], usage)
+/// Answers every Converse request with one scripted reply.
+#[derive(Clone)]
+struct Reply(InternalConverseOutput);
+
+impl Transport<Converse> for Reply {
+    fn send(
+        &self,
+        payload: ConverseRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let output = self.0.clone();
+        let request_id = output.request_id().map(str::to_owned);
+        Ok(async move {
+            Opened {
+                request_id: request_id.clone(),
+                ..Opened::new(futures::stream::iter([
+                    Ok(ConverseFrame::Opened {
+                        model: payload.model,
+                        request_id,
+                    }),
+                    Ok(ConverseFrame::Whole(Box::new(output))),
+                ]))
+            }
+        })
+    }
+}
+
+/// `output` as `model`'s Converse endpoint answers it.
+fn complete_as(
+    model: &str,
+    output: InternalConverseOutput,
+) -> Result<completion::CompletionResponse, ProviderError> {
+    let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
+    futures::executor::block_on(Converse::new(model).on(Reply(output)).call(request))
+}
+
+/// `output` as a Nova model's Converse endpoint answers it.
+pub(crate) fn complete(
+    output: InternalConverseOutput,
+) -> Result<completion::CompletionResponse, ProviderError> {
+    complete_as("amazon.nova-pro-v1:0", output)
 }
 
 fn make_output_with_content(
     content: Vec<aws_bedrock::ContentBlock>,
     usage: Option<aws_bedrock::TokenUsage>,
-) -> AwsConverseOutput {
+) -> InternalConverseOutput {
     let message = aws_bedrock::Message::builder()
         .role(aws_bedrock::ConversationRole::Assistant)
         .set_content(Some(content))
@@ -41,8 +85,7 @@ fn make_output_with_content(
     if let Some(u) = usage {
         builder = builder.usage(u);
     }
-    let internal: InternalConverseOutput = builder.build().unwrap().try_into().unwrap();
-    AwsConverseOutput(internal)
+    builder.build().unwrap().try_into().unwrap()
 }
 
 fn make_usage(input: i32, output: i32, total: i32) -> aws_bedrock::TokenUsage {
@@ -54,46 +97,41 @@ fn make_usage(input: i32, output: i32, total: i32) -> aws_bedrock::TokenUsage {
         .unwrap()
 }
 
+/// A unary call reports the Converse usage, cache counters included, and
+/// reports none when the reply carried none.
 #[test]
-fn provider_response_ext_text_response() {
-    let out = make_output("hello world", None);
-    assert_eq!(out.text_response(), Some("hello world".to_string()));
-}
-
-#[test]
-fn provider_response_ext_response_id_is_none() {
-    let out = make_output("x", None);
-    assert!(out.response_id().is_none());
-    assert!(out.response_model_name().is_none());
-}
-
-#[test]
-fn provider_response_ext_usage_with_tokens() {
-    let out = make_output("x", Some(make_usage(100, 50, 150)));
-    let usage = out.usage().unwrap();
-    assert_eq!(usage.input_tokens, Some(100));
-    assert_eq!(usage.output_tokens, Some(50));
-    assert_eq!(usage.total_tokens, Some(150));
-}
-
-#[test]
-fn provider_response_ext_usage_none_when_missing() {
-    let out = make_output("x", None);
-    assert!(out.usage().is_none());
-}
-
-#[test]
-fn token_usage_delegates_to_provider_response_ext() {
-    let out = make_output("x", Some(make_usage(10, 20, 30)));
+fn a_unary_call_reports_the_converse_usage() {
+    let usage = aws_bedrock::TokenUsage::builder()
+        .input_tokens(100)
+        .output_tokens(50)
+        .total_tokens(150)
+        .cache_read_input_tokens(7)
+        .cache_write_input_tokens(3)
+        .build()
+        .unwrap();
+    let response = complete(make_output_with_content(
+        vec![aws_bedrock::ContentBlock::Text("x".into())],
+        Some(usage),
+    ))
+    .unwrap();
     assert_eq!(
-        out.usage().unwrap_or_default(),
+        response.usage,
         completion::Usage {
-            input_tokens: Some(10),
-            output_tokens: Some(20),
-            total_tokens: Some(30),
+            input_tokens: Some(100),
+            output_tokens: Some(50),
+            total_tokens: Some(150),
+            cached_input_tokens: Some(7),
+            cache_creation_input_tokens: Some(3),
             ..Default::default()
         }
     );
+
+    let unreported = complete(make_output_with_content(
+        vec![aws_bedrock::ContentBlock::Text("x".into())],
+        None,
+    ))
+    .unwrap();
+    assert_eq!(unreported.usage, completion::Usage::default());
 }
 
 #[test]
@@ -113,8 +151,7 @@ fn aws_converse_output_to_completion_response() {
         converse_output.try_into();
     assert!(converse_output.is_ok());
     let converse_output = converse_output.unwrap();
-    let completion: Result<completion::CompletionResponse, _> =
-        AwsConverseOutput(converse_output).try_into();
+    let completion = complete(converse_output);
     assert!(completion.is_ok());
     let completion = completion.unwrap();
     assert_eq!(
@@ -145,9 +182,8 @@ fn aws_converse_output_preserves_parallel_tool_calls_in_completion_response() {
         ),
     ];
 
-    let completion: completion::CompletionResponse = make_output_with_content(content, None)
-        .try_into()
-        .expect("conversion should succeed");
+    let completion =
+        complete(make_output_with_content(content, None)).expect("conversion should succeed");
 
     let choice: Vec<_> = completion.choice.into_iter().collect();
     assert_eq!(choice.len(), 3);
@@ -622,10 +658,10 @@ fn non_base64_redacted_reasoning_is_dropped_rather_than_sent_corrupt() {
 }
 
 /// The load-bearing property behind `CompletionResponse::raw` for Bedrock:
-/// the captured value is `serde_json::to_value(&AwsConverseOutput)`, and a
-/// consumer must be able to read it back as the same type and get the
+/// the captured value is `serde_json::to_value(&InternalConverseOutput)`,
+/// and a consumer must be able to read it back as the same type and get the
 /// same JSON — including `metrics` and `additional_model_response_fields`,
-/// which the normalized response never carries. `AwsConverseOutput` is
+/// which the normalized response never carries. `InternalConverseOutput` is
 /// `Serialize + Deserialize`, so both halves are pinned here. The
 /// SDK-typed extras (`trace`, `performance_config`, `service_tier`) are
 /// `#[serde(skip)]` and so are absent from the capture by construction;
@@ -661,7 +697,7 @@ fn aws_converse_output_round_trips_through_serde_json_value() {
         .expect("converse output should build")
         .try_into()
         .expect("the SDK output mirrors");
-    let raw = AwsConverseOutput(internal);
+    let raw = internal;
 
     let value = serde_json::to_value(&raw).expect("serialize");
     assert_eq!(value["metrics"]["latency_ms"], 42);
@@ -671,15 +707,16 @@ fn aws_converse_output_round_trips_through_serde_json_value() {
     );
     assert!(value.get("trace").is_none(), "SDK-typed extras are skipped");
 
-    let back: AwsConverseOutput = serde_json::from_value(value.clone()).expect("deserialize");
+    let back: InternalConverseOutput = serde_json::from_value(value.clone()).expect("deserialize");
     assert_eq!(
         serde_json::to_value(&back).expect("re-serialize"),
         value,
-        "the capture must read back into AwsConverseOutput and re-serialize identically"
+        "the capture must read back into InternalConverseOutput and re-serialize identically"
     );
 
-    let original: completion::CompletionResponse = raw.try_into().expect("original converts");
-    let restored: completion::CompletionResponse = back.try_into().expect("restored converts");
+    let original = complete(raw).expect("original converts");
+    assert_eq!(original.raw, value, "the response's raw is the capture");
+    let restored = complete(back).expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
     assert_eq!(restored.finish_reason(), original.finish_reason());
     assert_eq!(restored.usage, original.usage);
@@ -743,10 +780,11 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             output_schema: None,
             record_telemetry_content: false,
         };
-        request = crate::types::completion_request::AwsCompletionRequest::for_model(
-            request, model, false,
-        )
-        .inner;
+        let issuers = Converse::new(model)
+            .replay_issuers(None)
+            .expect("Converse scopes its history");
+        let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
+        rig_core::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
         match &request.chat_history[1] {
             Message::Assistant { content, .. } => content
                 .iter()
@@ -802,9 +840,9 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
     };
 
     let claude = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
-    let response = super::completion_response(reply(), claude).expect("decodes");
+    let response = complete_as(claude, reply()).expect("decodes");
     assert_eq!(issuers(&response), ["anthropic", "anthropic"]);
-    let nova = super::completion_response(reply(), "amazon.nova-pro-v1:0").expect("decodes");
+    let nova = complete_as("amazon.nova-pro-v1:0", reply()).expect("decodes");
     assert_eq!(issuers(&nova), [super::PROVIDER_NAME, super::PROVIDER_NAME]);
 
     let request = rig_core::completion::CompletionRequest {
@@ -826,9 +864,13 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
         output_schema: None,
         record_telemetry_content: false,
     };
-    let scoped =
-        crate::types::completion_request::AwsCompletionRequest::for_model(request, claude, false);
-    let Message::Assistant { content, .. } = &scoped.inner.chat_history[1] else {
+    let mut scoped = request;
+    let issuers = Converse::new(claude)
+        .replay_issuers(None)
+        .expect("Converse scopes its history");
+    let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
+    rig_core::message::retain_replayable_reasoning(&mut scoped.chat_history, &issuers);
+    let Message::Assistant { content, .. } = &scoped.chat_history[1] else {
         panic!("the assistant turn survives");
     };
     assert_eq!(

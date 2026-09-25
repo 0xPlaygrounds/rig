@@ -34,16 +34,18 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::CompletionModel;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::{BoundOpenRouter, with_openrouter_terminal_metadata_cassette_result};
+use super::super::support::with_openrouter_terminal_metadata_cassette_result;
 use crate::support::assert_matches_recorded_document;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -127,10 +129,11 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
-    let mut builder = model
-        .completion_request(prompt(cell))
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
+    let mut builder = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));
     if cell.shape == Shape::Tool {
@@ -144,10 +147,10 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // terminal metadata — routed `provider`, `service_tier`, the
             // per-choice finish reason — so it observes the reply document
             // the driver keeps on `raw`, not the normalized projection.
-            model.completion(request).await?.raw
+            model.call(request).await?.raw
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request).await?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

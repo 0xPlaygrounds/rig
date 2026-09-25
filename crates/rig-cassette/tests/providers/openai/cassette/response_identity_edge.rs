@@ -2,16 +2,16 @@
 //! follow-up): structured output, response chaining, live hook retries, error
 //! responses, and raw-vs-normalized agreement.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
-use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{IdentityProbe, assert_transport_request_id};
+use rig::completion::CompletionRequestBuilder;
 
 /// Family A: `output_schema` reshapes the request (structured output);
 /// identity still rides it.
@@ -25,12 +25,17 @@ async fn structured_output_and_identity() {
     with_openai_cassette(
         "response_identity_edge/structured_output_and_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let schema = schemars::schema_for!(Sum);
             let response = model
-                .completion_request("What is 2 + 3? Respond with the JSON object.")
-                .output_schema(schema)
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("What is 2 + 3? Respond with the JSON object.")
+                        .output_schema(schema)
+                        .build(),
+                )
                 .await
                 .expect("structured completion should succeed");
             assert_transport_request_id(
@@ -50,12 +55,17 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
     with_openai_cassette(
         "response_identity_edge/previous_response_id_chain_keeps_axes_distinct",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let first = model
-                .completion_request(
-                    "Remember the code word 'heliotrope'. Reply with exactly: noted",
+                .call(
+                    CompletionRequestBuilder::new(
+                        "Remember the code word 'heliotrope'. Reply with exactly: noted",
+                    )
+                    .build(),
                 )
-                .send()
                 .await
                 .expect("first chained call should succeed");
             let first_response_id = first
@@ -65,11 +75,15 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
             assert_transport_request_id(first.provider_request_id.as_deref(), "chain call 1");
 
             let second = model
-                .completion_request("What was the code word? Reply with just the word.")
-                .additional_params(serde_json::json!({
-                    "previous_response_id": first_response_id.clone(),
-                }))
-                .send()
+                .call(
+                    CompletionRequestBuilder::new(
+                        "What was the code word? Reply with just the word.",
+                    )
+                    .additional_params(serde_json::json!({
+                        "previous_response_id": first_response_id.clone(),
+                    }))
+                    .build(),
+                )
                 .await
                 .expect("chained call should succeed");
 
@@ -124,12 +138,15 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
         "response_identity_edge/blocking_hook_retry_uses_second_attempts_id",
         |client| async move {
             let hook = RetryOnce::default();
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble("You are a terse assistant.")
-                .add_hook(hook.clone())
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(openai::GPT_4O)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a terse assistant.")
+            .add_hook(hook.clone())
+            .build();
 
             agent
                 .prompt("Reply with exactly: first probe")
@@ -157,10 +174,10 @@ async fn provider_error_response_carries_request_id() {
         |client| async move {
             let model = client
                 .openai
-                .completion("gpt-nonexistent-model-for-identity-edge");
+                .completion("gpt-nonexistent-model-for-identity-edge")
+                .on(rig::transport());
             let error = model
-                .completion_request("Never answered")
-                .send()
+                .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
                 .expect_err("a nonexistent model must fail");
             assert_transport_request_id(error.provider_request_id(), "4xx error");
@@ -187,12 +204,14 @@ async fn raw_and_normalized_views_agree_on_identity() {
     with_openai_cassette(
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
-            let request = model
-                .completion_request("Reply with exactly: two views probe")
-                .build();
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
+            let request =
+                CompletionRequestBuilder::new("Reply with exactly: two views probe").build();
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
             assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");

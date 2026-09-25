@@ -6,7 +6,7 @@
 //! the fault without carrying the request or its credential.
 
 use bytes::Bytes;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent, AdapterUsage};
 use rig::providers::gemini::{
@@ -17,6 +17,7 @@ use rig::providers::gemini::{
     },
 };
 use rig::test_utils::SequencedStreamingHttpClient;
+use rig::wire::Wire as _;
 use rig_ecs::agent::{AdditionalParams, MaxTokens, Preamble, Role};
 
 use super::super::support::with_gemini_cassette;
@@ -36,8 +37,9 @@ use crate::{
 /// A scripted-transport model: one streaming exchange, then EOF.
 fn scripted_model(
     chunks: Vec<Bytes>,
-) -> Bound<gemini::completion::GenerateContent, SequencedStreamingHttpClient> {
-    scripted_client(chunks).completion(GEMINI_2_5_FLASH)
+) -> Model<gemini::completion::GenerateContent, SequencedStreamingHttpClient> {
+    let (client, http) = scripted_client(chunks);
+    client.completion(GEMINI_2_5_FLASH).on(http)
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -79,7 +81,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 let run = native_run(
-                    client.completion(MISSING_MODEL),
+                    client.completion(MISSING_MODEL).on(rig::transport()),
                     "",
                     SETUP_PROMPT,
                     witness,
@@ -387,7 +389,9 @@ async fn witnessed_success_matches_the_unwitnessed_run() {
             let runs = &mut runs;
             with_gemini_cassette("streaming/streaming_smoke", |client| async move {
                 let run = native_run(
-                    client.completion(GEMINI_3_FLASH_PREVIEW),
+                    client
+                        .completion(GEMINI_3_FLASH_PREVIEW)
+                        .on(rig::transport()),
                     STREAMING_PREAMBLE,
                     STREAMING_PROMPT,
                     witness,

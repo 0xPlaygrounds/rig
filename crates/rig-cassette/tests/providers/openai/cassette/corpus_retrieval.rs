@@ -8,8 +8,8 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::{EffectFamily, Outcome, RetrievedDocuments};
-use rig::prelude::*;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_corpus_retrieval_cassette;
@@ -52,17 +52,23 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_one",
         |client| async move {
-            let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let index = facts_index(
+                client
+                    .openai
+                    .embedding(EMBEDDING, None)
+                    .on(rig::transport()),
+                &FACTS,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .openai
-                .agent(MODEL)
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .dynamic_context(1, index)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.openai.completion(MODEL).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .dynamic_context(1, index)
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent.prompt(FACT_PROMPT).await.expect("the agent answers");
             assert!(!response.output.is_empty());
             let log = agent.stamp(recorder.take());
@@ -82,17 +88,23 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_one_streamed",
         |client| async move {
-            let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let index = facts_index(
+                client
+                    .openai
+                    .embedding(EMBEDDING, None)
+                    .on(rig::transport()),
+                &FACTS,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .openai
-                .agent(MODEL)
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .dynamic_context(1, index)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.openai.completion(MODEL).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .dynamic_context(1, index)
+                    .record_to(recorder.clone())
+                    .build();
             let mut stream = agent.prompt(FACT_PROMPT).stream();
             let output = final_output(&mut stream).await;
             drop(stream);
@@ -115,17 +127,23 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/retrieved_tools_one",
         |client| async move {
             let toolset = retrievable_toolset();
-            let index = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let index = tool_index(
+                client
+                    .openai
+                    .embedding(EMBEDDING, None)
+                    .on(rig::transport()),
+                &toolset,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .openai
-                .agent(MODEL)
-                .name("golden")
-                .preamble(RETRIEVED_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .retrieved_tools(1, index, toolset)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.openai.completion(MODEL).on(rig::transport()))
+                    .name("golden")
+                    .preamble(RETRIEVED_TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .retrieved_tools(1, index, toolset)
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent
                 .prompt(SUBTRACT_PROMPT)
                 .max_turns(3)
@@ -156,17 +174,23 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/retrieved_tools_one_streamed",
         |client| async move {
             let toolset = retrievable_toolset();
-            let index = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let index = tool_index(
+                client
+                    .openai
+                    .embedding(EMBEDDING, None)
+                    .on(rig::transport()),
+                &toolset,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .openai
-                .agent(MODEL)
-                .name("golden")
-                .preamble(RETRIEVED_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .retrieved_tools(1, index, toolset)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.openai.completion(MODEL).on(rig::transport()))
+                    .name("golden")
+                    .preamble(RETRIEVED_TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .retrieved_tools(1, index, toolset)
+                    .record_to(recorder.clone())
+                    .build();
             let mut stream = agent.prompt(SUBTRACT_PROMPT).max_turns(3).stream();
             let output = final_output(&mut stream).await;
             drop(stream);
@@ -194,20 +218,33 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
         "corpus_retrieval/context_and_tools",
         |client| async move {
-            let facts = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let facts = facts_index(
+                client
+                    .openai
+                    .embedding(EMBEDDING, None)
+                    .on(rig::transport()),
+                &FACTS,
+            )
+            .await;
             let toolset = retrievable_toolset();
-            let tools = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let tools = tool_index(
+                client
+                    .openai
+                    .embedding(EMBEDDING, None)
+                    .on(rig::transport()),
+                &toolset,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .openai
-                .agent(MODEL)
-                .name("golden")
-                .preamble(RETRIEVED_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .dynamic_context(1, facts)
-                .retrieved_tools(1, tools, toolset)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.openai.completion(MODEL).on(rig::transport()))
+                    .name("golden")
+                    .preamble(RETRIEVED_TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .dynamic_context(1, facts)
+                    .retrieved_tools(1, tools, toolset)
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent
                 .prompt(SUBTRACT_PROMPT)
                 .max_turns(3)

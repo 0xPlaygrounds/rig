@@ -14,8 +14,8 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::prelude::*;
 use rig::providers::doubleword;
+use rig::wire::Wire as _;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -45,8 +45,8 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_doubleword_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe(&model, &probe()).await;
+        let model = client.completion(CACHE_MODEL).on(rig::transport());
+        let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &DOUBLEWORD_CACHE_SUPPORT, "blocking probe");
     })
     .await;
@@ -61,8 +61,8 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     with_doubleword_prompt_caching_cassette(
         "prompt_caching/streaming_probe",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
-            let observation = run_cache_probe_streaming(&model, &probe()).await;
+            let model = client.completion(CACHE_MODEL).on(rig::transport());
+            let observation = run_cache_probe_streaming(model, &probe()).await;
             assert_cache_conformance(&observation, &DOUBLEWORD_CACHE_SUPPORT, "streaming probe");
         },
     )
@@ -87,8 +87,7 @@ async fn agent_loop_does_not_move_its_own_prefix() {
     const SCENARIO: &str = "prompt_caching/agent_loop";
 
     with_doubleword_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
-        let response = client
-            .agent(CACHE_MODEL)
+        let response = rig::AgentBuilder::new(client.completion(CACHE_MODEL).on(rig::transport()))
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)

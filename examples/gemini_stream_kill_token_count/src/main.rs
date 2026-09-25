@@ -10,8 +10,7 @@
 //! `streamGenerateContent` response. Any mid-stream disruption skips that chunk,
 //! so the exact server-side token count is unrecoverable. There is also no
 //! "cancel" flag to send Gemini — killing a stream is purely a client-side
-//! connection close (here, `StreamingCompletionResponse::cancel()` /
-//! `AbortHandle::abort()`).
+//! connection close: dropping the `CompletionStream`.
 //!
 //! ## The approach — one accounting path for every disruption
 //!
@@ -45,21 +44,22 @@
 //!   - Out-of-process death (kill -9, OOM, power loss) runs no in-process code;
 //!     surviving that would require persisting the accumulator to disk.
 
+use rig::wire::Wire as _;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::completion::{CompletionModel, Usage};
+use rig::completion::CompletionRequestBuilder;
+use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
 };
-use rig::streaming::{BlockClose, Delta, StreamEvent, StreamingCompletionResponse};
+use rig::streaming::{BlockClose, CompletionStream, Delta, StreamEvent};
 
 const MODEL: &str = "gemini-2.5-flash";
 /// Inject the disruption once this many output chars have streamed, so there is
@@ -82,11 +82,12 @@ enum Disruption {
     Stall,
 }
 
-/// Wraps a live `StreamingCompletionResponse` and injects a disruption after
+/// Wraps a live `CompletionStream` and injects a disruption after
 /// `after_chars` of output has been forwarded. This lets us exercise every
 /// disruption shape against a genuine Gemini stream's partial output.
 struct Disrupt {
-    inner: StreamingCompletionResponse,
+    /// The live stream, until a manual kill drops it.
+    inner: Option<CompletionStream>,
     mode: Disruption,
     after_chars: usize,
     seen_chars: usize,
@@ -94,14 +95,14 @@ struct Disrupt {
 }
 
 impl Disrupt {
-    fn new(inner: StreamingCompletionResponse, mode: Disruption, after_chars: usize) -> Self {
+    fn new(inner: CompletionStream, mode: Disruption, after_chars: usize) -> Self {
         // For `None`, make the trigger unreachable so it never fires.
         let after_chars = match mode {
             Disruption::None => usize::MAX,
             _ => after_chars,
         };
         Self {
-            inner,
+            inner: Some(inner),
             mode,
             after_chars,
             seen_chars: 0,
@@ -128,9 +129,9 @@ impl Stream for Disrupt {
             this.fired = true;
             match this.mode {
                 Disruption::ManualKill => {
-                    // Real cancellation of the underlying stream (drops the HTTP
-                    // body / generator); surfaces to the consumer as `None`.
-                    this.inner.cancel();
+                    // Real cancellation: dropping the stream drops the HTTP
+                    // body; surfaces to the consumer as `None`.
+                    this.inner = None;
                     return Poll::Ready(None);
                 }
                 Disruption::TransportError => {
@@ -149,7 +150,10 @@ impl Stream for Disrupt {
             }
         }
 
-        match Pin::new(&mut this.inner).poll_next(cx) {
+        let Some(inner) = this.inner.as_mut() else {
+            return Poll::Ready(None);
+        };
+        match Pin::new(inner).poll_next(cx) {
             Poll::Ready(Some(Ok(item))) => {
                 this.seen_chars += visible_len(&item);
                 Poll::Ready(Some(Ok(item)))
@@ -349,16 +353,15 @@ async fn run_scenario(
     http: &reqwest::Client,
     api_key: &str,
 ) -> anyhow::Result<Report> {
-    let client = Gemini::from_env()?.bound()?;
-    let model = client.completion(MODEL);
+    let model = Gemini::from_env()?.completion(MODEL).on(rig::transport());
 
-    let stream = model
-        .completion_request(prompt)
-        .temperature(0.7)
-        .max_tokens(2000)
-        .additional_params(no_thinking_params()?)
-        .stream()
-        .await?;
+    let stream = model.stream(
+        CompletionRequestBuilder::new(prompt)
+            .temperature(0.7)
+            .max_tokens(2000)
+            .additional_params(no_thinking_params()?)
+            .build(),
+    )?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

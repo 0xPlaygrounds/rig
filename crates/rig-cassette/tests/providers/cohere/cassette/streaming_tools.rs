@@ -1,7 +1,5 @@
 //! Cassette-backed Cohere streaming tool-call coverage.
 
-use rig::prelude::*;
-
 use super::super::{
     CASSETTE_MODEL,
     support::{IntegerAdder, IntegerSubtract, with_cohere_cassette},
@@ -10,19 +8,20 @@ use crate::support::{
     STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, assert_mentions_expected_number,
     collect_stream_observation,
 };
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn streaming_tool_call_roundtrip() {
     with_cohere_cassette(
         "streaming_tools/streaming_tool_call_roundtrip",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(IntegerAdder)
-                .tool(IntegerSubtract)
-                .default_max_turns(2)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
+                    .preamble(STREAMING_TOOLS_PREAMBLE)
+                    .tool(IntegerAdder)
+                    .tool(IntegerSubtract)
+                    .default_max_turns(2)
+                    .build();
 
             let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
             let observation = collect_stream_observation(&mut stream).await;

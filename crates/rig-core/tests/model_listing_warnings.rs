@@ -20,7 +20,6 @@
 #[path = "common/tracing_capture.rs"]
 mod tracing_capture;
 
-use rig_core::model::ModelLister as _;
 use rig_core::prelude::*;
 use rig_core::providers::anthropic;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -66,8 +65,8 @@ fn repeated_cursor_pages() -> Vec<MockHttpResponse> {
 async fn list(pages: Vec<MockHttpResponse>) {
     anthropic::wire::Anthropic::new("test-key")
         .models()
-        .bind(SequencedHttpClient::new(pages))
-        .list_all()
+        .on(SequencedHttpClient::new(pages))
+        .call(())
         .await
         .expect("listing should succeed");
 }

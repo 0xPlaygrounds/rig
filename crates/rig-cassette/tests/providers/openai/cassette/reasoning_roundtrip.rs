@@ -4,6 +4,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};
@@ -12,7 +13,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     with_openai_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.openai.completion("gpt-5.2"),
+            client.openai.completion("gpt-5.2").on(rig::transport()),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),
@@ -26,7 +27,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_openai_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.openai.completion("gpt-5.2"),
+            client.openai.completion("gpt-5.2").on(rig::transport()),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),
@@ -40,7 +41,10 @@ async fn nonstreaming() {
 async fn reasoning_delta_hook_streaming() {
     with_openai_cassette("reasoning_delta_hook/streaming", |client| async move {
         reasoning::run_reasoning_delta_hook_streaming(
-            client.openai.completion(openai::GPT_5_6),
+            client
+                .openai
+                .completion(openai::GPT_5_6)
+                .on(rig::transport()),
             serde_json::json!({
                 "reasoning": { "effort": "high", "summary": "detailed" }
             }),

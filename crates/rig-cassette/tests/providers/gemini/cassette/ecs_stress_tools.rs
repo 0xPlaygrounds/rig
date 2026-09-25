@@ -6,6 +6,7 @@ use super::super::{
 };
 use super::ecs_stress_tools_runtime as runtime;
 use crate::support::assert_nonempty_response;
+use rig::wire::Wire as _;
 use rig::{completion::PromptError, providers::gemini};
 use rig_agent::test_utils::{
     validate_cancelled_failure, validate_result_redaction, validate_rewritten_arguments,
@@ -23,7 +24,9 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
                 "hook_stress_tools/arg_rewrite_sets_one_key_preserving_rest_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         "You are a calculator assistant. Use the add tool for the addition.",
                         "stress-agent",
                         0.0,
@@ -78,7 +81,9 @@ async fn two_arg_rewrites_chain_blocking() {
                 "hook_stress_tools/two_arg_rewrites_chain_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         "You are a calculator assistant. Use the add tool for the addition.",
                         "stress-agent",
                         0.0,
@@ -136,7 +141,7 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
         "hook_stress_tools/two_result_rewrites_chain_redact_then_wrap_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 "You are a calculator assistant. Use the add tool, then report the exact tool \
                      result text verbatim.",
                 "stress-agent",
@@ -189,7 +194,7 @@ async fn result_truncation_reaches_model_blocking() {
         "hook_stress_tools/result_truncation_reaches_model_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 "Call the fetch_motto tool, then report the exact tool result text verbatim.",
                 "stress-agent",
                 0.0,
@@ -233,7 +238,9 @@ async fn terminate_from_tool_result_cancels_after_execution_blocking() {
                 "hook_stress_tools/terminate_from_tool_result_cancels_after_execution_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         "You are a calculator assistant. Use the add tool for the addition.",
                         "stress-agent",
                         0.0,
@@ -284,7 +291,7 @@ async fn tool_error_guidance_drives_model_retry_blocking() {
         "hook_stress_tools/tool_error_guidance_drives_model_retry_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 "You look up team codewords with the lookup_codeword tool. If the tool returns \
                      an error with guidance, follow that guidance and try again, then report the \
                      codeword you obtain.",

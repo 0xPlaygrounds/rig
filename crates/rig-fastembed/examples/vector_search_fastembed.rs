@@ -20,10 +20,11 @@ struct WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create the local Fastembed client and its embedding model
-    let fastembed = rig_fastembed::Client::new();
-
-    let embedding_model = fastembed.embedding(&FastembedModel::AllMiniLML6V2Q, None)?;
+    // Load the local Fastembed model and pair it with its embedding wire
+    let embedding_model = rig_core::Model::new(
+        rig_fastembed::TextEmbeddings::for_model(&FastembedModel::AllMiniLML6V2Q, None)?,
+        rig_fastembed::Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?,
+    );
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![

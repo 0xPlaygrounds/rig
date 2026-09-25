@@ -4,6 +4,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::wire::Wire as _;
 
 use super::super::support::with_anthropic_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};
@@ -12,7 +13,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     with_anthropic_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.completion(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
             Some(serde_json::json!({
                 "thinking": { "type": "adaptive" }
             })),
@@ -26,7 +27,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_anthropic_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
             Some(serde_json::json!({
                 "thinking": { "type": "adaptive" }
             })),
@@ -40,7 +41,7 @@ async fn nonstreaming() {
 async fn reasoning_delta_hook_streaming() {
     with_anthropic_cassette("reasoning_delta_hook/streaming", |client| async move {
         reasoning::run_reasoning_delta_hook_streaming(
-            client.completion(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
             serde_json::json!({
                 "thinking": { "type": "adaptive" }
             }),

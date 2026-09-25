@@ -44,6 +44,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 
 use rig::providers::ollama;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -51,6 +52,7 @@ use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
@@ -61,11 +63,8 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 
 /// `think: false` keeps qwen3's reasoning trace out of the recording; the
 /// durations this matrix reads are reported either way.
-fn request(
-    model: &(impl rig::completion::CompletionModel + Clone),
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .max_tokens(64)
         .additional_params(json!({ "think": false }))
         .build()
@@ -100,9 +99,13 @@ async fn raw_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -148,9 +151,13 @@ async fn raw_exposes_ollama_durations() {
     with_ollama_cassette(
         "raw_capture_matrix/raw_exposes_ollama_durations",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -209,9 +216,13 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_ollama_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;

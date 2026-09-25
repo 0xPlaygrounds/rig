@@ -9,14 +9,15 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
 use rig::message::{Document, DocumentSourceKind, Message, UserContent};
 use rig::providers::anthropic::completion::{
     self as anthropic_completion, CLAUDE_SONNET_4_6, Citation,
 };
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const PDF_URL: &str = "https://bitcoin.org/bitcoin.pdf";
 
@@ -54,22 +55,21 @@ async fn pdf_document_citations_decode_as_page_locations() {
     with_anthropic_cassette(
         "pdf_citations/pdf_document_citations_decode_as_page_locations",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![
-                                UserContent::Document(cited_pdf()),
-                                UserContent::text(
-                                    "Using citations, state in one sentence what problem this \
+                .call(
+                    CompletionRequestBuilder::new(Message::User {
+                        content: vec![
+                            UserContent::Document(cited_pdf()),
+                            UserContent::text(
+                                "Using citations, state in one sentence what problem this \
                                      paper says it solves.",
-                                ),
-                            ],
-                        })
-                        .temperature(0.0)
-                        .max_tokens(512)
-                        .build(),
+                            ),
+                        ],
+                    })
+                    .temperature(0.0)
+                    .max_tokens(512)
+                    .build(),
                 )
                 .await
                 .expect("cited PDF completion should succeed");

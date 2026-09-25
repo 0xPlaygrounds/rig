@@ -1,20 +1,18 @@
 //! Cassette-backed Cohere streaming completion coverage.
 
-use rig::prelude::*;
-
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response,
     collect_stream_final_response_and_provider_final,
 };
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn streaming_smoke() {
     with_cohere_cassette("streaming/streaming_smoke", |client| async move {
         // Capped so the recorded SSE body stays reviewable; uncapped, the model can
         // run to its 8k output limit and the fixture balloons past 800 KB.
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
             .preamble(STREAMING_PREAMBLE)
             .max_tokens(64)
             .build();

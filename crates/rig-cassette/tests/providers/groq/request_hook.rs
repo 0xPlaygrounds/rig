@@ -1,6 +1,7 @@
 //! Groq request-hook regression coverage.
 
 use anyhow::{Result, anyhow};
+use rig::wire::Wire as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -9,7 +10,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
 
 use crate::support::assert_nonempty_response;
@@ -74,13 +74,14 @@ impl AgentHook for SessionIdHook<'_> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = OpenAI::from_env_with(&GROQ)
-        .expect("GROQ_API_KEY should be set")
-        .bound()
-        .expect("transport should build")
-        .agent(REQUEST_HOOK_MODEL)
-        .preamble("You are a comedian here to entertain the user using humour and jokes.")
-        .build();
+    let agent = rig::AgentBuilder::new(
+        OpenAI::from_env_with(&GROQ)
+            .expect("GROQ_API_KEY should be set")
+            .completion(REQUEST_HOOK_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble("You are a comedian here to entertain the user using humour and jokes.")
+    .build();
 
     let hook = SessionIdHook {
         session_id: "abc123",

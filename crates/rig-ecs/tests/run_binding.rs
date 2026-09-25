@@ -3,11 +3,11 @@
 
 use crate::bus_support;
 use bevy_reflect::TypePath;
+use rig_core::wire::Wire as _;
 use rig_core::{
-    driver::Bind,
     effect::HandlerKey,
     providers::openai::wire::OpenAI,
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
 use rig_ecs::{
@@ -22,12 +22,9 @@ fn handler(label: &str, token: &str, endpoint: &str) -> (ErasedHandler, Recordin
     let http = RecordingHttpClient::new(BODY);
     let model = OpenAI::new(token)
         .with_base_url(endpoint)
-        .bind(http.clone())
-        .chat("model-x");
-    (
-        ErasedHandler::new(CompletionAdapter::new(label, model)),
-        http,
-    )
+        .chat("model-x")
+        .on(http.clone());
+    (ErasedHandler::new(ModelAdapter::new(label, model)), http)
 }
 
 // Forward real execution while varying only the advertised contract.

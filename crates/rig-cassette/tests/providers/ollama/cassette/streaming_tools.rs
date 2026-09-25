@@ -3,13 +3,12 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::prelude::*;
-
 use super::super::support::with_ollama_cassette;
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, collect_stream_final_response,
 };
+use rig::wire::Wire as _;
 
 const MODEL: &str = "qwen3:4b";
 
@@ -18,8 +17,7 @@ async fn streaming_tools_smoke() {
     with_ollama_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)

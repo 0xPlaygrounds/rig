@@ -1,11 +1,13 @@
 //! Focused DeepSeek cassette coverage for request document ordering.
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::support::with_deepseek_cassette;
 use crate::support::assert_contains_any_case_insensitive;
+use rig::completion::CompletionRequestBuilder;
 
 const SYSTEM_INSTRUCTION: &str = "Answer with the exact token from the document only.";
 const DOCUMENT_ANSWER: &str = "violet-needle";
@@ -47,15 +49,18 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
         |client| async move {
             let response = client
                 .completion(deepseek::DEEPSEEK_V4_FLASH)
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                // Needs headroom for deepseek-v4-flash's thinking tokens now
-                // that max_tokens is actually forwarded to the API.
-                .max_tokens(512)
-                .send()
+                .on(rig::transport())
+                .call(
+                    CompletionRequestBuilder::new(PROMPT)
+                        .message(Message::system(SYSTEM_INSTRUCTION))
+                        .message(Message::assistant("Acknowledged."))
+                        .document(ordering_document())
+                        .temperature(0.0)
+                        // Needs headroom for deepseek-v4-flash's thinking tokens now
+                        // that max_tokens is actually forwarded to the API.
+                        .max_tokens(512)
+                        .build(),
+                )
                 .await
                 .expect("DeepSeek document ordering request should succeed");
 

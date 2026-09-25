@@ -35,8 +35,9 @@
 //! OpenRouter contracts no request-id header, so `provider_request_id` is
 //! `None` on every turn here — a documented outcome, pinned as such.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openrouter;
+use rig::wire::Wire as _;
 use serde::Deserialize as _;
 use serde_json::json;
 
@@ -45,12 +46,13 @@ use super::super::support::with_openrouter_cassette_result;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
 use crate::support::{Observed, assert_matches_recorded_document, assert_matches_recorded_token};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
 }
 
 // ================================================================
@@ -63,7 +65,13 @@ async fn raw_reads_back_as_openrouter_type() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_capture_matrix/raw_round_trips_openrouter_type",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_round_trips_openrouter_type should replay from its cassette");
@@ -109,7 +117,11 @@ async fn raw_exposes_routed_provider() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_routed_provider";
     let sink = Observed::default();
     with_openrouter_cassette_result("raw_capture_matrix/raw_exposes_routed_provider", |client| {
-        capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone())
+        capture_completion(
+            client.completion(DEFAULT_MODEL).on(rig::transport()),
+            request(),
+            sink.clone(),
+        )
     })
     .await
     .expect("raw_exposes_routed_provider should replay from its cassette");
@@ -150,7 +162,13 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");

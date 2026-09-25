@@ -33,9 +33,9 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::cache_conformance::{
     CacheAccounting, CacheProbe, CacheSupport, assert_cache_conformance, assert_prefix_stable,
@@ -65,8 +65,8 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_deepseek_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe(&model, &probe()).await;
+        let model = client.completion(CACHE_MODEL).on(rig::transport());
+        let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &DEEPSEEK_CACHE_SUPPORT, "blocking probe");
     })
     .await;
@@ -79,8 +79,8 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_deepseek_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe_streaming(&model, &probe()).await;
+        let model = client.completion(CACHE_MODEL).on(rig::transport());
+        let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &DEEPSEEK_CACHE_SUPPORT, "streaming probe");
     })
     .await;
@@ -98,12 +98,9 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let bound = OpenAI::from_env_with(&DEEPSEEK)
-        .expect("DEEPSEEK_API_KEY")
-        .bound()
-        .expect("the bundled transport should build");
-    let model = bound.completion(CACHE_MODEL);
-    let observation = run_cache_probe(&model, &probe()).await;
+    let bound = OpenAI::from_env_with(&DEEPSEEK).expect("DEEPSEEK_API_KEY");
+    let model = bound.completion(CACHE_MODEL).on(rig::transport());
+    let observation = run_cache_probe(model, &probe()).await;
     report_and_assert_live(
         &observation,
         &DEEPSEEK_CACHE_SUPPORT,

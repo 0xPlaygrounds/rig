@@ -11,7 +11,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let mistral = OpenAI::from_env_with(&MISTRAL)?;
 //! let small = mistral.chat(mistral::MISTRAL_SMALL);
-//! let embed = mistral.embeddings(mistral::embedding::MISTRAL_EMBED, None);
+//! let embed = mistral.embedding(mistral::embedding::MISTRAL_EMBED, None);
 //! # let _ = (small, embed);
 //! # Ok(())
 //! # }

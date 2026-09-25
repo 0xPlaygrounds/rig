@@ -2,21 +2,21 @@
 
 use futures::StreamExt;
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, ToolDefinition,
-    Usage,
+    AssistantContent, CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
 };
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::{Delta, StreamEvent};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const CACHE_PROBE_RESPONSE: &str = "cache probe ready";
 const CACHE_PROBE_PROMPT: &str =
@@ -39,7 +39,8 @@ async fn manual_prompt_caching_reuses_tool_cache() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .with_prompt_caching()
+                .on(rig::transport());
             let tools = cache_probe_tools();
 
             let first = send_cache_probe(
@@ -72,7 +73,8 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .with_prompt_caching()
+                .on(rig::transport());
             let tools = cache_probe_tools_for("streaming prompt caching");
 
             let first = send_streaming_cache_probe(
@@ -110,7 +112,9 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching().with_automatic_caching());
+                .with_prompt_caching()
+                .with_automatic_caching()
+                .on(rig::transport());
             let tools = cache_probe_tools_for("manual plus automatic prompt caching");
 
             let first = send_cache_probe(
@@ -169,25 +173,30 @@ impl CachingMode {
 }
 
 fn matrix_model(
-    client: &Bound<Anthropic>,
+    client: &Anthropic,
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
-) -> Bound<Messages> {
-    let mut model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+) -> Model<Messages> {
+    let mut model = client
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .on(rig::transport());
     if mode.manual() {
-        model = model.map_wire(|wire| wire.with_prompt_caching());
+        model = model.wire.with_prompt_caching().on(model.transport);
     }
     model = match mode {
         CachingMode::Automatic | CachingMode::ManualAutomatic => {
-            model.map_wire(|wire| wire.with_automatic_caching())
+            model.wire.with_automatic_caching().on(model.transport)
         }
         CachingMode::Automatic1h | CachingMode::ManualAutomatic1h => {
-            model.map_wire(|wire| wire.with_automatic_caching_1h())
+            model.wire.with_automatic_caching_1h().on(model.transport)
         }
         CachingMode::Manual => model,
     };
     if let Some(ttl) = prefix_ttl {
-        model = model.map_wire(|wire| wire.with_static_prefix_cache_ttl(ttl));
+        model = rig::Model::new(
+            model.wire.with_static_prefix_cache_ttl(ttl),
+            model.transport,
+        );
     }
     model
 }
@@ -238,7 +247,7 @@ fn assert_cache_creation_split(
 }
 
 async fn run_matrix_body(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     name: &'static str,
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
@@ -284,20 +293,16 @@ async fn run_matrix_body(
 /// A client whose requests would fail: the client-side error tests below must
 /// error before any HTTP happens, so a reachable endpoint would mask a
 /// regression that starts sending requests.
-fn unreachable_anthropic_client() -> Bound<Anthropic> {
-    Anthropic::new("client-side-error-test-key")
-        .with_base_url("http://127.0.0.1:9")
-        .bound()
-        .expect("client should build")
+fn unreachable_anthropic_client() -> Anthropic {
+    Anthropic::new("client-side-error-test-key").with_base_url("http://127.0.0.1:9")
 }
 
 async fn send_matrix_raw_probe(
-    model: &Bound<Messages>,
+    model: &Model<Messages>,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> anthropic::completion::CompletionResponse {
-    let mut builder = model
-        .completion_request(CACHE_PROBE_PROMPT)
+    let mut builder = CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
         .preamble(preamble)
         .temperature(0.0)
         .max_tokens(16);
@@ -305,7 +310,7 @@ async fn send_matrix_raw_probe(
         builder = builder.tools(tools).tool_choice(ToolChoice::None);
     }
     let response = model
-        .completion(builder.build())
+        .call(builder.build())
         .await
         .expect("matrix Anthropic request should succeed");
     anthropic::completion::CompletionResponse::deserialize(&response.raw)
@@ -331,12 +336,11 @@ fn assert_matrix_raw_response(
 }
 
 async fn send_matrix_streaming_probe(
-    model: &Bound<Messages>,
+    model: &Model<Messages>,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> StreamingCacheProbeResponse {
-    let mut builder = model
-        .completion_request(STREAMING_CACHE_PROBE_PROMPT)
+    let mut builder = CompletionRequestBuilder::new(STREAMING_CACHE_PROBE_PROMPT)
         .preamble(preamble)
         .temperature(0.0)
         .max_tokens(16);
@@ -345,9 +349,8 @@ async fn send_matrix_streaming_probe(
             "tool_choice": { "type": "none" }
         }));
     }
-    let mut stream = builder
-        .stream()
-        .await
+    let mut stream = model
+        .stream(builder.build())
         .expect("streaming matrix Anthropic request should start");
     let mut text = String::new();
     let mut usage = None;
@@ -1251,10 +1254,12 @@ async fn static_prefix_5m_with_automatic_1h_errors_client_side() {
     let client = unreachable_anthropic_client();
     let model = matrix_model(&client, CachingMode::Automatic1h, PREFIX_5M);
     let error = model
-        .completion_request(CACHE_PROBE_PROMPT)
-        .preamble(cache_probe_preamble_for("illegal inversion"))
-        .max_tokens(16)
-        .send()
+        .call(
+            CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
+                .preamble(cache_probe_preamble_for("illegal inversion"))
+                .max_tokens(16)
+                .build(),
+        )
         .await
         .expect_err("5m static prefix under a 1h top-level TTL must fail client-side");
     let message = error.to_string();
@@ -1272,11 +1277,12 @@ async fn static_prefix_5m_with_manual_automatic_1h_errors_client_side_streaming(
     let client = unreachable_anthropic_client();
     let model = matrix_model(&client, CachingMode::ManualAutomatic1h, PREFIX_5M);
     let error = model
-        .completion_request(STREAMING_CACHE_PROBE_PROMPT)
-        .preamble(cache_probe_preamble_for("illegal inversion streaming"))
-        .max_tokens(16)
-        .stream()
-        .await
+        .stream(
+            CompletionRequestBuilder::new(STREAMING_CACHE_PROBE_PROMPT)
+                .preamble(cache_probe_preamble_for("illegal inversion streaming"))
+                .max_tokens(16)
+                .build(),
+        )
         .err()
         .expect("5m static prefix under a 1h top-level TTL must fail client-side");
     let message = error.to_string();
@@ -1297,26 +1303,28 @@ async fn static_prefix_with_explicit_tool_marker_at_marker_limit() {
         |client| async move {
             let model = matrix_model(&client, CachingMode::Automatic, PREFIX_1H);
             let response = model
-                .completion_request(CACHE_PROBE_PROMPT)
-                .preamble(cache_probe_preamble_for("marker budget at the limit"))
-                .tools(cache_probe_tools_for("marker budget at the limit"))
-                .tool_choice(ToolChoice::None)
-                .additional_params(json!({
-                    "tools": [{
-                        "name": "provider_cache_probe_alpha",
-                        "description": "Provider-specific cache probe tool.",
-                        "input_schema": {"type": "object", "properties": {}},
-                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
-                    }, {
-                        "name": "provider_cache_probe_beta",
-                        "description": "Second provider-specific cache probe tool.",
-                        "input_schema": {"type": "object", "properties": {}},
-                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
-                    }]
-                }))
-                .temperature(0.0)
-                .max_tokens(16)
-                .send()
+                .call(
+                    CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
+                        .preamble(cache_probe_preamble_for("marker budget at the limit"))
+                        .tools(cache_probe_tools_for("marker budget at the limit"))
+                        .tool_choice(ToolChoice::None)
+                        .additional_params(json!({
+                            "tools": [{
+                                "name": "provider_cache_probe_alpha",
+                                "description": "Provider-specific cache probe tool.",
+                                "input_schema": {"type": "object", "properties": {}},
+                                "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                            }, {
+                                "name": "provider_cache_probe_beta",
+                                "description": "Second provider-specific cache probe tool.",
+                                "input_schema": {"type": "object", "properties": {}},
+                                "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                            }]
+                        }))
+                        .temperature(0.0)
+                        .max_tokens(16)
+                        .build(),
+                )
                 .await
                 .expect("request at the 4-marker limit should succeed");
             let text = response_text(&response);
@@ -1344,11 +1352,13 @@ async fn static_prefix_with_excess_explicit_tool_markers_errors_client_side() {
         })
         .collect();
     let error = model
-        .completion_request(CACHE_PROBE_PROMPT)
-        .preamble(cache_probe_preamble_for("marker budget over limit"))
-        .additional_params(json!({ "tools": provider_tools }))
-        .max_tokens(16)
-        .send()
+        .call(
+            CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
+                .preamble(cache_probe_preamble_for("marker budget over limit"))
+                .additional_params(json!({ "tools": provider_tools }))
+                .max_tokens(16)
+                .build(),
+        )
         .await
         .expect_err("explicit markers beyond the budget must fail client-side");
     assert!(
@@ -1358,19 +1368,21 @@ async fn static_prefix_with_excess_explicit_tool_markers_errors_client_side() {
 }
 
 async fn send_cache_probe(
-    model: Bound<Messages>,
+    model: Model<Messages>,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
 ) -> RigCompletionResponse {
     model
-        .completion_request(prompt)
-        .preamble(preamble)
-        .tools(tools)
-        .tool_choice(ToolChoice::None)
-        .temperature(0.0)
-        .max_tokens(16)
-        .send()
+        .call(
+            CompletionRequestBuilder::new(prompt)
+                .preamble(preamble)
+                .tools(tools)
+                .tool_choice(ToolChoice::None)
+                .temperature(0.0)
+                .max_tokens(16)
+                .build(),
+        )
         .await
         .expect("prompt-cached Anthropic request should succeed")
 }
@@ -1381,22 +1393,23 @@ struct StreamingCacheProbeResponse {
 }
 
 async fn send_streaming_cache_probe(
-    model: Bound<Messages>,
+    model: Model<Messages>,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
 ) -> StreamingCacheProbeResponse {
     let mut stream = model
-        .completion_request(prompt)
-        .preamble(preamble)
-        .tools(tools)
-        .additional_params(json!({
-            "tool_choice": { "type": "none" }
-        }))
-        .temperature(0.0)
-        .max_tokens(16)
-        .stream()
-        .await
+        .stream(
+            CompletionRequestBuilder::new(prompt)
+                .preamble(preamble)
+                .tools(tools)
+                .additional_params(json!({
+                    "tool_choice": { "type": "none" }
+                }))
+                .temperature(0.0)
+                .max_tokens(16)
+                .build(),
+        )
         .expect("streaming prompt-cached Anthropic request should start");
     let mut text = String::new();
     let mut usage = None;
@@ -1610,8 +1623,9 @@ async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
-            let observation = run_cache_probe(&model, &conformance_probe()).await;
+                .with_prompt_caching()
+                .on(rig::transport());
+            let observation = run_cache_probe(model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
                 &ANTHROPIC_CACHE_SUPPORT,
@@ -1634,8 +1648,9 @@ async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
-            let observation = run_cache_probe_streaming(&model, &conformance_probe()).await;
+                .with_prompt_caching()
+                .on(rig::transport());
+            let observation = run_cache_probe_streaming(model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
                 &ANTHROPIC_CACHE_SUPPORT,
@@ -1664,14 +1679,15 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
         "prompt_caching/conformance_agent_loop",
         |client| async move {
             // Built from a model that has prompt caching *enabled*.
-            // `client.agent(name)` constructs a default model, which places no
+            // `rig::AgentBuilder::new(client.completion(name).on(rig::transport()))` constructs a default model, which places no
             // `cache_control` markers at all — a first recording made exactly
             // that mistake and produced a convincing-looking "the agent loop
             // busts the cache" result (zero cached tokens on every turn) that
             // was really just caching switched off.
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching());
+                .with_prompt_caching()
+                .on(rig::transport());
             let response = rig::agent::AgentBuilder::new(model)
                 .preamble(&conformance_probe().preamble)
                 .tool(CacheProbeLookupTool)

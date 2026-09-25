@@ -1,9 +1,9 @@
 //! Preserves the live default-max-turns example as provider-local regression coverage.
 
 use anyhow::Result;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -90,16 +90,19 @@ async fn default_max_turns_allows_multi_step_tool_use() -> Result<()> {
     super::super::support::with_anthropic_cassette_result(
         "default_max_turns/default_max_turns_allows_multi_step_tool_use",
         |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble(
-                    "You are an assistant that must use the available tools for arithmetic. \
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
+            .preamble(
+                "You are an assistant that must use the available tools for arithmetic. \
              Never compute the result yourself.",
-                )
-                .tool(Add)
-                .tool(Divide)
-                .default_max_turns(10)
-                .build();
+            )
+            .tool(Add)
+            .tool(Divide)
+            .default_max_turns(10)
+            .build();
 
             let response = agent
                 .prompt("Calculate (3 + 5) / 4 and describe the result.")

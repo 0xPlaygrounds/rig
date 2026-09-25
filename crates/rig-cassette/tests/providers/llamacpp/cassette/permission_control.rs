@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
-use rig::prelude::*;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -176,19 +176,20 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let scratch = ScratchFile::new("prompt")?;
 
-            let agent = client
-                .clone()
-                .agent(CASSETTE_MODEL)
-                .preamble(
-                    "You are a helpful assistant that can read files using different methods.",
-                )
-                .tool(ReadFileHead {
-                    path: scratch.path.clone(),
-                })
-                .tool(ReadFileTail {
-                    path: scratch.path.clone(),
-                })
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .clone()
+                    .completion(CASSETTE_MODEL)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a helpful assistant that can read files using different methods.")
+            .tool(ReadFileHead {
+                path: scratch.path.clone(),
+            })
+            .tool(ReadFileTail {
+                path: scratch.path.clone(),
+            })
+            .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
             let last_result = Arc::new(Mutex::new(None));
@@ -225,19 +226,20 @@ async fn permission_control_streaming_example() -> Result<()> {
         |client| async move {
             let scratch = ScratchFile::new("streaming")?;
 
-            let agent = client
-                .clone()
-                .agent(CASSETTE_MODEL)
-                .preamble(
-                    "You are a helpful assistant that can read files using different methods.",
-                )
-                .tool(ReadFileHead {
-                    path: scratch.path.clone(),
-                })
-                .tool(ReadFileTail {
-                    path: scratch.path.clone(),
-                })
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .clone()
+                    .completion(CASSETTE_MODEL)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a helpful assistant that can read files using different methods.")
+            .tool(ReadFileHead {
+                path: scratch.path.clone(),
+            })
+            .tool(ReadFileTail {
+                path: scratch.path.clone(),
+            })
+            .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
             let last_result = Arc::new(Mutex::new(None));

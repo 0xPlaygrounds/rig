@@ -1,6 +1,6 @@
 # rig-reqwest
 
-The bundled [`reqwest`](https://docs.rs/reqwest) HTTP transport for [Rig](https://crates.io/crates/rig): `ReqwestClient` and `ReqwestMiddlewareClient` wrap host-built clients and implement `HttpClientExt`. The optional `DefaultTransport` construction convenience builds rig-core's erased default transport, so `rig::providers::openai::wire::OpenAI::from_env()?.bound()?` works with no transport named.
+The bundled [`reqwest`](https://docs.rs/reqwest) HTTP transport for [Rig](https://crates.io/crates/rig): `ReqwestClient` and `ReqwestMiddlewareClient` wrap host-built clients and implement `HttpClientExt`. `shared()` is the process-wide default transport, built once on first use, so `OpenAI::from_env()?.completion(model).on(rig_reqwest::shared())` names no transport type; the `rig` facade's `wire.on(rig::transport())` pairs a wire with it. Construction never fails: when the reqwest client cannot be built, every send reports the build failure in-band.
 
 `rig-core` itself has no default transport and no reqwest/Tokio dependency; this crate is where both live. On native targets, requests and lazy response bodies capture the caller's Tokio context or, outside Tokio (Bevy task pools, smol, `futures::executor`), a lazily started fallback reactor. Each poll enters that context; no detached per-request or stream-forwarding worker owns the operation. Dropping a request, response body or stream releases its local operation without waiting for another upstream chunk. It cannot undo a remotely accepted request.
 

@@ -7,47 +7,6 @@ struct BuilderHook;
 
 impl AgentHook for BuilderHook {}
 
-/// A model without any `Clone` impl must pass through the builder's
-/// erasure seam (`AgentBuilder::new` → the bus's `CompletionAdapter`
-/// registered under the agent's model key). The bound is the test: a
-/// regression is a compile error.
-#[test]
-fn builder_accepts_non_clone_model() {
-    struct NonCloneModel;
-
-    impl rig_core::completion::CompletionModel for NonCloneModel {
-        fn completion(
-            &self,
-            _request: rig_core::completion::CompletionRequest,
-        ) -> impl Future<
-            Output = Result<
-                rig_core::completion::CompletionResponse,
-                rig_core::error::ProviderError,
-            >,
-        > + rig_core::wasm_compat::WasmCompatSend {
-            std::future::ready(Err(rig_core::error::ProviderError::Provider(
-                "compile-time probe".to_string(),
-            )))
-        }
-
-        fn stream(
-            &self,
-            _request: rig_core::completion::CompletionRequest,
-        ) -> impl Future<
-            Output = Result<
-                rig_core::streaming::StreamingCompletionResponse,
-                rig_core::error::ProviderError,
-            >,
-        > + rig_core::wasm_compat::WasmCompatSend {
-            std::future::ready(Err(rig_core::error::ProviderError::Provider(
-                "compile-time probe".to_string(),
-            )))
-        }
-    }
-
-    let _ = || AgentBuilder::new(NonCloneModel);
-}
-
 #[test]
 fn hook_can_be_set_after_tool_configuration() {
     let _agent = AgentBuilder::new(MockCompletionModel::text("ok"))

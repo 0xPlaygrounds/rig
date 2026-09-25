@@ -5,6 +5,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
+use rig::wire::Wire as _;
 use rig_ecs::{
     agent::{AdditionalParams, MaxTokens, Temperature},
     bus::Streamed,
@@ -26,7 +27,9 @@ async fn completion_smoke() {
         async {
             with_gemini_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                    client
+                        .completion(gemini::completion::GEMINI_2_5_FLASH)
+                        .on(rig::transport()),
                     BASIC_PREAMBLE,
                     1,
                 );
@@ -47,7 +50,9 @@ async fn streaming_smoke() {
         async {
             with_gemini_cassette("streaming/streaming_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
+                    client
+                        .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                        .on(rig::transport()),
                     STREAMING_PREAMBLE,
                     1,
                 );
@@ -97,7 +102,9 @@ async fn streaming_tools_smoke() {
                 "streaming_tools/streaming_tools_smoke",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         STREAMING_TOOLS_PREAMBLE,
                         1,
                     );
@@ -138,7 +145,9 @@ async fn example_streaming_prompt() {
         async {
             with_gemini_cassette("streaming/example_streaming_prompt", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
+                    client
+                        .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                        .on(rig::transport()),
                     "Be precise and concise.",
                     1,
                 );
@@ -185,7 +194,9 @@ async fn example_streaming_with_tools() {
                 "streaming_tools/example_streaming_with_tools",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question.",
                         1,

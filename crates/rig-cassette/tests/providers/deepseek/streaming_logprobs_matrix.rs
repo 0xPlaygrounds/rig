@@ -21,19 +21,21 @@
 //! concatenate token arrays in wire order, including DeepSeek's
 //! `reasoning_content` probability array.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::CompletionModel;
 use rig::providers::deepseek;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::{
-    BoundDeepSeek, recorded_request, recorded_response, recorded_stream_chunks,
+    recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_stream_logprobs_cassette_result,
 };
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -120,17 +122,16 @@ fn max_tokens(cell: Cell) -> u64 {
     }
 }
 
-async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(MODEL);
-    let request = model
-        .completion_request(prompt(cell))
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion(MODEL).on(rig::transport());
+    let request = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell))
         .build();
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.completion(request).await?;
+            let response = model.call(request).await?;
             let choice = response.raw["choices"]
                 .as_array()
                 .and_then(|choices| choices.first())
@@ -141,7 +142,7 @@ async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request).await?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

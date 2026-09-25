@@ -8,12 +8,11 @@
 //! turns.
 
 use rig::completion::Message;
-use rig::driver::{Bound, Socket};
 use rig::embeddings::EmbeddingsBuilder;
-use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig::tool::ToolSet;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
+use rig::wire::Wire as _;
 
 use super::super::agent_run_support::{history_has_assistant_tool_call, tool_result_texts};
 use super::super::support::with_gemini_cassette;
@@ -23,14 +22,13 @@ use super::super::tools_support::{
 use crate::support::assert_mentions_expected_number;
 
 /// Build an in-memory index over the toolset's embeddable schemas.
-async fn build_tool_index<H: Socket>(
-    client: &Bound<Gemini, H>,
+async fn build_tool_index(
+    client: &Gemini,
     toolset: &ToolSet,
-) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
-    rig::embeddings::ToolSchema,
-    Bound<gemini::embedding::Embeddings, H>,
-> {
-    let embedding_model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<rig::embeddings::ToolSchema> {
+    let embedding_model = client
+        .embedding(gemini::embedding::EMBEDDING_001, None)
+        .on(rig::transport());
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -63,14 +61,17 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
                 .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .retrieved_tools(1, index, toolset)
-                .default_max_turns(3)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .retrieved_tools(1, index, toolset)
+            .default_max_turns(3)
+            .build();
 
             let mut history = Vec::<Message>::new();
             let response = agent
@@ -110,13 +111,16 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
                 .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .retrieved_tools(1, index, toolset)
-                .default_max_turns(3)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .retrieved_tools(1, index, toolset)
+            .default_max_turns(3)
+            .build();
 
             let mut history = Vec::<Message>::new();
             let response = agent
@@ -154,12 +158,15 @@ async fn sample_caps_retrieved_definitions() {
                 .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .retrieved_tools(2, index, toolset)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .retrieved_tools(2, index, toolset)
+            .build();
 
             let defs = agent
                 .tool_definitions(Some(

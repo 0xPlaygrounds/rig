@@ -7,28 +7,31 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::providers::anthropic;
+use rig::wire::Wire as _;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
     with_anthropic_cassette(
         "messages_behaviors/max_tokens_truncation_preserves_stop_reason_and_partial_text",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-                .preamble("You are a storyteller.".to_string())
-                .max_tokens(64)
-                .build();
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.".to_string())
+            .max_tokens(64)
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("a truncated response should still convert, not error");
 

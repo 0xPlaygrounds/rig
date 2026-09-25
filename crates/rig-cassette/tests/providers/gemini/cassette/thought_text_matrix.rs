@@ -13,7 +13,7 @@
 //!   `response.text` was **the model's private reasoning** and the actual
 //!   transcript, sitting in parts[1], was dropped. A transcript split across
 //!   several text parts lost everything after the first, too.
-//! * `ProviderResponseExt::text_response` collected *every* text part,
+//! * the client layer's `text_response` reader collected *every* text part,
 //!   gluing the chain-of-thought onto the answer — a second reader of the
 //!   same document, disagreeing with the first.
 //!
@@ -92,27 +92,29 @@
 //!
 //! Cell 24, `text_response_still_ignores_non_model_roles`, is deleted rather
 //! than restated. The role filter it pinned existed only inside
-//! `ProviderResponseExt::text_response` (`content.role != Role::Model` →
+//! the client layer's `text_response` reader (`content.role != Role::Model` →
 //! contribute nothing); the decoder reads the first candidate's parts without
 //! consulting `role`, and `visible_text_parts` — the surviving skip rule —
 //! never filtered on it either. Nothing replaces the cell because nothing
 //! replaces the filter.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
 use rig::transcription::TranscriptionRequestBuilder;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    BoundGemini, assert_recorded_response_contains, assert_recorded_response_excludes,
+    assert_recorded_response_contains, assert_recorded_response_excludes,
     with_gemini_thought_text_cassette,
 };
 use crate::support::AUDIO_FIXTURE_PATH;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::gemini::Gemini;
 
 /// The sentence spoken in `tests/data/en-us-natural-speech.mp3`, as recorded
 /// by this matrix's own fixtures.
@@ -214,7 +216,7 @@ fn split_parts(response: &GenerateContentResponse) -> (String, Vec<String>) {
 /// provided audio exactly…") as an instruction to *translate*, so that cell
 /// pins the mapping without pinning the language.
 async fn transcription_body(
-    client: BoundGemini,
+    client: Gemini,
     scenario: &'static str,
     model_id: &'static str,
     params: Option<Value>,
@@ -222,8 +224,8 @@ async fn transcription_body(
     thoughts_expected: bool,
     expected_words: Option<&'static str>,
 ) {
-    let model = client.transcription(model_id);
-    let mut request = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
+    let model = client.transcription(model_id).on(rig::transport());
+    let mut request = TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)
         .expect("audio fixture should load");
     if let Some(params) = params {
         request = request.additional_params(params);
@@ -232,7 +234,10 @@ async fn transcription_body(
         request = request.temperature(temperature);
     }
 
-    let response = request.send().await.expect("transcription should succeed");
+    let response = model
+        .call(request.build())
+        .await
+        .expect("transcription should succeed");
     let raw: GenerateContentResponse = serde_json::from_value(response.raw.clone())
         .expect("raw payload should round-trip to Gemini's own response type");
     let (visible, thoughts) = split_parts(&raw);
@@ -438,7 +443,7 @@ struct TextResponseCell {
     thoughts_expected: bool,
 }
 
-async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: TextResponseCell) {
+async fn text_response_body(client: Gemini, scenario: &'static str, cell: TextResponseCell) {
     let TextResponseCell {
         model_id,
         prompt,
@@ -448,8 +453,8 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
         thoughts_expected,
     } = cell;
 
-    let model = client.completion(model_id);
-    let mut request = model.completion_request(prompt).temperature(0.0);
+    let model = client.completion(model_id).on(rig::transport());
+    let mut request = CompletionRequestBuilder::new(prompt).temperature(0.0);
     if let Some(preamble) = preamble {
         request = request.preamble(preamble.to_string());
     }
@@ -462,7 +467,7 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
     let request = request.build();
 
     let response = model
-        .completion(request)
+        .call(request)
         .await
         .expect("completion should succeed");
 
@@ -726,9 +731,10 @@ async fn text_response_on_a_tool_call_turn() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_on_a_tool_call_turn",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("What is 41 plus 1? Use the add tool.")
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
                 .max_tokens(2000)
                 .tools(vec![rig::completion::ToolDefinition {
@@ -747,7 +753,7 @@ async fn text_response_on_a_tool_call_turn() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -829,21 +835,24 @@ async fn text_response_across_two_candidates() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_across_two_candidates",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Name one primary colour. Answer with the single word.")
-                .temperature(0.0)
-                .max_tokens(400)
-                .additional_params(json!({
-                    "generationConfig": {
-                        "candidateCount": 2,
-                        "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
-                    }
-                }))
-                .build();
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Name one primary colour. Answer with the single word.",
+            )
+            .temperature(0.0)
+            .max_tokens(400)
+            .additional_params(json!({
+                "generationConfig": {
+                    "candidateCount": 2,
+                    "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
+                }
+            }))
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -918,20 +927,21 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             // A budget large enough to start thinking and far too small to answer:
             // the turn truncates with reasoning and no visible text.
-            let request = model
-                .completion_request(
-                    "Prove rigorously, with full detail, that there are infinitely many primes.",
-                )
-                .temperature(0.0)
-                .max_tokens(64)
-                .additional_params(completion_thinking(512, true))
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Prove rigorously, with full detail, that there are infinitely many primes.",
+            )
+            .temperature(0.0)
+            .max_tokens(64)
+            .additional_params(completion_thinking(512, true))
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -972,17 +982,16 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
                 .additional_params(completion_thinking(512, true))
                 .build();
 
-            let mut stream = CompletionModel::stream(&model, request)
-                .await
-                .expect("stream should open");
+            let mut stream = model.stream(request).expect("stream should open");
 
             let mut text = String::new();
             let mut reasoning = String::new();
@@ -1011,11 +1020,11 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 "streamed text must not contain the reasoning"
             );
             assert!(
-                has_reasoning(&stream.snapshot()),
+                has_reasoning(&stream.folded().snapshot()),
                 "the aggregated choice should keep reasoning as reasoning"
             );
             assert_eq!(
-                choice_text(&stream.snapshot()),
+                choice_text(&stream.folded().snapshot()),
                 text,
                 "the aggregated text must be exactly the streamed text deltas"
             );
@@ -1048,15 +1057,16 @@ async fn blocking_keeps_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/blocking_keeps_a_trailing_thought_signature",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = model
-                .completion_request(SIGNATURE_PROMPT)
+            let model = client
+                .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(SIGNATURE_PROMPT)
                 .temperature(0.0)
                 .max_tokens(1000)
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
 
@@ -1100,27 +1110,26 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = model
-                .completion_request(SIGNATURE_PROMPT)
+            let model = client
+                .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(SIGNATURE_PROMPT)
                 .temperature(0.0)
                 .max_tokens(1000)
                 .build();
 
-            let mut stream = CompletionModel::stream(&model, request)
-                .await
-                .expect("stream should open");
+            let mut stream = model.stream(request).expect("stream should open");
             while stream.next().await.is_some() {}
 
             // The stream sends the answer, then an empty part carrying the
             // signature: that empty part keeps it, on its own text.
-            let snapshot = stream.snapshot();
+            let snapshot = stream.folded().snapshot();
             assert_eq!(text_signatures(&snapshot).len(), 1, "{snapshot:?}");
             assert!(!has_reasoning(&snapshot));
             assert!(
-                choice_text(&stream.snapshot()).contains("289"),
+                choice_text(&stream.folded().snapshot()).contains("289"),
                 "the streamed answer must be there, got {:?}",
-                choice_text(&stream.snapshot())
+                choice_text(&stream.folded().snapshot())
             );
         },
     )
@@ -1130,13 +1139,13 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 // --- unit cells: states a live turn cannot be made to produce -------------
 
 mod unit {
-    use rig::completion::{CompletionModel, CompletionResponse};
+    use rig::completion::CompletionResponse;
     use rig::message::{AssistantContent, ReasoningContent};
-    use rig::prelude::*;
     use rig::providers::gemini::Gemini;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::test_utils::RecordingHttpClient;
     use rig::transcription::{NormalizeTranscriptionResponse, TranscriptionResponse};
+    use rig::wire::Wire as _;
     use serde_json::{Value, json};
 
     /// A thought part with the shape recorded in
@@ -1175,14 +1184,15 @@ mod unit {
     /// here and carried by the real wire, driver and decoder — the same path
     /// every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>, role: &str) -> CompletionResponse {
-        let model = Gemini::new("unit-key")
-            .bind(RecordingHttpClient::new(
-                reply_with(parts, role).to_string(),
-            ))
-            .completion("gemini-2.5-flash");
-        let request = model.completion_request("unit").build();
+        let model =
+            Gemini::new("unit-key")
+                .completion("gemini-2.5-flash")
+                .on(RecordingHttpClient::new(
+                    reply_with(parts, role).to_string(),
+                ));
+        let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model
-            .completion(request)
+            .call(request)
             .await
             .expect("the stubbed reply should convert")
     }

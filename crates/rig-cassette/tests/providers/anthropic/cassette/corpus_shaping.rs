@@ -10,9 +10,9 @@ use futures::StreamExt;
 use rig::agent::{Agent, MultiTurnStreamItem};
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig::run::OutputMode;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_shaping_cassette;
@@ -63,15 +63,15 @@ async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
         "corpus_shaping/tool_choice_required_first",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .add_hook(PatchToolChoiceRequiredFirst)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(Adder)
+                    .add_hook(PatchToolChoiceRequiredFirst)
+                    .record_to(recorder.clone())
+                    .build();
             let output = answer(&agent, ADD_PROMPT).await;
             assert!(output.contains("42"), "{output}");
             let log = agent.stamp(recorder.take());
@@ -93,17 +93,17 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
         "corpus_shaping/tool_choice_none_on_committed_output",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .add_hook(PatchToolChoiceNoneSecond)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(Adder)
+                    .output_schema_raw(event_schema())
+                    .output_mode(OutputMode::Tool)
+                    .add_hook(PatchToolChoiceNoneSecond)
+                    .record_to(recorder.clone())
+                    .build();
             let outcome = agent.prompt(SUM_EVENT_PROMPT).max_turns(3).await;
             let log = agent.stamp(recorder.take());
             // The patched turn answers in text, the run's output validation
@@ -133,14 +133,14 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
 async fn extra_context_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/extra_context", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.0)
-            .add_hook(PatchExtraContext)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(BASIC_PREAMBLE)
+                .temperature(0.0)
+                .add_hook(PatchExtraContext)
+                .record_to(recorder.clone())
+                .build();
         let output = answer(&agent, CONTEXT_PROMPT).await;
         assert!(output.to_lowercase().contains("jiro"), "{output}");
         let log = agent.stamp(recorder.take());
@@ -164,14 +164,14 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
         "corpus_shaping/extra_context_streamed",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .add_hook(PatchExtraContext)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .add_hook(PatchExtraContext)
+                    .record_to(recorder.clone())
+                    .build();
             let mut stream = agent.prompt(CONTEXT_PROMPT).stream();
             let mut output = None;
             while let Some(item) = stream.next().await {
@@ -198,17 +198,17 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
 async fn merged_three_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/merged_three", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
-            .name("golden")
-            .preamble(TOOLS_PREAMBLE)
-            .temperature(0.0)
-            .tool(Adder)
-            .add_hook(PreambleOverride)
-            .add_hook(PatchExtraContext)
-            .add_hook(PatchToolChoiceRequiredFirst)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .tool(Adder)
+                .add_hook(PreambleOverride)
+                .add_hook(PatchExtraContext)
+                .add_hook(PatchToolChoiceRequiredFirst)
+                .record_to(recorder.clone())
+                .build();
         let output = answer(&agent, ADD_PROMPT).await;
         assert!(output.contains("42"), "{output}");
         let log = agent.stamp(recorder.take());
@@ -241,16 +241,19 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/route_on_first_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .model_route("fast", client.completion(CLAUDE_HAIKU_4_5))
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .add_hook(RouteOnFirstTurn)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .model_route(
+                        "fast",
+                        client.completion(CLAUDE_HAIKU_4_5).on(rig::transport()),
+                    )
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(Adder)
+                    .add_hook(RouteOnFirstTurn)
+                    .record_to(recorder.clone())
+                    .build();
             let output = answer(&agent, ADD_PROMPT).await;
             assert!(output.contains("42"), "{output}");
             let log = agent.stamp(recorder.take());
@@ -270,16 +273,19 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
 async fn late_route_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/late_route", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
-            .name("golden")
-            .preamble(TOOLS_PREAMBLE)
-            .temperature(0.0)
-            .tool(Adder)
-            .add_hook(SelectLate)
-            .record_to(recorder.clone())
-            .build();
-        agent.register_model(LATE_ROUTE, client.completion(CLAUDE_HAIKU_4_5));
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .tool(Adder)
+                .add_hook(SelectLate)
+                .record_to(recorder.clone())
+                .build();
+        agent.register_model(
+            LATE_ROUTE,
+            client.completion(CLAUDE_HAIKU_4_5).on(rig::transport()),
+        );
         let output = answer(&agent, ADD_PROMPT).await;
         assert!(output.contains("42"), "{output}");
         let log = agent.stamp(recorder.take());
@@ -310,15 +316,15 @@ async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/max_tokens_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .add_hook(PatchMaxTokensSecond)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(Adder)
+                    .add_hook(PatchMaxTokensSecond)
+                    .record_to(recorder.clone())
+                    .build();
             let _ = answer(&agent, ADD_PROMPT).await;
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), TOOL_TURN);
@@ -337,15 +343,15 @@ async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/thinking_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .add_hook(PatchThinkingSecond)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(Adder)
+                    .add_hook(PatchThinkingSecond)
+                    .record_to(recorder.clone())
+                    .build();
             let output = answer(&agent, ADD_PROMPT).await;
             assert!(output.contains("42"), "{output}");
             let log = agent.stamp(recorder.take());
@@ -366,15 +372,15 @@ async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/preamble_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .add_hook(PatchPreambleSecond)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(Adder)
+                    .add_hook(PatchPreambleSecond)
+                    .record_to(recorder.clone())
+                    .build();
             let _ = answer(&agent, ADD_PROMPT).await;
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), TOOL_TURN);
@@ -402,15 +408,15 @@ async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/active_tools_none_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .add_hook(PatchActiveToolsNoneSecond)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(Adder)
+                    .add_hook(PatchActiveToolsNoneSecond)
+                    .record_to(recorder.clone())
+                    .build();
             let output = answer(&agent, ADD_PROMPT).await;
             assert!(output.contains("42"), "{output}");
             let log = agent.stamp(recorder.take());
@@ -430,14 +436,14 @@ async fn history_first_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/history_first_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .add_hook(PatchHistoryFirst)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .add_hook(PatchHistoryFirst)
+                    .record_to(recorder.clone())
+                    .build();
             let output = answer(&agent, NAME_PROMPT).await;
             assert!(output.contains("Ada"), "{output}");
             let log = agent.stamp(recorder.take());

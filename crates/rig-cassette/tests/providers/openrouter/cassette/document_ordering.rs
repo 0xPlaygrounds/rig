@@ -1,10 +1,12 @@
 //! Focused OpenRouter cassette coverage for request document ordering.
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 use crate::support::assert_contains_any_case_insensitive;
+use rig::completion::CompletionRequestBuilder;
 
 const SYSTEM_INSTRUCTION: &str = "Answer with the exact token from the document only.";
 const DOCUMENT_ANSWER: &str = "violet-needle";
@@ -46,13 +48,16 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
         |client| async move {
             let response = client
                 .completion(DEFAULT_MODEL)
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                .max_tokens(32)
-                .send()
+                .on(rig::transport())
+                .call(
+                    CompletionRequestBuilder::new(PROMPT)
+                        .message(Message::system(SYSTEM_INSTRUCTION))
+                        .message(Message::assistant("Acknowledged."))
+                        .document(ordering_document())
+                        .temperature(0.0)
+                        .max_tokens(32)
+                        .build(),
+                )
                 .await
                 .expect("OpenRouter document ordering request should succeed");
 

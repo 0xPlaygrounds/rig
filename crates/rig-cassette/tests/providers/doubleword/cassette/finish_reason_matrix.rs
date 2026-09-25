@@ -15,13 +15,16 @@
 //! Doubleword rejects `chat_template_kwargs.enable_thinking` and directs
 //! callers to `reasoning_effort`; `"none"` disables reasoning on Qwen 3.5.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::doubleword;
+use rig::wire::Wire as _;
 use serde_json::json;
 
-use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
+use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::{collect_text_and_terminal, zero_arg_tool_definition};
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const STOP_PROMPT: &str = "Reply with exactly: done";
 const LENGTH_PROMPT: &str = "Explain every step of how a compiler optimizes a large program.";
@@ -48,12 +51,13 @@ fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
     }
 }
 
-async fn blocking_stop(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+async fn blocking_stop(client: OpenAI) {
+    let model = client
+        .completion(doubleword::QWEN3_5_9B)
+        .on(rig::transport());
     let response = model
-        .completion(
-            model
-                .completion_request(STOP_PROMPT)
+        .call(
+            CompletionRequestBuilder::new(STOP_PROMPT)
                 .additional_params(json!({ "reasoning_effort": "none" }))
                 .max_tokens(64)
                 .build(),
@@ -63,12 +67,13 @@ async fn blocking_stop(client: BoundDoubleword) {
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
 
-async fn blocking_length(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
+async fn blocking_length(client: OpenAI) {
+    let model = client
+        .completion(doubleword::QWEN3_5_9B)
+        .on(rig::transport());
     let response = model
-        .completion(
-            model
-                .completion_request(LENGTH_PROMPT)
+        .call(
+            CompletionRequestBuilder::new(LENGTH_PROMPT)
                 .max_tokens(1)
                 .build(),
         )
@@ -77,12 +82,13 @@ async fn blocking_length(client: BoundDoubleword) {
     assert_eq!(response.finish_reason(), Some(FinishReason::Length));
 }
 
-async fn blocking_tool_calls_body(client: BoundDoubleword) {
-    let model = client.completion(doubleword::QWEN3_5_397B_A17B);
+async fn blocking_tool_calls_body(client: OpenAI) {
+    let model = client
+        .completion(doubleword::QWEN3_5_397B_A17B)
+        .on(rig::transport());
     let response = model
-        .completion(
-            model
-                .completion_request(TOOL_PROMPT)
+        .call(
+            CompletionRequestBuilder::new(TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .max_tokens(256)
@@ -100,17 +106,19 @@ async fn blocking_tool_calls_body(client: BoundDoubleword) {
 }
 
 async fn streaming_reason(
-    client: BoundDoubleword,
+    client: OpenAI,
     prompt: &'static str,
     max_tokens: u64,
     stop_probe: bool,
 ) -> FinishReason {
-    let model = client.completion(doubleword::QWEN3_5_9B);
-    let mut builder = model.completion_request(prompt).max_tokens(max_tokens);
+    let model = client
+        .completion(doubleword::QWEN3_5_9B)
+        .on(rig::transport());
+    let mut builder = CompletionRequestBuilder::new(prompt).max_tokens(max_tokens);
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
     }
-    let stream = model.stream(builder.build()).await.expect("stream probe");
+    let stream = model.stream(builder.build()).expect("stream probe");
     let (_, terminal) = collect_text_and_terminal(stream).await;
     terminal
         .expect("stream should carry a terminal record")
@@ -181,17 +189,17 @@ async fn streaming_tool_calls() {
     with_doubleword_cassette(
         "finish_reason_matrix/streaming_tool_calls",
         |client| async move {
-            let model = client.completion(doubleword::QWEN3_5_397B_A17B);
+            let model = client
+                .completion(doubleword::QWEN3_5_397B_A17B)
+                .on(rig::transport());
             let stream = model
                 .stream(
-                    model
-                        .completion_request(TOOL_PROMPT)
+                    CompletionRequestBuilder::new(TOOL_PROMPT)
                         .tool(zero_arg_tool_definition("ping"))
                         .tool_choice(ToolChoice::Required)
                         .max_tokens(256)
                         .build(),
                 )
-                .await
                 .expect("tool stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             assert_eq!(

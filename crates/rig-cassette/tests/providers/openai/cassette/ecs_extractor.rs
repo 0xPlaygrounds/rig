@@ -3,6 +3,7 @@ use super::super::support::with_openai_cassette;
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use rig_agent::test_utils::validate_extraction_fields;
 #[tokio::test]
 async fn extractor_smoke() {
@@ -10,7 +11,10 @@ async fn extractor_smoke() {
         async {
             with_openai_cassette("extractor/extractor_smoke", |client| async move {
                 let mut extractor = EcsExtractor::<SmokePerson>::new(
-                    client.openai.completion(openai::GPT_4O),
+                    client
+                        .openai
+                        .completion(openai::GPT_4O)
+                        .on(rig::transport()),
                     None,
                     None,
                 );

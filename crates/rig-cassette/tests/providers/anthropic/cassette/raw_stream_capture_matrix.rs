@@ -47,15 +47,14 @@
 //! `stop_reason`.
 
 use rig::message::AssistantContent;
+use rig::wire::Wire as _;
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
-use rig::driver::Bound;
+use rig::completion::{FinishReason, ToolDefinition};
 use rig::message::{ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Anthropic;
-use rig::providers::anthropic::wire::Messages;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -66,6 +65,7 @@ use super::super::support::{
 
 use crate::raw_capture::{capture_terminal, stream_normalized_without_raw};
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const PROMPT: &str = "Reply with exactly: raw stream capture probe";
@@ -89,17 +89,14 @@ const THINKING_SCENARIO: &str =
 const TOOL_USE_SCENARIO: &str =
     "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream";
 
-type AnthropicModel = Bound<Messages>;
-
-fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(32).build()
+fn probe_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(32).build()
 }
 
 /// From `reasoning_usage_matrix.rs`: extended thinking on, minimum budget,
 /// `max_tokens` above it as Anthropic requires.
-fn thinking_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(THINKING_PROMPT)
+fn thinking_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(THINKING_PROMPT)
         .max_tokens(2048)
         .additional_params(json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }))
         .build()
@@ -120,9 +117,8 @@ fn weather_tool() -> ToolDefinition {
 
 /// `tool_choice: required` (Anthropic `any`) so the turn is a `tool_use`
 /// terminal by construction, not by the model's mood.
-fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .max_tokens(256)
         .tool(weather_tool())
         .tool_choice(ToolChoice::Required)
@@ -136,7 +132,7 @@ struct Streamed {
     terminal: StreamFinal,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> Streamed {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> Streamed {
     let mut items = Vec::new();
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -159,16 +155,13 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 /// [`capture_terminal`]; these two assert on the non-terminal items too, so
 /// the drain stays local.
 async fn streamed_body(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     model_name: &str,
-    build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
+    request: rig::completion::CompletionRequest,
     sink: Observed<Streamed>,
 ) {
-    let model = client.completion(model_name);
-    let stream = model
-        .stream(build(&model))
-        .await
-        .expect("stream should open");
+    let model = client.completion(model_name).on(rig::transport());
+    let stream = model.stream(request).expect("stream should open");
     sink.put(drain_stream(stream).await);
 }
 
@@ -307,8 +300,10 @@ async fn terminal_raw_round_trips_into_provider_type() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                    probe_request,
+                    client
+                        .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        .on(rig::transport()),
+                    probe_request(),
                     sink,
                 )
                 .await
@@ -410,14 +405,13 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_terminal(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                |model| {
-                    model
-                        .completion_request(IMMEDIATE_PROMPT)
-                        .max_tokens(32)
-                        .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                        .build()
-                },
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
+                CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
+                    .max_tokens(32)
+                    .additional_params(json!({ "stop_sequences": ["alpha"] }))
+                    .build(),
                 sink,
             )
             .await
@@ -486,8 +480,10 @@ async fn normalized_terminal_matches_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                    probe_request,
+                    client
+                        .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        .on(rig::transport()),
+                    probe_request(),
                     sink,
                 )
                 .await
@@ -549,7 +545,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
                 streamed_body(
                     client,
                     anthropic::completion::CLAUDE_SONNET_4_6,
-                    thinking_request,
+                    thinking_request(),
                     sink,
                 )
             }
@@ -681,7 +677,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
                 streamed_body(
                     client,
                     anthropic::completion::CLAUDE_HAIKU_4_5,
-                    tool_request,
+                    tool_request(),
                     sink,
                 )
             }

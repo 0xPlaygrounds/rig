@@ -33,7 +33,7 @@
 //! in the response says so. The cell reads the recorded request bytes rather
 //! than trusting the builder.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::providers::openai::wire::{LLAMACPP, OpenAI};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::{Value, json};
@@ -42,6 +42,7 @@ use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 use crate::support::assistant_text_response;
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// Qwen3 emits a `<think>` trace before answering and the chat-completions
 /// route has no switch for it, so prompts that need a short literal answer
@@ -83,11 +84,10 @@ fn recorded_finish_reason(scenario: &str) -> String {
 #[tokio::test]
 async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     with_llamacpp_cassette("sampling_matrix/temperature_zero", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Say ok."))
+            .call(
+                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
                     .temperature(0.0)
                     .max_tokens(32)
                     .build(),
@@ -98,11 +98,10 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     .await;
 
     with_llamacpp_cassette("sampling_matrix/temperature_nonzero", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Say ok."))
+            .call(
+                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
                     .temperature(0.7)
                     .max_tokens(32)
                     .build(),
@@ -130,11 +129,10 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
 #[tokio::test]
 async fn a_one_token_cap_truncates_with_finish_reason_length() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_one", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request("Count from one to ten.")
+            .call(
+                CompletionRequestBuilder::new("Count from one to ten.")
                     .max_tokens(1)
                     .build(),
             )
@@ -168,11 +166,10 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
 #[tokio::test]
 async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_normal", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Reply with the single word: ok"))
+            .call(
+                CompletionRequestBuilder::new(format!("{NO_THINK}Reply with the single word: ok"))
                     .max_tokens(512)
                     .build(),
             )
@@ -215,16 +212,15 @@ fn a_cap_past_the_context_is_clamped() {
 #[tokio::test]
 async fn a_single_stop_sequence_truncates_the_answer() {
     with_llamacpp_cassette("sampling_matrix/stop_single", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request(format!(
-                        "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                    ))
-                    .max_tokens(64)
-                    .additional_params(json!({ "stop": ["Charlie"] }))
-                    .build(),
+            .call(
+                CompletionRequestBuilder::new(format!(
+                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
+                ))
+                .max_tokens(64)
+                .additional_params(json!({ "stop": ["Charlie"] }))
+                .build(),
             )
             .await
             .expect("a stop sequence is a normal request");
@@ -260,17 +256,16 @@ async fn a_single_stop_sequence_truncates_the_answer() {
 #[tokio::test]
 async fn several_stop_sequences_fire_on_whichever_comes_first() {
     with_llamacpp_cassette("sampling_matrix/stop_multiple", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request(format!(
-                        "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                    ))
-                    .max_tokens(64)
-                    // `Zulu` never appears; `Bravo` appears before `Charlie`.
-                    .additional_params(json!({ "stop": ["Zulu", "Charlie", "Bravo"] }))
-                    .build(),
+            .call(
+                CompletionRequestBuilder::new(format!(
+                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
+                ))
+                .max_tokens(64)
+                // `Zulu` never appears; `Bravo` appears before `Charlie`.
+                .additional_params(json!({ "stop": ["Zulu", "Charlie", "Bravo"] }))
+                .build(),
             )
             .await
             .expect("several stop sequences are a normal request");
@@ -298,16 +293,15 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
 #[tokio::test]
 async fn a_stop_sequence_that_never_matches_changes_nothing() {
     with_llamacpp_cassette("sampling_matrix/stop_never_fires", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request(format!(
-                        "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                    ))
-                    .max_tokens(64)
-                    .additional_params(json!({ "stop": ["QQZZXX-never-emitted"] }))
-                    .build(),
+            .call(
+                CompletionRequestBuilder::new(format!(
+                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
+                ))
+                .max_tokens(64)
+                .additional_params(json!({ "stop": ["QQZZXX-never-emitted"] }))
+                .build(),
             )
             .await
             .expect("an unmatched stop sequence is a normal request");
@@ -333,16 +327,15 @@ async fn a_stop_sequence_that_never_matches_changes_nothing() {
 #[tokio::test]
 async fn stop_matching_is_case_sensitive() {
     with_llamacpp_cassette("sampling_matrix/stop_case_sensitive", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request(format!(
-                        "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                    ))
-                    .max_tokens(64)
-                    .additional_params(json!({ "stop": ["charlie"] }))
-                    .build(),
+            .call(
+                CompletionRequestBuilder::new(format!(
+                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
+                ))
+                .max_tokens(64)
+                .additional_params(json!({ "stop": ["charlie"] }))
+                .build(),
             )
             .await
             .expect("a case-mismatched stop sequence is still a valid request");
@@ -378,11 +371,10 @@ async fn stop_matching_is_case_sensitive() {
 #[tokio::test]
 async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     with_llamacpp_cassette("sampling_matrix/seed_fixed", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Say ok."))
+            .call(
+                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
                     .max_tokens(32)
                     .additional_params(json!({ "seed": 7 }))
                     .build(),
@@ -393,11 +385,10 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     .await;
 
     with_llamacpp_cassette("sampling_matrix/seed_absent", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Say ok."))
+            .call(
+                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
                     .max_tokens(32)
                     .build(),
             )

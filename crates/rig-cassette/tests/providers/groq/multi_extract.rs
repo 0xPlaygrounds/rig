@@ -1,10 +1,9 @@
 //! Groq live coverage for batch multi-extract pipelines.
-
+use rig::wire::Wire as _;
 use std::future::IntoFuture;
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -32,25 +31,28 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ)
-        .expect("GROQ_API_KEY should be set")
-        .bound()
-        .expect("transport should build");
-    let names_extractor = groq
-        .extractor::<Names>(MULTI_EXTRACT_NAMES_MODEL)
-        .append_preamble("Extract names from the given text.")
-        .retries(2)
-        .build();
-    let topics_extractor = groq
-        .extractor::<Topics>(MULTI_EXTRACT_TOPICS_MODEL)
-        .append_preamble("Extract topics from the given text.")
-        .retries(2)
-        .build();
-    let sentiment_extractor = groq
-        .extractor::<Sentiment>(MULTI_EXTRACT_SENTIMENT_MODEL)
-        .append_preamble("Extract sentiment and confidence from the given text.")
-        .retries(2)
-        .build();
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(
+        groq.completion(MULTI_EXTRACT_NAMES_MODEL)
+            .on(rig::transport()),
+    )
+    .append_preamble("Extract names from the given text.")
+    .retries(2)
+    .build();
+    let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(
+        groq.completion(MULTI_EXTRACT_TOPICS_MODEL)
+            .on(rig::transport()),
+    )
+    .append_preamble("Extract topics from the given text.")
+    .retries(2)
+    .build();
+    let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(
+        groq.completion(MULTI_EXTRACT_SENTIMENT_MODEL)
+            .on(rig::transport()),
+    )
+    .append_preamble("Extract sentiment and confidence from the given text.")
+    .retries(2)
+    .build();
 
     let inputs = vec![
         "Ada Lovelace discussed analytical engines and early programming.",

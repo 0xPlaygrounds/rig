@@ -5,14 +5,15 @@
 //! provider's raw response shape. A census cell that exposes a Rig defect is
 //! moved into a dedicated per-bug exhaustive matrix before merge.
 
-use rig::completion::CompletionModel;
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::support::{
     collect_raw_stream_outcome, recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_followup_hunt_cassette_result,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -52,15 +53,14 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/blocking_stop_sequence_reaches_the_wire_and_stops_generation",
         |client| async move {
-            let model = client.completion(MODEL);
-            let request = model
-                .completion_request(
-                    "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
-                )
-                .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
-                .max_tokens(24)
-                .build();
-            let response = model.completion(request).await?;
+            let model = client.completion(MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
+            )
+            .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
+            .max_tokens(24)
+            .build();
+            let response = model.call(request).await?;
             assert_eq!(
                 response.finish_reason(),
                 Some(rig::completion::FinishReason::Stop)
@@ -90,15 +90,14 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/streaming_stop_sequence_reaches_the_wire_and_stops_generation",
         |client| async move {
-            let model = client.completion(MODEL);
-            let request = model
-                .completion_request(
-                    "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
-                )
-                .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
-                .max_tokens(24)
-                .build();
-            let outcome = collect_raw_stream_outcome(model.stream(request).await?).await;
+            let model = client.completion(MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
+                "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
+            )
+            .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
+            .max_tokens(24)
+            .build();
+            let outcome = collect_raw_stream_outcome(model.stream(request)?).await;
             assert!(
                 outcome.errors.is_empty(),
                 "stream errors: {:?}",
@@ -129,13 +128,13 @@ async fn low_reasoning_effort_produces_a_reasoning_turn() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn",
         |client| async move {
-            let model = client.completion(MODEL);
-            let request = model
-                .completion_request("What is 17 + 25? Answer with only the number.")
-                .additional_params(json!({ "reasoning_effort": "low" }))
-                .max_tokens(64)
-                .build();
-            let response = model.completion(request).await?;
+            let model = client.completion(MODEL).on(rig::transport());
+            let request =
+                CompletionRequestBuilder::new("What is 17 + 25? Answer with only the number.")
+                    .additional_params(json!({ "reasoning_effort": "low" }))
+                    .max_tokens(64)
+                    .build();
+            let response = model.call(request).await?;
             assert!(
                 response
                     .choice
@@ -165,18 +164,16 @@ async fn policy_sensitive_response_content_shape_is_recorded() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/policy_sensitive_response_content_shape_is_recorded",
         |client| async move {
-            let model = client.completion(MODEL);
-            let request = model
-                .completion_request(
+            let model = client.completion(MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
                     "Give a concise, neutral historical summary of the June 1989 Tiananmen Square protests.",
                 )
                 .additional_params(non_thinking(json!({})))
-                .max_tokens(48)
-                .build();
+                .max_tokens(48).build();
             // The hunt is about the raw 200 response shape: a documented
             // nullable `content` may fail Rig's current typed decoder. The
             // recorded body below is the premise either way.
-            let _ = model.completion(request).await;
+            let _ = model.call(request).await;
             Ok::<(), rig::error::ProviderError>(())
         },
     )

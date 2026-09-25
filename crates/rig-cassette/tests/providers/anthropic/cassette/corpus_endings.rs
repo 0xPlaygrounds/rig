@@ -10,12 +10,11 @@
 use futures::StreamExt;
 use rig::agent::{AgentHook, MultiTurnStreamItem, StreamingError};
 use rig::completion::PromptError;
-use rig::driver::Bound;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_endings_cassette};
@@ -74,7 +73,7 @@ fn assert_settled_error(settled: &RecordSettled) {
 /// A unary tool program under `hook`, expected to end cancelled with
 /// `reason`; the log's families are `shape`.
 async fn unary_tool_run(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     hook: impl AgentHook + 'static,
     reason: &str,
     shape: &[EffectFamily],
@@ -82,14 +81,14 @@ async fn unary_tool_run(
 ) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-    let mut builder = client
-        .agent(CLAUDE_SONNET_4_6)
-        .name("golden")
-        .preamble(TOOLS_PREAMBLE)
-        .tool(Adder)
-        .add_hook(hook)
-        .add_hook(settled.clone())
-        .record_to(recorder.clone());
+    let mut builder =
+        rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+            .name("golden")
+            .preamble(TOOLS_PREAMBLE)
+            .tool(Adder)
+            .add_hook(hook)
+            .add_hook(settled.clone())
+            .record_to(recorder.clone());
     builder = if thinking {
         builder.additional_params(
             serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }),
@@ -128,14 +127,16 @@ enum Streamed {
 }
 
 async fn streamed_run(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     hook: impl AgentHook + 'static,
     reason: &str,
     program: Streamed,
 ) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let mut base = client.agent(CLAUDE_SONNET_4_6).name("golden");
+    let mut base =
+        rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+            .name("golden");
     base = base.temperature(0.0);
     let agent = match program {
         Streamed::Tools => base
@@ -237,15 +238,15 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
         |client| async move {
             let settled = RecordSettled::default();
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .add_hook(CancelAnswer)
-                .add_hook(settled.clone())
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .add_hook(CancelAnswer)
+                    .add_hook(settled.clone())
+                    .record_to(recorder.clone())
+                    .build();
             let error = agent
                 .prompt(BASIC_PROMPT)
                 .await

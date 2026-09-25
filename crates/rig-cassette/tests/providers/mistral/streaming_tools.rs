@@ -1,8 +1,8 @@
 //! Mistral streaming tools coverage, including the migrated example path.
 
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -16,12 +16,8 @@ use super::TOOL_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn streaming_tools_smoke() {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let agent = client
-        .agent(TOOL_MODEL)
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(256)
         .tool(Adder)
@@ -39,12 +35,8 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn example_streaming_with_tools() {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let agent = client
-        .agent(TOOL_MODEL)
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",
@@ -65,12 +57,8 @@ async fn example_streaming_with_tools() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let agent = client
-        .agent(TOOL_MODEL)
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
         .tool(AlphaSignal)
@@ -92,12 +80,8 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let agent = client
-        .agent(TOOL_MODEL)
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
         .tool(AlphaSignal)

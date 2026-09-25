@@ -1,12 +1,12 @@
 //! Mistral live coverage for combining `prompt_typed()` with tool calling.
 
 use anyhow::Result;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig::tool::Tool;
 
@@ -73,12 +73,8 @@ impl Tool for WeatherTool {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let agent = client
-        .agent(TOOL_MODEL)
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
              After calling the tool, respond with ONLY minified JSON matching this schema: \

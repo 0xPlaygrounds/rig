@@ -70,11 +70,10 @@
 //! `crates/rig-core/src/providers/openai/completion/{mod,streaming}.rs`:
 //! `refusal_*` / `delta_text_*`.
 
-use rig::completion::CompletionModel;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::completion::CompletionResponse as ChatReply;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -85,6 +84,7 @@ use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
     collect_stream_observation, collect_text_and_terminal,
 };
+use rig::completion::CompletionRequestBuilder;
 
 /// A request the model refuses rather than answers — and refuses *as a
 /// refusal*, not as in-schema prose.
@@ -144,14 +144,13 @@ async fn chat_blocking_raw_model_surfaces_refusal() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_blocking_raw_model_surfaces_refusal",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("a refusal is content, not a transport failure");
 
@@ -172,11 +171,10 @@ async fn chat_blocking_agent_prompt_surfaces_refusal() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_blocking_agent_prompt_surfaces_refusal",
         |client| async move {
-            let agent = client
-                .chat
-                .agent(REFUSING_MODEL)
-                .additional_params(chat_response_format())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.chat.completion(REFUSING_MODEL).on(rig::transport()))
+                    .additional_params(chat_response_format())
+                    .build();
 
             let response = agent
                 .prompt(REFUSED_PROMPT)
@@ -202,13 +200,12 @@ async fn chat_blocking_raw_and_normalized_agree() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_blocking_raw_and_normalized_agree",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
             let reply = ChatReply::deserialize(&response.raw)
                 .expect("`raw` is the serialized openai::completion::CompletionResponse");
             let raw_refusal = reply
@@ -240,13 +237,12 @@ async fn chat_blocking_refusal_finishes_with_stop() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_blocking_refusal_finishes_with_stop",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
 
             assert_eq!(
                 response.finish_reason(),
@@ -267,13 +263,12 @@ async fn chat_streaming_raw_model_surfaces_refusal() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_streaming_raw_model_surfaces_refusal",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -295,11 +290,10 @@ async fn chat_streaming_agent_surfaces_refusal() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_streaming_agent_surfaces_refusal",
         |client| async move {
-            let agent = client
-                .chat
-                .agent(REFUSING_MODEL)
-                .additional_params(chat_response_format())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.chat.completion(REFUSING_MODEL).on(rig::transport()))
+                    .additional_params(chat_response_format())
+                    .build();
 
             let mut stream = agent.prompt(REFUSED_PROMPT).stream();
             let observed = collect_stream_observation(&mut stream).await;
@@ -321,13 +315,12 @@ async fn chat_streaming_terminal_carries_usage() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_streaming_terminal_carries_usage",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (text, terminal) = collect_text_and_terminal(stream).await;
 
             assert_nonempty_response(&text);
@@ -363,12 +356,11 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_streaming_and_blocking_each_deliver_their_refusal_in_full",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
 
             let blocking = model
-                .completion(
-                    model
-                        .completion_request(REFUSED_PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(REFUSED_PROMPT)
                         .additional_params(chat_response_format())
                         .build(),
                 )
@@ -379,12 +371,10 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
 
             let stream = model
                 .stream(
-                    model
-                        .completion_request(REFUSED_PROMPT)
+                    CompletionRequestBuilder::new(REFUSED_PROMPT)
                         .additional_params(chat_response_format())
                         .build(),
                 )
-                .await
                 .expect("streaming refusal turn");
             let (streamed_text, terminal) = collect_text_and_terminal(stream).await;
 
@@ -428,11 +418,10 @@ async fn chat_refusal_turn_survives_into_history() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_refusal_turn_survives_into_history",
         |client| async move {
-            let agent = client
-                .chat
-                .agent(REFUSING_MODEL)
-                .additional_params(chat_response_format())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.chat.completion(REFUSING_MODEL).on(rig::transport()))
+                    .additional_params(chat_response_format())
+                    .build();
 
             let mut history: Vec<Message> = Vec::new();
             let refusal = agent
@@ -470,13 +459,12 @@ async fn chat_control_non_refusing_prompt_is_unchanged() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_control_non_refusing_prompt_is_unchanged",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model
-                .completion_request(ANSWERABLE_PROMPT)
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(ANSWERABLE_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.completion(request).await.expect("ordinary turn");
+            let response = model.call(request).await.expect("ordinary turn");
             let text = assistant_text_response(&response.choice).expect("assistant text");
 
             assert!(
@@ -497,13 +485,12 @@ async fn chat_control_non_refusing_stream_is_unchanged() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_control_non_refusing_stream_is_unchanged",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model
-                .completion_request(ANSWERABLE_PROMPT)
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(ANSWERABLE_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert!(
@@ -527,13 +514,12 @@ async fn chat_control_mini_answers_inside_schema() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_control_mini_answers_inside_schema",
         |client| async move {
-            let model = client.openai.chat(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client.openai.chat(openai::GPT_4O_MINI).on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(chat_response_format())
                 .build();
 
-            let response = model.completion(request).await.expect("turn");
+            let response = model.call(request).await.expect("turn");
             let text = assistant_text_response(&response.choice).expect("assistant text");
 
             assert!(text.trim_start().starts_with('{'), "{text}");
@@ -554,10 +540,10 @@ async fn chat_control_plain_refusal_is_content_not_refusal() {
     with_openai_refusal_cassette(
         "refusal_matrix/chat_control_plain_refusal_is_content_not_refusal",
         |client| async move {
-            let model = client.openai.chat(REFUSING_MODEL);
-            let request = model.completion_request(REFUSED_PROMPT).build();
+            let model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT).build();
 
-            let response = model.completion(request).await.expect("turn");
+            let response = model.call(request).await.expect("turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -580,13 +566,15 @@ async fn responses_blocking_refusal_part_surfaces() {
     with_openai_refusal_cassette(
         "refusal_matrix/responses_blocking_refusal_part_surfaces",
         |client| async move {
-            let model = client.openai.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client
+                .openai
+                .completion(REFUSING_MODEL)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(responses_text_format())
                 .build();
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
 
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("assistant text"),
@@ -605,13 +593,15 @@ async fn responses_streaming_refusal_delta_surfaces() {
     with_openai_refusal_cassette(
         "refusal_matrix/responses_streaming_refusal_delta_surfaces",
         |client| async move {
-            let model = client.openai.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let model = client
+                .openai
+                .completion(REFUSING_MODEL)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .additional_params(responses_text_format())
                 .build();
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -629,11 +619,14 @@ async fn responses_agent_blocking_refusal_surfaces() {
     with_openai_refusal_cassette(
         "refusal_matrix/responses_agent_blocking_refusal_surfaces",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(REFUSING_MODEL)
-                .additional_params(responses_text_format())
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(REFUSING_MODEL)
+                    .on(rig::transport()),
+            )
+            .additional_params(responses_text_format())
+            .build();
 
             let response = agent
                 .prompt(REFUSED_PROMPT)
@@ -656,11 +649,14 @@ async fn responses_agent_streaming_refusal_surfaces() {
     with_openai_refusal_cassette(
         "refusal_matrix/responses_agent_streaming_refusal_surfaces",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(REFUSING_MODEL)
-                .additional_params(responses_text_format())
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(REFUSING_MODEL)
+                    .on(rig::transport()),
+            )
+            .additional_params(responses_text_format())
+            .build();
 
             let mut stream = agent.prompt(REFUSED_PROMPT).stream();
             let observed = collect_stream_observation(&mut stream).await;
@@ -683,12 +679,14 @@ async fn cross_surface_refusal_parity() {
     with_openai_refusal_cassette(
         "refusal_matrix/cross_surface_refusal_parity",
         |client| async move {
-            let responses_model = client.openai.completion(REFUSING_MODEL);
+            let responses_model = client
+                .openai
+                .completion(REFUSING_MODEL)
+                .on(rig::transport());
             let responses_text = assistant_text_response(
                 &responses_model
-                    .completion(
-                        responses_model
-                            .completion_request(REFUSED_PROMPT)
+                    .call(
+                        CompletionRequestBuilder::new(REFUSED_PROMPT)
                             .additional_params(responses_text_format())
                             .build(),
                     )
@@ -698,12 +696,11 @@ async fn cross_surface_refusal_parity() {
             )
             .expect("responses refusal text");
 
-            let chat_model = client.openai.chat(REFUSING_MODEL);
+            let chat_model = client.openai.chat(REFUSING_MODEL).on(rig::transport());
             let chat_text = assistant_text_response(
                 &chat_model
-                    .completion(
-                        chat_model
-                            .completion_request(REFUSED_PROMPT)
+                    .call(
+                        CompletionRequestBuilder::new(REFUSED_PROMPT)
                             .additional_params(chat_response_format())
                             .build(),
                     )

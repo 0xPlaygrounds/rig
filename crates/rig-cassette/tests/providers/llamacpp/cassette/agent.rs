@@ -1,16 +1,14 @@
 //! llama.cpp agent completion smoke test.
 
-use rig::prelude::*;
-
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use rig::wire::Wire as _;
 
 use super::super::cassette_support::*;
 
 #[tokio::test]
 async fn completion_smoke() {
     with_llamacpp_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
             .preamble(BASIC_PREAMBLE)
             .build();
 

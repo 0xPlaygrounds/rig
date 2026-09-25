@@ -10,6 +10,7 @@ use bevy_ecs::prelude::*;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::message::ToolChoice;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
+use rig::wire::Wire as _;
 use rig_ecs::{
     agent::*,
     bus::{Handlers, RigSchedule},
@@ -26,7 +27,7 @@ async fn tool_choice_required_first_effect_log() {
             "corpus_shaping/tool_choice_required_first",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -74,7 +75,7 @@ async fn tool_choice_none_on_committed_output_effect_log() {
             "corpus_shaping/tool_choice_none_on_committed_output",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -135,7 +136,7 @@ async fn extra_context_effect_log() {
             "corpus_shaping/extra_context",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -185,7 +186,7 @@ async fn extra_context_streamed_effect_log() {
             "corpus_shaping/extra_context_streamed",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     true,
                 );
@@ -227,7 +228,7 @@ async fn merged_three_effect_log() {
             "corpus_shaping/merged_three",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -290,7 +291,7 @@ async fn route_on_first_turn_effect_log() {
             "corpus_shaping/route_on_first_turn",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -303,9 +304,9 @@ async fn route_on_first_turn_effect_log() {
                         "golden/model:fast",
                         RuntimeHandler {
                             inner: std::sync::Arc::new(
-                                rig_core::serve::adapters::CompletionAdapter::new(
+                                rig_core::serve::adapters::ModelAdapter::new(
                                     "fast",
-                                    client.completion(CLAUDE_HAIKU_4_5),
+                                    client.completion(CLAUDE_HAIKU_4_5).on(rig::transport()),
                                 ),
                             ),
                             runtime: io_runtime(),
@@ -353,8 +354,11 @@ async fn route_on_first_turn_effect_log() {
 async fn late_route_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_corpus_shaping_cassette("corpus_shaping/late_route", |client| async move {
-            let mut ecs =
-                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
+            let mut ecs = EcsAgent::for_golden(
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
+                TOOLS_PREAMBLE,
+                false,
+            );
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -364,12 +368,10 @@ async fn late_route_effect_log() {
                 handlers.register(
                     "golden/model:late",
                     RuntimeHandler {
-                        inner: std::sync::Arc::new(
-                            rig_core::serve::adapters::CompletionAdapter::new(
-                                "late",
-                                client.completion(CLAUDE_HAIKU_4_5),
-                            ),
-                        ),
+                        inner: std::sync::Arc::new(rig_core::serve::adapters::ModelAdapter::new(
+                            "late",
+                            client.completion(CLAUDE_HAIKU_4_5).on(rig::transport()),
+                        )),
                         runtime: io_runtime(),
                     },
                 )
@@ -426,7 +428,7 @@ async fn max_tokens_second_turn_effect_log() {
             "corpus_shaping/max_tokens_second_turn",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -471,7 +473,7 @@ async fn thinking_second_turn_effect_log() {
             "corpus_shaping/thinking_second_turn",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -518,7 +520,7 @@ async fn preamble_second_turn_effect_log() {
             "corpus_shaping/preamble_second_turn",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -572,7 +574,7 @@ async fn active_tools_none_second_turn_effect_log() {
             "corpus_shaping/active_tools_none_second_turn",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -618,7 +620,7 @@ async fn history_first_turn_effect_log() {
             "corpus_shaping/history_first_turn",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     false,
                 );

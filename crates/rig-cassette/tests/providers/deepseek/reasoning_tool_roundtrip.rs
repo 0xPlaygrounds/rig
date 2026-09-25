@@ -1,10 +1,10 @@
 //! DeepSeek reasoning-enabled tool roundtrip tests.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;
@@ -20,13 +20,16 @@ fn thinking_params() -> serde_json::Value {
 async fn streaming() {
     with_deepseek_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = client
-            .agent(deepseek::DEEPSEEK_V4_FLASH)
-            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-            .max_tokens(4096)
-            .tool(WeatherTool::new(call_count.clone()))
-            .additional_params(thinking_params())
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .completion(deepseek::DEEPSEEK_V4_FLASH)
+                .on(rig::transport()),
+        )
+        .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+        .max_tokens(4096)
+        .tool(WeatherTool::new(call_count.clone()))
+        .additional_params(thinking_params())
+        .build();
 
         let stream = agent
             .prompt(reasoning::TOOL_USER_PROMPT)
@@ -54,14 +57,17 @@ async fn nonstreaming() {
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(thinking_params())
-                .default_max_turns(2)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(deepseek::DEEPSEEK_V4_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+            .max_tokens(4096)
+            .tool(WeatherTool::new(call_count.clone()))
+            .additional_params(thinking_params())
+            .default_max_turns(2)
+            .build();
 
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())

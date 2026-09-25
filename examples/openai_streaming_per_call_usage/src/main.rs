@@ -93,19 +93,21 @@ async fn main() -> Result<()> {
 
     // Chat Completions: the route every OpenAI-compatible server speaks,
     // chosen once on the configuration.
-    let agent = OpenAI::from_env()?
-        .with_route(Route::Chat)
-        .bound()?
-        .agent(model)
-        .preamble(
-            "You are a concise release assistant. The user will ask about an \
+    let agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .with_route(Route::Chat)
+            .completion(model)
+            .on(rig::transport()),
+    )
+    .preamble(
+        "You are a concise release assistant. The user will ask about an \
              internal ticket. Call `lookup_project_status` exactly once before \
              answering. After the tool result is available, answer directly and \
              do not call another tool.",
-        )
-        .max_tokens(512)
-        .tool(ProjectStatusTool)
-        .build();
+    )
+    .max_tokens(512)
+    .tool(ProjectStatusTool)
+    .build();
 
     let mut stream = agent
         .prompt("Check ticket RIG-usage-42 and summarize the result in one sentence.")

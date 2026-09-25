@@ -6,6 +6,7 @@
 
 use super::super::support::with_ollama_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};
+use rig::wire::Wire as _;
 
 const MODEL: &str = "qwen3:4b";
 
@@ -17,7 +18,7 @@ fn think_params() -> Option<serde_json::Value> {
 async fn nonstreaming() {
     with_ollama_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion(MODEL),
+            client.completion(MODEL).on(rig::transport()),
             think_params(),
         ))
         .await;
@@ -29,7 +30,7 @@ async fn nonstreaming() {
 async fn streaming() {
     with_ollama_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.completion(MODEL),
+            client.completion(MODEL).on(rig::transport()),
             think_params(),
         ))
         .await;

@@ -3,16 +3,16 @@
 //! handshake, on both APIs where the class differs.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ProviderError;
 use rig::error::{ErrorKind, ErrorReport};
-use rig::prelude::*;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use super::super::support::{
     with_openai_cassette, with_openai_cassette_bogus_key, with_openai_completions_cassette,
 };
 use crate::support::assert_transport_request_id;
+use rig::completion::CompletionRequestBuilder;
 
 /// 401 auth rejection — the fixture documents whether OpenAI's auth tier
 /// sends `x-request-id` (assertion derived from the recording).
@@ -21,10 +21,12 @@ async fn auth_rejection_carries_identity() {
     with_openai_cassette_bogus_key(
         "error_identity_edge/auth_rejection_carries_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let error = model
-                .completion_request("Never authenticated")
-                .send()
+                .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -48,13 +50,15 @@ async fn nonexistent_previous_response_reference_carries_identity() {
     with_openai_cassette(
         "error_identity_edge/nonexistent_previous_response_reference_carries_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let error = model
-                .completion_request("Continue the conversation")
+                .call(CompletionRequestBuilder::new("Continue the conversation")
                 .additional_params(serde_json::json!({
                     "previous_response_id": "resp_000000000000000000000000000000000000000000000000",
-                }))
-                .send()
+                })).build())
                 .await
                 .expect_err("a nonexistent previous_response_id must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -79,11 +83,13 @@ async fn chat_completions_validation_error_carries_identity() {
     with_openai_completions_cassette(
         "error_identity_edge/chat_completions_validation_error_carries_identity",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = client.chat(openai::GPT_4O).on(rig::transport());
             let error = model
-                .completion_request("Never validated")
-                .additional_params(serde_json::json!({"temperature": 99.0}))
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never validated")
+                        .additional_params(serde_json::json!({"temperature": 99.0}))
+                        .build(),
+                )
                 .await
                 .expect_err("an impossible temperature must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -108,8 +114,9 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
         |client| async move {
             let model = client
                 .openai
-                .completion("gpt-nonexistent-model-for-error-edge");
-            let result = model.completion_request("Never streamed").stream().await;
+                .completion("gpt-nonexistent-model-for-error-edge")
+                .on(rig::transport());
+            let result = model.stream(CompletionRequestBuilder::new("Never streamed").build());
             let error = match result {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {
@@ -142,7 +149,9 @@ async fn embeddings_error_preserves_status_and_body() {
         |client| async move {
             let model = client
                 .openai
-                .embedding("text-embedding-nonexistent-model", None);
+                .embedding("text-embedding-nonexistent-model", None)
+                .on(rig::transport())
+                .boxed();
             let error = model
                 .embed_text("never embedded")
                 .await
@@ -166,15 +175,14 @@ async fn embeddings_error_preserves_status_and_body() {
 /// context, not a transport-error fallback.
 #[tokio::test]
 async fn model_listing_auth_failure_keeps_api_error_context() {
-    use rig::model::ModelLister;
-
     with_openai_cassette_bogus_key(
         "error_identity_edge/model_listing_auth_failure_keeps_api_error_context",
         |client| async move {
             let error = client
                 .openai
                 .models()
-                .list_all()
+                .on(rig::transport())
+                .call(())
                 .await
                 .expect_err("a bogus key must fail the listing");
             assert!(
@@ -201,6 +209,8 @@ async fn verify_reports_invalid_authentication() {
         |client| async move {
             let error = client
                 .openai
+                .verify()
+                .on(rig::transport())
                 .verify()
                 .await
                 .expect_err("a bogus key must fail verification");
@@ -233,7 +243,8 @@ async fn extractor_failure_surfaces_provider_error_context() {
             let extractor = rig::extractor::ExtractorBuilder::<Probe>::new(
                 client
                     .openai
-                    .completion("gpt-nonexistent-model-for-error-edge"),
+                    .completion("gpt-nonexistent-model-for-error-edge")
+                    .on(rig::transport()),
             )
             .build();
             let error = extractor

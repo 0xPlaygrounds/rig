@@ -1,19 +1,20 @@
 //! Live-recorded streaming coverage for Anthropic strict tools.
 
 use rig::completion::ToolDefinition;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::collect_raw_stream_observation;
+use rig::completion::CompletionRequestBuilder;
 
 async fn assert_streaming_strict_tool_call(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     tool_name: &str,
     prompt: &str,
     parameters: Value,
@@ -22,7 +23,8 @@ async fn assert_streaming_strict_tool_call(
 ) {
     let model = client
         .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        .map_wire(|wire| wire.with_strict_tools());
+        .with_strict_tools()
+        .on(rig::transport());
     assert_model_streaming_tool_call(
         model,
         tool_name,
@@ -36,7 +38,7 @@ async fn assert_streaming_strict_tool_call(
 }
 
 async fn assert_model_streaming_tool_call(
-    model: Bound<Messages>,
+    model: Model<Messages>,
     tool_name: &str,
     prompt: &str,
     parameters: Value,
@@ -44,8 +46,7 @@ async fn assert_model_streaming_tool_call(
     expected_arguments: Value,
     output_schema: Option<schemars::Schema>,
 ) {
-    let request = model
-        .completion_request(prompt)
+    let request = CompletionRequestBuilder::new(prompt)
         .preamble("Call the requested tool exactly once with the requested values.".to_string())
         .max_tokens(1024)
         .tool_choice(tool_choice)
@@ -60,7 +61,6 @@ async fn assert_model_streaming_tool_call(
     let observation = collect_raw_stream_observation(
         model
             .stream(request)
-            .await
             .expect("strict streaming request should start"),
     )
     .await;
@@ -213,7 +213,8 @@ async fn structured_output_and_strict_tool_use_stream_together() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
+                .with_strict_tools()
+                .on(rig::transport());
             let output_schema = serde_json::from_value(json!({
                 "type": "object",
                 "properties": { "summary": { "type": "string" } },
@@ -246,7 +247,9 @@ async fn manual_prompt_caching_and_strict_tools_stream_together() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching().with_strict_tools());
+                .with_prompt_caching()
+                .with_strict_tools()
+                .on(rig::transport());
             assert_model_streaming_tool_call(
                 model,
                 "stream_cached",
@@ -273,7 +276,9 @@ async fn automatic_prompt_caching_and_strict_tools_stream_together() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_automatic_caching().with_strict_tools());
+                .with_automatic_caching()
+                .with_strict_tools()
+                .on(rig::transport());
             assert_model_streaming_tool_call(
                 model,
                 "stream_cached",

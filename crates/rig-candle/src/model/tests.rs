@@ -3,7 +3,7 @@ use candle_transformers::generation::Sampling;
 use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
-use rig_core::completion::{CompletionModel, Document, ToolDefinition};
+use rig_core::completion::{Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
 use rig_core::streaming::{Delta, StreamEvent};
@@ -19,6 +19,64 @@ use tokenizers::pre_tokenizers::byte_level::ByteLevel;
 use tokenizers::{AddedToken, TokenizerBuilder};
 
 use super::*;
+
+/// The generation wire over `model`.
+fn generation(model: &CandleModel) -> rig_core::Model<Generation, CandleModel> {
+    rig_core::Model::new(Generation, model.clone())
+}
+
+/// Replays scripted generation events as a local generator would send them.
+#[derive(Clone)]
+struct Scripted(Arc<std::sync::Mutex<Vec<GenerationEvent>>>);
+
+impl Transport<Generation> for Scripted {
+    fn send(
+        &self,
+        _request: CompletionRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<CompletionRequest, CandleFrame>>
+        + rig_core::wasm_compat::WasmCompatSend
+        + 'static
+        + use<>,
+        ProviderError,
+    > {
+        let events = std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .map_err(|_| ProviderError::Provider("the script lock was poisoned".to_owned()))?,
+        );
+        Ok(async move {
+            Opened::new(futures::stream::iter(
+                events
+                    .into_iter()
+                    .map(|event| Ok(CandleFrame::Event(event))),
+            ))
+        })
+    }
+}
+
+/// The stream the generation wire yields for scripted `events`.
+fn stream_from_events(
+    events: Vec<GenerationEvent>,
+) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
+    rig_core::Model::new(
+        Generation,
+        Scripted(Arc::new(std::sync::Mutex::new(events))),
+    )
+    .stream(request(vec![Message::user("hello")]))
+}
+
+/// One unary completion's local response record, read off its `raw`.
+async fn raw_completion(
+    model: &CandleModel,
+    request: CompletionRequest,
+) -> Result<CandleCompletionResponse, ProviderError> {
+    let response = generation(model).call(request).await?;
+    Ok(serde_json::from_value(response.raw)?)
+}
 
 #[cfg(not(target_family = "wasm"))]
 type ControlledModel = (CandleModel, Arc<TestControl>, Arc<tokio::sync::Semaphore>);
@@ -252,7 +310,7 @@ async fn collect_stream(
     model: &CandleModel,
     request: CompletionRequest,
 ) -> Result<(String, CandleCompletionResponse), Box<dyn std::error::Error + Send + Sync>> {
-    let mut response = model.stream(request).await?;
+    let mut response = generation(model).stream(request)?;
     let mut text = String::new();
     while let Some(item) = response.next().await {
         if let StreamEvent::BlockDelta {
@@ -264,7 +322,9 @@ async fn collect_stream(
         }
     }
     let terminal = response
-        .response
+        .folded()
+        .terminal()
+        .cloned()
         .ok_or("stream did not emit a final response")?;
     // The local record rides the terminal's `raw`, typed back here.
     let raw: CandleCompletionResponse = serde_json::from_value(terminal.raw)?;
@@ -836,10 +896,43 @@ fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Err
             .temperature(0.0)
             .max_tokens(1)
             .build()?;
-        let agent = AgentBuilder::new(model).preamble("Be brief.").build();
+        let agent = AgentBuilder::new(generation(&model))
+            .preamble("Be brief.")
+            .build();
         let _answer = agent.prompt("hello").await?;
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     })?;
+    Ok(())
+}
+
+/// The driver scopes no history for a local model: reasoning another
+/// provider issued reaches the prompt protocol, which refuses what the model
+/// cannot render, up front, instead of the reasoning vanishing.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn foreign_reasoning_in_history_is_refused_not_dropped()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let model = CandleModel::builder(model_data()?).max_tokens(1).build()?;
+    let history = vec![
+        Message::user("hello"),
+        Message::Assistant {
+            id: None,
+            content: vec![
+                rig_core::message::AssistantContent::Reasoning(
+                    rig_core::message::Reasoning::new("elsewhere").with_provider("anthropic"),
+                ),
+                rig_core::message::AssistantContent::text("hi"),
+            ],
+        },
+        Message::user("again"),
+    ];
+    let Err(error) = generation(&model).call(request(history)).await else {
+        return Err("the local prompt cannot render foreign reasoning".into());
+    };
+    assert!(
+        error.to_string().contains("structured reasoning"),
+        "the prompt protocol refuses it: {error}"
+    );
     Ok(())
 }
 
@@ -852,7 +945,7 @@ async fn buffered_and_streaming_generation_are_equivalent()
         .max_tokens(3)
         .build()?;
     let completion_request = request(vec![Message::user("hello")]);
-    let buffered = model.raw_completion(completion_request.clone()).await?;
+    let buffered = raw_completion(&model, completion_request.clone()).await?;
     let (streamed_text, streamed) = collect_stream(&model, completion_request).await?;
 
     assert_eq!(streamed_text, buffered.text);
@@ -918,7 +1011,7 @@ async fn streaming_clamps_context_and_rejects_bad_request_options()
     ] {
         let mut bad_request = request(vec![Message::user("hello")]);
         bad_request.additional_params = Some(additional_params);
-        let mut stream = model.stream(bad_request).await?;
+        let mut stream = generation(&model).stream(bad_request)?;
         let item = stream
             .next()
             .await
@@ -1149,8 +1242,8 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
         .max_tokens(2)
         .max_concurrent_requests(2)
         .build()?;
-    let first = model.raw_completion(request(vec![Message::user("hello")]));
-    let second = model.raw_completion(request(vec![Message::user("hello")]));
+    let first = raw_completion(&model, request(vec![Message::user("hello")]));
+    let second = raw_completion(&model, request(vec![Message::user("hello")]));
     let (first, second) = tokio::join!(first, second);
     let first = first?;
     let second = second?;
@@ -1184,8 +1277,8 @@ async fn closed_admission_controller_fails_public_operations()
     let model = CandleModel::builder(model_data()?).build()?;
     let loaded = &model.state;
     loaded.concurrency.close();
-    let completion_error = model
-        .completion(request(vec![Message::user("hello")]))
+    let completion_error = generation(&model)
+        .call(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("closed completion admission unexpectedly succeeded")?;
@@ -1194,9 +1287,8 @@ async fn closed_admission_controller_fails_public_operations()
             .to_string()
             .contains("concurrency controller is closed")
     );
-    let stream_error = model
+    let stream_error = generation(&model)
         .stream(request(vec![Message::user("hello")]))
-        .await
         .err()
         .ok_or("closed stream admission unexpectedly succeeded")?;
     assert!(
@@ -1214,13 +1306,13 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
     let first_model = model.clone();
     let first = tokio::spawn(async move {
-        first_model
-            .completion(request(vec![Message::user("hello")]))
+        generation(&first_model)
+            .call(request(vec![Message::user("hello")]))
             .await
     });
     control.wait_until_entered().await;
 
-    let second = model.raw_completion(request(vec![Message::user("hello")]));
+    let second = raw_completion(&model, request(vec![Message::user("hello")]));
     futures::pin_mut!(second);
     assert!(futures::poll!(&mut second).is_pending());
 
@@ -1239,10 +1331,12 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
 async fn dropping_stream_cancels_worker_before_queued_request_runs()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
+    // The worker starts when the stream is first polled.
+    assert!(futures::poll!(stream.next()).is_pending());
     control.wait_until_entered().await;
 
-    let queued = model.raw_completion(request(vec![Message::user("hello")]));
+    let queued = raw_completion(&model, request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
 
@@ -1257,15 +1351,16 @@ async fn dropping_stream_cancels_worker_before_queued_request_runs()
 
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test(flavor = "current_thread")]
-async fn public_stream_cancel_stops_worker_without_dropping_response()
+async fn dropping_a_stream_stops_the_worker_without_dropping_its_admission()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
+    // The worker starts when the stream is first polled.
+    assert!(futures::poll!(stream.next()).is_pending());
     control.wait_until_entered().await;
 
-    stream.cancel();
-    assert!(stream.next().await.is_none());
-    let queued = model.raw_completion(request(vec![Message::user("hello")]));
+    drop(stream);
+    let queued = raw_completion(&model, request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
     assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
@@ -1273,7 +1368,6 @@ async fn public_stream_cancel_stops_worker_without_dropping_response()
     control.release()?;
     let queued = queued.await?;
     assert_eq!(queued.generated_tokens, 2);
-    assert!(stream.next().await.is_none());
     Ok(())
 }
 
@@ -1283,7 +1377,9 @@ async fn streaming_channel_applies_bounded_backpressure()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) =
         controlled_model(false, false, (STREAM_CHANNEL_CAPACITY + 4) as u64)?;
-    let stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
+    // The worker starts when the stream is first polled.
+    let _ = futures::poll!(stream.next());
     control
         .wait_for_delivery_attempts(STREAM_CHANNEL_CAPACITY + 1)
         .await;
@@ -1303,15 +1399,15 @@ async fn streaming_channel_applies_bounded_backpressure()
 async fn blocking_task_panic_maps_to_typed_completion_error()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, _, _) = controlled_model(false, true, 1)?;
-    let error = model
-        .completion(request(vec![Message::user("hello")]))
+    let error = generation(&model)
+        .call(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("blocking task panic unexpectedly succeeded")?;
     assert!(error.to_string().contains("Candle blocking task failed"));
 
     let (model, _, _) = controlled_model(false, true, 1)?;
-    let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
     let error = stream
         .next()
         .await
@@ -1598,15 +1694,17 @@ async fn stream_from_events_terminal_carries_raw()
         generation_duration_ms: 2,
         tokens_per_second: Some(500.0),
     };
-    let mut stream = stream_from_events(futures::stream::iter(vec![
-        Ok(GenerationEvent::Text("hi".to_string())),
-        Ok(GenerationEvent::Final(terminal_record.clone())),
-    ]));
+    let mut stream = stream_from_events(vec![
+        GenerationEvent::Text("hi".to_string()),
+        GenerationEvent::Final(terminal_record.clone()),
+    ])?;
     while let Some(item) = stream.next().await {
         item?;
     }
     let terminal = stream
-        .response
+        .folded()
+        .terminal()
+        .cloned()
         .ok_or("stream did not emit a terminal record")?;
 
     assert!(
@@ -1620,7 +1718,7 @@ async fn stream_from_events_terminal_carries_raw()
     Ok(())
 }
 
-/// Raw capture through the real `CompletionModel::completion` path on the
+/// Raw capture through the real `Model::call` path on the
 /// tiny in-crate model (greedy, so two runs generate the same tokens): `raw`
 /// deserializes back into `CandleCompletionResponse`, re-serializes
 /// identically, and reports the same text and token counts `raw_completion`
@@ -1636,12 +1734,10 @@ async fn completion_raw_round_trips_into_the_local_record()
         .max_tokens(2)
         .build()?;
 
-    let response = model
-        .completion(request(vec![Message::user("hello")]))
+    let response = generation(&model)
+        .call(request(vec![Message::user("hello")]))
         .await?;
-    let escape_hatch = model
-        .raw_completion(request(vec![Message::user("hello")]))
-        .await?;
+    let escape_hatch = raw_completion(&model, request(vec![Message::user("hello")])).await?;
 
     assert!(
         !response.raw.is_null(),
@@ -1666,7 +1762,7 @@ async fn completion_raw_round_trips_into_the_local_record()
     Ok(())
 }
 
-/// The streaming twin through the real `CompletionModel::stream` path: the
+/// The streaming twin through the real `Model::stream` path: the
 /// terminal `StreamFinal.raw` is the local record the generator's `Final`
 /// event carries — it round-trips into `CandleCompletionResponse`, agrees
 /// with a second stream's terminal on text and token counts, and
@@ -1681,12 +1777,14 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
         .max_tokens(2)
         .build()?;
 
-    let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
     while let Some(item) = stream.next().await {
         item?;
     }
     let terminal = stream
-        .response
+        .folded()
+        .terminal()
+        .cloned()
         .ok_or("stream did not emit a terminal record")?;
     let (_, streamed) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
 
@@ -1706,14 +1804,14 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     assert_eq!(typed.generated_tokens, streamed.generated_tokens);
     assert_eq!(typed.finish_reason, streamed.finish_reason);
 
-    let mut renormalized = stream_from_events(futures::stream::iter(vec![Ok(
-        GenerationEvent::Final(typed),
-    )]));
+    let mut renormalized = stream_from_events(vec![GenerationEvent::Final(typed)])?;
     while let Some(item) = renormalized.next().await {
         item?;
     }
     let renormalized = renormalized
-        .response
+        .folded()
+        .terminal()
+        .cloned()
         .ok_or("re-normalizing the capture did not emit a terminal record")?;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);

@@ -4,15 +4,15 @@
 //! have a producer here; a scripted row's oracle is the runner in the world
 //! cell's own test.
 
-use rig::completion::CompletionModel;
-
-use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
+use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
+use rig::providers::openai::OpenAI;
+use rig::wire::Wire as _;
 
-fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.completion("deepseek-chat"),
+        model: client.completion("deepseek-chat").on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -20,10 +20,12 @@ fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> 
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.completion("deepseek-v9-nonexistent"),
+        model: client
+            .completion("deepseek-v9-nonexistent")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

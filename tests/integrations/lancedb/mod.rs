@@ -1,14 +1,11 @@
-use rig::client::DefaultTransport as _;
 use serde_json::json;
 
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
+use rig::wire::Wire;
 use rig::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    prelude::*,
-    providers::openai,
-    vector_store::VectorStoreIndex,
+    embeddings::EmbeddingsBuilder, prelude::*, providers::openai, vector_store::VectorStoreIndex,
 };
 
 #[path = "./fixtures/lib.rs"]
@@ -104,13 +101,12 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST")
-        .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
+    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
 
     // Select an embedding model.
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -145,7 +141,7 @@ async fn vector_search_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
+            vec![as_record_batch(embeddings, model.wire.capabilities().ndims).unwrap()],
         )
         .execute()
         .await
@@ -319,12 +315,12 @@ async fn agent_with_dynamic_context_test() {
     let openai_client = openai::wire::OpenAI::new("TEST")
         .with_base_url(server.base_url())
         // The mock answers Chat Completions, not the Responses default.
-        .with_route(openai::Route::Chat)
-        .bound()
-        .unwrap();
+        .with_route(openai::Route::Chat);
 
     // Select an embedding model.
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -361,7 +357,7 @@ async fn agent_with_dynamic_context_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
+            vec![as_record_batch(embeddings, model.wire.capabilities().ndims).unwrap()],
         )
         .execute()
         .await
@@ -387,10 +383,13 @@ async fn agent_with_dynamic_context_test() {
         .unwrap();
 
     // Build RAG agent with dynamic context.
-    let agent = openai_client
-        .agent(openai::GPT_4O)
-        .dynamic_context(top_k, vector_store_index)
-        .build();
+    let agent = AgentBuilder::new(
+        openai_client
+            .completion(openai::GPT_4O)
+            .on(rig::transport()),
+    )
+    .dynamic_context(top_k, vector_store_index)
+    .build();
 
     let query = "My boss says I zindle too much, what does that mean?";
 

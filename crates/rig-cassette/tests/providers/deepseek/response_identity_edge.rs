@@ -1,20 +1,22 @@
 //! Contract-vs-reality (rig#2265): DeepSeek rides the OpenAI-compatible path
 //! with the conservative `REQUEST_ID_HEADER = None` default.
 
-use rig::completion::CompletionModel;
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 
 use super::support::with_deepseek_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn blocking_contract_captures_none() {
     with_deepseek_cassette(
         "response_identity_edge/blocking_contract_captures_none",
         |client| async move {
-            let model = client.completion(deepseek::DEEPSEEK_V4_FLASH);
+            let model = client
+                .completion(deepseek::DEEPSEEK_V4_FLASH)
+                .on(rig::transport());
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect("completion should succeed");
             assert_eq!(response.provider_request_id, None);

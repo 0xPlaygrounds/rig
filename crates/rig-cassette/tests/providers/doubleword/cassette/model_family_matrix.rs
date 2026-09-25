@@ -22,20 +22,26 @@
 //! requested text. This matrix checks transport integrity, not instruction
 //! compliance; the finish-reason matrix tests termination semantics directly.
 
-use rig::completion::CompletionModel;
 use rig::providers::{doubleword, openai};
+use rig::wire::Wire as _;
 use serde::Deserialize as _;
 
-use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
+use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_text_and_terminal;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const PROMPT: &str = "Reply with the single word: family-ok";
 const CAP: u64 = 96;
 
-async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
-    let model = client.completion(model_name);
+async fn exercise_blocking(client: OpenAI, model_name: &'static str) {
+    let model = client.completion(model_name).on(rig::transport());
     let response = model
-        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+        .call(
+            CompletionRequestBuilder::new(PROMPT)
+                .max_tokens(CAP)
+                .build(),
+        )
         .await
         .expect("the advertised model should answer a blocking request");
 
@@ -181,10 +187,15 @@ async fn default_qwen_family_streaming() {
     with_doubleword_cassette(
         "model_family_matrix/default_qwen_family_streaming",
         |client| async move {
-            let model = client.completion(doubleword::QWEN3_5_9B);
+            let model = client
+                .completion(doubleword::QWEN3_5_9B)
+                .on(rig::transport());
             let stream = model
-                .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
-                .await
+                .stream(
+                    CompletionRequestBuilder::new(PROMPT)
+                        .max_tokens(CAP)
+                        .build(),
+                )
                 .expect("the default model stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("the stream should end with a terminal record");

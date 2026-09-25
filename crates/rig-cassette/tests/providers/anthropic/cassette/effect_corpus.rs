@@ -6,9 +6,9 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::{Delta, StreamEvent};
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_cassette;
@@ -26,14 +26,14 @@ fn families(log: &rig::cassette::effect_log::EffectLog) -> Vec<EffectFamily> {
 async fn tool_call_turn_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
-            .name("golden")
-            .preamble(TOOLS_PREAMBLE)
-            .temperature(0.0)
-            .tool(Adder)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .tool(Adder)
+                .record_to(recorder.clone())
+                .build();
         let response = agent
             .prompt("Use the add tool to add 17 and 25, then reply with just the number.")
             .max_turns(3)
@@ -61,13 +61,13 @@ async fn tool_call_turn_effect_log_is_the_golden_fixture() {
 async fn cancelled_stream_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/cancelled_stream", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
-            .name("golden")
-            .preamble("You are a concise assistant. Answer directly.")
-            .temperature(0.0)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble("You are a concise assistant. Answer directly.")
+                .temperature(0.0)
+                .record_to(recorder.clone())
+                .build();
         {
             let mut stream = agent
                 .prompt("Write a 600-word essay on the history of the Rust programming language.")

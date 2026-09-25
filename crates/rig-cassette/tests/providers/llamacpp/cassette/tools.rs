@@ -4,7 +4,7 @@
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
 use rig::completion::Message;
-use rig::prelude::*;
+use rig::wire::Wire as _;
 
 use super::super::cassette_support::*;
 
@@ -13,8 +13,7 @@ use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_
 #[tokio::test]
 async fn tools_roundtrip() {
     with_llamacpp_cassette("tools/tools_roundtrip", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)
@@ -35,8 +34,7 @@ async fn tools_roundtrip() {
 async fn tools_smoke() {
     with_llamacpp_cassette("tools/tools_smoke", |client| async move {
 
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
             .preamble(
                 "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
                  After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",

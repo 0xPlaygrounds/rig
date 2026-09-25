@@ -1,7 +1,7 @@
 //! Mistral extractor smoke test.
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
@@ -10,11 +10,11 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extractor_smoke() {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let extractor = client.extractor::<SmokePerson>(DEFAULT_MODEL).build();
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
+        client.completion(DEFAULT_MODEL).on(rig::transport()),
+    )
+    .build();
 
     let response = extractor
         .extract(EXTRACTOR_TEXT)

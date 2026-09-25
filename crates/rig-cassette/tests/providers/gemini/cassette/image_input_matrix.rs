@@ -1,6 +1,7 @@
 //! Generated images fed back as input on Gemini: see `common/image_inputs.rs`.
 
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::image_inputs;
@@ -13,13 +14,17 @@ async fn generated_image_as_user_content() {
         "image_input_matrix/generated_image_as_user_content",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE),
+                &client
+                    .image_generation(gemini::GEMINI_2_5_FLASH_IMAGE)
+                    .on(rig::transport()),
                 None,
                 None,
             )
             .await;
             image_inputs::as_user_content(
-                &client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                &client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
                 &bytes,
                 None,
             )
@@ -39,13 +44,17 @@ async fn generated_image_as_tool_result() {
         "image_input_matrix/generated_image_as_tool_result",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE),
+                &client
+                    .image_generation(gemini::GEMINI_2_5_FLASH_IMAGE)
+                    .on(rig::transport()),
                 None,
                 None,
             )
             .await;
             image_inputs::as_tool_result(
-                &client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
+                &client
+                    .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                    .on(rig::transport()),
                 &bytes,
                 None,
             )

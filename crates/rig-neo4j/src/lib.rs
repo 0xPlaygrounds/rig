@@ -8,12 +8,12 @@
 //! covers setup and further examples.
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use neo4rs::ConfigBuilder;
 //! use rig_core::providers::openai::{self, wire::OpenAI};
 //! use rig_core::vector_store::VectorStoreIndex;
 //! use rig_core::vector_store::request::VectorSearchRequest;
 //! use rig_neo4j::Neo4jClient;
-//! use rig_reqwest::prelude::*;
 //! use serde::Deserialize;
 //!
 //! #[derive(Debug, Deserialize)]
@@ -24,8 +24,9 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
-//!     let openai = OpenAI::from_env()?.bound()?;
-//!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+//!     let openai = OpenAI::from_env()?;
+//!     let http = rig_reqwest::shared();
+//!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None).on(http);
 //!
 //!     let client = Neo4jClient::from_config(
 //!         ConfigBuilder::default()
@@ -56,10 +57,7 @@ use std::str::FromStr;
 
 use futures::TryStreamExt;
 use neo4rs::*;
-use rig_core::{
-    embeddings::EmbeddingModel,
-    vector_store::{VectorStoreError, request::SearchFilter},
-};
+use rig_core::vector_store::{VectorStoreError, request::SearchFilter};
 use serde::{Deserialize, Serialize};
 use vector_index::{IndexConfig, Neo4jVectorIndex, VectorSimilarityFunction};
 
@@ -295,11 +293,12 @@ impl Neo4jClient {
     /// `model` must be the model whose embeddings populated the index; a
     /// dimension mismatch is only warned about. Errors when the index does not
     /// exist or defines no property.
-    pub async fn get_index<M: EmbeddingModel>(
+    pub async fn get_index(
         &self,
-        model: M,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         index_name: &str,
-    ) -> Result<Neo4jVectorIndex<M>, VectorStoreError> {
+    ) -> Result<Neo4jVectorIndex, VectorStoreError> {
+        let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexInfo {
@@ -332,11 +331,11 @@ impl Neo4jClient {
         .await?;
 
         let index_config = if let Some(index) = index_info.first() {
-            if index.options.index_config.vector_dimensions != model.ndims() as i64 {
+            if index.options.index_config.vector_dimensions != model.capabilities().ndims as i64 {
                 tracing::warn!(
                     "The embedding vector dimensions of the existing Neo4j DB index ({}) do not match the provided model dimensions ({}). This may affect search performance.",
                     index.options.index_config.vector_dimensions,
-                    model.ndims()
+                    model.capabilities().ndims
                 );
             }
             let embedding_property = index.properties.first().ok_or_else(|| {
@@ -384,8 +383,9 @@ impl Neo4jClient {
         &self,
         index_config: IndexConfig,
         node_label: &str,
-        model: &impl EmbeddingModel,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
     ) -> Result<(), VectorStoreError> {
+        let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
         tracing::info!("Creating vector index {} ...", index_config.index_name);
 
         let create_vector_index_query = format!(
@@ -410,7 +410,7 @@ impl Neo4jClient {
                         "similarity_function",
                         index_config.similarity_function.clone().to_bolt_type(),
                     )
-                    .param("dimensions", model.ndims() as i64),
+                    .param("dimensions", model.capabilities().ndims as i64),
             )
             .await
             .map_err(VectorStoreError::datastore)?;

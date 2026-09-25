@@ -2,7 +2,6 @@ use rig_agent::prelude::*;
 use rig_core::providers;
 use rig_core::providers::openai::OpenAI;
 use rig_derive::rig_tool;
-use rig_reqwest::prelude::*;
 
 /// A tool that performs string operations
 #[rig_tool]
@@ -30,13 +29,15 @@ fn string_processor(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let string_agent = OpenAI::from_env()?
-        .bound()?
-        .agent(providers::openai::GPT_4O)
-        .preamble("You are an agent with tools access, always use the tools")
-        .max_tokens(1024)
-        .tool(StringProcessor)
-        .build();
+    let string_agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(providers::openai::GPT_4O)
+            .on(rig_reqwest::shared()),
+    )
+    .preamble("You are an agent with tools access, always use the tools")
+    .max_tokens(1024)
+    .tool(StringProcessor)
+    .build();
 
     println!("Tool definition:");
     println!(

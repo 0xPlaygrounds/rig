@@ -30,11 +30,11 @@
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequestBuilder;
 use rig::message::{ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -148,7 +148,9 @@ async fn main() -> Result<()> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
     // configured `Agent` execution instead always goes through `AgentRunner`.
-    let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_4O);
+    let model = OpenAI::from_env()?
+        .completion(openai::GPT_4O)
+        .on(rig::transport());
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
     let mut tools = ToolSet::default();
@@ -174,11 +176,13 @@ async fn main() -> Result<()> {
             } => {
                 println!("\n→ model call #{turn}");
                 let response = model
-                    .completion_request(prompt)
-                    .messages(history)
-                    .preamble(preamble.to_string())
-                    .tools(tool_definitions.clone())
-                    .send()
+                    .call(
+                        CompletionRequestBuilder::new(prompt)
+                            .messages(history)
+                            .preamble(preamble.to_string())
+                            .tools(tool_definitions.clone())
+                            .build(),
+                    )
                     .await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()

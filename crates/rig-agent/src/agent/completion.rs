@@ -15,8 +15,7 @@ use super::typed::TypedRun;
 use crate::bus::{BusDriver, Dispatcher, ModelHandle};
 use crate::{
     completion::{
-        CompletionModel, CompletionRequest, CompletionRequestBuilder, Document, Message,
-        PromptError, ToolDefinition,
+        CompletionRequest, CompletionRequestBuilder, Document, Message, PromptError, ToolDefinition,
     },
     run::response::PromptResponse,
     tool::{
@@ -131,7 +130,7 @@ pub(crate) async fn build_prepared_completion_request(
     let output_tool_name = prepared.output_tool_name.clone();
     let max_tokens = prepared.max_tokens;
     let builder = prepared
-        .apply(CompletionRequestBuilder::unbound(prompt))
+        .apply(CompletionRequestBuilder::new(prompt))
         .record_content_telemetry(record_telemetry_content);
     let telemetry_messages = if record_telemetry_content {
         builder.messages_for_telemetry()
@@ -168,13 +167,11 @@ pub(crate) async fn build_prepared_completion_request(
 /// ```no_run
 /// use rig_agent::prelude::*;
 /// use rig_core::providers::openai::{self, OpenAI};
-/// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = OpenAI::from_env()?.bound()?;
+/// let model = OpenAI::from_env()?.completion(openai::GPT_5_2).on(rig_reqwest::shared());
 ///
-/// let comedian_agent = openai
-///     .agent(openai::GPT_5_2)
+/// let comedian_agent = AgentBuilder::new(model)
 ///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
 ///     .temperature(0.9)
 ///     .build();
@@ -410,10 +407,11 @@ impl Agent {
 
     /// Register `model` on this agent's bus under `label` and return the
     /// label a run selects it by.
-    pub fn register_model<M>(&self, label: impl Into<ModelRef>, model: M) -> ModelRef
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn register_model(
+        &self,
+        label: impl Into<ModelRef>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> ModelRef {
         let label = label.into();
         self.config.bus.register_model(&label, model);
         label
@@ -430,10 +428,10 @@ impl Agent {
     /// value's default. The registration is scoped to the values that
     /// select it (this agent, its clones, the runners it produces): it
     /// leaves the bus when the last of them drops or selects another model.
-    pub fn set_model<M>(&mut self, model: M)
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn set_model(
+        &mut self,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();
         self.config.anonymous_model = Some(anonymous);
@@ -454,10 +452,10 @@ impl Agent {
     }
 
     /// [`Agent::set_model`] by value.
-    pub fn with_model<M>(mut self, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn with_model(
+        mut self,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         self.set_model(model);
         self
     }

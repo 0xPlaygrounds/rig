@@ -1,6 +1,7 @@
 //! xAI request-hook regression coverage.
 
 use anyhow::{Result, anyhow};
+use rig::wire::Wire as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -9,7 +10,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette_result;
@@ -75,10 +75,12 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_xai_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
-            let agent = client
-                .agent(xai::GROK_3_MINI)
-                .preamble("You are a comedian here to entertain the user using humour and jokes.")
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI).on(rig::transport()))
+                    .preamble(
+                        "You are a comedian here to entertain the user using humour and jokes.",
+                    )
+                    .build();
 
             let hook = SessionIdHook {
                 session_id: "abc123",

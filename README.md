@@ -90,7 +90,7 @@ depends only on `rig`.
 
 Hosts construct HTTP or SDK models with their chosen authentication, transport
 policy and runtime lifetime; both agent runtimes execute the resulting
-`CompletionModel` through shared adapters. ECS checkpoints retain execution
+`Model` through one shared adapter. ECS checkpoints retain execution
 state and handler descriptors, not provider launch recipes. Restoration
 explicitly validates the complete handler set against the original saved
 contracts or accepts intentional replacements. Effect replay uses recorded
@@ -135,12 +135,11 @@ use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create an agent over OpenAI on the bundled transport. OpenAI's default
-    // completion route is the Responses API; `.with_route(Route::Chat)` on the
-    // configuration selects Chat Completions for every agent built on it.
-    let comedian_agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_5_2)
+    // A model is a provider's wire on a transport; `rig::transport()` is the
+    // default one. OpenAI's default completion route is the Responses API;
+    // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
+    let model = OpenAI::from_env()?.completion(openai::GPT_5_2).on(rig::transport());
+    let comedian_agent = AgentBuilder::new(model)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

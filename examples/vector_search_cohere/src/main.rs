@@ -2,10 +2,10 @@
 //! Requires `COHERE_API_KEY` and the `derive` feature.
 //! Run it to see a semantic query retrieve the closest matching document.
 
+use rig::wire::Wire as _;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    prelude::*,
     providers::cohere::{self, Cohere},
     vector_store::{
         VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
@@ -63,15 +63,17 @@ fn print_matches(matches: &[SearchMatch]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let cohere_client = Cohere::from_env()?.bound()?;
+    let cohere_client = Cohere::from_env()?;
     // Cohere scores a document and a query differently, so the two wires
     // differ only in the `input_type` they send.
     let document_model = cohere_client
         .embedding(cohere::EMBED_ENGLISH_V3, None)
-        .map_wire(|wire| wire.with_input_type("search_document"));
+        .with_input_type("search_document")
+        .on(rig::transport());
     let search_model = cohere_client
         .embedding(cohere::EMBED_ENGLISH_V3, None)
-        .map_wire(|wire| wire.with_input_type("search_query"));
+        .with_input_type("search_query")
+        .on(rig::transport());
     let embeddings = EmbeddingsBuilder::new(document_model.clone())
         .documents(sample_documents())?
         .build()

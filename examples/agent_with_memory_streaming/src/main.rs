@@ -26,12 +26,14 @@ async fn collect_final(stream: &mut StreamingResult) -> Result<String> {
 async fn main() -> Result<()> {
     let memory = InMemoryConversationMemory::new();
 
-    let agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_4O)
-        .preamble("You are a helpful assistant with persistent memory.")
-        .memory(memory)
-        .build();
+    let agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(openai::GPT_4O)
+            .on(rig::transport()),
+    )
+    .preamble("You are a helpful assistant with persistent memory.")
+    .memory(memory)
+    .build();
 
     let mut first = agent
         .prompt("My name is Alice.")

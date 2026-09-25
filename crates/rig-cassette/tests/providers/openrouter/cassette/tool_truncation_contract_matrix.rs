@@ -35,6 +35,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_truncation_contract_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -42,14 +43,15 @@ use std::sync::{
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, FinishReason};
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::{BoundOpenRouter, with_openrouter_tool_truncation_cassette_result};
+use super::super::support::with_openrouter_tool_truncation_cassette_result;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
 const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
@@ -133,12 +135,8 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .preamble(PREAMBLE.to_owned())
         .tool(tool_definition())
         .additional_params(json!({
@@ -196,10 +194,12 @@ impl Tool for FileReport {
     }
 }
 
-async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
-    let model = client.completion(model_name(cell.model));
+async fn run_model(client: OpenAI, cell: Cell) -> Observation {
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
     match cell.transport {
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -211,7 +211,7 @@ async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(&model, cell)).await {
+            let raw = match model.stream(request(cell)) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {
@@ -242,21 +242,24 @@ async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
+async fn run_agent(client: OpenAI, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
-    let agent = client
-        .agent(model_name(cell.model))
-        .preamble(PREAMBLE)
-        .tool(FileReport {
-            invocations: Arc::clone(&invocations),
-        })
-        .additional_params(json!({
-            "tool_choice": "required",
-            "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-        }))
-        .max_tokens(max_tokens(cell.budget))
-        .default_max_turns(1)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        client
+            .completion(model_name(cell.model))
+            .on(rig::transport()),
+    )
+    .preamble(PREAMBLE)
+    .tool(FileReport {
+        invocations: Arc::clone(&invocations),
+    })
+    .additional_params(json!({
+        "tool_choice": "required",
+        "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
+    }))
+    .max_tokens(max_tokens(cell.budget))
+    .default_max_turns(1)
+    .build();
     let mut errors = Vec::new();
     match cell.transport {
         Transport::Blocking => {
@@ -282,7 +285,7 @@ async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

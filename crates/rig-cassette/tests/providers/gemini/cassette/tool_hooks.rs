@@ -3,9 +3,9 @@
 
 use rig::agent::AgentHook;
 use rig::completion::PromptError;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 
 use super::super::agent_run_support::tool_result_texts;
 use super::super::support::with_gemini_cassette;
@@ -25,12 +25,15 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
     with_gemini_cassette(
         "tool_hooks/on_tool_call_skip_returns_reason_without_executing",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .build();
 
             let response = agent
                 .prompt("What is 19 + 23?")
@@ -67,12 +70,15 @@ async fn on_tool_call_terminate_cancels_run() {
     with_gemini_cassette(
         "tool_hooks/on_tool_call_terminate_cancels_run",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .build();
 
             let error = agent
                 .prompt("What is 19 + 23?")
@@ -110,12 +116,15 @@ async fn hooks_observe_every_tool_call_and_result() {
     with_gemini_cassette(
         "tool_hooks/hooks_observe_every_tool_call_and_result",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .build();
 
             let response = agent
                 .prompt("Use the add tool to calculate 19 + 23, then report the result.")

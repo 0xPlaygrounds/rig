@@ -6,7 +6,7 @@ use rig_core::embeddings::EmbeddingsBuilder;
 use rig_core::providers::openai::{self, wire::OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
-use rig_reqwest::prelude::*;
+use rig_core::wire::Wire as _;
 use std::env;
 
 const BUCKET_NAME: &str = "foo_bucket";
@@ -41,9 +41,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Bind the OpenAI embeddings endpoint.
     // Get your API key from https://platform.openai.com/api-keys
-    let openai_client = OpenAI::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?;
+    let http = rig_reqwest::shared();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {

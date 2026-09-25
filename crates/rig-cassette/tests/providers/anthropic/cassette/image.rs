@@ -4,8 +4,8 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;
 use rig::message::ImageMediaType;
-use rig::prelude::*;
 use rig::providers::anthropic;
+use rig::wire::Wire as _;
 use tokio::fs;
 
 use super::super::support::with_anthropic_cassette;
@@ -16,11 +16,14 @@ use crate::support::{
 #[tokio::test]
 async fn image_prompt_from_fixture() {
     with_anthropic_cassette("image/image_prompt_from_fixture", |client| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble("You are an image describer.")
-            .temperature(0.5)
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .on(rig::transport()),
+        )
+        .preamble("You are an image describer.")
+        .temperature(0.5)
+        .build();
 
         let image_bytes = fs::read(IMAGE_FIXTURE_PATH)
             .await

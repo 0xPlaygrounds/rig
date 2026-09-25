@@ -2,7 +2,7 @@
 
 use anyhow::{Result, anyhow};
 use rig::TypedPromptResponse;
-use rig::prelude::*;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +43,13 @@ fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) -> Res
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let extractor = live_client().await.extractor::<Person>(LIVE_MODEL).build();
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .build();
 
     let person = extractor
         .extract("John Doe is a 30 year old software engineer.")
@@ -60,7 +66,13 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let extractor = live_client().await.extractor::<Person>(LIVE_MODEL).build();
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .build();
 
     let response: TypedPromptResponse<Person> = extractor
         .extract("Jane Smith is a 45 year old data scientist.")
@@ -81,7 +93,13 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     use rig::message::Message;
 
-    let extractor = live_client().await.extractor::<Address>(LIVE_MODEL).build();
+    let extractor = rig::extractor::ExtractorBuilder::<Address>::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .build();
 
     let chat_history = vec![Message::user(
         "I'm looking at a property that might be interesting.",
@@ -105,7 +123,13 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let extractor = live_client().await.extractor::<Person>(LIVE_MODEL).build();
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .build();
 
     let text = "Bob Johnson is a 55 year old retired teacher.";
 
@@ -133,13 +157,19 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     let client = live_client().await;
 
-    let person_extractor = client.extractor::<Person>(LIVE_MODEL).build();
+    let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+        client.completion(LIVE_MODEL).on(rig::transport()),
+    )
+    .build();
     let person_response = person_extractor
         .extract("Alice is a 25 year old developer.")
         .await?;
     anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
-    let address_extractor = client.extractor::<Address>(LIVE_MODEL).build();
+    let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(
+        client.completion(LIVE_MODEL).on(rig::transport()),
+    )
+    .build();
     let address_response = address_extractor
         .extract("456 Oak Avenue, Cambridge, MA 02139")
         .await?;

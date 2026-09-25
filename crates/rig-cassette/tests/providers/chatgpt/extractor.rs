@@ -1,17 +1,19 @@
 //! ChatGPT extractor smoke test.
 
-use rig::prelude::*;
-
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
+use rig::wire::Wire as _;
 
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn extractor_smoke() {
-    let extractor = live_client()
-        .await
-        .extractor::<SmokePerson>(LIVE_MODEL)
-        .build();
+    let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .build();
 
     let response = extractor
         .extract(EXTRACTOR_TEXT)

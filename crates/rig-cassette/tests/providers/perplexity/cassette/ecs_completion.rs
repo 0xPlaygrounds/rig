@@ -3,14 +3,18 @@ use crate::ecs_agent::EcsAgent;
 use crate::perplexity::support::with_perplexity_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use rig::providers::perplexity;
+use rig::wire::Wire as _;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_perplexity_cassette("agent/completion_smoke", |client| async move {
-                let mut ecs =
-                    EcsAgent::new(client.completion(perplexity::SONAR), BASIC_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(
+                    client.completion(perplexity::SONAR).on(rig::transport()),
+                    BASIC_PREAMBLE,
+                    1,
+                );
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -41,7 +45,7 @@ async fn completion_with_perplexity_options() {
                 "agent/completion_with_perplexity_options",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.completion(perplexity::SONAR),
+                        client.completion(perplexity::SONAR).on(rig::transport()),
                         "Answer briefly and include the date or time context if relevant.",
                         1,
                     );

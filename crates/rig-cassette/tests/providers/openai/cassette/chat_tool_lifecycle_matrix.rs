@@ -33,20 +33,19 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::driver::Bound;
-use rig::prelude::*;
-use rig::providers::openai::wire::Chat;
+use rig::completion::{AssistantContent, FinishReason};
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_tool_lifecycle_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 pub(super) const PREAMBLE: &str =
     "Follow the user's tool-call instruction exactly. Do not answer in prose.";
@@ -156,9 +155,8 @@ pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
-    let mut builder = model
-        .completion_request(prompt(cell.shape))
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
         .additional_params(json!({ "tool_choice": "required", "parallel_tool_calls": cell.shape == Shape::Parallel }))
         .max_tokens(128);
@@ -259,12 +257,15 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = client
+        .openai
+        .chat(model_name(cell.model))
+        .on(rig::transport());
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
         // normalization, keeping the native value on `CompletionResponse::raw`.
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
@@ -281,7 +282,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let mut stream = match model.stream(request(&model, cell)).await {
+            let mut stream = match model.stream(request(cell)) {
                 Ok(stream) => stream,
                 Err(error) => {
                     return Observation {
@@ -315,11 +316,18 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
-    let builder = client.chat.agent(model_name(cell.model))
-        .preamble(PREAMBLE)
-        .additional_params(json!({ "tool_choice": "required", "parallel_tool_calls": cell.shape == Shape::Parallel }))
-        .max_tokens(128)
-        .default_max_turns(1);
+    let builder = rig::AgentBuilder::new(
+        client
+            .chat
+            .completion(model_name(cell.model))
+            .on(rig::transport()),
+    )
+    .preamble(PREAMBLE)
+    .additional_params(
+        json!({ "tool_choice": "required", "parallel_tool_calls": cell.shape == Shape::Parallel }),
+    )
+    .max_tokens(128)
+    .default_max_turns(1);
     let agent = match cell.shape {
         Shape::Zero => builder
             .tool(Ping {

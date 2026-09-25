@@ -52,6 +52,7 @@
 //! Re-record with a local Ollama daemon serving `qwen3:4b`:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_capture_agent_matrix -- --nocapture --test-threads=1`
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
@@ -61,7 +62,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::{Value, json};
@@ -312,8 +312,7 @@ async fn hooks_observe_raw_blocking() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .max_tokens(64)
                 .additional_params(json!({ "think": false }))
                 .add_hook(hook)
@@ -359,8 +358,7 @@ async fn hooks_observe_raw_streamed() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .max_tokens(64)
                 .additional_params(json!({ "think": false }))
                 .add_hook(hook)
@@ -416,8 +414,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(TOOLS_PREAMBLE)
                 .additional_params(json!({ "think": false }))
                 .tool(Adder)
@@ -487,8 +484,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(TOOLS_PREAMBLE)
                 .additional_params(json!({ "think": false }))
                 .tool(Adder)

@@ -9,13 +9,11 @@
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
-use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_2_5_FLASH, GEMINI_3_FLASH_PREVIEW};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{
@@ -28,10 +26,19 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &Gemini,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        model: client
+            .completion(GEMINI_3_FLASH_PREVIEW)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -39,10 +46,19 @@ fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clo
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(
+    client: &Gemini,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-nonexistent-rig-test"),
+        model: client
+            .completion("gemini-nonexistent-rig-test")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -51,10 +67,17 @@ fn missing<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + 
 
 /// The recording's own model, for a cell that reuses a recording the
 /// corpus already had.
-fn legacy<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn legacy(
+    client: &Gemini,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_2_5_FLASH),
+        model: client.completion(GEMINI_2_5_FLASH).on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -104,11 +127,19 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 
 /// The wire over a transport that answers one streaming request with
 /// `frames`, then EOF.
-fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = Gemini::new(SCRIPTED_KEY).bind(scripted(vec![sse_bytes(frames)]));
+fn scripted_stream(
+    frames: &[String],
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
+    let client = Gemini::new(SCRIPTED_KEY);
+    let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -117,11 +148,14 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
 
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
-fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = Gemini::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
+fn scripted_unary(
+    replies: Vec<MockHttpResponse>,
+) -> Wire<rig::Model<rig::providers::gemini::completion::GenerateContent, SequencedHttpClient>> {
+    let client = Gemini::new(SCRIPTED_KEY);
+    let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

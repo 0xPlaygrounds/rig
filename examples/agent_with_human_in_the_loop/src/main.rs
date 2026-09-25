@@ -235,16 +235,18 @@ impl AgentHook for ApprovalHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_4O)
-        .preamble(
-            "You are an operations assistant. Use the available tools to carry out the user's \
+    let agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(openai::GPT_4O)
+            .on(rig::transport()),
+    )
+    .preamble(
+        "You are an operations assistant. Use the available tools to carry out the user's \
              request. Call one tool at a time and wait for its result before the next step.",
-        )
-        .tool(SendEmail)
-        .tool(DeleteFile)
-        .build();
+    )
+    .tool(SendEmail)
+    .tool(DeleteFile)
+    .build();
 
     let prompt = "Email alice@example.com a reminder that the budget review is at 3pm, \
                   then delete the stale file /tmp/old_report.csv.";

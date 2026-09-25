@@ -16,8 +16,8 @@
 use neo4rs::ConfigBuilder;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_core::wire::Wire as _;
 use rig_neo4j::Neo4jClient;
-use rig_reqwest::prelude::*;
 
 use std::env;
 
@@ -38,7 +38,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Bind the OpenAI embeddings endpoint
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client = OpenAI::new(&openai_api_key).bound()?;
+    let openai_client = OpenAI::new(&openai_api_key);
+    let http = rig_reqwest::shared();
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
     let neo4j_username = "recommendations";
@@ -55,7 +56,9 @@ async fn main() -> Result<(), anyhow::Error> {
     .await?;
 
     // // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     // Define the properties that will be retrieved from querying the graph nodes
     #[derive(Debug, Deserialize, Serialize)]

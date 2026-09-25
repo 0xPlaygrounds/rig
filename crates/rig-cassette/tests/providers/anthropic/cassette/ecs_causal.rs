@@ -7,8 +7,8 @@ use crate::goldens::{
     Nesting, Note, NoteAck, RELAY_KEY, RelayNote, families, parent_positions,
 };
 use bevy_ecs::prelude::*;
-use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig::{
     effect::{EffectFamily, HandlerKey},
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
@@ -29,9 +29,9 @@ struct Host {
     serial: bool,
     streamed: bool,
 }
-async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::cassette::effect_log::EffectLog {
+async fn over_host(client: Anthropic, host: Host) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        client.completion(CLAUDE_SONNET_4_6),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         TOOLS_PREAMBLE,
         host.streamed,
     );

@@ -1,12 +1,12 @@
 //! Cassette-backed OpenRouter coverage for combining `prompt_typed()` with tool calling.
 
 use anyhow::Result;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::prelude::*;
 use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;
@@ -74,8 +74,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(TOOL_MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
                 .preamble(
                     "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
                      After calling the tool, respond with ONLY minified JSON matching this schema: \

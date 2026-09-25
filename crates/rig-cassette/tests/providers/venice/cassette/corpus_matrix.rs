@@ -9,17 +9,24 @@
 //! the grid missing from this file reuses a recording the corpus already
 //! had, whose producer stays where it is.
 
-use rig::completion::CompletionModel;
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
+use rig::wire::Wire as _;
 
-use super::super::support::{BoundVenice, with_venice_cassette};
+use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
+use rig::providers::openai::OpenAI;
 
-fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion(MISTRAL_SMALL_3_2_24B),
-        route: Some(client.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client
+            .completion(MISTRAL_SMALL_3_2_24B)
+            .on(rig::transport()),
+        route: Some(
+            client
+                .completion(MISTRAL_SMALL_3_2_24B)
+                .on(rig::transport()),
+        ),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -235,10 +242,12 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::Venice,
-        model: client.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING),
+        model: client
+            .completion(rig::providers::venice::QWEN3_235B_A22B_THINKING)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

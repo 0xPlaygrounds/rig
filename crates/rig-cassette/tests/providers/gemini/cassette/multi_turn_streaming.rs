@@ -1,11 +1,11 @@
 //! Migrated from `examples/multi_turn_streaming_gemini.rs`.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
@@ -26,14 +26,17 @@ async fn runner_driven_multi_turn_streaming_loop() {
     super::super::support::with_gemini_cassette(
         "multi_turn_streaming/manual_multi_turn_streaming_loop",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble("You must use tools to answer arithmetic prompts.")
-                .tool(Add::new(add_calls.clone()))
-                .tool(Subtract::new(subtract_calls.clone()))
-                .tool(Multiply::new(multiply_calls.clone()))
-                .tool(Divide::new(divide_calls.clone()))
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .preamble("You must use tools to answer arithmetic prompts.")
+            .tool(Add::new(add_calls.clone()))
+            .tool(Subtract::new(subtract_calls.clone()))
+            .tool(Multiply::new(multiply_calls.clone()))
+            .tool(Divide::new(divide_calls.clone()))
+            .build();
 
             let mut stream = agent
                 .prompt(MULTI_TURN_STREAMING_PROMPT)

@@ -13,15 +13,14 @@
 //!   which `Model` has slots for.
 
 use rig::streaming::Delta;
+use rig::wire::Wire as _;
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::CompletionModel as _;
-use rig::embeddings::EmbeddingModel as _;
-use rig::model::ModelLister;
 use rig::providers::mistral;
 
 use super::support::with_mistral_capability_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 /// One more than Mistral's real per-request cap, so a single un-chunked
 /// request would be rejected and only correct chunking can succeed.
@@ -32,12 +31,19 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/one_request_over_mistrals_batch_cap_is_rejected",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client
+                .embedding(mistral::embedding::MISTRAL_EMBED, None)
+                .on(rig::transport());
             // Straight through the model, bypassing the builder's chunking, so
             // the cell pins Mistral's own cap rather than rig's arithmetic.
             let error = model
-                .embed_texts((0..OVER_ONE_BATCH).map(|i| format!("document {i}")))
+                .call(
+                    (0..OVER_ONE_BATCH)
+                        .map(|i| format!("document {i}"))
+                        .collect(),
+                )
                 .await
+                .map(|response| response.embeddings)
                 // `Vec<Embedding>` is not `Debug`; map the Ok side away.
                 .map(|_| ())
                 .expect_err("Mistral must reject a batch over its cap");
@@ -53,11 +59,14 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/mistral_embed_reports_its_real_dimensions",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client
+                .embedding(mistral::embedding::MISTRAL_EMBED, None)
+                .on(rig::transport())
+                .boxed();
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.
-            let declared = model.ndims();
+            let declared = model.capabilities().ndims;
             let embedding = model.embed_text("dimension probe").await?;
             assert_declared_matches_returned(declared, embedding.vec.len());
             Ok::<_, anyhow::Error>(())
@@ -71,7 +80,7 @@ async fn list_models_keeps_description_and_context_length() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/list_models_keeps_description_and_context_length",
         |client| async move {
-            let models = client.models().list_all().await?;
+            let models = client.models().on(rig::transport()).call(()).await?;
             assert_listing_carries_mistrals_fields(&models.data);
             Ok::<_, anyhow::Error>(())
         },
@@ -99,7 +108,7 @@ fn assert_declared_matches_returned(declared: usize, returned: usize) {
     );
 }
 
-fn assert_listing_carries_mistrals_fields(models: &[rig::model::Model]) {
+fn assert_listing_carries_mistrals_fields(models: &[rig::model::ModelInfo]) {
     assert!(!models.is_empty(), "the listing must not be empty");
     assert!(
         models.iter().any(|model| model.description.is_some()),
@@ -125,14 +134,16 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/streaming_with_two_candidates_answers_from_the_first",
         |client| async move {
-            let model = client.completion(mistral::MISTRAL_SMALL);
-            let mut stream: rig::streaming::StreamingCompletionResponse = model
-                .completion_request("Say one random word.")
-                .temperature(1.0)
-                .max_tokens(8)
-                .additional_params(serde_json::json!({"n": 2}))
-                .stream()
-                .await?;
+            let model = client
+                .completion(mistral::MISTRAL_SMALL)
+                .on(rig::transport());
+            let mut stream: rig::streaming::CompletionStream = model.stream(
+                CompletionRequestBuilder::new("Say one random word.")
+                    .temperature(1.0)
+                    .max_tokens(8)
+                    .additional_params(serde_json::json!({"n": 2}))
+                    .build(),
+            )?;
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
@@ -232,11 +243,12 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
     with_mistral_capability_cassette(
         "capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted",
         |client| async move {
-            let model = client.completion(mistral::MISTRAL_SMALL);
+            let model = client
+                .completion(mistral::MISTRAL_SMALL)
+                .on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request("Add 2 and 3, then report the total.")
+                .call(
+                    CompletionRequestBuilder::new("Add 2 and 3, then report the total.")
                         .preamble("Use the add tool, then report the total.".to_string())
                         .messages(turn_one_history())
                         .tools(vec![add_tool_definition()])

@@ -333,7 +333,7 @@ impl ChatDecoder {
             if let Some(wire_id) = key.wire_str() {
                 end = end.with_tool_id(wire_id);
             }
-            out.tool_call(key, end);
+            out.tool_end(key, end);
         }
 
         out.close_active_blocks();

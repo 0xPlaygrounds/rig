@@ -5,6 +5,7 @@ use crate::{
     cache_conformance::assert_prefix_stable, ecs_agent::EcsAgent, ecs_cache::assert_cache_growth,
 };
 use rig::providers::anthropic;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
@@ -16,7 +17,8 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
                     let ecs = EcsAgent::new(
                         client
                             .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                            .map_wire(|wire| wire.with_prompt_caching()),
+                            .with_prompt_caching()
+                            .on(rig::transport()),
                         &conformance_probe().preamble,
                         1,
                     );

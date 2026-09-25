@@ -635,7 +635,7 @@ impl StreamedTurnAssembler {
                 ..
             }
             | StreamEvent::BlockEnd {
-                end: BlockClose::Text,
+                end: BlockClose::Text | BlockClose::Image(_),
                 ..
             } => Ok(vec![StreamedTurnEvent::EmitIngested]),
             StreamEvent::BlockStart {
@@ -960,9 +960,9 @@ impl StreamedTurnAssembler {
     }
 
     /// Assemble the completed turn. `final_choice` is the provider's
-    /// aggregated choice for the turn
-    /// (`StreamingCompletionResponse::choice`) and `issuer` the service its
-    /// reasoning came from (`StreamingCompletionResponse::reasoning_issuer`),
+    /// aggregated choice for the turn (the stream fold's snapshot) and
+    /// `issuer` the service its reasoning came from (the fold's
+    /// reasoning issuer),
     /// recorded on every reasoning part that names none. With no issuer the
     /// reasoning keeps unknown provenance, which every request replays.
     pub fn finish(

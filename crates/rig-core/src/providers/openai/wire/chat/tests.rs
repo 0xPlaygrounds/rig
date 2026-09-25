@@ -12,8 +12,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 
 use super::*;
-use crate::completion::{CompletionModel as _, FinishReason};
-use crate::driver::Bound;
+use crate::completion::FinishReason;
 use crate::message::AssistantContent;
 use crate::providers::openai::wire::{Dialect, GROQ, OPENAI, OpenAI};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
@@ -50,15 +49,15 @@ async fn fold_both(
     crate::completion::CompletionResponse,
     crate::completion::CompletionResponse,
 ) {
-    let buffered = Bound::new(
+    let buffered = crate::driver::Model::new(
         wire(),
         RecordingHttpClient::new(recorded("then", unary_cassette)),
     )
-    .completion(request.clone())
+    .call(request.clone())
     .await
     .expect("the recorded unary reply decodes");
 
-    let streaming = Bound::new(
+    let streaming = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from(recorded("then", stream_cassette)),
@@ -66,7 +65,6 @@ async fn fold_both(
     );
     let mut response = streaming
         .stream(request)
-        .await
         .expect("the recorded stream opens");
     while response.next().await.is_some() {}
     (
@@ -244,13 +242,13 @@ async fn the_done_sentinel_emits_the_deferred_terminal() {
         "\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n",
         "data: [DONE]\n\n",
     );
-    let bound = Bound::new(
+    let bound = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     );
-    let mut response = bound.stream(prompt("hi")).await.expect("the stream opens");
+    let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
         .finish()
@@ -271,16 +269,16 @@ async fn a_truncated_stream_yields_no_terminal_record() {
         "data: {\"object\":\"chat.completion.chunk\",\"id\":\"chatcmpl-1\",",
         "\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"par\"}}]}\n\n",
     );
-    let bound = Bound::new(
+    let bound = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     );
-    let mut response = bound.stream(prompt("hi")).await.expect("the stream opens");
+    let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     while response.next().await.is_some() {}
     assert!(
-        response.response.is_none(),
+        response.folded().terminal().cloned().is_none(),
         "no terminal record is synthesized"
     );
     let error = response
@@ -295,13 +293,13 @@ async fn a_truncated_stream_yields_no_terminal_record() {
 async fn an_in_band_error_envelope_fails_the_turn() {
     const BODY: &str =
         "data: {\"error\":{\"message\":\"rate limited\"},\"choices\":[]}\n\ndata: [DONE]\n\n";
-    let bound = Bound::new(
+    let bound = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     );
-    let mut response = bound.stream(prompt("hi")).await.expect("the stream opens");
+    let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     let mut errors = Vec::new();
     while let Some(item) = response.next().await {
         if let Err(error) = item {
@@ -314,7 +312,7 @@ async fn an_in_band_error_envelope_fails_the_turn() {
         "the provider's message survives: {errors:?}"
     );
     // A failed turn commits no terminal record, so there is nothing to fold.
-    assert!(response.response.is_none());
+    assert!(response.folded().terminal().cloned().is_none());
     assert!(response.finish().is_err());
 }
 
@@ -415,7 +413,7 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
 async fn the_streamed_terminal_reads_back_as_the_provider_record() {
     use crate::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 
-    let mut response = Bound::new(
+    let mut response = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from(recorded(
@@ -425,7 +423,6 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
         },
     )
     .stream(prompt("Reply with exactly the single word: pong"))
-    .await
     .expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
@@ -494,12 +491,12 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
         "data: [DONE]\n\n",
     );
 
-    let buffered = Bound::new(wire(), RecordingHttpClient::new(UNARY))
-        .completion(prompt("think then answer"))
+    let buffered = crate::driver::Model::new(wire(), RecordingHttpClient::new(UNARY))
+        .call(prompt("think then answer"))
         .await
         .expect("the unary reply decodes without tripping the sequence law");
 
-    let streaming = Bound::new(
+    let streaming = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(STREAM.as_bytes()),
@@ -507,7 +504,6 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
     );
     let mut response = streaming
         .stream(prompt("think then answer"))
-        .await
         .expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
@@ -547,7 +543,7 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
 async fn the_streamed_terminal_keeps_every_envelope_field() {
     use crate::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 
-    let mut response = Bound::new(
+    let mut response = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from(recorded(
@@ -557,7 +553,6 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
         },
     )
     .stream(prompt("Reply with exactly the single word: pong"))
-    .await
     .expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
@@ -609,14 +604,13 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
     );
 
     let wire = OpenAI::new("pplx").with_dialect(&PERPLEXITY).chat("sonar");
-    let mut response = Bound::new(
+    let mut response = crate::driver::Model::new(
         wire,
         MockStreamingClient {
             sse_bytes: Bytes::from_static(BODY.as_bytes()),
         },
     )
     .stream(prompt("ping"))
-    .await
     .expect("the stream opens");
     while response.next().await.is_some() {}
     let folded = response
@@ -669,8 +663,8 @@ async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
         r#""usage":{"prompt_tokens":165,"completion_tokens":20,"total_tokens":185}}"#,
     );
 
-    let folded = Bound::new(wire(), RecordingHttpClient::new(BODY))
-        .completion(prompt("Record two notes."))
+    let folded = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
+        .call(prompt("Record two notes."))
         .await
         .expect(
             "a body cut mid-arguments must still decode: erroring discards the turn's \
@@ -729,8 +723,8 @@ async fn malformed_arguments_on_a_completed_tool_turn_stay_a_decode_error() {
         r#""usage":{"prompt_tokens":165,"completion_tokens":20,"total_tokens":185}}"#,
     );
 
-    let error = Bound::new(wire(), RecordingHttpClient::new(BODY))
-        .completion(prompt("Record a note."))
+    let error = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
+        .call(prompt("Record a note."))
         .await
         .expect_err("a completed tool-call turn with malformed arguments is a defect");
     assert!(
@@ -756,8 +750,8 @@ async fn valid_arguments_survive_a_length_truncated_turn() {
         r#""usage":{"prompt_tokens":165,"completion_tokens":20,"total_tokens":185}}"#,
     );
 
-    let folded = Bound::new(wire(), RecordingHttpClient::new(BODY))
-        .completion(prompt("Record a note."))
+    let folded = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
+        .call(prompt("Record a note."))
         .await
         .expect("valid arguments decode");
 
@@ -783,11 +777,11 @@ async fn valid_arguments_survive_a_length_truncated_turn() {
 async fn a_gateway_may_answer_with_a_bare_string() {
     use crate::providers::openai::wire::MIRA;
 
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         OpenAI::new("k").with_dialect(&MIRA).chat("gpt-4o"),
         RecordingHttpClient::new(r#""the whole answer""#),
     )
-    .completion(prompt("ask"))
+    .call(prompt("ask"))
     .await
     .expect("a bare string is the whole reply");
 
@@ -805,9 +799,10 @@ async fn a_gateway_may_answer_with_a_bare_string() {
     // — so the reply delivered nothing and reported nothing, and that is
     // the shared empty-response rejection rather than a silent, empty
     // success.
-    let strict = Bound::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
-        .completion(prompt("ask"))
-        .await;
+    let strict =
+        crate::driver::Model::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
+            .call(prompt("ask"))
+            .await;
     let Err(ProviderError::Response(message)) = &strict else {
         panic!("openai does not answer with a bare string: {strict:?}");
     };
@@ -851,11 +846,11 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
         ("length", FinishReason::Length),
         ("content_filter", FinishReason::ContentFilter),
     ] {
-        let response = Bound::new(
+        let response = crate::driver::Model::new(
             wire(),
             RecordingHttpClient::new(empty_turn_body(Some(reason))),
         )
-        .completion(prompt("ask"))
+        .call(prompt("ask"))
         .await
         .unwrap_or_else(|error| panic!("`{reason}` is a cut-short turn, not a defect: {error}"));
 
@@ -890,9 +885,10 @@ async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
         Some("bespoke_reason"),
         None,
     ] {
-        let folded = Bound::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
-            .completion(prompt("ask"))
-            .await;
+        let folded =
+            crate::driver::Model::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
+                .call(prompt("ask"))
+                .await;
 
         let Err(ProviderError::Response(message)) = &folded else {
             panic!("`{reason:?}` does not license an empty turn: {folded:?}");

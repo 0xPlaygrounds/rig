@@ -33,9 +33,9 @@
 //! answer, while the blocking path answers the same request from candidate 0
 //! alone". This cell is that claim, measured.
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::llamacpp;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -45,6 +45,7 @@ use crate::cassettes::{
 use crate::support::assistant_text_response;
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// A prompt Qwen3 answers with a visible `<think>` pass, so
 /// `reasoning_content` is populated.
@@ -73,11 +74,10 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/reasoning_blocking",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request(REASONING_PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
                 )
@@ -128,15 +128,13 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/reasoning_streaming",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let mut stream = model
                 .stream(
-                    model
-                        .completion_request(REASONING_PROMPT)
+                    CompletionRequestBuilder::new(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
                 )
-                .await
                 .expect("stream should start");
 
             let mut reasoning = String::new();
@@ -235,11 +233,10 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/two_candidates_blocking",
         move |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request(TWO_CANDIDATE_PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
@@ -258,16 +255,14 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     with_llamacpp_cassette(
         "response_shape_matrix/two_candidates_streaming",
         move |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let mut stream = model
                 .stream(
-                    model
-                        .completion_request(TWO_CANDIDATE_PROMPT)
+                    CompletionRequestBuilder::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
                 )
-                .await
                 .expect("stream should start");
 
             let mut text = String::new();
@@ -360,11 +355,10 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
 #[tokio::test]
 async fn logprobs_survive_into_the_raw_response() {
     with_llamacpp_cassette("response_shape_matrix/logprobs", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request("/no_think Say ok.")
+            .call(
+                CompletionRequestBuilder::new("/no_think Say ok.")
                     .max_tokens(16)
                     .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
                     .build(),

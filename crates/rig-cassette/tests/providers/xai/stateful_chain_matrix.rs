@@ -4,10 +4,11 @@
 //! body passes or panics. The id is account-scoped and deleted by the
 //! recording, so the fixture replays but cannot seed a live call.
 
+use rig::wire::Wire as _;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
 use futures::FutureExt;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, UserContent,
 };
@@ -45,8 +46,8 @@ fn text(choice: &[AssistantContent]) -> String {
 async fn file_id_chain() {
     const SCENARIO: &str = "stateful_chain_matrix/file_id_chain";
     with_xai_cassette("stateful_chain_matrix/file_id_chain", |client| async move {
-        let base = client.wire.base_url.trim_end_matches('/').to_owned();
-        let key = client.wire.api_key.expose().to_owned();
+        let base = client.base_url.trim_end_matches('/').to_owned();
+        let key = client.api_key.expose().to_owned();
         let http = reqwest::Client::new();
         let bytes = std::fs::read(crate::support::PDF_FIXTURE_PATH).expect("fixture PDF");
         let form = reqwest::multipart::Form::new()
@@ -84,9 +85,9 @@ async fn file_id_chain() {
                     UserContent::text("How many pages does this PDF have? Answer with a number."),
                 ],
             };
-            let model = client.completion(xai::GROK_4);
+            let model = client.completion(xai::GROK_4).on(rig::transport());
             let first = model
-                .completion(request(vec![document.clone()]))
+                .call(request(vec![document.clone()]))
                 .await
                 .expect("turn one reads the file by id");
             assert!(text(&first.choice).contains('3'), "{:?}", first.choice);
@@ -99,7 +100,7 @@ async fn file_id_chain() {
                 Message::user("Is the attached PDF longer than two pages? Answer yes or no."),
             ];
             let second = model
-                .completion(request(history))
+                .call(request(history))
                 .await
                 .expect("turn two still reads the file by id");
             assert!(

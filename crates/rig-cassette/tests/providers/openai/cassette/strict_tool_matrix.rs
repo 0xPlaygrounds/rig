@@ -31,14 +31,15 @@
 //! `crates/rig-core/src/providers/openai/responses_api/tests.rs`
 //! (`responses_function_tools_are_non_strict_by_default`).
 
-use rig::completion::{CompletionModel, ToolDefinition};
+use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, collect_raw_stream_observation};
+use rig::completion::CompletionRequestBuilder;
 
 const RECORD_FACT: &str = "record_fact";
 const PREAMBLE: &str = "You are a note-taking assistant. Record facts with the record_fact tool.";
@@ -124,15 +125,17 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_blocking",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(OMIT_SOURCE_PROMPT)
+            let model = client
+                .openai
+                .completion(openai::GPT_4O_MINI)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .tool(record_fact_tool())
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("non-strict tool request should succeed");
 
@@ -152,16 +155,17 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_streaming",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(OMIT_SOURCE_PROMPT)
+            let model = client
+                .openai
+                .completion(openai::GPT_4O_MINI)
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .tool(record_fact_tool())
                 .build();
 
             let stream = model
                 .stream(request)
-                .await
                 .expect("non-strict streaming tool request should start");
             let observation = collect_raw_stream_observation(stream).await;
 
@@ -194,15 +198,15 @@ async fn strict_tools_opt_in_sends_strict_true() {
             let model = client
                 .openai
                 .completion(openai::GPT_4O_MINI)
-                .map_wire(|wire| wire.with_strict_tools());
-            let request = model
-                .completion_request(OMIT_SOURCE_PROMPT)
+                .with_strict_tools()
+                .on(rig::transport());
+            let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .tool(record_fact_tool())
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("strict tool request should succeed");
 
@@ -236,13 +240,16 @@ async fn agent_tool_turn_sends_strict_false() {
     with_openai_cassette(
         "strict_tool_matrix/agent_tool_turn_sends_strict_false",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O_MINI)
-                .preamble("You are a calculator. Use the add tool for arithmetic, then answer.")
-                .tool(Adder)
-                .default_max_turns(4)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(openai::GPT_4O_MINI)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a calculator. Use the add tool for arithmetic, then answer.")
+            .tool(Adder)
+            .default_max_turns(4)
+            .build();
 
             let answer = agent
                 .prompt("What is 17 + 25? Use the add tool.")

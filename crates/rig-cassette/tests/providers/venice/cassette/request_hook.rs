@@ -1,5 +1,6 @@
 //! Cassette-backed Venice request-hook regression coverage.
 
+use rig::wire::Wire as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -8,7 +9,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
 use crate::support::assert_nonempty_response;
@@ -60,13 +60,13 @@ async fn request_hook_records_prompt_and_response() {
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
             let hook = ObservingHook::default();
-            let response = client
-                .agent(DEFAULT_MODEL)
-                .build()
-                .prompt("Entertain me with one short joke.")
-                .add_hook(hook.clone())
-                .await
-                .expect("hooked prompt should succeed");
+            let response =
+                rig::AgentBuilder::new(client.completion(DEFAULT_MODEL).on(rig::transport()))
+                    .build()
+                    .prompt("Entertain me with one short joke.")
+                    .add_hook(hook.clone())
+                    .await
+                    .expect("hooked prompt should succeed");
             assert_nonempty_response(&response.output);
             assert_eq!(hook.prompt_calls.load(Ordering::SeqCst), 1);
             assert_eq!(hook.response_calls.load(Ordering::SeqCst), 1);

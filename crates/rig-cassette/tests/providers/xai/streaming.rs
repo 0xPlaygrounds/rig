@@ -1,7 +1,7 @@
 //! xAI streaming smoke test.
 
-use rig::prelude::*;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::support::{
@@ -11,10 +11,10 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_smoke() {
     with_xai_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(xai::GROK_3_MINI)
-            .preamble(STREAMING_PREAMBLE)
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI).on(rig::transport()))
+                .preamble(STREAMING_PREAMBLE)
+                .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let response = collect_stream_final_response(&mut stream)

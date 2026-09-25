@@ -4,18 +4,26 @@
 //! have a producer here; a scripted row's oracle is the runner in the world
 //! cell's own test.
 
-use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &Gemini,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        model: client
+            .completion(GEMINI_3_FLASH_PREVIEW)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -23,10 +31,19 @@ fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clo
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(
+    client: &Gemini,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::BoxedHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-nonexistent-rig-test"),
+        model: client
+            .completion("gemini-nonexistent-rig-test")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -8,7 +8,7 @@
 //!
 //! ```no_run
 //! use rig_core::providers::{openrouter, openai::wire::{OPENROUTER, OpenAI}};
-//! let wire = OpenAI::from_env_with(&OPENROUTER)?.transcriptions(openrouter::WHISPER_1);
+//! let wire = OpenAI::from_env_with(&OPENROUTER)?.transcription(openrouter::WHISPER_1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

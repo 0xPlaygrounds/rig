@@ -1,13 +1,13 @@
-//! Gemini completion and embedding models using the gRPC API.
+//! Gemini completion and embedding wires over the gRPC API.
 //!
 //! ```no_run
-//! use rig_core::driver::CompletionProvider;
-//! use rig_gemini_grpc::{Client, completion::GEMINI_2_0_FLASH};
+//! use rig_core::wire::Wire as _;
+//! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_0_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let client = Client::new("YOUR_API_KEY").await?;
-//!
-//! let completion_model = client.completion(GEMINI_2_0_FLASH);
+//! let transport = GeminiGrpc::new("YOUR_API_KEY").await?;
+//! let model = GenerateContent::new(GEMINI_2_0_FLASH).on(transport);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
@@ -17,7 +17,7 @@ pub mod completion;
 pub mod embedding;
 pub mod streaming;
 
-pub use client::Client;
+pub use client::GeminiGrpc;
 
 /// Generated Gemini protobuf messages and service client.
 ///

@@ -1,6 +1,6 @@
 //! llama.cpp structured output coverage, including the migrated example path.
 
-use rig::prelude::*;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +53,9 @@ async fn structured_output_smoke() {
     with_llamacpp_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = client.agent(CASSETTE_MODEL).build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
+                    .build();
 
             let response: SmokeStructuredOutput = agent
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
@@ -71,8 +73,7 @@ async fn structured_output_smoke() {
 async fn prompt_typed_structured_output() {
     with_llamacpp_cassette("structured_output/prompt_typed_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
-        let agent = client
-            .agent(model)
+        let agent = rig::AgentBuilder::new(client.completion(model).on(rig::transport()))
             .preamble(WEATHER_PREAMBLE)
             .temperature(0.0)
             .build();
@@ -92,8 +93,7 @@ async fn prompt_typed_structured_output() {
 async fn prompt_typed_extended_details_structured_output() {
     with_llamacpp_cassette("structured_output/prompt_typed_extended_details_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
-        let agent = client
-            .agent(model)
+        let agent = rig::AgentBuilder::new(client.completion(model).on(rig::transport()))
             .preamble(WEATHER_PREAMBLE)
             .temperature(0.0)
             .build();
@@ -117,8 +117,7 @@ async fn prompt_typed_extended_details_structured_output() {
 async fn output_schema_structured_output() {
     with_llamacpp_cassette("structured_output/output_schema_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
-        let agent_with_schema = client
-            .agent(model)
+        let agent_with_schema = rig::AgentBuilder::new(client.completion(model).on(rig::transport()))
             .preamble(WEATHER_PREAMBLE)
             .temperature(0.0)
             .output_schema::<WeatherForecast>()

@@ -33,18 +33,21 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::providers::openrouter;
 use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize as _;
 use serde_json::{Value, json};
 
-use super::super::support::{BoundOpenRouter, with_openrouter_history_roundtrip_cassette_result};
+use super::super::support::with_openrouter_history_roundtrip_cassette_result;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -165,12 +168,8 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    let mut builder = model
-        .completion_request(prompt(cell.shape))
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape))
         .max_tokens(24)
         .additional_params(json!({
             "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
@@ -198,8 +197,10 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The provider-native surface: the gateway's own reply document,
@@ -208,7 +209,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             // the same recorded bytes as the normalized surface, so the axis
             // is "provider document vs decoder's choice" rather than two
             // normalizers that could drift.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(cell)).await?;
             let wire = openrouter::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is OpenRouter's own completion response");
             Observation {
@@ -220,14 +221,14 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,
             }
         }
         (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
@@ -245,7 +246,7 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservati
             observation
         }
         (Transport::Streaming, Surface::Normalized) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,

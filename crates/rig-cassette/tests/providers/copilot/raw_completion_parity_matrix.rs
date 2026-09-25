@@ -43,13 +43,12 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_completion_parity_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_completion_parity_matrix/`.
 
-use rig::completion::{CompletionModel as _, FinishReason};
-use rig::driver::Bound;
+use rig::completion::FinishReason;
 use rig::providers::copilot;
-use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -57,6 +56,7 @@ use crate::cassettes::{recorded_interaction_bodies, recorded_response_header};
 use crate::copilot::with_copilot_cassette_result;
 use crate::raw_capture::{assert_contracted_request_id, capture_completion, chat, responses};
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -64,8 +64,8 @@ const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(64).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
 }
 
 /// The `x-request-id` interaction `index` of the scenario recorded. The
@@ -99,12 +99,12 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     with_copilot_cassette_result(
         "raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion",
         |client| async move {
-            let model = client.completion(CHAT_MODEL);
+            let model = client.completion(CHAT_MODEL).on(rig::transport());
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
-            capture_completion(model, request, sink).await
+            capture_completion(model, request(), sink).await
         },
     )
     .await
@@ -155,12 +155,12 @@ async fn responses_raw_completion_carries_request_id() {
     with_copilot_cassette_result(
         "raw_completion_parity_matrix/responses_raw_completion_carries_request_id",
         |client| async move {
-            let model = client.completion(RESPONSES_MODEL);
+            let model = client.completion(RESPONSES_MODEL).on(rig::transport());
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: a codex model routes through /responses"
             );
-            capture_completion(model, request, sink).await
+            capture_completion(model, request(), sink).await
         },
     )
     .await

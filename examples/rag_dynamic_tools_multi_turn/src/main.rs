@@ -144,8 +144,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // One OpenAI config serves both: completions go to the Responses API,
     // embeddings to the shared REST surface.
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let openai_client = OpenAI::from_env()?;
+    let embedding_model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     let mut toolset = ToolSet::default();
     toolset.add_retrieved_tool(Add)?;
@@ -164,8 +166,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = vector_store.index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source
-    let calculator_rag = openai_client
-        .agent(openai::GPT_4)
+    let calculator_rag = AgentBuilder::new(openai_client.completion(openai::GPT_4).on(rig::transport()))
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations.
             Use the tools provided to answer the user's question and do not do any math on your own.",

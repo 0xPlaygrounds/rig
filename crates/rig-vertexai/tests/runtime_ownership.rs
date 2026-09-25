@@ -1,7 +1,7 @@
 //! Who owns the Tokio runtime a Vertex AI client needs, and for how long.
 //!
 //! Two facts about the real `google-cloud-auth` credential chain drive the
-//! contract documented on [`rig_vertexai::Client::from_env`]:
+//! contract documented on [`rig_vertexai::VertexAi::from_env`]:
 //!
 //! 1. Building credentials *spawns*. Every Application Default Credentials
 //!    branch wraps its token provider in the auth crate's token cache, and
@@ -23,10 +23,11 @@
 mod support;
 
 use google_cloud_aiplatform_v1::client::PredictionService;
-use rig_core::completion::{CompletionModel as _, CompletionRequest};
+use rig_core::completion::CompletionRequest;
 use rig_core::message::{AssistantContent, Message, Text, UserContent};
-use rig_vertexai::Client;
-use rig_vertexai::completion::CompletionModel;
+use rig_core::wire::Wire as _;
+use rig_vertexai::VertexAi;
+use rig_vertexai::completion::GenerateContent;
 use support::{LocalEndpoint, Reply, SentinelCredentials, text_response};
 
 fn request(prompt: &str) -> CompletionRequest {
@@ -49,11 +50,11 @@ fn request(prompt: &str) -> CompletionRequest {
 /// Fact (1), against the real credential chain: constructing metadata-service
 /// credentials — the branch ADC falls back to, and the one Rig's `from_env`
 /// reaches with no credentials file present — spawns, so it fails outside a
-/// runtime context. This is why `Client::from_env` documents a runtime
+/// runtime context. This is why `VertexAi::from_env` documents a runtime
 /// requirement instead of looking like an inert constructor.
 #[test]
 fn building_adc_credentials_requires_a_runtime_context() {
-    let rig_error = Client::builder()
+    let rig_error = VertexAi::builder()
         .with_project("offline-test")
         .with_location("global")
         .build()
@@ -112,13 +113,16 @@ fn a_worker_thread_completes_through_the_retained_runtime() {
                 .build()
                 .await
                 .expect("SDK client prepared on the host runtime");
-            let client = Client::builder()
+            let client = VertexAi::builder()
                 .with_project("rig-test-project")
                 .with_location("us-central1")
                 .with_prediction_service(service)
                 .build()
                 .expect("client");
-            (endpoint, CompletionModel::new(client, "gemini-2.5-flash"))
+            (
+                endpoint,
+                GenerateContent::new("gemini-2.5-flash").on(client),
+            )
         }
     });
 
@@ -131,7 +135,7 @@ fn a_worker_thread_completes_through_the_retained_runtime() {
         handle.block_on(async {
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                model.completion(request("hello from a worker")),
+                model.call(request("hello from a worker")),
             )
             .await
             .expect("worker completion deadline")

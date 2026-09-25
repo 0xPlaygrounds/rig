@@ -334,11 +334,15 @@ pub(crate) fn write_attempt(cell: &Cell, log: &EffectLog) {
 /// The first strict replay validates the program and saves complete evidence
 /// before goldens exist. It explicitly does not claim golden parity. Subsequent
 /// generation and verification use the ordinary producer golden callback.
-pub(crate) async fn run_agent<M: rig_agent::completion::CompletionModel + Clone + 'static>(
-    wire: &super::Wire<M>,
+pub(crate) async fn run_agent<W, T>(
+    wire: &super::Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
-) -> EffectLog {
+) -> EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let audit = std::env::var_os("CHECKPOINT_AUDIT_REPLAY").is_some();
     if audit {
         assert_eq!(

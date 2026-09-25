@@ -17,76 +17,51 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
-use futures::{StreamExt, stream};
+use futures::StreamExt;
 use rig_agent::{
     AgentBuilder,
     agent::{
         AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, ModelTurnAction,
         ModelTurnFinished, MultiTurnStreamItem, RequestPatch,
     },
-    completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason, Usage},
-    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse},
+    completion::{CompletionResponse, FinishReason, Usage},
 };
-use rig_core::error::ProviderError;
+use rig_core::driver::{BoxedModel, Model};
 use rig_core::message::AssistantContent;
+use rig_core::operation::Completion;
 
 /// The full answer costs this many output tokens; anything less is truncated.
 const ANSWER_COST: u64 = 40;
 
 const ANSWER: &str = "Rig normalizes every provider's stop reason into one vocabulary.";
 
-/// A model that behaves like a real one under an output-token cap: it emits
-/// what fits and reports `Length` when the cap cut it short.
-#[derive(Clone)]
-struct BudgetedModel;
-
-impl BudgetedModel {
-    /// What the model can say under `cap`, and how it stopped.
-    fn answer_under(cap: Option<u64>) -> (String, FinishReason) {
-        match cap {
-            Some(cap) if cap < ANSWER_COST => {
-                // Roughly proportional truncation — the point is only that the
-                // text is cut and the reason says so.
-                let kept = (ANSWER.len() as u64 * cap / ANSWER_COST) as usize;
-                (ANSWER[..kept].to_owned(), FinishReason::Length)
-            }
-            _ => (ANSWER.to_owned(), FinishReason::Stop),
-        }
-    }
-}
-
-impl CompletionModel for BudgetedModel {
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        let (text, reason) = Self::answer_under(request.max_tokens);
+/// A local model that behaves like a real one under an output-token cap: it
+/// emits what fits and reports `Length` when the cap cut it short. A closure
+/// is the whole model; the driver streams it and folds it like any wire.
+fn budgeted() -> BoxedModel<Completion> {
+    Model::completion_fn("budgeted", |request| async move {
+        let (text, reason) = answer_under(request.max_tokens);
         Ok(CompletionResponse::new(
             vec![AssistantContent::text(text)],
             Usage::default(),
             "budgeted",
-            serde_json::json!({}),
+            serde_json::Value::Null,
         )
         .with_finish_reason(reason))
-    }
+    })
+    .boxed()
+}
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        // Identical semantics on the streaming surface: the hook sees the same
-        // reason and the same cap either way.
-        let (text, reason) = Self::answer_under(request.max_tokens);
-        Ok(StreamingCompletionResponse::stream(
-            "budgeted",
-            Box::pin(stream::iter([
-                Ok(StreamEvent::text(BlockId::wire("text-1"), text)),
-                Ok(StreamEvent::Final(
-                    StreamFinal::new("budgeted", Usage::default(), serde_json::json!({}))
-                        .with_finish_reason(reason),
-                )),
-            ])),
-        ))
+/// What the model can say under `cap`, and how it stopped.
+fn answer_under(cap: Option<u64>) -> (String, FinishReason) {
+    match cap {
+        Some(cap) if cap < ANSWER_COST => {
+            // Roughly proportional truncation — the point is only that the
+            // text is cut and the reason says so.
+            let kept = (ANSWER.len() as u64 * cap / ANSWER_COST) as usize;
+            (ANSWER[..kept].to_owned(), FinishReason::Length)
+        }
+        _ => (ANSWER.to_owned(), FinishReason::Stop),
     }
 }
 
@@ -160,7 +135,7 @@ impl AgentHook for GrowCapOnTruncation {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Starts far below what the answer costs, so the first attempts truncate.
-    let agent = AgentBuilder::new(BudgetedModel)
+    let agent = AgentBuilder::new(budgeted())
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
 
@@ -176,7 +151,7 @@ async fn main() -> Result<()> {
     // `max_tokens` are read from the same per-attempt carrier either way, so
     // the escalation below is identical to the one above.
     println!("streaming:");
-    let streaming_agent = AgentBuilder::new(BudgetedModel)
+    let streaming_agent = AgentBuilder::new(budgeted())
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
     let mut stream = streaming_agent

@@ -13,6 +13,7 @@ use crate::{
     },
 };
 use rig::providers::anthropic;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message() {
@@ -22,7 +23,7 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
         "streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message",
         |client| async move {
             let mut ecs = EcsAgent::new(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6).on(rig::transport()),
                 TWO_TOOL_STREAM_PREAMBLE,
                 1,
             );

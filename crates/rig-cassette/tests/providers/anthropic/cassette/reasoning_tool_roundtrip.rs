@@ -3,11 +3,11 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::with_anthropic_cassette;
@@ -17,15 +17,15 @@ use crate::reasoning::{self, WeatherTool};
 async fn streaming() {
     with_anthropic_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
-            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-            .max_tokens(16384)
-            .tool(WeatherTool::new(call_count.clone()))
-            .additional_params(serde_json::json!({
-                "thinking": { "type": "adaptive" }
-            }))
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                .max_tokens(16384)
+                .tool(WeatherTool::new(call_count.clone()))
+                .additional_params(serde_json::json!({
+                    "thinking": { "type": "adaptive" }
+                }))
+                .build();
 
         let stream = agent
             .prompt(reasoning::TOOL_USER_PROMPT)
@@ -58,16 +58,16 @@ async fn nonstreaming() {
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(16384)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "thinking": { "type": "adaptive" }
-                }))
-                .default_max_turns(2)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                    .max_tokens(16384)
+                    .tool(WeatherTool::new(call_count.clone()))
+                    .additional_params(serde_json::json!({
+                        "thinking": { "type": "adaptive" }
+                    }))
+                    .default_max_turns(2)
+                    .build();
 
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())

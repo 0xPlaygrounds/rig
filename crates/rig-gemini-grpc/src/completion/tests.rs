@@ -1,4 +1,63 @@
 use super::*;
+use rig_core::Model;
+use rig_core::streaming::CompletionStream;
+
+/// Answers every request with scripted protobuf replies: the first for a
+/// unary call, all of them as chunks for a streamed one.
+#[derive(Clone)]
+pub(crate) struct Scripted(
+    std::sync::Arc<std::sync::Mutex<Vec<Result<GenerateContentResponse, ProviderError>>>>,
+);
+
+impl Transport<GenerateContent> for Scripted {
+    fn send(
+        &self,
+        _request: GenerateContentRequest,
+        mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let replies = std::mem::take(&mut *self.0.lock().expect("script lock"));
+        Ok(async move {
+            Opened::new(futures::stream::iter(replies.into_iter().map(
+                move |reply| {
+                    reply.map(|reply| match mode {
+                        Mode::Unary => GrpcFrame::Whole(Box::new(reply)),
+                        Mode::Streaming => GrpcFrame::Chunk(reply),
+                    })
+                },
+            )))
+        })
+    }
+}
+
+fn scripted(
+    replies: Vec<Result<GenerateContentResponse, ProviderError>>,
+) -> Model<GenerateContent, Scripted> {
+    GenerateContent::new(GEMINI_2_5_FLASH).on(Scripted(std::sync::Arc::new(std::sync::Mutex::new(
+        replies,
+    ))))
+}
+
+fn hello() -> CompletionRequest {
+    rig_core::completion::CompletionRequestBuilder::new("hello").build()
+}
+
+/// `response` as the unary endpoint answers it.
+pub(crate) fn complete(
+    response: GenerateContentResponse,
+) -> Result<completion::CompletionResponse, ProviderError> {
+    futures::executor::block_on(scripted(vec![Ok(response)]).call(hello()))
+}
+
+/// The stream the endpoint yields for scripted chunks.
+pub(crate) fn stream_from_events(
+    chunks: Vec<Result<GenerateContentResponse, ProviderError>>,
+) -> CompletionStream {
+    scripted(chunks).stream(hello()).expect("the stream opens")
+}
 
 // ============================================================
 // rpc_error — pins the from_provider_body usage on the RPC error path
@@ -354,39 +413,6 @@ fn create_grpc_request_populates_tool_parameters() {
 /// wire, where reading it as output text was a live-confirmed defect.
 /// There is no cassette harness for this transport (it is protobuf over
 /// gRPC, not HTTP), so the wire shape is stated directly.
-#[test]
-fn text_response_skips_thought_parts() {
-    let response = proto::GenerateContentResponse {
-        candidates: vec![proto::Candidate {
-            content: Some(proto::Content {
-                parts: vec![
-                    proto::Part {
-                        data: Some(proto::part::Data::Text(
-                            "Let me work through this...".to_string(),
-                        )),
-                        thought: true,
-                        ..Default::default()
-                    },
-                    proto::Part {
-                        data: Some(proto::part::Data::Text("The answer is 42.".to_string())),
-                        thought: false,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-
-    assert_eq!(
-        response.text_response().as_deref(),
-        Some("The answer is 42."),
-        "reasoning must not be reported as the response text"
-    );
-}
-
 /// A signature on answer text stays on that text: Gemini's rules return a
 /// signature inside the part that carried it, never merged into another.
 #[test]
@@ -414,8 +440,7 @@ fn a_signature_on_answer_text_stays_on_that_text() {
         ..Default::default()
     };
 
-    let normalized: completion::CompletionResponse =
-        response.try_into().expect("payload should normalize");
+    let normalized = complete(response).expect("payload should normalize");
     assert_eq!(normalized.choice.len(), 2, "{:?}", normalized.choice);
     assert!(
         matches!(
@@ -529,8 +554,9 @@ fn generate_content_response_round_trips_through_serde_json_value() {
     );
     assert_eq!(back, raw);
 
-    let original: completion::CompletionResponse = raw.try_into().expect("original converts");
-    let restored: completion::CompletionResponse = back.try_into().expect("restored converts");
+    let original = complete(raw.clone()).expect("original converts");
+    assert_eq!(original.raw, value, "the response's raw is the capture");
+    let restored = complete(back).expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
     assert_eq!(restored.finish_reason(), original.finish_reason());
     assert_eq!(restored.model, original.model);
@@ -572,13 +598,8 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
         }],
         ..Default::default()
     };
-    let first = completion::CompletionResponse::try_from(wire.clone()).unwrap();
-    assert_eq!(
-        first.choice,
-        completion::CompletionResponse::try_from(wire)
-            .unwrap()
-            .choice
-    );
+    let first = complete(wire.clone()).unwrap();
+    assert_eq!(first.choice, complete(wire).unwrap().choice);
     let calls: Vec<_> = first
         .choice
         .iter()
@@ -704,6 +725,87 @@ fn only_gemini_reasoning_is_replayed() {
     assert_eq!(signatures, vec![b"grpc".as_slice(), b"rest".as_slice()]);
 }
 
+/// Answers with one text reply and keeps every request it was given.
+#[derive(Clone, Default)]
+struct Recording(std::sync::Arc<std::sync::Mutex<Vec<GenerateContentRequest>>>);
+
+impl Transport<GenerateContent> for Recording {
+    fn send(
+        &self,
+        request: GenerateContentRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        self.0.lock().expect("recording lock").push(request);
+        let reply = GenerateContentResponse {
+            candidates: vec![crate::proto::Candidate {
+                content: Some(crate::proto::Content {
+                    parts: vec![text_part("6".to_owned())],
+                    role: "model".to_owned(),
+                }),
+                finish_reason: crate::proto::candidate::FinishReason::Stop as i32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        Ok(async move {
+            Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(Box::new(
+                reply,
+            )))]))
+        })
+    }
+}
+
+/// Through the driver, which scopes history to the wire's replay issuers
+/// before encoding, Gemini's own reasoning still reaches the request.
+#[test]
+fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
+    use base64::Engine;
+    use rig_core::message::{AssistantContent, Reasoning};
+
+    let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
+    let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
+        AssistantContent::Reasoning(
+            Reasoning::new_with_signature(text, Some(signature(bytes))).with_provider(issuer),
+        )
+    };
+    let mut request = hello();
+    request.chat_history = vec![
+        message::Message::user("What is 2 + 2?"),
+        message::Message::Assistant {
+            id: None,
+            content: vec![
+                reasoning("gemini thought", b"gemini", REASONING_ISSUER),
+                reasoning("anthropic thought", b"anthropic", "anthropic"),
+                AssistantContent::text("4"),
+            ],
+        },
+        message::Message::user("And 3 + 3?"),
+    ];
+    let recording = Recording::default();
+    futures::executor::block_on(
+        GenerateContent::new(GEMINI_2_5_FLASH)
+            .on(recording.clone())
+            .call(request),
+    )
+    .expect("the call succeeds");
+
+    let sent = recording.0.lock().expect("recording lock");
+    let signatures: Vec<&[u8]> = sent
+        .first()
+        .expect("one request")
+        .contents
+        .iter()
+        .flat_map(|content| content.parts.iter())
+        .filter(|part| part.thought)
+        .map(|part| part.thought_signature.as_slice())
+        .collect();
+    assert_eq!(signatures, vec![b"gemini".as_slice()]);
+}
+
 /// A tool schema the shared Gemini conversion cannot flatten is a request that
 /// could not be built, as it is on the HTTP wire.
 #[test]
@@ -714,6 +816,7 @@ fn an_unflattenable_tool_schema_is_a_request_failure() {
         "properties": {"a": {"$ref": "#/$defs/x"}},
     });
     let error = tool_parameters_to_proto_schema(&parameters).expect_err("schema must not convert");
+    let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
     assert_eq!(error.to_string(), "RequestError: $defs must be an object");
 }

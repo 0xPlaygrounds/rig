@@ -37,6 +37,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -44,16 +45,14 @@ use std::sync::{
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::driver::Bound;
-use rig::prelude::*;
-use rig::providers::openai::wire::Chat;
+use rig::completion::{AssistantContent, FinishReason};
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_tool_truncation_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
 const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
@@ -137,9 +136,8 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .preamble(PREAMBLE.to_owned())
         .tool(tool_definition())
         .additional_params(json!({ "tool_choice": "required" }))
@@ -195,12 +193,15 @@ impl Tool for FileReport {
 }
 
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = client
+        .openai
+        .chat(model_name(cell.model))
+        .on(rig::transport());
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
         // normalization, keeping the native value on `CompletionResponse::raw`.
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -212,7 +213,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let mut stream = match model.stream(request(&model, cell)).await {
+            let mut stream = match model.stream(request(cell)) {
                 Ok(stream) => stream,
                 Err(error) => {
                     return Observation {
@@ -244,17 +245,20 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
-    let agent = client
-        .chat
-        .agent(model_name(cell.model))
-        .preamble(PREAMBLE)
-        .tool(FileReport {
-            invocations: Arc::clone(&invocations),
-        })
-        .additional_params(json!({ "tool_choice": "required" }))
-        .max_tokens(max_tokens(cell.budget))
-        .default_max_turns(1)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        client
+            .chat
+            .completion(model_name(cell.model))
+            .on(rig::transport()),
+    )
+    .preamble(PREAMBLE)
+    .tool(FileReport {
+        invocations: Arc::clone(&invocations),
+    })
+    .additional_params(json!({ "tool_choice": "required" }))
+    .max_tokens(max_tokens(cell.budget))
+    .default_max_turns(1)
+    .build();
     let mut errors = Vec::new();
     match cell.transport {
         Transport::Blocking => {

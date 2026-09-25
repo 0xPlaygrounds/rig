@@ -6,17 +6,17 @@
 //! `tests/common/ecs_matrix/world.rs`). This file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
-use rig::completion::CompletionModel;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI, GPT_5_NANO};
+use rig::wire::Wire as _;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_5_MINI),
-        route: Some(client.openai.completion(GPT_5_NANO)),
+        model: client.openai.completion(GPT_5_MINI).on(rig::transport()),
+        route: Some(client.openai.completion(GPT_5_NANO).on(rig::transport())),
         temperature: None,
         additional_params: None,
     }
@@ -24,10 +24,10 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
 
 /// The recording's own model: a cell that reuses a recording the corpus
 /// already had runs under the model and settings that recorded it.
-fn legacy(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn legacy(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_4O),
+        model: client.openai.completion(GPT_4O).on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -319,10 +319,15 @@ async fn causal_completion_streamed() {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(
+    client: &OpenAiCassette,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(rig::providers::openai::GPT_5_MINI),
+        model: client
+            .openai
+            .completion(rig::providers::openai::GPT_5_MINI)
+            .on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,

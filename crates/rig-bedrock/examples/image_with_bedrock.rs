@@ -7,7 +7,8 @@ use rig_core::{
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
-use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_bedrock::client::BedrockRuntime;
+use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
 use tracing::info;
 
 const IMAGE_URL: &str = "https://playgrounds.network/assets/PG-Logo.png";
@@ -19,9 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = rig_bedrock::client::Client::from_env()?;
-    let agent = client
-        .agent(AMAZON_NOVA_LITE)
+    let agent = AgentBuilder::new(Converse::new(AMAZON_NOVA_LITE).on(BedrockRuntime::from_env()))
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

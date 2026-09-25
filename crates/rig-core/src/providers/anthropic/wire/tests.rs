@@ -35,7 +35,7 @@ const STREAMED: &str = concat!(
 );
 
 fn wire() -> Messages {
-    Anthropic::new("sk-test").messages("claude-haiku-4-5")
+    Anthropic::new("sk-test").completion("claude-haiku-4-5")
 }
 
 fn request() -> CompletionRequest {
@@ -183,7 +183,7 @@ fn a_serialized_provider_never_carries_its_key() {
         &provider.api_key
     });
 
-    let wire = provider.messages("claude-haiku-4-5");
+    let wire = provider.completion("claude-haiku-4-5");
     let json = serde_json::to_string(&wire).expect("the wire serializes");
     assert!(!json.contains("sk-live-do-not-leak"));
     let restored: Messages = serde_json::from_str(&json).expect("the wire round-trips");

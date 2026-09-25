@@ -5,12 +5,12 @@
 //! arguments, explicit tool choice, reasoning metadata, structured JSON output,
 //! and caller-owned long chat history.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ use crate::support::{
 };
 
 use super::support::with_deepseek_cassette_result;
+use rig::completion::CompletionRequestBuilder;
 
 pub(super) const SESSION_MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 const CHAT_ALIAS_MODEL: &str = "deepseek-chat";
@@ -452,19 +453,19 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(COMPLEX_SESSION_PREAMBLE)
-                .tool(ping)
-                .tool(manifest)
-                .tool(labels)
-                .tool(echo)
-                .additional_params(json_utils_merge(
-                    non_thinking_params(),
-                    json!({"parallel_tool_calls": false}),
-                ))
-                .default_max_turns(10)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(SESSION_MODEL).on(rig::transport()))
+                    .preamble(COMPLEX_SESSION_PREAMBLE)
+                    .tool(ping)
+                    .tool(manifest)
+                    .tool(labels)
+                    .tool(echo)
+                    .additional_params(json_utils_merge(
+                        non_thinking_params(),
+                        json!({"parallel_tool_calls": false}),
+                    ))
+                    .default_max_turns(10)
+                    .build();
             let mut history = Vec::<Message>::new();
 
             let response = agent.chat(COMPLEX_SESSION_PROMPT, &mut history).await?;
@@ -497,18 +498,18 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(COMPLEX_SESSION_PREAMBLE)
-                .tool(ping)
-                .tool(manifest)
-                .tool(labels)
-                .tool(echo)
-                .additional_params(json_utils_merge(
-                    non_thinking_params(),
-                    json!({"parallel_tool_calls": false}),
-                ))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(SESSION_MODEL).on(rig::transport()))
+                    .preamble(COMPLEX_SESSION_PREAMBLE)
+                    .tool(ping)
+                    .tool(manifest)
+                    .tool(labels)
+                    .tool(echo)
+                    .additional_params(json_utils_merge(
+                        non_thinking_params(),
+                        json!({"parallel_tool_calls": false}),
+                    ))
+                    .build();
 
             let mut stream = agent
                 .prompt(COMPLEX_SESSION_PROMPT)
@@ -559,17 +560,17 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(json_utils_merge(
-                    non_thinking_params(),
-                    json!({"parallel_tool_calls": true}),
-                ))
-                .default_max_turns(5)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(SESSION_MODEL).on(rig::transport()))
+                    .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                    .tool(AlphaSignal)
+                    .tool(BetaSignal)
+                    .additional_params(json_utils_merge(
+                        non_thinking_params(),
+                        json!({"parallel_tool_calls": true}),
+                    ))
+                    .default_max_turns(5)
+                    .build();
             let mut history = Vec::<Message>::new();
 
             let response = agent.chat(TWO_TOOL_STREAM_PROMPT, &mut history).await?;
@@ -609,16 +610,16 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(json_utils_merge(
-                    non_thinking_params(),
-                    json!({"parallel_tool_calls": true}),
-                ))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(SESSION_MODEL).on(rig::transport()))
+                    .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                    .tool(AlphaSignal)
+                    .tool(BetaSignal)
+                    .additional_params(json_utils_merge(
+                        non_thinking_params(),
+                        json!({"parallel_tool_calls": true}),
+                    ))
+                    .build();
 
             let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
             let observation = collect_stream_observation(&mut stream).await;
@@ -641,10 +642,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-deepseek with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
@@ -652,10 +652,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
-                .additional_params(non_thinking_params())
-                .build();
+                .additional_params(non_thinking_params()).build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -683,9 +682,8 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
-            let request = model
-                .completion_request(
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
                      and which release lane did I choose? Do not call any tools.",
                 )
@@ -711,10 +709,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
-                .additional_params(non_thinking_params())
-                .build();
+                .additional_params(non_thinking_params()).build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -732,19 +729,15 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
 
             let required = model
-                .completion(
-                    model
-                        .completion_request(
+                .call(CompletionRequestBuilder::new(
                             "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(non_thinking_params())
-                        .build(),
-                )
+                        .additional_params(non_thinking_params()).build())
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -757,9 +750,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
-                    model
-                        .completion_request(
+                .call(CompletionRequestBuilder::new(
                             "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -767,9 +758,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .additional_params(non_thinking_params())
-                        .build(),
-                )
+                        .additional_params(non_thinking_params()).build())
                 .await?;
             let specific_calls = specific
                 .choice
@@ -785,16 +774,12 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
-                    model
-                        .completion_request(
+                .call(CompletionRequestBuilder::new(
                             "Do not call tools. Reply with exactly this phrase: no-tool-answer",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .additional_params(non_thinking_params())
-                        .build(),
-                )
+                        .additional_params(non_thinking_params()).build())
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -817,16 +802,14 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
     with_deepseek_cassette_result(
         "agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
-            let request = model
-                .completion_request(
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
                 )
                 .preamble("You are a concise reliability engineer.".to_string())
-                .additional_params(thinking_params())
-                .build();
+                .additional_params(thinking_params()).build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request).await?;
 
             anyhow::ensure!(
                 response
@@ -850,11 +833,9 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
             );
             assert_response_metadata(&response);
 
-            let stream_request = model
-                .completion_request("Briefly solve 2 + 2, then answer with the number.")
-                .additional_params(thinking_params())
-                .build();
-            let observation = collect_raw_stream_observation(model.stream(stream_request).await?).await;
+            let stream_request = CompletionRequestBuilder::new("Briefly solve 2 + 2, then answer with the number.")
+                .additional_params(thinking_params()).build();
+            let observation = collect_raw_stream_observation(model.stream(stream_request)?).await;
             anyhow::ensure!(
                 observation.events.contains(&"reasoning_delta"),
                 "streaming DeepSeek reasoning should emit reasoning deltas, saw {:?}",
@@ -887,13 +868,9 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/chat_alias_vs_reasoner_alias_behavior",
         |client| async move {
-            let chat_model = client.completion(CHAT_ALIAS_MODEL);
+            let chat_model = client.completion(CHAT_ALIAS_MODEL).on(rig::transport());
             let chat = chat_model
-                .completion(
-                    chat_model
-                        .completion_request("Reply with exactly: chat-mode-ok")
-                        .build(),
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: chat-mode-ok").build())
                 .await?;
             let chat_text = assistant_text_response(&chat.choice)
                 .ok_or_else(|| anyhow::anyhow!("deepseek-chat should return text"))?;
@@ -905,13 +882,9 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
                 "deepseek-chat alias should not emit reasoning content"
             );
 
-            let reasoner_model = client.completion(REASONER_ALIAS_MODEL);
+            let reasoner_model = client.completion(REASONER_ALIAS_MODEL).on(rig::transport());
             let reasoner = reasoner_model
-                .completion(
-                    reasoner_model
-                        .completion_request("Reply with exactly: reasoner-mode-ok")
-                        .build(),
-                )
+                .call(CompletionRequestBuilder::new("Reply with exactly: reasoner-mode-ok").build())
                 .await?;
             let reasoner_text = assistant_text_response(&reasoner.choice)
                 .ok_or_else(|| anyhow::anyhow!("deepseek-reasoner should return text"))?;
@@ -939,18 +912,16 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
-            let request = model
-                .completion_request(
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
                 .preamble("Return only valid JSON. No markdown.".to_string())
                 .additional_params(json_utils_merge(non_thinking_params(), json!({
                     "response_format": { "type": "json_object" }
-                })))
-                .build();
+                }))).build();
 
-            let response = model.completion(request).await?;
+            let response = model.call(request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;

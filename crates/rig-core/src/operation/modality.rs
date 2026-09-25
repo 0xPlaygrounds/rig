@@ -94,6 +94,7 @@ macro_rules! modality_operation {
             name: $name:literal,
             fold: $fold:ty,
             seed: $seed:expr,
+            $(accept: $accept:expr,)?
         }
     ) => {
         $(#[$doc])*
@@ -150,6 +151,17 @@ macro_rules! modality_operation {
                     &response.usage,
                 );
             }
+
+            $(
+                fn accept(
+                    capabilities: &Self::Capabilities,
+                    provider: &str,
+                    response: &Self::Response,
+                ) -> Result<(), ProviderError> {
+                    #[allow(clippy::redundant_closure_call)]
+                    ($accept)(capabilities, provider, response)
+                }
+            )?
         }
     };
 }
@@ -164,6 +176,11 @@ modality_operation!(
         name: "embedding",
         fold: Embedded,
         seed: |texts: &Vec<String>| Embedded::over(texts.clone()),
+        accept: |capabilities: &EmbeddingCapabilities,
+                 provider: &str,
+                 response: &crate::embeddings::EmbeddingResponse| {
+            capabilities.honour_declaration(provider, response.embeddings.iter().map(|e| e.vec.len()))
+        },
     }
 );
 
@@ -179,6 +196,11 @@ modality_operation!(
         seed: |images: &Vec<Vec<u8>>| Embedded::over(
             images.iter().map(|bytes| crate::embeddings::image_document(bytes)).collect(),
         ),
+        accept: |capabilities: &EmbeddingCapabilities,
+                 provider: &str,
+                 response: &crate::embeddings::ImageEmbeddingResponse| {
+            capabilities.honour_declaration(provider, response.embeddings.iter().map(|e| e.vec.len()))
+        },
     }
 );
 

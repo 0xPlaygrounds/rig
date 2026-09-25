@@ -13,12 +13,9 @@ Direct users import construction and prompting explicitly:
 ```rust,ignore
 use rig_agent::prelude::*;
 use rig_core::providers::openai::{self, OpenAI};
-use rig_reqwest::prelude::*;
 
-let agent = OpenAI::from_env()?
-    .bound()?
-    .agent(openai::GPT_5_2)
-    .build();
+let model = OpenAI::from_env()?.completion(openai::GPT_5_2).on(rig_reqwest::shared());
+let agent = AgentBuilder::new(model).build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 
@@ -114,9 +111,9 @@ and `tests/fixtures/agent_run_stepper` is that host in miniature.
 
 High-level agents are concrete values: the provider model is erased once into
 an opaque, cloneable `ModelHandle`, whose `ProviderCapabilities` snapshot is
-captured by value at erasure. Provider authors still implement the typed
-`CompletionModel` trait, and direct `completion` or `stream` calls (plus each
-provider's `raw_*` escape hatches) retain their provider-specific behavior.
+captured by value at erasure. The typed `Model<W, T>` and its erased twin
+`BoxedModel<Completion>` stay available for direct `call` and `stream`, and a
+backend is a wire plus a transport rather than a trait implementation.
 
 Replace the default on one agent value with `set_model` or
 `set_model_handle`, or change one run's default candidate with `using_model`.

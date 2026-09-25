@@ -2,6 +2,7 @@
 //! `common/request_identity.rs`.
 
 use rig::providers::groq;
+use rig::wire::Wire as _;
 
 use super::support::with_groq_cassette_result;
 use crate::request_identity;
@@ -16,8 +17,8 @@ async fn chat_completions() {
         |client| async move {
             request_identity::run(
                 cell,
-                client.completion(groq::GPT_OSS_20B),
-                client.completion("no-such-model"),
+                client.completion(groq::GPT_OSS_20B).on(rig::transport()),
+                client.completion("no-such-model").on(rig::transport()),
                 None,
                 |request| request,
             )

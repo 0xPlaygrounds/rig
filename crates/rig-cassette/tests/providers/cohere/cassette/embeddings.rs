@@ -1,13 +1,11 @@
 //! Cassette-backed Cohere embeddings coverage.
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use rig::embeddings::{
-    EmbeddingModel as TextEmbeddingModel, ImageEmbeddingModel as ImageEmbeddingModelTrait,
-};
 use rig::providers::cohere;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
+use rig::wire::Wire;
 
 const PNG_2X2: &str = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACAQMAAABIeJ9nAAAAA1BMVEX/AAAZ4gk3AAAADElEQVQI12NgYGAAAAAEAAEnNCcKAAAAAElFTkSuQmCC";
 const GIF_2X2: &str = "R0lGODlhAgACAPAAAAAA/wAAACH5BAAAAAAALAAAAAACAAIAAAIChFEAOw==";
@@ -23,12 +21,19 @@ async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
         let model = client
             .embedding(cohere::EMBED_V4, None)
-            .map_wire(|wire| wire.with_input_type("search_document"));
-        assert_eq!(model.ndims(), 1536);
+            .with_input_type("search_document")
+            .on(rig::transport());
+        assert_eq!(model.wire.capabilities().ndims, 1536);
 
         let embeddings = model
-            .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
+            .call(
+                EMBEDDING_INPUTS
+                    .iter()
+                    .map(|input| (*input).to_string())
+                    .collect(),
+            )
             .await
+            .map(|response| response.embeddings)
             .expect("embedding request should succeed");
 
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
@@ -41,12 +46,14 @@ async fn embed_search_query_smoke() {
     with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
         let model = client
             .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
-            .map_wire(|wire| wire.with_input_type("search_query"));
-        assert_eq!(model.ndims(), 384);
+            .with_input_type("search_query")
+            .on(rig::transport());
+        assert_eq!(model.wire.capabilities().ndims, 384);
 
         let embeddings = model
-            .embed_texts(["Where can I find coffee near the office?".to_string()])
+            .call(vec!["Where can I find coffee near the office?".to_string()])
             .await
+            .map(|response| response.embeddings)
             .expect("search query embedding should succeed");
 
         assert_embeddings_nonempty_and_consistent(&embeddings, 1);
@@ -61,12 +68,16 @@ async fn embed_classification_smoke() {
         |client| async move {
             let model = client
                 .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
-                .map_wire(|wire| wire.with_input_type("classification"));
-            assert_eq!(model.ndims(), 384);
+                .with_input_type("classification")
+                .on(rig::transport());
+            assert_eq!(model.wire.capabilities().ndims, 384);
 
             let embeddings = model
-                .embed_texts(["The package arrived early and in perfect condition.".to_string()])
+                .call(vec![
+                    "The package arrived early and in perfect condition.".to_string(),
+                ])
                 .await
+                .map(|response| response.embeddings)
                 .expect("classification embedding should succeed");
 
             assert_embeddings_nonempty_and_consistent(&embeddings, 1);
@@ -78,14 +89,19 @@ async fn embed_classification_smoke() {
 #[tokio::test]
 async fn embed_image_smoke() {
     with_cohere_cassette("embeddings/embed_image_smoke", |client| async move {
-        let model = client.map_wire(|cohere| cohere.image_embeddings());
-        assert_eq!(ImageEmbeddingModelTrait::ndims(&model), 1024);
-        assert_eq!(ImageEmbeddingModelTrait::max_documents(&model), 1);
+        let model = client.image_embedding().on(rig::transport());
+        assert_eq!(model.wire.capabilities().ndims, 1024);
+        assert_eq!(model.wire.capabilities().max_documents, 1);
 
-        let embedding = model
-            .embed_image(&decode_image(PNG_2X2))
+        let response = model
+            .call(vec![decode_image(PNG_2X2)])
             .await
             .expect("image embedding request should succeed");
+        let embedding = response
+            .embeddings
+            .into_iter()
+            .next()
+            .expect("one image embeds to one vector");
 
         assert_eq!(embedding.vec.len(), 1024);
         assert!(embedding.document.starts_with("image/png;sha256="));
@@ -98,9 +114,9 @@ async fn embed_images_preserves_batch_order() {
     with_cohere_cassette(
         "embeddings/embed_images_preserves_batch_order",
         |client| async move {
-            let model = client.map_wire(|cohere| cohere.image_embeddings());
+            let model = client.image_embedding().on(rig::transport());
             let response = model
-                .embed_images_response([decode_image(PNG_2X2), decode_image(GIF_2X2)])
+                .call(vec![decode_image(PNG_2X2), decode_image(GIF_2X2)])
                 .await
                 .expect("image embedding batch should succeed");
             let embeddings = response.embeddings.clone();

@@ -1,8 +1,9 @@
 # rig-typesafeai
 
 Experimental TypeSafe Jev judgments for Rig. Enable the root `rig` feature
-`typesafeai` to use `rig::typesafeai`, or depend on this crate and bind a Rig HTTP
-transport explicitly. It uses Rig's `Operation`, `Wire`, `Bound`, and shared driver.
+`typesafeai` to use `rig::typesafeai`, or depend on this crate and pair it with a
+Rig HTTP transport explicitly. It uses Rig's `Operation`, `Wire`, `Model`, and
+shared driver.
 There are no Jev derive macros or schema-generation traits.
 
 ## One structure for questions and answers
@@ -40,7 +41,7 @@ let query = Assessment {
 # Ok::<(), Error>(())
 ```
 
-With a bound Jev client, evaluate it directly:
+With a Jev model (`Jev::from_env()?.on(http)`), evaluate it directly:
 
 ```rust,ignore
 let answers: Assessment<NoulAnswer, NoulAnswer> =

@@ -25,9 +25,8 @@
 //! Recorded against the default server (`--jinja --seed 42 --temp 0 -c 4096`,
 //! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M, `llama-server` b10964-b29c606e2).
 
-use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::wire::{LLAMACPP, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{
     Adder, RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT, STREAMING_TOOLS_PREAMBLE,
@@ -37,6 +36,7 @@ use crate::support::{
 };
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// The caller carries the `/v1` the `LLAMACPP` dialect's default base URL
 /// carries for them.
@@ -53,11 +53,11 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/caller_supplies_the_v1_prefix",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
-                .preamble("You are a concise assistant.")
-                .max_tokens(256)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
+                    .preamble("You are a concise assistant.")
+                    .max_tokens(256)
+                    .build();
 
             let response = agent
                 .prompt("Say the single word: ok")
@@ -100,18 +100,19 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
 async fn bare_openai_client_always_sends_an_authorization_header() {
     // The in-process half: two configurations, one socket, one comparison.
     {
-        use rig::embeddings::EmbeddingModel as _;
         use rig::test_utils::RecordingHttpClient;
 
         let recorder = RecordingHttpClient::new(
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let bare = OpenAI::new("llamacpp-local").bind(recorder.clone());
+        let bare = OpenAI::new("llamacpp-local");
         let _ = bare
             .embedding("m", Some(1))
-            .embed_texts(["probe".to_string()])
-            .await;
+            .on(recorder.clone())
+            .call(vec!["probe".to_string()])
+            .await
+            .map(|response| response.embeddings);
         let sent = &recorder.requests()[0];
         assert_eq!(
             sent.headers
@@ -125,11 +126,13 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let provider = OpenAI::with_key(&LLAMACPP, "").bind(recorder.clone());
+        let provider = OpenAI::with_key(&LLAMACPP, "");
         let _ = provider
             .embedding("m", Some(1))
-            .embed_texts(["probe".to_string()])
-            .await;
+            .on(recorder.clone())
+            .call(vec!["probe".to_string()])
+            .await
+            .map(|response| response.embeddings);
         assert!(
             recorder.requests()[0]
                 .headers
@@ -144,11 +147,10 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/authorization_header_is_always_sent",
         |client| async move {
-            let model = client.chat(CASSETTE_MODEL);
+            let model = client.chat(CASSETTE_MODEL).on(rig::transport());
             let response = model
-                .completion(
-                    model
-                        .completion_request("Reply with the single word: ok")
+                .call(
+                    CompletionRequestBuilder::new("Reply with the single word: ok")
                         .max_tokens(256)
                         .build(),
                 )
@@ -203,12 +205,12 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
+                    .preamble(STREAMING_TOOLS_PREAMBLE)
+                    .tool(Adder)
+                    .tool(Subtract)
+                    .build();
 
             let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(4).stream();
             let response = collect_stream_final_response(&mut stream)
@@ -261,10 +263,10 @@ async fn agent_prompt_through_completions_api() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/agent_prompt_through_completions_api",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
-                .preamble("You are a helpful assistant.")
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
+                    .preamble("You are a helpful assistant.")
+                    .build();
 
             let response = agent
                 .prompt("Hello world!")
@@ -284,9 +286,8 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = client.chat(CASSETTE_MODEL);
-            let request = model
-                .completion_request(RAW_TEXT_RESPONSE_PROMPT)
+            let model = client.chat(CASSETTE_MODEL).on(rig::transport());
+            let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .build();
             // One request, two views of the one reply: `raw` holds the
@@ -294,7 +295,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
             // what the decoder folded it into. The assistant text must be the
             // same text either way.
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completions api request should succeed");
             assert_eq!(

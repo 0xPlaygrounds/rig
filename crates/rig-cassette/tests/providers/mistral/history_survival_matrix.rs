@@ -6,17 +6,17 @@
 //! `x-ratelimit-limit-req-minute: 0`, so the account has no request
 //! allowance at all rather than a transient limit.
 
-use rig::completion::CompletionModel;
-
-use super::support::{BoundMistral, with_mistral_cassette_result};
+use super::support::with_mistral_cassette_result;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::openai::OpenAI;
+use rig::wire::Wire as _;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundMistral, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

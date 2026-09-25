@@ -1,10 +1,10 @@
 //! Gemini extractor coverage, including the migrated example path.
 
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
+use rig::wire::Wire as _;
 use rig_agent::test_utils::validate_extraction_fields;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,13 +24,16 @@ async fn extractor_smoke() {
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = client
-            .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
-            .additional_params(
-                serde_json::to_value(additional_params)
-                    .expect("Gemini additional params should serialize"),
-            )
-            .build();
+        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
+            client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport()),
+        )
+        .additional_params(
+            serde_json::to_value(additional_params)
+                .expect("Gemini additional params should serialize"),
+        )
+        .build();
 
         let response = extractor
             .extract(EXTRACTOR_TEXT)
@@ -75,10 +78,13 @@ async fn extractor_with_additional_params() {
     super::super::support::with_gemini_cassette(
         "extractor/extractor_with_additional_params",
         |client| async move {
-            let extractor = client
-                .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .additional_params(serde_json::to_value(params).expect("params should serialize"))
+            .build();
 
             let person = extractor
                 .extract("Hello my name is John Doe! I am a software engineer.")

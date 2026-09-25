@@ -2,8 +2,9 @@
 //! builder-supplied tools or a shared tool server, not both.
 //!
 //! ```
-//! use rig_agent::{Agent, AgentBuilder, core::completion::CompletionModel};
-//! fn assistant(model: impl CompletionModel + 'static) -> Agent {
+//! use rig_agent::core::{BoxedModel, operation::Completion};
+//! use rig_agent::{Agent, AgentBuilder};
+//! fn assistant(model: impl Into<BoxedModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```
@@ -12,10 +13,10 @@ use std::sync::{Arc, OnceLock};
 
 use crate::bus::{Bus, Dispatcher, Recording, Registrar};
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
+use rig_core::serve::adapters::{MemoryAdapter, ModelAdapter, RetrieveAdapter};
 use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
-    completion::{CompletionModel, Document, ModelRef},
+    completion::{Document, ModelRef},
     effect::{HandlerKey, Key, family},
     memory::ConversationMemory,
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
@@ -316,15 +317,16 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Register another model the run can select by label
     /// (`ModelSelectionAction::select(label)`, `using_model(label)`).
-    pub fn model_route<M>(mut self, label: impl Into<ModelRef>, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn model_route(
+        mut self,
+        label: impl Into<ModelRef>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         let label = label.into();
         self.routes.push(label.as_str().to_owned());
         self.pending.push((
             rig_core::effect::model_key(label.as_str()).to_string(),
-            ErasedHandler::new(CompletionAdapter::new(label, model)),
+            ErasedHandler::new(ModelAdapter::new(label, model)),
         ));
         self
     }
@@ -524,21 +526,18 @@ impl<ToolState> AgentBuilder<ToolState> {
 impl AgentBuilder<NoToolConfig> {
     /// An agent over its own bus, with `model` registered as the default
     /// model (label `default`).
-    pub fn new<M>(model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn new(model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>) -> Self {
         Self::named_model("default", model)
     }
 
     /// An agent over its own bus, with `model` registered under `label`.
     /// Size the bus with [`configure_bus`](Self::configure_bus).
-    pub fn named_model<M>(label: impl Into<ModelRef>, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn named_model(
+        label: impl Into<ModelRef>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         let label = label.into();
-        let handler = ErasedHandler::new(CompletionAdapter::new(label.clone(), model));
+        let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model));
         Self::start(
             BusSource::Owned(ServingPolicy::default()),
             None,

@@ -8,8 +8,8 @@
 //! Gemini.
 
 use rig::agent::RequestPatch;
-use rig::prelude::*;
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 
 use super::super::hook_stress_support::{
     ApplyPatch, CHAIN_PREAMBLE, EventTap, ResultRewrite, RewriteToolResult,
@@ -28,12 +28,15 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
     with_gemini_cassette(
         "hook_stress_streaming/streaming_text_only_emits_text_deltas_and_stream_finish",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble("You are a concise assistant. Answer directly in plain text.")
-                .temperature(0.0)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .name("stress-agent")
+            .preamble("You are a concise assistant. Answer directly in plain text.")
+            .temperature(0.0)
+            .build();
 
             let mut stream = agent
                 .prompt("In one short sentence, describe the color of a clear daytime sky.")
@@ -79,14 +82,17 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
     with_gemini_cassette(
         "hook_stress_streaming/streaming_tool_turns_fire_model_turn_finished",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let mut stream = agent
                 .prompt(
@@ -130,16 +136,19 @@ async fn streaming_result_redaction_reaches_final_response() {
     with_gemini_cassette(
         "hook_stress_streaming/streaming_result_redaction_reaches_final_response",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a calculator assistant. Use the add tool, then report the exact tool \
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .name("stress-agent")
+            .preamble(
+                "You are a calculator assistant. Use the add tool, then report the exact tool \
                      result text verbatim.",
-                )
-                .temperature(0.0)
-                .tool(add)
-                .build();
+            )
+            .temperature(0.0)
+            .tool(add)
+            .build();
 
             let mut stream = agent
                 .prompt("Use the add tool to add 5 and 5, then report the exact tool result.")
@@ -176,16 +185,19 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
     with_gemini_cassette(
         "hook_stress_streaming/streaming_active_tools_narrowing_filters_a_tool",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a calculator assistant. Use a provided tool for any arithmetic you \
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .name("stress-agent")
+            .preamble(
+                "You are a calculator assistant. Use a provided tool for any arithmetic you \
                      can; if a tool is unavailable, say so and continue.",
-                )
-                .tool(add)
-                .tool(subtract)
-                .build();
+            )
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let mut stream = agent
                 .prompt("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
@@ -222,17 +234,20 @@ async fn streaming_skip_leaves_tool_unexecuted() {
     with_gemini_cassette(
         "hook_stress_streaming/streaming_skip_leaves_tool_unexecuted",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a calculator assistant. You MUST use the provided tools. If a tool \
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .name("stress-agent")
+            .preamble(
+                "You are a calculator assistant. You MUST use the provided tools. If a tool \
                      reports it is unavailable, acknowledge that and report any results you have.",
-                )
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            )
+            .temperature(0.0)
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let mut stream = agent
                 .prompt("Add 14 and 6, and subtract 9 from 40. Report what you can.")
@@ -269,14 +284,17 @@ async fn blocking_and_streaming_produce_same_final_answer() {
     with_gemini_cassette(
         "hook_stress_streaming/parity_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add_b)
-                .tool(sub_b)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add_b)
+            .tool(sub_b)
+            .build();
             let response = agent
                 .prompt(PROMPT)
                 .max_turns(6)
@@ -293,14 +311,17 @@ async fn blocking_and_streaming_produce_same_final_answer() {
     with_gemini_cassette(
         "hook_stress_streaming/parity_streaming",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add_s)
-                .tool(sub_s)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add_s)
+            .tool(sub_s)
+            .build();
             let mut stream = agent.prompt(PROMPT).max_turns(6).stream();
             let final_text = collect_stream_final_response(&mut stream)
                 .await

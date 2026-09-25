@@ -8,10 +8,10 @@
 //! the model's answer never contains it — and the blocking and streaming tests
 //! assert the same behavior, since both drivers share the same tool seam.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, OutcomeAction, OutcomeEvent};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_result_redaction;
@@ -145,12 +145,15 @@ async fn tool_result_redacted_by_hook_blocking() {
         "tool_result_rewrite/tool_result_redacted_by_hook_blocking",
         move |client| async move {
             let execution_probe = tool.clone();
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble(PREAMBLE)
-                .tool(tool)
-                .add_hook(RedactSsnFromResult)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
+            .preamble(PREAMBLE)
+            .tool(tool)
+            .add_hook(RedactSsnFromResult)
+            .build();
 
             let response = agent
                 .prompt(LOOKUP_PROMPT)
@@ -179,12 +182,15 @@ async fn tool_result_redacted_by_hook_streaming() {
         "tool_result_rewrite/tool_result_redacted_by_hook_streaming",
         move |client| async move {
             let execution_probe = tool.clone();
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble(PREAMBLE)
-                .tool(tool)
-                .add_hook(RedactSsnFromResult)
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
+            .preamble(PREAMBLE)
+            .tool(tool)
+            .add_hook(RedactSsnFromResult)
+            .build();
 
             let mut stream = agent.prompt(LOOKUP_PROMPT).max_turns(5).stream();
             let response = collect_stream_final_response(&mut stream)

@@ -2,6 +2,7 @@
 //! `rig_test_support::history_survival::adversarial`.
 
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::history_survival::adversarial::{self, Hop};
@@ -10,8 +11,14 @@ use crate::history_survival::adversarial::{self, Hop};
 async fn colliding_ids() {
     const SCENARIO: &str = "adversarial/colliding_ids";
     with_gemini_cassette("adversarial/colliding_ids", |client| async move {
-        adversarial::colliding_ids(&client.completion(GEMINI_3_FLASH_PREVIEW), "call_dup", None)
-            .await;
+        adversarial::colliding_ids(
+            client
+                .completion(GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport()),
+            "call_dup",
+            None,
+        )
+        .await;
     })
     .await;
     adversarial::assert_colliding_recorded("gemini", SCENARIO);
@@ -21,7 +28,13 @@ async fn colliding_ids() {
 async fn out_of_order_results() {
     const SCENARIO: &str = "adversarial/out_of_order_results";
     with_gemini_cassette("adversarial/out_of_order_results", |client| async move {
-        adversarial::out_of_order_results(&client.completion(GEMINI_3_FLASH_PREVIEW), None).await;
+        adversarial::out_of_order_results(
+            client
+                .completion(GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport()),
+            None,
+        )
+        .await;
     })
     .await;
     adversarial::assert_carried("gemini", SCENARIO, "thought_signature", 1);
@@ -34,7 +47,9 @@ async fn three_provider_round_trip() {
         "adversarial/three_provider_round_trip",
         |client| async move {
             adversarial::round_trip_hop(
-                &client.completion(GEMINI_3_FLASH_PREVIEW),
+                client
+                    .completion(GEMINI_3_FLASH_PREVIEW)
+                    .on(rig::transport()),
                 Hop::Gemini,
                 None,
             )

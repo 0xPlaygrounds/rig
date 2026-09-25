@@ -37,16 +37,16 @@
 //! the interaction `id` is normalized into `response_id` *and* scrubbed into
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
-use rig::completion::{CompletionModel, FinishReason};
-use rig::driver::Bound;
-use rig::http_client::BoxedHttpClient;
-use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus, Interactions};
+use rig::completion::FinishReason;
+use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 use super::super::support::with_gemini_interactions_cassette;
 use crate::support::{json_contains_key, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "gemini";
 
@@ -56,13 +56,10 @@ const MODEL: &str = "gemini-3-flash-preview";
 
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
 
-/// The Interactions wire bound to the bundled cassette transport. One Gemini
-/// config serves both surfaces, so the wrapper hands out the config and each
-/// cell names the surface it is about.
-type Model = Bound<Interactions, BoxedHttpClient>;
-
-fn request(model: &Model) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).temperature(0.0).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .temperature(0.0)
+        .build()
 }
 
 /// The premise every cell rests on: the recorded body is a completed
@@ -98,9 +95,9 @@ async fn raw_roundtrips_interaction() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_roundtrips_interaction",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions(MODEL));
+            let model = client.interactions(MODEL).on(rig::transport());
             let response = model
-                .completion(request(&model))
+                .call(request())
                 .await
                 .expect("completion should succeed");
 
@@ -154,9 +151,9 @@ async fn raw_exposes_lifecycle_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions(MODEL));
+            let model = client.interactions(MODEL).on(rig::transport());
             let response = model
-                .completion(request(&model))
+                .call(request())
                 .await
                 .expect("completion should succeed");
 

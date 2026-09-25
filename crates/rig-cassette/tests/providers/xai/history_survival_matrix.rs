@@ -3,8 +3,8 @@
 //! no content, so the normalized history holds no reasoning block; the
 //! wire-level rule still requires its id back.
 
-use rig::completion::CompletionModel;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
@@ -14,10 +14,10 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: rig::driver::Bound<rig::providers::openai::OpenAI>,
+    client: rig::providers::openai::OpenAI,
     cell: Cell,
-) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

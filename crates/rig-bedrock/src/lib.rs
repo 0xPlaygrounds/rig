@@ -16,10 +16,11 @@
 //! model.
 //!
 //! ```no_run
-//! use rig_bedrock::client::Client;
+//! use rig_core::wire::Wire as _;
+//! use rig_bedrock::{client::BedrockRuntime, completion::{AMAZON_NOVA_LITE, Converse}};
 //!
-//! let client = Client::from_env()?;
-//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! let model = Converse::new(AMAZON_NOVA_LITE).on(BedrockRuntime::from_env());
+//! # let _ = model;
 //! ```
 
 pub mod client;

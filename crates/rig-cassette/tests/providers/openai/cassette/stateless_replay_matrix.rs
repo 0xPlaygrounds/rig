@@ -38,18 +38,18 @@
 //! Unit cells for the (de)serializers live in
 //! `crates/rig-core/src/providers/openai/responses_api/stateless_replay_tests.rs`.
 
-use rig::completion::CompletionModel;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::{
     CompletionResponse as ProviderResponse, InputItem, Output,
 };
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const TURN_ONE: &str = "Remember the codeword ALPHA-17. Reply exactly: ACK-1";
 const TURN_TWO: &str = "Reply with exactly the remembered codeword.";
@@ -95,10 +95,10 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, ProviderResponse) {
-    let model = client.completion(openai::GPT_5_6_SOL);
+async fn two_turn_conversation(client: OpenAI) -> (ProviderResponse, ProviderResponse) {
+    let model = client.completion(openai::GPT_5_6_SOL).on(rig::transport());
     let first = model
-        .completion(model.completion_request(TURN_ONE).build())
+        .call(CompletionRequestBuilder::new(TURN_ONE).build())
         .await
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
@@ -106,9 +106,8 @@ async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, Prov
         content: first.choice.clone(),
     };
     let second = model
-        .completion(
-            model
-                .completion_request(TURN_TWO)
+        .call(
+            CompletionRequestBuilder::new(TURN_TWO)
                 .messages([Message::user(TURN_ONE), assistant])
                 .build(),
         )
@@ -168,9 +167,12 @@ async fn compaction_item_decodes_on_the_response() {
     with_openai_cassette(
         "stateless_replay_matrix/compaction_item_decodes_on_the_response",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6_SOL);
+            let model = client
+                .openai
+                .completion(openai::GPT_5_6_SOL)
+                .on(rig::transport());
             let response = model
-                .completion(model.completion_request(TURN_ONE).build())
+                .call(CompletionRequestBuilder::new(TURN_ONE).build())
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);

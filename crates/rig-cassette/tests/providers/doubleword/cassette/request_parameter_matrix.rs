@@ -14,11 +14,12 @@
 //! | additional params | `stop` | `["BANANA"]` |
 //! | additional params | `response_format` | `{"type":"json_object"}` |
 
-use rig::completion::CompletionModel;
 use rig::providers::doubleword;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = doubleword::QWEN3_5_9B;
 const PROMPT: &str = "Reply briefly with the word parameter-ok.";
@@ -43,11 +44,10 @@ async fn temperature_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/temperature_from_the_typed_builder",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             model
-                .completion(
-                    model
-                        .completion_request(PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(PROMPT)
                         .temperature(0.0)
                         .max_tokens(32)
                         .build(),
@@ -66,9 +66,9 @@ async fn max_tokens_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/max_tokens_from_the_typed_builder",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             model
-                .completion(model.completion_request(PROMPT).max_tokens(7).build())
+                .call(CompletionRequestBuilder::new(PROMPT).max_tokens(7).build())
                 .await
                 .expect("Doubleword should accept max_tokens");
         },
@@ -83,11 +83,10 @@ async fn top_p_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/top_p_from_additional_params",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             model
-                .completion(
-                    model
-                        .completion_request(PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(PROMPT)
                         .additional_params(json!({ "top_p": 0.25 }))
                         .max_tokens(32)
                         .build(),
@@ -106,11 +105,10 @@ async fn seed_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/seed_from_additional_params",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             model
-                .completion(
-                    model
-                        .completion_request(PROMPT)
+                .call(
+                    CompletionRequestBuilder::new(PROMPT)
                         .additional_params(json!({ "seed": 31_415 }))
                         .max_tokens(32)
                         .build(),
@@ -129,11 +127,10 @@ async fn stop_sequence_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/stop_sequence_from_additional_params",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             model
-                .completion(
-                    model
-                        .completion_request("Write alpha BANANA omega.")
+                .call(
+                    CompletionRequestBuilder::new("Write alpha BANANA omega.")
                         .additional_params(json!({ "stop": ["BANANA"] }))
                         .max_tokens(64)
                         .build(),
@@ -153,11 +150,10 @@ async fn json_object_response_format_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/json_object_response_format_from_additional_params",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = client.completion(MODEL).on(rig::transport());
             model
-                .completion(
-                    model
-                        .completion_request("Return a JSON object with ok set to true.")
+                .call(
+                    CompletionRequestBuilder::new("Return a JSON object with ok set to true.")
                         .additional_params(json!({
                             "response_format": { "type": "json_object" }
                         }))

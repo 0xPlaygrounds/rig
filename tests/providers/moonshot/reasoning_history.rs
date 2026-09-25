@@ -1,11 +1,11 @@
 //! Moonshot reasoning-history roundtrip smoke test.
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, Reasoning};
-use rig::prelude::*;
 use rig::providers::moonshot;
 use rig::providers::openai::wire::{self as openai_wire, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
+use rig::completion::CompletionRequestBuilder;
 
 fn response_text(choice: &[AssistantContent]) -> String {
     choice
@@ -22,9 +22,8 @@ fn response_text(choice: &[AssistantContent]) -> String {
 async fn assistant_reasoning_content_roundtrips_in_history() {
     let model = OpenAI::from_env_with(&openai_wire::MOONSHOT)
         .expect("MOONSHOT_API_KEY should be set")
-        .bound()
-        .expect("moonshot client should build")
-        .completion(moonshot::KIMI_K3);
+        .completion(moonshot::KIMI_K3)
+        .on(rig::transport());
     let assistant = Message::Assistant {
         id: None,
         content: vec![
@@ -34,12 +33,13 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
     };
 
     let response = model
-        .completion(
-            model
-                .completion_request("What color was I asked to remember? Reply with one word.")
-                .message(Message::user("Remember the secret color is teal."))
-                .message(assistant)
-                .build(),
+        .call(
+            CompletionRequestBuilder::new(
+                "What color was I asked to remember? Reply with one word.",
+            )
+            .message(Message::user("Remember the secret color is teal."))
+            .message(assistant)
+            .build(),
         )
         .await
         .expect("reasoning-history completion should succeed");

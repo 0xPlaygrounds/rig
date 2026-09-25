@@ -5,31 +5,36 @@
 //! request body is what pins that shape — a regression to OpenAI's
 //! `/images/generations` body would fail as a mock miss.
 
-use rig::image_generation::ImageGenerationModel;
 use rig::providers::venice;
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_cassette;
+use rig::image_generation::ImageGenerationRequestBuilder;
 
 #[tokio::test]
 async fn image_generation_smoke() {
     with_venice_cassette(
         "image_generation/image_generation_smoke",
         |client| async move {
-            let model = client.image_generation(venice::VENICE_SD35);
+            let model = client
+                .image_generation(venice::VENICE_SD35)
+                .on(rig::transport());
             let response = model
-                .image_generation_request(
-                    "A lighthouse on a rocky cliff at sunrise, clean illustrative style.",
+                .call(
+                    ImageGenerationRequestBuilder::new(
+                        "A lighthouse on a rocky cliff at sunrise, clean illustrative style.",
+                    )
+                    .width(256)
+                    .height(256)
+                    .additional_params(serde_json::json!({
+                        "format": "webp",
+                        "seed": 42,
+                        "steps": 4,
+                        "safe_mode": true,
+                        "embed_exif_metadata": false,
+                    }))
+                    .build(),
                 )
-                .width(256)
-                .height(256)
-                .additional_params(serde_json::json!({
-                    "format": "webp",
-                    "seed": 42,
-                    "steps": 4,
-                    "safe_mode": true,
-                    "embed_exif_metadata": false,
-                }))
-                .send()
                 .await
                 .expect("Venice image generation should succeed");
 

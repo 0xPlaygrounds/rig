@@ -28,7 +28,7 @@
 //! * **`POST /v1/messages`** — llama.cpp also speaks the *Anthropic* Messages
 //!   wire, converting it to chat completions internally. Rig has an Anthropic
 //!   wire, so this is reachable today with
-//!   `anthropic::wire::Anthropic::new(key).with_base_url(url).bound()?`. It is
+//!   `anthropic::wire::Anthropic::new(key).with_base_url(url)`. It is
 //!   excluded from *this* provider because a
 //!   provider that spoke two wires would have to pick one for every capability,
 //!   and the OpenAI wire is the one llama.cpp's own documentation leads with.
@@ -48,12 +48,13 @@
 //!   `verify_path` for this dialect, and it reports the build tag and
 //!   modalities that say what produced a fixture.
 
-use rig::model::ModelLister;
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_request_paths, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// `GET /v1/models` returns a **hybrid** body, and rig reads the right half.
 ///
@@ -71,7 +72,8 @@ async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
         let models = client
             .models()
-            .list_all()
+            .on(rig::transport())
+            .call(())
             .await
             .expect("listing llama.cpp models should succeed");
 
@@ -143,7 +145,7 @@ async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
 /// `multimodal_matrix.rs` a question worth asking rather than an assumption.
 ///
 /// It doubles as the evidence for the dialect's `verify_path`: this is the
-/// route `Bound::verify()` issues, so a successful verification is a
+/// route `Model::verify()` issues, so a successful verification is a
 /// successful `/props`.
 #[tokio::test]
 async fn props_states_which_model_and_modalities_produced_this_corpus() {
@@ -152,6 +154,8 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
         // accessor, which is itself part of the exclude decision for the
         // operational routes.
         client
+            .verify()
+            .on(rig::transport())
             .verify()
             .await
             .expect("an unkeyed server verifies successfully");
@@ -206,17 +210,14 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
 /// cannot" is not the reason; "one provider, one wire" is.
 #[tokio::test]
 async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
-    use rig::completion::CompletionModel as _;
-
     with_llamacpp_bare_openai_cassette("unmapped_surface/responses_api", |client| async move {
         // The wrapper hands out the plain OpenAI configuration; the Responses
         // surface is a *different* wire over the same socket and the same
         // base URL, which is the whole shape of the exclusion.
-        let model = client.responses(CASSETTE_MODEL);
+        let model = client.responses(CASSETTE_MODEL).on(rig::transport());
         let response = model
-            .completion(
-                model
-                    .completion_request("/no_think Reply with the single word: ok")
+            .call(
+                CompletionRequestBuilder::new("/no_think Reply with the single word: ok")
                     .max_tokens(256)
                     .build(),
             )

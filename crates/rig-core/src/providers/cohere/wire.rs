@@ -2,21 +2,19 @@
 //!
 //! ```no_run
 //! use rig_core::providers::cohere::{Cohere, EMBED_V4};
-//! let wire = Cohere::from_env()?.embeddings(EMBED_V4, None);
+//! let wire = Cohere::from_env()?.embedding(EMBED_V4, None);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
-use crate::driver::{HasEmbedding, HasImageEmbedding};
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +61,7 @@ impl Cohere {
     }
 
     /// The chat wire for `model`.
-    pub fn chat(&self, model: impl Into<String>) -> Chat {
+    pub fn completion(&self, model: impl Into<String>) -> Chat {
         Chat {
             provider: self.clone(),
             model: model.into(),
@@ -72,7 +70,7 @@ impl Cohere {
 
     /// Build a text-embedding wire reporting the supplied or known model width,
     /// or zero if unknown. This width is metadata, not a request parameter.
-    pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         let model = model.into();
         let ndims = ndims
             .or_else(|| super::model_dimensions_from_identifier(&model))
@@ -89,7 +87,7 @@ impl Cohere {
     ///
     /// Cohere Embed v3 embeds images with one fixed model, so this wire
     /// names no model.
-    pub fn image_embeddings(&self) -> ImageEmbeddings {
+    pub fn image_embedding(&self) -> ImageEmbeddings {
         ImageEmbeddings {
             provider: self.clone(),
         }
@@ -117,6 +115,8 @@ pub struct Chat {
 
 impl Wire for Chat {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ChatDecoder;
 
     fn name(&self) -> &str {
@@ -237,6 +237,8 @@ impl Embeddings {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -335,6 +337,8 @@ pub struct ImageEmbeddings {
 
 impl Wire for ImageEmbeddings {
     type Op = ImageEmbedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ImageEmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -423,32 +427,6 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
             response = response.with_response_id(id);
         }
         out.push(Ok(response));
-    }
-}
-
-impl HasCompletion for Cohere {
-    type Wire = Chat;
-
-    fn completion(&self, model: impl Into<String>) -> Chat {
-        self.chat(model)
-    }
-}
-
-impl HasEmbedding for Cohere {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasImageEmbedding for Cohere {
-    type Wire = ImageEmbeddings;
-
-    fn image_embedding(&self, _model: impl Into<String>, _ndims: Option<usize>) -> ImageEmbeddings {
-        // Cohere Embed v3 embeds images with one fixed model at one fixed
-        // width, so neither argument has anywhere to go.
-        self.image_embeddings()
     }
 }
 

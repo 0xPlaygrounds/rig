@@ -22,20 +22,22 @@
 //! `Qwen/Qwen3.5-9B`, one of the backends that sends none, which is why both
 //! fixtures below carry only `content-type`.
 
-use rig::completion::CompletionModel;
-
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
+use rig::completion::CompletionRequestBuilder;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn blocking_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/blocking_identity_contract_vs_reality",
         |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
+            let model = client.completion(DEFAULT_MODEL).on(rig::transport());
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .max_tokens(128)
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe")
+                        .max_tokens(128)
+                        .build(),
+                )
                 .await
                 .expect("completion should succeed");
             // Derived from this recording's own response headers, which carry
@@ -56,12 +58,13 @@ async fn streaming_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/streaming_identity_contract_vs_reality",
         |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
+            let model = client.completion(DEFAULT_MODEL).on(rig::transport());
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .max_tokens(128)
-                .stream()
-                .await
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .max_tokens(128)
+                        .build(),
+                )
                 .expect("stream should open");
             let mut terminal = None;
             while let Some(item) = stream.next().await {
