@@ -31,7 +31,7 @@ use uuid::Uuid;
 
 /// Vector store backed by a ScyllaDB table.
 ///
-/// Queries are embedded with the same model `M` that populated the table, so
+/// Queries are embedded with the same model that populated the table, so
 /// results are meaningless under another model. Every search reads the matching
 /// rows and ranks them client-side.
 pub struct ScyllaDbVectorStore {

@@ -125,7 +125,7 @@ impl S3SearchFilter {
 
 /// Vector store backed by an S3Vectors index.
 ///
-/// Queries are embedded with the same model `M` that populated the index, so
+/// Queries are embedded with the same model that populated the index, so
 /// results are meaningless under another model.
 pub struct S3VectorsVectorStore {
     embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,

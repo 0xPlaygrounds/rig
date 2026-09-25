@@ -17,7 +17,7 @@ use crate::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 
 /// Vector index over Neo4j nodes.
 ///
-/// Queries are embedded with the same model `M` that populated the index, so
+/// Queries are embedded with the same model that populated the index, so
 /// results are meaningless under another model.
 pub struct Neo4jVectorIndex {
     graph: Graph,

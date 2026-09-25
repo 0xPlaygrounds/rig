@@ -36,7 +36,7 @@ mod utils;
 
 /// Vector index over a LanceDB table.
 ///
-/// Queries are embedded with the same model `M` that populated the table, so
+/// Queries are embedded with the same model that populated the table, so
 /// results are meaningless under another model. See [`LanceDbVectorIndex::top_n`]
 /// for a worked example.
 pub struct LanceDbVectorIndex {

@@ -27,7 +27,7 @@ use uuid::Uuid;
 
 /// Vector store backed by a Qdrant collection.
 ///
-/// Queries are embedded with the same model `M` that populated the collection,
+/// Queries are embedded with the same model that populated the collection,
 /// so results are meaningless under another model.
 pub struct QdrantVectorStore {
     model: rig_core::BoxedModel<rig_core::operation::Embedding>,

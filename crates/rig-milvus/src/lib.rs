@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Vector store backed by a [Milvus](https://milvus.io/) collection.
 ///
-/// Queries are embedded with the same model `M` that populated the collection,
+/// Queries are embedded with the same model that populated the collection,
 /// so results are meaningless under another model.
 pub struct MilvusVectorStore {
     model: rig_core::BoxedModel<rig_core::operation::Embedding>,

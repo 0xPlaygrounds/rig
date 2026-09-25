@@ -116,7 +116,6 @@ impl EcsAgent {
         preamble: &str,
         turns: usize,
     ) -> Self {
-        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::configured(model, preamble, turns, false, true, |_| {})
     }
 
@@ -126,7 +125,6 @@ impl EcsAgent {
         preamble: &str,
         keep_events: bool,
     ) -> Self {
-        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::for_golden_with_setup(model, preamble, keep_events, |_| {})
     }
 
@@ -138,7 +136,6 @@ impl EcsAgent {
         keep_events: bool,
         setup: impl FnOnce(&mut World),
     ) -> Self {
-        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::configured(model, preamble, 1, true, keep_events, setup)
     }
 
