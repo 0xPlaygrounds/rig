@@ -122,7 +122,7 @@ fn assert_single_input_width(calls: Vec<RecordedEmbeddingCall>, width: usize) {
 fn embedding_model(
     client: &OpenAI,
     width: Option<usize>,
-) -> rig::Model<rig::providers::openai::wire::Embeddings, rig::http_client::BoxedHttpClient> {
+) -> rig::Model<rig::providers::openai::wire::Embeddings> {
     rig::model(client.embedding(MODEL, width))
 }
 

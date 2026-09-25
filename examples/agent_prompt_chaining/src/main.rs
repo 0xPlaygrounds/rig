@@ -3,7 +3,6 @@
 //! Run it to see one agent produce a value that the next agent transforms.
 
 use anyhow::Result;
-use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI, wire::OpenAiWire};
 
@@ -13,7 +12,7 @@ const RNG_PREAMBLE: &str =
 const ADDER_PREAMBLE: &str =
     "Add 1000 to the number you receive, unless it is 0. Return only the final number.";
 
-type Gpt4 = Model<OpenAiWire, BoxedHttpClient>;
+type Gpt4 = Model<OpenAiWire>;
 
 fn build_rng_agent(model: Gpt4) -> rig::agent::Agent {
     AgentBuilder::new(model).preamble(RNG_PREAMBLE).build()

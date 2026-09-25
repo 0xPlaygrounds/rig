@@ -9,9 +9,7 @@ use rig::providers::openai::GPT_5_MINI;
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion(GPT_5_MINI)),
@@ -22,9 +20,7 @@ fn wire(
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion("gpt-4o-mini-nonexistent-rig-test")),

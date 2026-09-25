@@ -8,10 +8,7 @@ use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop};
 use rig::providers::anthropic::wire::Anthropic;
 
-fn wire(
-    client: &Anthropic,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
-{
+fn wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
         model: rig::model(client.completion("claude-haiku-4-5-20251001")),

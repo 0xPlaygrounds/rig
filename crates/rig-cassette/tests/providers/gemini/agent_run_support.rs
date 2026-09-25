@@ -9,7 +9,6 @@ use rig::agent::CompletionCall;
 use rig::agent::run::{ModelTurn, PendingToolCall};
 use rig::completion::{CompletionRequestBuilder, ToolDefinition, Usage};
 use rig::driver::Model;
-use rig::http_client::BoxedHttpClient;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -19,7 +18,7 @@ use serde_json::json;
 /// The Gemini GenerateContent wire bound to the bundled cassette transport —
 /// what `rig::model(client.completion(model))` hands back, and the model this harness
 /// drives.
-pub(crate) type BoundGenerateContent = Model<gemini::completion::GenerateContent, BoxedHttpClient>;
+pub(crate) type BoundGenerateContent = Model<gemini::completion::GenerateContent>;
 
 pub(crate) struct GeminiAgent {
     pub(super) model: BoundGenerateContent,

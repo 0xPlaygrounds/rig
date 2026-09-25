@@ -178,7 +178,7 @@ fn matrix_model(
     client: &Anthropic,
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
-) -> Model<Messages, rig::http_client::BoxedHttpClient> {
+) -> Model<Messages> {
     let mut model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
     if mode.manual() {
         model = rig::Model::new(model.wire.with_prompt_caching(), model.transport);
@@ -298,7 +298,7 @@ fn unreachable_anthropic_client() -> Anthropic {
 }
 
 async fn send_matrix_raw_probe(
-    model: &Model<Messages, rig::http_client::BoxedHttpClient>,
+    model: &Model<Messages>,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> anthropic::completion::CompletionResponse {
@@ -336,7 +336,7 @@ fn assert_matrix_raw_response(
 }
 
 async fn send_matrix_streaming_probe(
-    model: &Model<Messages, rig::http_client::BoxedHttpClient>,
+    model: &Model<Messages>,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> StreamingCacheProbeResponse {
@@ -1368,7 +1368,7 @@ async fn static_prefix_with_excess_explicit_tool_markers_errors_client_side() {
 }
 
 async fn send_cache_probe(
-    model: Model<Messages, rig::http_client::BoxedHttpClient>,
+    model: Model<Messages>,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
@@ -1393,7 +1393,7 @@ struct StreamingCacheProbeResponse {
 }
 
 async fn send_streaming_cache_probe(
-    model: Model<Messages, rig::http_client::BoxedHttpClient>,
+    model: Model<Messages>,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,

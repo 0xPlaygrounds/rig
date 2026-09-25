@@ -26,9 +26,7 @@ use crate::stream_faults::{
     CHAT_REFUSAL_TEXT, SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply,
 };
 
-fn wire(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: rig::model(client.openai.chat(GPT_5_MINI)),
@@ -39,9 +37,7 @@ fn wire(
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
+fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: rig::model(client.openai.chat("gpt-5-mini-nonexistent-rig-test")),
@@ -94,9 +90,7 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 
 /// The wire over a transport that answers one streaming request with
 /// `frames`, then EOF.
-fn scripted_stream(
-    frames: &[String],
-) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
+fn scripted_stream(frames: &[String]) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     let client = OpenAI::new(SCRIPTED_KEY);
     let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {

@@ -20,9 +20,9 @@ const CELL: Cell = Cell {
 fn models(
     client: OpenAI,
 ) -> (
-    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
-    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
-    rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
         rig::model(client.completion("anthropic/claude-haiku-4.5")),

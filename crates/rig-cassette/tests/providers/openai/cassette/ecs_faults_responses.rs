@@ -24,9 +24,7 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion(GPT_5_MINI)),
@@ -37,9 +35,7 @@ fn wire(
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion("gpt-4o-mini-nonexistent-rig-test")),
@@ -51,9 +47,7 @@ fn missing(
 
 /// The recording's own model, for a cell that reuses a recording the
 /// corpus already had.
-fn legacy(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn legacy(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion(GPT_4O)),
@@ -110,7 +104,7 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 /// `frames`, then EOF.
 fn scripted_stream(
     frames: &[String],
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     let client = OpenAI::new(SCRIPTED_KEY);
     let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {

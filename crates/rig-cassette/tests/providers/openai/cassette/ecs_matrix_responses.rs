@@ -11,9 +11,7 @@ use rig::providers::openai::{GPT_4O, GPT_5_MINI, GPT_5_NANO};
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion(GPT_5_MINI)),
@@ -25,9 +23,7 @@ fn wire(
 
 /// The recording's own model: a cell that reuses a recording the corpus
 /// already had runs under the model and settings that recorded it.
-fn legacy(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn legacy(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion(GPT_4O)),
@@ -324,7 +320,7 @@ async fn causal_completion_streamed() {
 // Reasoning matrix: the named thinking model, with the shared knob.
 fn reasoning_wire(
     client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
         model: rig::model(client.openai.completion(rig::providers::openai::GPT_5_MINI)),

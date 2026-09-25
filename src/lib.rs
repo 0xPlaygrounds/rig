@@ -46,7 +46,7 @@ pub use rig_reqwest;
 /// ```
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-pub fn model<W: rig_core::wire::Wire>(wire: W) -> Model<W, rig_core::http_client::BoxedHttpClient> {
+pub fn model<W: rig_core::wire::Wire>(wire: W) -> Model<W> {
     Model::new(wire, rig_reqwest::shared())
 }
 

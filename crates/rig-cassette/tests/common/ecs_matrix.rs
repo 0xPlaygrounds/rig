@@ -152,7 +152,7 @@ where
                 transport: transport.clone(),
             })
         };
-        if let Some(bound) = model.downcast_ref::<Model<anthropic::Messages, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<anthropic::Messages>>() {
             // ProviderConfig does not retain model-level cache and tool options.
             // Keep the original adapter when rebuilding would discard them.
             if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
@@ -187,20 +187,19 @@ where
                 http,
             )
         };
-        if let Some(bound) = model.downcast_ref::<Model<openai::Chat, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<openai::Chat>>() {
             return chat(&bound.wire, &bound.transport);
         }
-        if let Some(bound) = model.downcast_ref::<Model<responses::Responses, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<responses::Responses>>() {
             return responses(&bound.wire, &bound.transport);
         }
-        if let Some(bound) = model.downcast_ref::<Model<openai::OpenAiWire, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<openai::OpenAiWire>>() {
             return match &bound.wire {
                 openai::OpenAiWire::Chat(wire) => chat(wire, &bound.transport),
                 openai::OpenAiWire::Responses(wire) => responses(wire, &bound.transport),
             };
         }
-        if let Some(bound) = model.downcast_ref::<Model<gemini::GenerateContent, BoxedHttpClient>>()
-        {
+        if let Some(bound) = model.downcast_ref::<Model<gemini::GenerateContent>>() {
             if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
                 return None;
             }

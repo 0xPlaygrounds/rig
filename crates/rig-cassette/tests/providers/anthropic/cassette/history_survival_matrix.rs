@@ -18,7 +18,7 @@ fn params() -> Option<serde_json::Value> {
 fn model(
     client: rig::providers::anthropic::wire::Anthropic,
     cell: Cell,
-) -> rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient> {
+) -> rig::Model<rig::providers::anthropic::wire::Messages> {
     rig::model(client.completion(cell.model))
 }
 

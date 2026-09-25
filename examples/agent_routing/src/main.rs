@@ -3,7 +3,6 @@
 //! Run it to see a classifier agent choose which second prompt should run.
 
 use anyhow::{Result, bail};
-use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI, wire::OpenAiWire};
 
@@ -13,7 +12,7 @@ const ROUTER_PREAMBLE: &str = "
     Return only the category.
 ";
 
-type Gpt4 = Model<OpenAiWire, BoxedHttpClient>;
+type Gpt4 = Model<OpenAiWire>;
 
 fn build_router_agent(model: Gpt4) -> rig::agent::Agent {
     AgentBuilder::new(model).preamble(ROUTER_PREAMBLE).build()

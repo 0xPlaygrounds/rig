@@ -12,8 +12,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn reasoning_wire(
     client: &Anthropic,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
-{
+) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
         model: rig::model(client.completion("claude-haiku-4-5")),

@@ -258,9 +258,7 @@ async fn insert_documents_test() {
     assert_eq!(embedding_count, 3);
 }
 
-async fn create_embeddings(
-    model: Model<openai::wire::Embeddings, rig::http_client::BoxedHttpClient>,
-) -> Vec<(Word, Vec<Embedding>)> {
+async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

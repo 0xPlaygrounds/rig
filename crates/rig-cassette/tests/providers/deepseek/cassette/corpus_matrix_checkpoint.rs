@@ -5,9 +5,7 @@ use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::providers::openai::OpenAI;
 
-fn wire(
-    client: &OpenAI,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
         model: rig::model(client.completion("deepseek-flash")),

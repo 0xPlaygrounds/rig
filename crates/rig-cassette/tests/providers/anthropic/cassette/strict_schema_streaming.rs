@@ -38,7 +38,7 @@ async fn assert_streaming_strict_tool_call(
 }
 
 async fn assert_model_streaming_tool_call(
-    model: Model<Messages, rig::http_client::BoxedHttpClient>,
+    model: Model<Messages>,
     tool_name: &str,
     prompt: &str,
     parameters: Value,

@@ -42,7 +42,6 @@ use std::sync::{Arc, Mutex};
 
 use super::super::support::with_gemini_interactions_cassette;
 use rig::completion::CompletionRequestBuilder;
-use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::interactions_api::Interactions;
 
 const PROVIDER: &str = "gemini";
@@ -57,7 +56,7 @@ fn request() -> rig::completion::CompletionRequest {
 
 /// Drain a model stream and return its single terminal record.
 async fn stream_to_terminal(
-    model: &rig::driver::Model<Interactions, BoxedHttpClient>,
+    model: &rig::driver::Model<Interactions>,
     request: rig::completion::CompletionRequest,
 ) -> StreamFinal {
     let mut stream = model.stream(request).expect("stream should open");

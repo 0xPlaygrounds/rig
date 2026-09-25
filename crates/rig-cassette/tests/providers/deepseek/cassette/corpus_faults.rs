@@ -8,9 +8,7 @@ use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 use rig::providers::openai::OpenAI;
 
-fn wire(
-    client: &OpenAI,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: rig::model(client.completion("deepseek-chat")),
@@ -21,9 +19,7 @@ fn wire(
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &OpenAI,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: rig::model(client.completion("deepseek-v9-nonexistent")),

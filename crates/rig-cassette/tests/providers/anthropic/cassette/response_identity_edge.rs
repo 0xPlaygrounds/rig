@@ -57,7 +57,7 @@ async fn caching_and_identity_share_the_wire_blocking() {
                     .with_prompt_caching()
                     .with_static_prefix_cache_ttl(CacheTtl::OneHour),
             );
-            let send = |model: Model<Messages, rig::http_client::BoxedHttpClient>| async move {
+            let send = |model: Model<Messages>| async move {
                 model
                     .call(
                         CompletionRequestBuilder::new("Reply with exactly: edge probe")
@@ -115,7 +115,7 @@ async fn caching_and_identity_share_the_wire_streaming() {
                     .with_prompt_caching()
                     .with_static_prefix_cache_ttl(CacheTtl::OneHour),
             );
-            let send = |model: Model<Messages, rig::http_client::BoxedHttpClient>| async move {
+            let send = |model: Model<Messages>| async move {
                 let mut stream = model
                     .stream(
                         CompletionRequestBuilder::new("Reply with exactly: stream edge probe")

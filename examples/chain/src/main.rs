@@ -2,7 +2,6 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
-use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI, wire::OpenAiWire};
 use rig::vector_store::VectorStoreIndex;
@@ -19,7 +18,7 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(model: Model<OpenAiWire, BoxedHttpClient>) -> rig::agent::Agent {
+fn build_dictionary_agent(model: Model<OpenAiWire>) -> rig::agent::Agent {
     AgentBuilder::new(model)
         .preamble(
             "

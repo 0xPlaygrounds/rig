@@ -10,10 +10,7 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(
-    client: OpenAiCassette,
-    cell: Cell,
-) -> rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient> {
+fn model(client: OpenAiCassette, cell: Cell) -> rig::Model<rig::providers::openai::wire::Chat> {
     rig::model(client.openai.chat(cell.model))
 }
 

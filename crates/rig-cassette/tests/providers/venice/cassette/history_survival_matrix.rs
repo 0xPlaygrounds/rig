@@ -8,10 +8,7 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(
-    client: OpenAI,
-    cell: Cell,
-) -> rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient> {
+fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
     rig::model(client.completion(cell.model))
 }
 

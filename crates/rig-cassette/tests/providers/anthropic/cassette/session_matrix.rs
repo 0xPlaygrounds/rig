@@ -19,9 +19,9 @@ const CELL: Cell = Cell {
 fn models(
     client: rig::providers::anthropic::wire::Anthropic,
 ) -> (
-    rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
-    rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
-    rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
+    rig::Model<rig::providers::anthropic::wire::Messages>,
+    rig::Model<rig::providers::anthropic::wire::Messages>,
+    rig::Model<rig::providers::anthropic::wire::Messages>,
 ) {
     (
         rig::model(client.completion("claude-haiku-4-5")),

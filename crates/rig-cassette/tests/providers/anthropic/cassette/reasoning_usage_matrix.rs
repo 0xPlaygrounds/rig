@@ -109,7 +109,7 @@ use serde_json::json;
 use super::super::support::{recorded_response_body, with_anthropic_reasoning_usage_cassette};
 use rig::completion::CompletionRequestBuilder;
 
-type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
+type AnthropicModel = Model<Messages>;
 
 /// Anthropic's documented test string that forces `redacted_thinking` blocks.
 const REDACTED_THINKING_MAGIC_STRING: &str = "ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB";

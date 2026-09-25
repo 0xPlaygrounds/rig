@@ -120,8 +120,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
             .collect::<Vec<_>>()
             .join(" ");
 
-            let send = |model: Model<Messages, rig::http_client::BoxedHttpClient>,
-                        padding: String| async move {
+            let send = |model: Model<Messages>, padding: String| async move {
                 let agent = rig::agent::AgentBuilder::new(model)
                     .preamble(&padding)
                     .max_tokens(32)

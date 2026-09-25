@@ -12,9 +12,7 @@ use crate::ecs_matrix::{
 };
 use rig::providers::openai::OpenAI;
 
-fn wire(
-    client: &OpenAI,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: rig::model(client.completion("deepseek-chat")),

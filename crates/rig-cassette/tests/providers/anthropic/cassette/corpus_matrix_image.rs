@@ -10,10 +10,7 @@ use rig::providers::anthropic::wire::Anthropic;
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(
-    client: &Anthropic,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
-{
+fn wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
         model: rig::model(client.completion(CLAUDE_SONNET_4_6)),

@@ -12,9 +12,7 @@ use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 use rig::providers::openai::OpenAI;
 
-fn wire(
-    client: &OpenAI,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
@@ -239,9 +237,7 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
-    client: &OpenAI,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
+fn reasoning_wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::Venice,
         model: rig::model(client.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING)),

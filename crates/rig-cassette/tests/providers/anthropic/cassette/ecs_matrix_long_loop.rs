@@ -14,10 +14,7 @@ use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::Anthropic;
 
-fn wire(
-    client: &Anthropic,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
-{
+fn wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
         model: rig::model(client.completion("claude-haiku-4-5-20251001")),
@@ -27,10 +24,7 @@ fn wire(
     }
 }
 
-fn task_wire(
-    client: &Anthropic,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
-{
+fn task_wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: THINKING,
         model: rig::model(
@@ -46,8 +40,7 @@ fn task_wire(
 
 fn automatic_task_wire(
     client: &Anthropic,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
-{
+) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: THINKING,
         model: rig::model(
@@ -63,8 +56,7 @@ fn automatic_task_wire(
 
 fn mixed_task_wire(
     client: &Anthropic,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
-{
+) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: THINKING,
         model: rig::model(

@@ -39,9 +39,10 @@ mod http_transport;
 /// An endpoint of one provider: a wire bound to a transport.
 ///
 /// The pair holds no invariant, so both halves are public. To share one
-/// transport across models, clone it.
+/// transport across models, clone it. The transport defaults to the erased
+/// HTTP client, so a model on the default transport is `Model<W>`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Model<W, T> {
+pub struct Model<W, T = crate::http_client::BoxedHttpClient> {
     /// What to send and how to read the reply.
     pub wire: W,
     /// How the payload travels.

@@ -463,9 +463,7 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
     collection
 }
 
-async fn create_embeddings(
-    model: Model<openai::wire::Embeddings, rig::http_client::BoxedHttpClient>,
-) -> Vec<bson::Document> {
+async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<bson::Document> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

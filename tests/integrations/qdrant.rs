@@ -190,9 +190,7 @@ async fn vector_search_test() {
     );
 }
 
-async fn create_points(
-    model: Model<openai::wire::Embeddings, rig::http_client::BoxedHttpClient>,
-) -> Vec<PointStruct> {
+async fn create_points(model: Model<openai::wire::Embeddings>) -> Vec<PointStruct> {
     let words = vec![
         Word {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),

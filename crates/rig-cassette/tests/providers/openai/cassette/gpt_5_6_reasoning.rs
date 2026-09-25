@@ -64,7 +64,7 @@ struct StoredStreamingTurn {
 /// response read back out of [`CompletionResponse::raw`], which is the only
 /// carrier of the reasoning metadata these tests lock down.
 async fn prompt_with_reasoning(
-    model: &Model<OpenAiWire, rig::http_client::BoxedHttpClient>,
+    model: &Model<OpenAiWire>,
     reasoning: serde_json::Value,
 ) -> (
     CompletionResponse,

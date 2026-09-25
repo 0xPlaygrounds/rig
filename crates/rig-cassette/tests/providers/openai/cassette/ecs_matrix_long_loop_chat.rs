@@ -13,9 +13,7 @@ use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::OpenAiChat;
 
-fn wire(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
         model: rig::model(client.openai.chat("gpt-4.1-mini")),
@@ -25,9 +23,7 @@ fn wire(
     }
 }
 
-fn task_wire(
-    client: &OpenAiCassette,
-) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
+fn task_wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         additional_params: Some(
             || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks"}),

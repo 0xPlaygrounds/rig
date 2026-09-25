@@ -29,7 +29,7 @@ const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
-    // model is `Model<OpenAiWire, BoxedHttpClient>`, so no transport type
+    // model is `Model<OpenAiWire>`, so no transport type
     // reaches this crate's signatures.
     let transport = ReqwestClient::default().boxed();
     let agent = AgentBuilder::new(Model::new(

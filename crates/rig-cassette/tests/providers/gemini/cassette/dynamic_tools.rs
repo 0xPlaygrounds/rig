@@ -27,7 +27,7 @@ async fn build_tool_index(
     toolset: &ToolSet,
 ) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
     rig::embeddings::ToolSchema,
-    Model<gemini::embedding::Embeddings, rig::http_client::BoxedHttpClient>,
+    Model<gemini::embedding::Embeddings>,
 > {
     let embedding_model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, None));
     // ToolSet::schemas() returns registration order, so the recorded
