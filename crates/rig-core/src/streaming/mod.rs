@@ -342,19 +342,17 @@ impl Stream for CompletionStream {
         if stream.finished {
             return Poll::Ready(None);
         }
-        loop {
-            return match stream.events.as_mut().poll_next(cx) {
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(None) => {
-                    stream.finished = true;
-                    Poll::Ready(None)
-                }
-                Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error))),
-                Poll::Ready(Some(Ok(event))) => match stream.fold.absorb(&event) {
-                    Ok(()) => Poll::Ready(Some(Ok(event))),
-                    Err(error) => Poll::Ready(Some(Err(ErrorReport::from(&error)))),
-                },
-            };
+        match stream.events.as_mut().poll_next(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => {
+                stream.finished = true;
+                Poll::Ready(None)
+            }
+            Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error))),
+            Poll::Ready(Some(Ok(event))) => match stream.fold.absorb(&event) {
+                Ok(()) => Poll::Ready(Some(Ok(event))),
+                Err(error) => Poll::Ready(Some(Err(ErrorReport::from(&error)))),
+            },
         }
     }
 }
