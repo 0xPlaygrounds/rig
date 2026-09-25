@@ -54,7 +54,7 @@ impl Operation for Completion {
     /// [`crate::message::retain_replayable_reasoning`]. The request's model
     /// override, when it names one, is the model the wire replays for.
     fn scope_to_wire<W: crate::wire::Wire<Op = Self>>(request: &mut Self::Request, wire: &W) {
-        let model = request.model.as_deref().or(wire.model());
+        let model = request.model.as_deref().or(wire.id());
         let Some(issuers) = wire.replay_issuers(model) else {
             return;
         };

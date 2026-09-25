@@ -2691,7 +2691,7 @@ mod span_safety_net {
             "fixture-provider"
         }
 
-        fn model(&self) -> Option<&str> {
+        fn id(&self) -> Option<&str> {
             Some("fixture-model")
         }
 

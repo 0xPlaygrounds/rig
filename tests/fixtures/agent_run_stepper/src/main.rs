@@ -178,7 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     )?;
     let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
-    assert_eq!(model.model_ref().as_str(), "fixture");
+    assert_eq!(model.label().as_str(), "fixture");
 
     // 2. An erased tool set, pinned into a catalog for the turn.
     let mut tools = ToolSet::default();
@@ -218,7 +218,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let request = prepared
                     .apply(CompletionRequestBuilder::new(prompt))
                     .build();
-                let response = drive(model.complete(request), &mut driver)?;
+                let response = drive(model.call(request), &mut driver)?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(
                     None,

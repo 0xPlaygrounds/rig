@@ -1590,10 +1590,7 @@ impl Lookup {
                     request = request.temperature(0.0);
                 }
                 let request = request.build();
-                let response = model
-                    .complete(request)
-                    .await
-                    .expect("the nested completion");
+                let response = model.call(request).await.expect("the nested completion");
                 response
                     .choice
                     .iter()
@@ -3924,8 +3921,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             raw,
                         )
                     } else {
-                        let response = match (within(model.complete(request)).await, program.ending)
-                        {
+                        let response = match (within(model.call(request)).await, program.ending) {
                             (Ok(response), _) => response,
                             (Err(report), Ending::ProviderError)
                                 if report.kind == rig_core::error::ErrorKind::ProviderResponse =>

@@ -55,7 +55,7 @@ impl Wire for Images {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 

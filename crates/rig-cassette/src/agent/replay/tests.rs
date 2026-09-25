@@ -143,7 +143,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
     let replay_model: rig_agent::bus::ModelHandle =
         dispatcher.handle(&HandlerKey::from("model")).unwrap();
     assert_eq!(replay_model.capabilities(), live_model.capabilities());
-    assert_eq!(replay_model.model_ref(), live_model.model_ref());
+    assert_eq!(replay_model.label(), live_model.label());
     assert!(
         replay_model
             .capabilities()

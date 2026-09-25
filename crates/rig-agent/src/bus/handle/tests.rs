@@ -181,7 +181,7 @@ async fn binding_checks_the_family_typed_at_bind_time() {
         .handle(&HandlerKey::from("model"))
         .expect("model");
     assert_eq!(model.descriptor().family.family(), EffectFamily::Completion);
-    assert_eq!(model.model_ref().as_str(), "mock");
+    assert_eq!(model.label().as_str(), "mock");
 
     let report = dispatcher
         .handle::<family::Completion>(&HandlerKey::from("double"))
@@ -245,8 +245,8 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
             tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
         } else {
             let (a, b) = tokio::join!(
-                within(handle.complete_observed(request(), contexts[0].clone())),
-                within(handle.complete_observed(request(), contexts[1].clone()))
+                within(handle.call_observed(request(), contexts[0].clone())),
+                within(handle.call_observed(request(), contexts[1].clone()))
             );
             assert_eq!(a.unwrap().choice, vec![AssistantContent::text("same")]);
             assert_eq!(b.unwrap().choice, vec![AssistantContent::text("same")]);
@@ -268,7 +268,7 @@ async fn model_handle_completes_and_streams() {
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("model");
-    let response = within(model.complete(request())).await.expect("completed");
+    let response = within(model.call(request())).await.expect("completed");
     assert_eq!(response.choice, vec![AssistantContent::text("unary")]);
     assert_eq!(model.capabilities(), ProviderCapabilities::default());
 
@@ -308,11 +308,11 @@ async fn handle_descriptor_follows_a_runtime_replacement() {
         )
         .expect("register");
     assert_eq!(
-        model.model_ref().as_str(),
+        model.label().as_str(),
         "swapped",
         "re-read, not the snapshot"
     );
-    let response = within(model.complete(request())).await.expect("completed");
+    let response = within(model.call(request())).await.expect("completed");
     assert_eq!(response.choice, vec![AssistantContent::text("swapped")]);
 }
 

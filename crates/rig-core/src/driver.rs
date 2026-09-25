@@ -252,7 +252,7 @@ where
     fn span(&self, request: &Request<W>, streaming: bool) -> tracing::Span {
         <W::Op as Operation>::span(
             self.wire.name(),
-            self.wire.model(),
+            self.wire.id(),
             self.wire.telemetry(streaming),
             request,
         )
@@ -509,7 +509,7 @@ where
     ) -> Result<CompletionStream, ProviderError> {
         let issuer = self
             .wire
-            .reasoning_issuer(request.model.as_deref().or(self.wire.model()))
+            .reasoning_issuer(request.model.as_deref().or(self.wire.id()))
             .map(str::to_owned);
         let (span, steps) = self.steps(request, Mode::Streaming, observation)?;
         Ok(completion_stream(span, self.wire.name(), issuer, steps))

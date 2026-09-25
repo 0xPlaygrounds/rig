@@ -146,7 +146,7 @@ impl Wire for TextEmbeddings {
         "fastembed"
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.label)
     }
 

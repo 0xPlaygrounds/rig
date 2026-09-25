@@ -56,11 +56,6 @@ impl<Op: Operation> ModelAdapter<Op> {
             model: model.into(),
         }
     }
-
-    /// The wrapped model.
-    pub fn model(&self) -> &DynModel<Op> {
-        &self.model
-    }
 }
 
 /// How a model performing this operation serves its effect family: the

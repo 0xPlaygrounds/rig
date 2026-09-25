@@ -50,7 +50,7 @@ impl Wire for Embeddings {
         super::completion::PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 

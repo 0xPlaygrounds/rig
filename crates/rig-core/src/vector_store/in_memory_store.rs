@@ -396,11 +396,6 @@ impl<D: Serialize> InMemoryVectorIndex<D> {
         }
     }
 
-    /// The embedding model used for queries.
-    pub fn model(&self) -> &DynModel<EmbeddingOp> {
-        &self.model
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
         self.store.iter()
     }

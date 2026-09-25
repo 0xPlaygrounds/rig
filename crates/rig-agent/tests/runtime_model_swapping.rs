@@ -598,7 +598,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
 
     let diagnostic = AgentBuilder::named_model("diagnostic-alpha", alpha).build();
     assert_eq!(
-        diagnostic.model_ref(),
+        diagnostic.model_label(),
         Some(ModelRef::from("diagnostic-alpha")),
         "the agent's default model is addressed by its registered label"
     );
@@ -2064,7 +2064,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
         before, after,
         "a handle bound before the swap reports the new descriptor"
     );
-    assert_eq!(handle.model_ref().as_str(), "alpha");
+    assert_eq!(handle.label().as_str(), "alpha");
     drop((agent, dispatcher, handle));
     task.await.expect("driver task");
 }

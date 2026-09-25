@@ -308,7 +308,7 @@ where
                         };
 
                     // Preparation and execution must use the same selected model's capabilities.
-                    let default_label = runner.config.model_ref();
+                    let default_label = runner.config.model_label();
                     let selected_label = match runner.config.hooks.on_model_select(
                         &hook_ctx,
                         ModelSelection {
@@ -2124,7 +2124,7 @@ pub(crate) async fn dispatch_completion(
         }
     };
     if stream {
-        let provider = model.model_ref().to_string();
+        let provider = model.label().to_string();
         let events = dispatcher.dispatch_stream_with(
             model.key(),
             kind.clone(),

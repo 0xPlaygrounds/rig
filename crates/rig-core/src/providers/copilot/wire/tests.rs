@@ -233,7 +233,7 @@ fn both_routes_carry_copilots_editor_envelope() {
             request.uri().path(),
             path,
             "{:?} posts to {path}",
-            wire.model()
+            wire.id()
         );
         let headers = request.headers();
         assert_eq!(

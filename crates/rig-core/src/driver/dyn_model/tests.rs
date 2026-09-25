@@ -197,10 +197,10 @@ fn an_erased_stream_yields_the_direct_stream_item_for_item() {
 fn an_erased_model_names_its_wire() {
     let erased = MockCompletionModel::text("x").erase();
     assert_eq!(erased.name(), crate::test_utils::MOCK_PROVIDER);
-    assert_eq!(erased.model(), None);
+    assert_eq!(erased.id(), None);
     assert_eq!(
         format!("{erased:?}"),
-        r#"DynModel { name: "mock", model: None }"#
+        r#"DynModel { name: "mock", id: None }"#
     );
     let clone = erased.clone();
     assert_eq!(clone.name(), erased.name());

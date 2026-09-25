@@ -1740,10 +1740,7 @@ impl Lookup {
                     request = request.temperature(0.0);
                 }
                 let request = request.build();
-                let response = model
-                    .complete(request)
-                    .await
-                    .expect("the nested completion");
+                let response = model.call(request).await.expect("the nested completion");
                 response
                     .choice
                     .iter()

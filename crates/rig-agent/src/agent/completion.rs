@@ -278,7 +278,7 @@ impl AgentConfig {
 
     /// The default model's label as registered now (the key's tail when
     /// nothing serves it).
-    pub(crate) fn model_ref(&self) -> ModelRef {
+    pub(crate) fn model_label(&self) -> ModelRef {
         match self
             .bus
             .dispatcher()
@@ -392,7 +392,7 @@ impl Agent {
     }
 
     /// The label of this agent's default model, as registered now.
-    pub fn model_ref(&self) -> Option<ModelRef> {
+    pub fn model_label(&self) -> Option<ModelRef> {
         self.model_descriptor()
             .and_then(|descriptor| match descriptor.family {
                 rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),

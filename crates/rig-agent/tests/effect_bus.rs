@@ -160,7 +160,7 @@ async fn into_parts_hands_over_the_driver_with_the_dispatcher() {
     let handle: rig_agent::bus::ModelHandle = dispatcher
         .bind(agent.model_key())
         .expect("the model is registered");
-    assert_eq!(handle.model_ref().as_str(), "default");
+    assert_eq!(handle.label().as_str(), "default");
     let response = within(agent.prompt("hello").run())
         .await
         .expect("served by the spawned driver");
@@ -1788,7 +1788,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         record_telemetry_content: false,
     };
 
-    let unary = within(model.complete(request("hi"))).await.expect("unary");
+    let unary = within(model.call(request("hi"))).await.expect("unary");
     let mut stream = streamer.stream(request("hi"));
     assert_eq!(
         stream.folded().provider(),
@@ -1922,10 +1922,7 @@ impl AgentHook for AsksTheModel {
             output_schema: None,
             record_telemetry_content: false,
         };
-        let answer = model
-            .complete(request)
-            .await
-            .expect("the side model answers");
+        let answer = model.call(request).await.expect("the side model answers");
         self.seen.lock().expect("lock").push(
             answer
                 .choice

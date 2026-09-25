@@ -87,7 +87,7 @@ impl Wire for Jev {
     fn name(&self) -> &str {
         "typesafeai"
     }
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
     fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, EncodeError> {

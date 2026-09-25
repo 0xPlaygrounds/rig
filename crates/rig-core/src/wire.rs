@@ -434,9 +434,9 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
         None
     }
 
-    /// The model this wire addresses, for telemetry. `None` for operations
-    /// that address no model.
-    fn model(&self) -> Option<&str> {
+    /// The model id this wire addresses, for telemetry. `None` for
+    /// operations that address no model.
+    fn id(&self) -> Option<&str> {
         None
     }
 

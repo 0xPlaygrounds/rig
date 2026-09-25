@@ -182,8 +182,8 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.name())
     }
 
-    fn model(&self) -> Option<&str> {
-        on_route!(self, wire => wire.model())
+    fn id(&self) -> Option<&str> {
+        on_route!(self, wire => wire.id())
     }
 
     fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {

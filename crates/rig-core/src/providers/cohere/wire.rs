@@ -123,7 +123,7 @@ impl Wire for Chat {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -245,7 +245,7 @@ impl Wire for Embeddings {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -345,7 +345,7 @@ impl Wire for ImageEmbeddings {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(super::EMBED_ENGLISH_V3)
     }
 

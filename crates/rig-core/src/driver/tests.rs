@@ -210,7 +210,7 @@ impl Wire for Echo {
         "echo"
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some("echo-1")
     }
 

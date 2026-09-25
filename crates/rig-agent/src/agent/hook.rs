@@ -1641,16 +1641,13 @@ impl RunHandle<'_, rig_core::effect::family::Retrieve> {
 
 impl RunHandle<'_, rig_core::effect::family::Completion> {
     /// A unary completion.
-    pub fn complete(
-        &self,
-        request: rig_core::completion::CompletionRequest,
-    ) -> crate::bus::Completion {
-        self.inner.complete(request)
+    pub fn call(&self, request: rig_core::completion::CompletionRequest) -> crate::bus::Completion {
+        self.inner.call(request)
     }
 
     /// The model's label as the handler advertises it now.
-    pub fn model_ref(&self) -> ModelRef {
-        self.inner.model_ref()
+    pub fn label(&self) -> ModelRef {
+        self.inner.label()
     }
 }
 

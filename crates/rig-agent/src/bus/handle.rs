@@ -324,7 +324,7 @@ impl ModelHandle {
     }
 
     /// The model's label as the handler advertises it now.
-    pub fn model_ref(&self) -> rig_core::completion::ModelRef {
+    pub fn label(&self) -> rig_core::completion::ModelRef {
         match self.descriptor().family {
             FamilyDescriptor::Completion { model, .. } => model,
             FamilyDescriptor::Tool { .. }
@@ -339,24 +339,24 @@ impl ModelHandle {
     }
 
     /// A unary completion under the recorder's observation context.
-    pub fn complete(&self, request: CompletionRequest) -> Completion {
-        self.complete_with(request, DispatchOptions::default())
+    pub fn call(&self, request: CompletionRequest) -> Completion {
+        self.call_with(request, DispatchOptions::default())
     }
 
-    /// [`Self::complete`] observed under `context`, which overrides the
+    /// [`Self::call`] observed under `context`, which overrides the
     /// recorder's context for this call only.
-    pub fn complete_observed(
+    pub fn call_observed(
         &self,
         request: CompletionRequest,
         context: rig_core::observe::AdapterContext,
     ) -> Completion {
-        self.complete_with(
+        self.call_with(
             request,
             DispatchOptions::default().with_adapter_context(context),
         )
     }
 
-    fn complete_with(&self, request: CompletionRequest, options: DispatchOptions) -> Completion {
+    fn call_with(&self, request: CompletionRequest, options: DispatchOptions) -> Completion {
         Typed::narrow(
             self.dispatcher.dispatch_with(
                 &self.descriptor.key,
@@ -395,7 +395,7 @@ impl ModelHandle {
         request: CompletionRequest,
         options: DispatchOptions,
     ) -> CompletionStream {
-        let provider = self.model_ref().to_string();
+        let provider = self.label().to_string();
         let stream: EffectStream = self.dispatcher.dispatch_stream_with(
             &self.descriptor.key,
             EffectKind::Completion {
@@ -650,7 +650,7 @@ impl EmbedHandle {
 
 impl RerankHandle {
     /// The model's label as the handler advertises it now.
-    pub fn model_label(&self) -> String {
+    pub fn label(&self) -> String {
         match self.descriptor().family {
             FamilyDescriptor::Rerank { model, .. } => model,
             FamilyDescriptor::Completion { .. }

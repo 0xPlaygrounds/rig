@@ -126,7 +126,7 @@ fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
         let json = serde_json::to_string(&wire).expect("the wire serializes");
         assert!(!json.contains(secret), "the key leaked: {json}");
         let restored: OpenAiWire = serde_json::from_str(&json).expect("the wire deserializes");
-        assert_eq!(restored.model(), wire.model());
+        assert_eq!(restored.id(), wire.id());
         assert_eq!(restored.provider().dialect, wire.provider().dialect);
         assert_eq!(
             std::mem::discriminant(&restored),

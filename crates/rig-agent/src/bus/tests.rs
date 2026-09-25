@@ -1300,7 +1300,7 @@ async fn a_typed_view_binds_synchronously_after_a_runtime_registration() {
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("bound from the descriptor table");
-    assert_eq!(model.model_ref().as_str(), "mock");
+    assert_eq!(model.label().as_str(), "mock");
     assert_eq!(
         dispatcher
             .descriptor(&HandlerKey::from("model"))
@@ -1545,7 +1545,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
         .await
         .expect("the family's own answer");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
-    let response = within(model.complete(completion_request_value()))
+    let response = within(model.call(completion_request_value()))
         .await
         .expect("the convenience is the same dispatch");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
@@ -1904,7 +1904,7 @@ async fn a_rerank_adapter_serves_every_handle_clone_and_publishes_its_batch_size
         assert_eq!(via_clone.results[0].document.as_deref(), Some("c"));
     }
     assert_eq!(handle.max_documents(), Some(7));
-    assert_eq!(handle.model_label(), "probe");
+    assert_eq!(handle.label(), "probe");
     assert_eq!(
         handle.descriptor().family,
         FamilyDescriptor::Rerank {
@@ -2195,8 +2195,8 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
                 }
             } else {
                 let completion = match context {
-                    Some(context) => handle.complete_observed(request, context),
-                    None => handle.complete(request),
+                    Some(context) => handle.call_observed(request, context),
+                    None => handle.call(request),
                 };
                 within(completion).await.unwrap();
             }

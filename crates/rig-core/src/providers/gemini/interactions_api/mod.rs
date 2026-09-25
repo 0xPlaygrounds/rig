@@ -55,7 +55,7 @@ impl crate::wire::Wire for Interactions {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -157,7 +157,7 @@ impl crate::wire::Wire for InteractionResume {
     }
 
     /// The interaction names its own model; this wire addresses none.
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         None
     }
 

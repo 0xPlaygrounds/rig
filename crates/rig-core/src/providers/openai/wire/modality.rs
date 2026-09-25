@@ -288,7 +288,7 @@ impl Wire for Embeddings {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -519,7 +519,7 @@ impl Wire for Transcriptions {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -721,7 +721,7 @@ impl Wire for Images {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -891,7 +891,7 @@ impl Wire for Speech {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -1180,7 +1180,7 @@ impl Wire for Rerank {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 

@@ -31,7 +31,7 @@ use crate::wire::{Mode, Operation, Wire};
 pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
     fn name(&self) -> &str;
 
-    fn model(&self) -> Option<&str>;
+    fn id(&self) -> Option<&str>;
 
     fn reasoning_issuer(&self, model: Option<&str>) -> Option<&str>;
 
@@ -66,8 +66,8 @@ where
         self.wire.name()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.wire.model()
+    fn id(&self) -> Option<&str> {
+        self.wire.id()
     }
 
     fn reasoning_issuer(&self, model: Option<&str>) -> Option<&str> {
@@ -147,7 +147,7 @@ impl<Op: Operation> fmt::Debug for DynModel<Op> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DynModel")
             .field("name", &self.name())
-            .field("model", &self.model())
+            .field("id", &self.id())
             .finish()
     }
 }
@@ -158,9 +158,9 @@ impl<Op: Operation> DynModel<Op> {
         self.inner.name()
     }
 
-    /// The model the wire addresses, when the operation addresses one.
-    pub fn model(&self) -> Option<&str> {
-        self.inner.model()
+    /// The model id the wire addresses, when the operation addresses one.
+    pub fn id(&self) -> Option<&str> {
+        self.inner.id()
     }
 
     /// What a runtime accounts for about this model.
@@ -209,7 +209,7 @@ impl DynModel<Completion> {
     ) -> Result<CompletionStream, ProviderError> {
         let issuer = self
             .inner
-            .reasoning_issuer(request.model.as_deref().or(self.model()))
+            .reasoning_issuer(request.model.as_deref().or(self.id()))
             .map(str::to_owned);
         let (span, steps) = self.inner.steps(request, Mode::Streaming, observation)?;
         Ok(completion_stream(span, self.name(), issuer, steps))

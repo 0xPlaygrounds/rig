@@ -360,7 +360,7 @@ impl Wire for Scripted {
         "prov"
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some("model")
     }
 
