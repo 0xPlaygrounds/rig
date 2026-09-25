@@ -409,12 +409,10 @@ impl<T> SqliteVectorStore<T>
 where
     T: SqliteVectorStoreTable + 'static,
 {
-    /// Creates a SQLite vector store using cosine similarity.
-    pub async fn new(
-        conn: Connection,
-        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
-    ) -> Result<Self, VectorStoreError> {
-        Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
+    /// Creates a SQLite vector store using cosine similarity over vectors
+    /// of `ndims` dimensions.
+    pub async fn new(conn: Connection, ndims: usize) -> Result<Self, VectorStoreError> {
+        Self::with_distance_metric(conn, ndims, SqliteDistanceMetric::default()).await
     }
 
     /// Creates a SQLite vector store with the requested distance metric.
@@ -424,12 +422,10 @@ where
     /// returned score values.
     pub async fn with_distance_metric(
         conn: Connection,
-        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
+        ndims: usize,
         distance_metric: SqliteDistanceMetric,
     ) -> Result<Self, VectorStoreError> {
-        let embedding_model: rig_core::DynModel<rig_core::operation::Embedding> =
-            embedding_model.into();
-        let dims = embedding_model.capabilities().ndims;
+        let dims = ndims;
         let table_name = T::name();
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();
@@ -1493,13 +1489,16 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///
 /// let conn = Connection::open("vector_store.db").await?;
 /// let openai = OpenAI::new("YOUR_API_KEY");
-/// let http = rig_reqwest::shared();
-/// let model = rig_core::Model::new(openai.embedding(TEXT_EMBEDDING_ADA_002, None), http);
+/// let model = rig_core::Model::new(
+///     openai.embedding(TEXT_EMBEDDING_ADA_002, None),
+///     rig_reqwest::shared(),
+/// )
+/// .erase();
 ///
 /// // Initialize vector store
 /// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
 ///     conn,
-///     model.clone(),
+///     model.capabilities().ndims,
 ///     SqliteDistanceMetric::Cosine,
 /// )
 /// .await?;

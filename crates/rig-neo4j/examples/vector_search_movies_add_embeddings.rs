@@ -105,11 +105,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = Model::new(
         openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
         http,
-    );
+    )
+    .erase();
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client
-        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, model.clone())
+        .create_vector_index(
+            IndexConfig::new(INDEX_NAME),
+            NODE_LABEL,
+            model.capabilities().ndims,
+        )
         .await?;
 
     // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings

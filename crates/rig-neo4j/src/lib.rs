@@ -382,9 +382,8 @@ impl Neo4jClient {
         &self,
         index_config: IndexConfig,
         node_label: &str,
-        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
+        ndims: usize,
     ) -> Result<(), VectorStoreError> {
-        let model: rig_core::DynModel<rig_core::operation::Embedding> = model.into();
         tracing::info!("Creating vector index {} ...", index_config.index_name);
 
         let create_vector_index_query = format!(
@@ -409,7 +408,7 @@ impl Neo4jClient {
                         "similarity_function",
                         index_config.similarity_function.clone().to_bolt_type(),
                     )
-                    .param("dimensions", model.capabilities().ndims as i64),
+                    .param("dimensions", ndims as i64),
             )
             .await
             .map_err(VectorStoreError::datastore)?;

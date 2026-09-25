@@ -3,6 +3,7 @@ fn query_blob(values: &[f32]) -> Vec<u8> {
     values.iter().flat_map(|x| x.to_le_bytes()).collect()
 }
 use super::*;
+use rig_core::wire::Wire as _;
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use std::cmp::Ordering;
@@ -938,7 +939,7 @@ async fn live_reinsert_same_document_id_removes_stale_vec0_candidates() -> anyho
     .await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<TestDocument> =
-        SqliteVectorStore::new(conn, model.clone()).await?;
+        SqliteVectorStore::new(conn, model.wire.capabilities().ndims).await?;
 
     vector_store
         .add_rows(vec![row(
@@ -994,7 +995,7 @@ async fn live_reinsert_preserves_unrelated_multivector_embeddings() -> anyhow::R
     .await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<TestDocument> =
-        SqliteVectorStore::new(conn, model.clone()).await?;
+        SqliteVectorStore::new(conn, model.wire.capabilities().ndims).await?;
 
     let multi_document = TestDocument {
         id: "multi".to_string(),
@@ -1780,7 +1781,7 @@ async fn live_top_n_reads_id_by_column_name_not_schema_position() -> anyhow::Res
             .await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<ReorderedIdDocument> =
-        SqliteVectorStore::new(conn, model.clone()).await?;
+        SqliteVectorStore::new(conn, model.wire.capabilities().ndims).await?;
 
     vector_store
         .add_rows(vec![
@@ -1828,7 +1829,7 @@ async fn live_internal_score_and_rank_column_names_do_not_shadow_search_columns(
     .await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<InternalAliasDocument> =
-        SqliteVectorStore::new(conn, model.clone()).await?;
+        SqliteVectorStore::new(conn, model.wire.capabilities().ndims).await?;
 
     vector_store
         .add_rows(vec![
@@ -2212,8 +2213,12 @@ async fn live_test_index_with_metric(
 
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
-    let vector_store =
-        SqliteVectorStore::with_distance_metric(conn, model.clone(), distance_metric).await?;
+    let vector_store = SqliteVectorStore::with_distance_metric(
+        conn,
+        model.wire.capabilities().ndims,
+        distance_metric,
+    )
+    .await?;
 
     vector_store.add_rows(rows).await?;
 
@@ -2237,7 +2242,12 @@ async fn live_typed_test_index_with_metric(
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<TypedTestDocument> =
-        SqliteVectorStore::with_distance_metric(conn, model.clone(), distance_metric).await?;
+        SqliteVectorStore::with_distance_metric(
+            conn,
+            model.wire.capabilities().ndims,
+            distance_metric,
+        )
+        .await?;
 
     vector_store.add_rows(rows).await?;
 
@@ -2253,7 +2263,7 @@ async fn live_common_type_test_index(
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<CommonTypeDocument> =
-        SqliteVectorStore::new(conn, model.clone()).await?;
+        SqliteVectorStore::new(conn, model.wire.capabilities().ndims).await?;
 
     vector_store.add_rows(rows).await?;
 
@@ -2269,7 +2279,7 @@ async fn live_json_metadata_test_index(
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<JsonMetadataDocument> =
-        SqliteVectorStore::new(conn, model.clone()).await?;
+        SqliteVectorStore::new(conn, model.wire.capabilities().ndims).await?;
 
     vector_store.add_rows(rows).await?;
 
@@ -2285,7 +2295,7 @@ async fn live_structured_json_metadata_test_index(
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
     let model = rig_core::Model::new(TestEmbeddingModel, TestEmbeddingModel);
     let vector_store: SqliteVectorStore<StructuredJsonMetadataDocument> =
-        SqliteVectorStore::new(conn, model.clone()).await?;
+        SqliteVectorStore::new(conn, model.wire.capabilities().ndims).await?;
 
     vector_store.add_rows(rows).await?;
 

@@ -61,7 +61,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Bind the OpenAI embeddings endpoint
     let openai_client = OpenAI::from_env()?;
-    let http = rig_reqwest::shared();
 
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html
@@ -77,8 +76,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select the embedding model and generate our embeddings
     let model = Model::new(
         openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+        rig_reqwest::shared(),
+    )
+    .erase();
 
     let documents = vec![
         Document {
@@ -101,9 +101,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Initialize SQLite vector store
-    let vector_store: SqliteVectorStore<Document> =
-        SqliteVectorStore::with_distance_metric(conn, model.clone(), SqliteDistanceMetric::Cosine)
-            .await?;
+    let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
+        conn,
+        model.capabilities().ndims,
+        SqliteDistanceMetric::Cosine,
+    )
+    .await?;
 
     // Add embeddings to vector store
     vector_store.insert_documents(embeddings).await?;
