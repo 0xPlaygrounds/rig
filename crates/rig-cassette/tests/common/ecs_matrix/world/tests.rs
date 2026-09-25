@@ -12,7 +12,7 @@ fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
     use rig_core::{providers::anthropic::wire::Anthropic, test_utils::SequencedHttpClient};
     let model = Model::new(
         Anthropic::new("local-test-key").completion("model"),
-        rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
+        rig::http_client::DynHttpClient::new(SequencedHttpClient::new(vec![])),
     );
     let wire = Wire {
         model,
@@ -66,14 +66,14 @@ fn model_level_options_require_intact_host_bindings() {
     check(
         Model::new(
             provider.chat("model").with_prompt_caching(),
-            rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
+            rig::http_client::DynHttpClient::new(SequencedHttpClient::new(vec![])),
         ),
         ThinkingWire::OpenAiChat,
     );
     check(
         Model::new(
             provider.responses("model").with_strict_tools(),
-            rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
+            rig::http_client::DynHttpClient::new(SequencedHttpClient::new(vec![])),
         ),
         ThinkingWire::OpenAiResponses,
     );
@@ -82,7 +82,7 @@ fn model_level_options_require_intact_host_bindings() {
             Gemini::new("local-test-key")
                 .completion("model")
                 .with_cached_content("cachedContents/test"),
-            rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
+            rig::http_client::DynHttpClient::new(SequencedHttpClient::new(vec![])),
         ),
         ThinkingWire::Gemini,
     );

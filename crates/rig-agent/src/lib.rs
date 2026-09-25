@@ -19,9 +19,9 @@
 //! is provided by the native-only `rig-rmcp` crate.
 //!
 //! ```
-//! use rig_agent::core::{BoxedModel, operation::Completion};
+//! use rig_agent::core::{DynModel, operation::Completion};
 //! use rig_agent::{Agent, AgentBuilder};
-//! fn assistant(model: impl Into<BoxedModel<Completion>>) -> Agent {
+//! fn assistant(model: impl Into<DynModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```

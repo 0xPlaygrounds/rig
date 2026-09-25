@@ -13,7 +13,7 @@ fn model(
     cell: Cell,
 ) -> rig::Model<
     rig::providers::openai::responses_api::wire::Responses,
-    rig::http_client::BoxedHttpClient,
+    rig::http_client::DynHttpClient,
 > {
     rig::model(client.openai.responses(cell.model))
 }

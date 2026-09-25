@@ -23,7 +23,7 @@ fn wire(
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
 > {
     Wire {
@@ -41,7 +41,7 @@ fn legacy(
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
 > {
     Wire {

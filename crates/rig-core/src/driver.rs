@@ -9,7 +9,7 @@
 //! use rig_core::driver::Model;
 //! use rig_core::providers::openai::{self, OpenAI};
 //!
-//! # async fn example(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let model = Model::new(OpenAI::from_env()?.responses(openai::GPT_5_2), http);
 //! let response = model.call(CompletionRequestBuilder::new("Hello").build()).await?;
 //! # let _ = response;
@@ -34,10 +34,10 @@ use crate::wire::{
     WireFrame,
 };
 
-mod boxed;
+mod dyn_model;
 mod http_transport;
 
-pub use boxed::BoxedModel;
+pub use dyn_model::DynModel;
 
 /// An endpoint of one provider: a wire bound to a transport.
 ///
@@ -45,7 +45,7 @@ pub use boxed::BoxedModel;
 /// transport across models, clone it. The transport defaults to the erased
 /// HTTP client, so a model on the default transport is `Model<W>`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Model<W, T = crate::http_client::BoxedHttpClient> {
+pub struct Model<W, T = crate::http_client::DynHttpClient> {
     /// What to send and how to read the reply.
     pub wire: W,
     /// How the payload travels.
@@ -190,7 +190,7 @@ where
     }
 
     /// The unary driver's future, owning a clone of the model. Returned as
-    /// is by `call` and boxed by [`BoxedModel`]: another `async fn` around
+    /// is by `call` and boxed by [`DynModel`]: another `async fn` around
     /// it would put a second copy of the driver's state on the stack.
     pub(crate) fn unary(
         &self,
@@ -212,7 +212,7 @@ where
     }
 
     /// The driver's steps for `request` in `mode`, with the span they run
-    /// under, boxed so a [`BoxedModel`] can carry them.
+    /// under, boxed so a [`DynModel`] can carry them.
     pub(crate) fn steps(
         &self,
         request: Request<W>,

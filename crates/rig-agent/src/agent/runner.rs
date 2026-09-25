@@ -154,7 +154,7 @@ impl AgentRunner {
     /// and the run it produces: it leaves the bus when they drop.
     pub fn using_model_value(
         mut self,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();

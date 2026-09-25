@@ -2,7 +2,7 @@
 //! `on_run_settled`, and durable scratchpad state, recorded against the live
 //! Gemini API.
 //!
-//! Every cell sends through a `BoxedHttpClient` carrying a `WireProbe`
+//! Every cell sends through a `DynHttpClient` carrying a `WireProbe`
 //! middleware, so one recorded exchange proves both the transport seam (the
 //! phases fired, the serialized body and response status were visible) and
 //! the hook-level lifecycle claims. All assertions hold in both cassette

@@ -412,7 +412,7 @@ where
     /// Creates a SQLite vector store using cosine similarity.
     pub async fn new(
         conn: Connection,
-        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
     ) -> Result<Self, VectorStoreError> {
         Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
     }
@@ -424,10 +424,10 @@ where
     /// returned score values.
     pub async fn with_distance_metric(
         conn: Connection,
-        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         distance_metric: SqliteDistanceMetric,
     ) -> Result<Self, VectorStoreError> {
-        let embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding> =
+        let embedding_model: rig_core::DynModel<rig_core::operation::Embedding> =
             embedding_model.into();
         let dims = embedding_model.capabilities().ndims;
         let table_name = T::name();
@@ -551,7 +551,7 @@ where
 
     pub fn index(
         self,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
     ) -> SqliteVectorIndex<T> {
         SqliteVectorIndex::new(model, self)
     }
@@ -1542,7 +1542,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// are meaningless under another model.
 pub struct SqliteVectorIndex<T> {
     store: SqliteVectorStore<T>,
-    embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    embedding_model: rig_core::DynModel<rig_core::operation::Embedding>,
 }
 
 impl<T> SqliteVectorIndex<T>
@@ -1550,7 +1550,7 @@ where
     T: SqliteVectorStoreTable,
 {
     pub fn new(
-        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         store: SqliteVectorStore<T>,
     ) -> Self {
         Self {

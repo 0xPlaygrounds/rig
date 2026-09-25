@@ -33,7 +33,7 @@ pub struct SurrealVectorStore<C>
 where
     C: Connection,
 {
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     surreal: Surreal<C>,
     documents_table: String,
     distance_function: SurrealDistanceFunction,
@@ -261,7 +261,7 @@ where
     C: Connection,
 {
     pub fn new(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         surreal: Surreal<C>,
         documents_table: Option<String>,
         distance_function: SurrealDistanceFunction,
@@ -279,7 +279,7 @@ where
     }
 
     pub fn with_defaults(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         surreal: Surreal<C>,
     ) -> Self {
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)

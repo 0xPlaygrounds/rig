@@ -21,7 +21,7 @@ use crate::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 /// results are meaningless under another model.
 pub struct Neo4jVectorIndex {
     graph: Graph,
-    embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    embedding_model: rig_core::DynModel<rig_core::operation::Embedding>,
     index_config: IndexConfig,
 }
 
@@ -118,7 +118,7 @@ const BASE_VECTOR_SEARCH_QUERY: &str = "
 impl Neo4jVectorIndex {
     pub fn new(
         graph: Graph,
-        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         index_config: IndexConfig,
     ) -> Self {
         Self {

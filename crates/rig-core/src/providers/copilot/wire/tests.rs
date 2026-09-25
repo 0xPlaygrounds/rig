@@ -297,7 +297,7 @@ async fn registry_request(
     cassette: &str,
 ) -> crate::test_utils::CapturedHttpRequest {
     use crate::effect::{EffectId, EffectKind};
-    use crate::http_client::BoxedHttpClient;
+    use crate::http_client::DynHttpClient;
     use crate::serve::Dispatch;
 
     let transport = RecordingHttpClient::new(Bytes::from(cassette_body(cassette, "then")));
@@ -306,7 +306,7 @@ async fn registry_request(
         .completion_handler(
             "copilot",
             reference.model(),
-            BoxedHttpClient::new(transport.clone()),
+            DynHttpClient::new(transport.clone()),
         );
     let mut request = prompt();
     request.chat_history.insert(0, Message::system("be brief"));

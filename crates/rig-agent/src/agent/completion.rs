@@ -410,7 +410,7 @@ impl Agent {
     pub fn register_model(
         &self,
         label: impl Into<ModelRef>,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> ModelRef {
         let label = label.into();
         self.config.bus.register_model(&label, model);
@@ -430,7 +430,7 @@ impl Agent {
     /// leaves the bus when the last of them drops or selects another model.
     pub fn set_model(
         &mut self,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();
@@ -454,7 +454,7 @@ impl Agent {
     /// [`Agent::set_model`] by value.
     pub fn with_model(
         mut self,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         self.set_model(model);
         self

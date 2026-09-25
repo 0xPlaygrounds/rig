@@ -19,7 +19,7 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::driver::{Model, Transport};
-use crate::http_client::BoxedHttpClient;
+use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
 use crate::providers::{anthropic, gemini, openai};
 use crate::serve::ErasedHandler;
@@ -435,7 +435,7 @@ impl ProviderConfig {
         &self,
         label: &str,
         model: &str,
-        http: BoxedHttpClient,
+        http: DynHttpClient,
     ) -> ErasedHandler {
         match self {
             Self::OpenAi(provider) => erase(provider.completion(model), label, http),
@@ -446,12 +446,12 @@ impl ProviderConfig {
 }
 
 /// Pair the provider's completion wire with `http` and erase it under `label`.
-fn erase<W>(wire: W, label: &str, http: BoxedHttpClient) -> ErasedHandler
+fn erase<W>(wire: W, label: &str, http: DynHttpClient) -> ErasedHandler
 where
     W: Wire<Op = Completion>,
-    BoxedHttpClient: Transport<W>,
+    DynHttpClient: Transport<W>,
 {
-    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http).boxed()))
+    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http).erase()))
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a

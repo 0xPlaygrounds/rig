@@ -4,7 +4,7 @@
 //! use rig_agent::prelude::*;
 //! use rig_core::operation::Completion;
 //!
-//! fn assistant(model: impl Into<BoxedModel<Completion>>) -> Agent {
+//! fn assistant(model: impl Into<DynModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).build()
 //! }
 //! ```
@@ -15,7 +15,7 @@ pub use crate::agent::{
 };
 pub use crate::completion::{Message, PromptError, StructuredOutputError};
 pub use crate::tool::{Tool, ToolSet};
-pub use rig_core::driver::{BoxedModel, Model, Transport};
+pub use rig_core::driver::{DynModel, Model, Transport};
 pub use rig_core::error::ProviderError;
 
 pub use rig_core::Embed;

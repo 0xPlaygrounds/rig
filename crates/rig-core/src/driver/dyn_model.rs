@@ -1,13 +1,13 @@
 //! A model erased to its operation: what a consumer stores when it holds
 //! any model of one operation without naming its wire and transport. A
-//! [`BoxedModel`] runs the same driver as the [`Model`] it was made from.
+//! [`DynModel`] runs the same driver as the [`Model`] it was made from.
 //!
 //! ```no_run
-//! use rig_core::{BoxedModel, Model, operation::Completion, providers::openai::OpenAI};
+//! use rig_core::{DynModel, Model, operation::Completion, providers::openai::OpenAI};
 //!
-//! # fn example(http: rig_core::http_client::BoxedHttpClient) -> Result<(), rig_core::client::EnvError> {
-//! let model: BoxedModel<Completion> =
-//!     Model::new(OpenAI::from_env()?.completion("gpt-5.2"), http).boxed();
+//! # fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::client::EnvError> {
+//! let model: DynModel<Completion> =
+//!     Model::new(OpenAI::from_env()?.completion("gpt-5.2"), http).erase();
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -27,7 +27,7 @@ use crate::wire::{Mode, Operation, Wire};
 
 /// Object-safe mirror of the calls a [`Model`] answers, with the wire and
 /// transport fixed. Private: the only way to reach it is through
-/// [`BoxedModel`], which re-exposes the public surface.
+/// [`DynModel`], which re-exposes the public surface.
 pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
     fn name(&self) -> &str;
 
@@ -103,12 +103,12 @@ where
 }
 
 /// A model of one operation with its wire and transport erased. Clones share
-/// the model. Built with [`Model::boxed`] or `From<Model<W, T>>`, so a
-/// consumer takes `impl Into<BoxedModel<Op>>` and accepts either.
+/// the model. Built with [`Model::erase`] or `From<Model<W, T>>`, so a
+/// consumer takes `impl Into<DynModel<Op>>` and accepts either.
 ///
 /// Every call runs the driver the concrete model runs: spans, request ids,
 /// the operation's `accept` check and error enrichment are the same.
-pub struct BoxedModel<Op: Operation> {
+pub struct DynModel<Op: Operation> {
     inner: Arc<dyn ErasedModel<Op>>,
 }
 
@@ -118,24 +118,24 @@ where
     T: Transport<W>,
 {
     /// Erase this model to its operation.
-    pub fn boxed(self) -> BoxedModel<W::Op> {
-        BoxedModel {
+    pub fn erase(self) -> DynModel<W::Op> {
+        DynModel {
             inner: Arc::new(self),
         }
     }
 }
 
-impl<W, T> From<Model<W, T>> for BoxedModel<W::Op>
+impl<W, T> From<Model<W, T>> for DynModel<W::Op>
 where
     W: Wire,
     T: Transport<W>,
 {
     fn from(model: Model<W, T>) -> Self {
-        model.boxed()
+        model.erase()
     }
 }
 
-impl<Op: Operation> Clone for BoxedModel<Op> {
+impl<Op: Operation> Clone for DynModel<Op> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -143,16 +143,16 @@ impl<Op: Operation> Clone for BoxedModel<Op> {
     }
 }
 
-impl<Op: Operation> fmt::Debug for BoxedModel<Op> {
+impl<Op: Operation> fmt::Debug for DynModel<Op> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BoxedModel")
+        f.debug_struct("DynModel")
             .field("name", &self.name())
             .field("model", &self.model())
             .finish()
     }
 }
 
-impl<Op: Operation> BoxedModel<Op> {
+impl<Op: Operation> DynModel<Op> {
     /// The wire's provider descriptor name (`"anthropic"`).
     pub fn name(&self) -> &str {
         self.inner.name()
@@ -187,7 +187,7 @@ impl<Op: Operation> BoxedModel<Op> {
     }
 }
 
-impl BoxedModel<Completion> {
+impl DynModel<Completion> {
     /// Open a streamed completion; [`Model::stream`] with the model erased.
     pub fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
         self.streamed(request, None)

@@ -1,4 +1,4 @@
-use rig::http_client::{BoxedHttpClient, ReqwestClient};
+use rig::http_client::{DynHttpClient, ReqwestClient};
 use rig::providers::openai::{OpenAI, Route};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -26,7 +26,7 @@ use crate::cassettes::DirectRecordingHttpClient;
 /// field it reads: `rig::AgentBuilder::new(rig::model(client.openai.completion(model)))` beside
 /// `rig::AgentBuilder::new(rig::model(client.chat.completion(model)))`, with `.chat(model)` / `.responses(model)`
 /// still naming a typed wire when a cell reads the native reply.
-pub(super) struct OpenAiCassette<H = BoxedHttpClient> {
+pub(super) struct OpenAiCassette<H = DynHttpClient> {
     /// The configuration on its flagship route.
     pub(super) openai: OpenAI,
     /// The same configuration routed to Chat Completions.
@@ -67,7 +67,7 @@ async fn openai_completions_cassette(spec: impl Into<CassetteSpec>) -> (Provider
 }
 
 /// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
-/// through a [`BoxedHttpClient`] carrying the supplied [`HttpMiddleware`], so
+/// through a [`DynHttpClient`] carrying the supplied [`HttpMiddleware`], so
 /// the same recorded exchange exercises the transport middleware seam and the
 /// run lifecycle hooks together (see
 /// `crates/rig-cassette/fixtures/cassettes/openai/lifecycle_matrix/`).
@@ -90,7 +90,7 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
-        ReqwestClient::default().boxed().with_middleware(middleware),
+        ReqwestClient::default().erase().with_middleware(middleware),
     );
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;

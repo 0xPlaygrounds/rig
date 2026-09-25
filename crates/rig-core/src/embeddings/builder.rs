@@ -1,11 +1,11 @@
 //! Batched embedding generation for documents implementing [`Embed`].
 //!
 //! ```no_run
-//! use rig_core::BoxedModel;
+//! use rig_core::DynModel;
 //! use rig_core::embeddings::EmbeddingsBuilder;
 //! use rig_core::operation::Embedding;
 //!
-//! # async fn example(model: BoxedModel<Embedding>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(model: DynModel<Embedding>) -> Result<(), Box<dyn std::error::Error>> {
 //! let documents = EmbeddingsBuilder::new(model)
 //!     .documents(["first document", "second document"])?
 //!     .build().await?;
@@ -18,7 +18,7 @@ use std::{cmp::max, ops::Range};
 
 use futures::{StreamExt, stream};
 
-use crate::driver::BoxedModel;
+use crate::driver::DynModel;
 use crate::error::ProviderError;
 use crate::operation::Embedding as EmbeddingOp;
 use crate::{
@@ -30,13 +30,13 @@ use crate::{
 /// Text extraction occurs when documents are added; requests start when built.
 #[must_use = "an embeddings builder does nothing until built"]
 pub struct EmbeddingsBuilder<T> {
-    model: BoxedModel<EmbeddingOp>,
+    model: DynModel<EmbeddingOp>,
     documents: Vec<(T, Vec<String>)>,
 }
 
 impl<T: Embed> EmbeddingsBuilder<T> {
     /// Create a new embedding builder with the given embedding model
-    pub fn new(model: impl Into<BoxedModel<EmbeddingOp>>) -> Self {
+    pub fn new(model: impl Into<DynModel<EmbeddingOp>>) -> Self {
         Self {
             model: model.into(),
             documents: vec![],

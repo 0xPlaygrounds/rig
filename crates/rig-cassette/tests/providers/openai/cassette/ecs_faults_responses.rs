@@ -106,7 +106,7 @@ fn scripted_stream(
     frames: &[String],
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     let client = OpenAI::new(SCRIPTED_KEY);
-    let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
+    let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: rig::Model::new(client.completion(GPT_5_MINI), http.clone()),

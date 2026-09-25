@@ -112,7 +112,7 @@ pub struct EcsAgent {
 impl EcsAgent {
     /// Create a native agent with the supplied model, preamble, and turn budget.
     pub fn new(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
         preamble: &str,
         turns: usize,
     ) -> Self {
@@ -121,7 +121,7 @@ impl EcsAgent {
 
     /// Create a one-turn parity agent, optionally retaining recorded stream events.
     pub fn for_golden(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
         preamble: &str,
         keep_events: bool,
     ) -> Self {
@@ -131,7 +131,7 @@ impl EcsAgent {
     /// Register application-owned handlers before the model, preserving the
     /// producer's handler registration order in the complete recorder header.
     pub fn for_golden_with_setup(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
         preamble: &str,
         keep_events: bool,
         setup: impl FnOnce(&mut World),
@@ -160,7 +160,7 @@ impl EcsAgent {
     }
 
     fn configured(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
         preamble: &str,
         turns: usize,
         golden_identity: bool,

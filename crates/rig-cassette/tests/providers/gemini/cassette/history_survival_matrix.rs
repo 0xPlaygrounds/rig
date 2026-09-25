@@ -16,10 +16,8 @@ fn params() -> Option<serde_json::Value> {
 fn model(
     client: Gemini,
     cell: Cell,
-) -> rig::Model<
-    rig::providers::gemini::completion::GenerateContent,
-    rig::http_client::BoxedHttpClient,
-> {
+) -> rig::Model<rig::providers::gemini::completion::GenerateContent, rig::http_client::DynHttpClient>
+{
     rig::model(client.completion(cell.model))
 }
 

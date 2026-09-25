@@ -23,15 +23,15 @@ fn models(
 ) -> (
     rig::Model<
         rig::providers::openai::responses_api::wire::Responses,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
     rig::Model<
         rig::providers::openai::responses_api::wire::Responses,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
     rig::Model<
         rig::providers::openai::responses_api::wire::Responses,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
 ) {
     (

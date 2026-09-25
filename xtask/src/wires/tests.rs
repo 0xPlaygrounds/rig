@@ -65,7 +65,7 @@ fn an_await_in_a_comment_or_a_string_is_not_one() {
 
 /// The rule is the **bound**, not the letter: what makes a parameter a
 /// transport is that a request can be sent through it, which is
-/// `HttpClientExt` — or the `BoxedHttpClient` default a provider reaches for
+/// `HttpClientExt` — or the `DynHttpClient` default a provider reaches for
 /// to hide one. A parameter with no such bound cannot carry a request, so it
 /// is payload-generic and needs no allowlist; that is why there is no list
 /// of blessed letters to keep in step with the types.
@@ -73,7 +73,7 @@ fn an_await_in_a_comment_or_a_string_is_not_one() {
 fn a_transport_parameter_is_rejected_by_its_bound_not_its_letter() {
     for rejected in [
         "pub struct Foo<Transport: HttpClientExt> { http: Transport }",
-        "pub struct Foo<H = BoxedHttpClient> { http: H }",
+        "pub struct Foo<H = DynHttpClient> { http: H }",
         "pub struct Foo<T> where T: HttpClientExt { http: T }",
         "pub enum Reply<C: crate::http_client::HttpClientExt> { Sent(C) }",
     ] {

@@ -125,7 +125,7 @@ async fn single_text_convenience() {
     with_doubleword_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = rig::model(client.embedding(doubleword::QWEN3_EMBEDDING_8B, None)).boxed();
+            let model = rig::model(client.embedding(doubleword::QWEN3_EMBEDDING_8B, None)).erase();
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await

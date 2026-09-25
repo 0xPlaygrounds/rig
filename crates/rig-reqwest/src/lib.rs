@@ -45,11 +45,11 @@ impl ReqwestClient {
         self.0
     }
 
-    /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold
+    /// Erase this transport behind [`DynHttpClient`], for hosts that hold
     /// one transport for many providers without naming it in their types.
     #[must_use]
-    pub fn boxed(self) -> BoxedHttpClient {
-        BoxedHttpClient::new(self)
+    pub fn erase(self) -> DynHttpClient {
+        DynHttpClient::new(self)
     }
 }
 
@@ -59,9 +59,9 @@ impl From<reqwest::Client> for ReqwestClient {
     }
 }
 
-impl From<ReqwestClient> for BoxedHttpClient {
+impl From<ReqwestClient> for DynHttpClient {
     fn from(client: ReqwestClient) -> Self {
-        client.boxed()
+        client.erase()
     }
 }
 
@@ -105,10 +105,10 @@ impl ReqwestMiddlewareClient {
         self.0
     }
 
-    /// Erase this transport behind [`BoxedHttpClient`].
+    /// Erase this transport behind [`DynHttpClient`].
     #[must_use]
-    pub fn boxed(self) -> BoxedHttpClient {
-        BoxedHttpClient::new(self)
+    pub fn erase(self) -> DynHttpClient {
+        DynHttpClient::new(self)
     }
 }
 
@@ -126,9 +126,9 @@ impl From<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient 
     feature = "reqwest-middleware-rustls",
     feature = "reqwest-middleware-native-tls"
 ))]
-impl From<ReqwestMiddlewareClient> for BoxedHttpClient {
+impl From<ReqwestMiddlewareClient> for DynHttpClient {
     fn from(client: ReqwestMiddlewareClient) -> Self {
-        client.boxed()
+        client.erase()
     }
 }
 
@@ -147,7 +147,7 @@ mod runtime;
 
 use bytes::Bytes;
 use rig_core::http_client::{
-    BoxedHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
+    DynHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
     StreamingResponse, multipart::PartContent,
 };
 use rig_core::wasm_compat::*;
@@ -169,22 +169,22 @@ use std::sync::Arc;
 /// # Ok(())
 /// # }
 /// ```
-pub fn shared() -> BoxedHttpClient {
-    fn build() -> BoxedHttpClient {
+pub fn shared() -> DynHttpClient {
+    fn build() -> DynHttpClient {
         match reqwest::Client::builder().build() {
-            Ok(client) => ReqwestClient::new(client).boxed(),
-            Err(error) => BoxedHttpClient::new(Unbuilt(Arc::new(error))),
+            Ok(client) => ReqwestClient::new(client).erase(),
+            Err(error) => DynHttpClient::new(Unbuilt(Arc::new(error))),
         }
     }
     #[cfg(not(target_family = "wasm"))]
     {
-        static SHARED: std::sync::LazyLock<BoxedHttpClient> = std::sync::LazyLock::new(build);
+        static SHARED: std::sync::LazyLock<DynHttpClient> = std::sync::LazyLock::new(build);
         SHARED.clone()
     }
     #[cfg(target_family = "wasm")]
     {
         thread_local! {
-            static SHARED: BoxedHttpClient = build();
+            static SHARED: DynHttpClient = build();
         }
         SHARED.with(Clone::clone)
     }

@@ -20,14 +20,14 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 struct RedisVectorStore {
     conn: MultiplexedConnection,
     key: String,
-    embedding_model: BoxedModel<Embedding>,
+    embedding_model: DynModel<Embedding>,
 }
 
 impl RedisVectorStore {
     async fn new(
         redis_url: &str,
         key: &str,
-        embedding_model: impl Into<BoxedModel<Embedding>>,
+        embedding_model: impl Into<DynModel<Embedding>>,
     ) -> Result<Self, redis::RedisError> {
         let client = Client::open(redis_url)?;
 

@@ -60,7 +60,7 @@ pub(crate) mod stream_delivery;
 pub(crate) mod world;
 
 use rig_core::driver::Model;
-use rig_core::http_client::BoxedHttpClient;
+use rig_core::http_client::DynHttpClient;
 use rig_core::providers::anthropic::wire as anthropic;
 use rig_core::providers::gemini::completion as gemini;
 use rig_core::providers::openai::responses_api::wire as responses;
@@ -141,7 +141,7 @@ where
         let describe = |config: ProviderConfig,
                         model_id: &str,
                         api_key: &Secret,
-                        transport: &BoxedHttpClient| {
+                        transport: &DynHttpClient| {
             Some(WireBinding {
                 // The credential is the host's: the configuration that
                 // travels as data carries none, and the host supplies the
@@ -165,7 +165,7 @@ where
                 &bound.transport,
             );
         }
-        let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
+        let chat = |wire: &openai::Chat, http: &DynHttpClient| {
             if *wire != wire.provider.chat(wire.model.clone()) {
                 return None;
             }
@@ -176,7 +176,7 @@ where
                 http,
             )
         };
-        let responses = |wire: &responses::Responses, http: &BoxedHttpClient| {
+        let responses = |wire: &responses::Responses, http: &DynHttpClient| {
             if *wire != wire.provider.responses(wire.model.clone()) {
                 return None;
             }
@@ -229,7 +229,7 @@ pub(crate) struct WireBinding {
     /// The head wire's key, supplied at construction by the host alone.
     pub(crate) api_key: String,
     /// The head wire's socket: what the host binds the rebuilt client to.
-    pub(crate) transport: BoxedHttpClient,
+    pub(crate) transport: DynHttpClient,
 }
 
 impl WireBinding {

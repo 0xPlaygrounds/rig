@@ -30,7 +30,7 @@ fn wire(
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
 > {
     Wire {
@@ -48,7 +48,7 @@ fn missing(
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
 > {
     Wire {
@@ -67,7 +67,7 @@ fn legacy(
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
 > {
     Wire {
@@ -127,11 +127,11 @@ fn scripted_stream(
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
-        rig::http_client::BoxedHttpClient,
+        rig::http_client::DynHttpClient,
     >,
 > {
     let client = Gemini::new(SCRIPTED_KEY);
-    let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
+    let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: rig::Model::new(client.completion(GEMINI_3_FLASH_PREVIEW), http.clone()),

@@ -136,7 +136,7 @@ impl AgentHook for ReasoningDeltaHookRecorder {
 /// Drive one real provider stream through the managed agent surface and pin
 /// the `ReasoningDelta` hook contract against the emitted normalized deltas.
 pub async fn run_reasoning_delta_hook_streaming(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     additional_params: serde_json::Value,
     provider: &str,
 ) {
@@ -250,7 +250,7 @@ the original distance. When do they meet now?";
 /// Model and request configuration for a two-turn reasoning-history check.
 pub struct ReasoningRoundtripAgent {
     /// Completion model used for both turns.
-    pub model: rig_core::BoxedModel<rig_core::operation::Completion>,
+    pub model: rig_core::DynModel<rig_core::operation::Completion>,
     /// System instruction included in the roundtrip requests.
     pub preamble: String,
     /// Provider-specific parameters included in both requests.
@@ -267,10 +267,10 @@ pub struct ReasoningRoundtripAgent {
 impl ReasoningRoundtripAgent {
     /// Configure the roundtrip with the shared preamble and unsigned-reasoning default.
     pub fn new(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
         additional_params: Option<serde_json::Value>,
     ) -> Self {
-        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+        let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
         Self {
             model,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),

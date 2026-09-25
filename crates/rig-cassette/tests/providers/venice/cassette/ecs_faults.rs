@@ -92,7 +92,7 @@ fn scripted_stream(
     frames: &[String],
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     let client = OpenAI::with_key(&VENICE, SCRIPTED_KEY);
-    let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
+    let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: rig::Model::new(client.completion(MISTRAL_SMALL_3_2_24B), http.clone()),

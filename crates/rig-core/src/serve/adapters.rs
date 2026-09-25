@@ -11,7 +11,7 @@
 
 use crate::{
     completion::ModelRef,
-    driver::BoxedModel,
+    driver::DynModel,
     effect::{
         EffectFamily, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, FamilyDescriptor,
         HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
@@ -45,12 +45,12 @@ fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
 /// adapter type serves every wire and transport.
 pub struct ModelAdapter<Op: Operation> {
     label: ModelRef,
-    model: BoxedModel<Op>,
+    model: DynModel<Op>,
 }
 
 impl<Op: Operation> ModelAdapter<Op> {
     /// Wrap `model` under `label`.
-    pub fn new(label: impl Into<ModelRef>, model: impl Into<BoxedModel<Op>>) -> Self {
+    pub fn new(label: impl Into<ModelRef>, model: impl Into<DynModel<Op>>) -> Self {
         Self {
             label: label.into(),
             model: model.into(),
@@ -58,7 +58,7 @@ impl<Op: Operation> ModelAdapter<Op> {
     }
 
     /// The wrapped model.
-    pub fn model(&self) -> &BoxedModel<Op> {
+    pub fn model(&self) -> &DynModel<Op> {
         &self.model
     }
 }
@@ -74,7 +74,7 @@ pub trait ServeOperation: Operation {
 
     /// Serve `kind` through `model`, or refuse an effect of another family.
     fn serve(
-        model: &BoxedModel<Self>,
+        model: &DynModel<Self>,
         kind: EffectKind,
         dispatch: Dispatch,
     ) -> impl Future<Output = Reply> + WasmCompatSend;
@@ -108,7 +108,7 @@ impl ServeOperation for Completion {
         }
     }
 
-    async fn serve(model: &BoxedModel<Self>, kind: EffectKind, dispatch: Dispatch) -> Reply {
+    async fn serve(model: &DynModel<Self>, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let context = dispatch.adapter_context();
         match kind {
             EffectKind::Completion {
@@ -163,7 +163,7 @@ impl ServeOperation for Embedding {
         }
     }
 
-    async fn serve(model: &BoxedModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(model: &DynModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
@@ -206,7 +206,7 @@ impl ServeOperation for Rerank {
         }
     }
 
-    async fn serve(model: &BoxedModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(model: &DynModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model

@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 /// Queries are embedded with the same model that populated the collection,
 /// so results are meaningless under another model.
 pub struct MilvusVectorStore {
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     base_url: String,
     client: reqwest::Client,
     database_name: String,
@@ -93,7 +93,7 @@ impl MilvusVectorStore {
     /// Milvus instance or Zilliz cluster endpoint. Requests are unauthenticated
     /// until [`MilvusVectorStore::auth`] supplies credentials.
     pub fn new(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         base_url: String,
         database_name: String,
         collection_name: String,

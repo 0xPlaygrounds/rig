@@ -57,7 +57,7 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
         "capability_edges/mistral_embed_reports_its_real_dimensions",
         |client| async move {
             let model =
-                rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None)).boxed();
+                rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None)).erase();
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.

@@ -134,7 +134,7 @@ impl HelixDBClient for HelixDB {
 /// ```
 pub struct HelixDBVectorStore<C> {
     client: C,
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
 }
 
 pub type HelixDBFilter = Filter<serde_json::Value>;
@@ -176,7 +176,7 @@ impl<C> HelixDBVectorStore<C> {
     /// Creates a new HelixDB vector store.
     pub fn new(
         client: C,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
     ) -> Self {
         Self {
             client,

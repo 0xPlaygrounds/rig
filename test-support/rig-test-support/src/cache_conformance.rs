@@ -429,10 +429,10 @@ impl CacheObservation {
 /// on the way back in is precisely the loop-level prefix move
 /// [`assert_growth_still_hits`] is looking for.
 pub async fn run_cache_probe(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     probe: &CacheProbe,
 ) -> CacheObservation {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
         content: vec![UserContent::text(probe.prompt)],
     };
@@ -461,7 +461,7 @@ pub async fn run_cache_probe(
 }
 
 async fn send(
-    model: &rig_core::BoxedModel<rig_core::operation::Completion>,
+    model: &rig_core::DynModel<rig_core::operation::Completion>,
     probe: &CacheProbe,
     chat_history: Vec<Message>,
     label: &str,
@@ -483,10 +483,10 @@ async fn send(
 /// `crates/rig-core/src/providers/anthropic/streaming.rs` — and only a streamed
 /// probe can see it.
 pub async fn run_cache_probe_streaming(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     probe: &CacheProbe,
 ) -> CacheObservation {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
         content: vec![UserContent::text(probe.prompt)],
     };
@@ -530,7 +530,7 @@ pub async fn run_cache_probe_streaming(
 /// Drive one streamed turn, returning its final usage, accumulated text, and
 /// message id.
 async fn stream_turn(
-    model: &rig_core::BoxedModel<rig_core::operation::Completion>,
+    model: &rig_core::DynModel<rig_core::operation::Completion>,
     probe: &CacheProbe,
     chat_history: Vec<Message>,
     label: &str,

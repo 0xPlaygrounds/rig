@@ -294,10 +294,10 @@ impl Neo4jClient {
     /// exist or defines no property.
     pub async fn get_index(
         &self,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         index_name: &str,
     ) -> Result<Neo4jVectorIndex, VectorStoreError> {
-        let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
+        let model: rig_core::DynModel<rig_core::operation::Embedding> = model.into();
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexInfo {
@@ -382,9 +382,9 @@ impl Neo4jClient {
         &self,
         index_config: IndexConfig,
         node_label: &str,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
     ) -> Result<(), VectorStoreError> {
-        let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
+        let model: rig_core::DynModel<rig_core::operation::Embedding> = model.into();
         tracing::info!("Creating vector index {} ...", index_config.index_name);
 
         let create_vector_index_query = format!(

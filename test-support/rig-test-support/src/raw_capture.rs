@@ -42,11 +42,11 @@ use crate::support::{
 /// `request` is built at the call site, so the prompt and every parameter
 /// stay visible there.
 pub async fn capture_completion(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<CompletionResponse>,
 ) -> Result<(), ProviderError> {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(model.call(request).await?);
     Ok(())
 }
@@ -59,11 +59,11 @@ pub async fn capture_completion(
 /// harness replays a scenario's interactions in order, so the pair is
 /// compared with interaction 0 and interaction 1 respectively.
 pub async fn capture_completion_pair(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(CompletionResponse, CompletionResponse)>,
 ) -> Result<(), ProviderError> {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let first = model.call(request.clone()).await?;
     let second = model.call(request).await?;
     sink.put((first, second));
@@ -73,11 +73,11 @@ pub async fn capture_completion_pair(
 /// Stream one recorded turn and park the visible text beside the terminal
 /// record the stream must have ended with.
 pub async fn capture_text_and_terminal(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
 ) -> Result<(), ProviderError> {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let (text, terminal) = collect_text_and_terminal(model.stream(request)?).await;
     sink.put((
         text,
@@ -93,11 +93,11 @@ pub async fn capture_text_and_terminal(
 /// across closing frames is fine here; a dialect whose contract is *one*
 /// terminal record uses [`capture_sole_terminal`] instead.
 pub async fn capture_terminal(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<StreamFinal>,
 ) -> Result<(), ProviderError> {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_required_terminal(model.stream(request)?).await);
     Ok(())
 }
@@ -105,11 +105,11 @@ pub async fn capture_terminal(
 /// Stream one recorded turn and park its one terminal record, failing when
 /// the stream emitted none or more than one.
 pub async fn capture_sole_terminal(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<StreamFinal>,
 ) -> Result<(), ProviderError> {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_sole_terminal(model.stream(request)?).await);
     Ok(())
 }
@@ -122,11 +122,11 @@ pub async fn capture_sole_terminal(
 /// keeps the last of several records, [`capture_sole_terminal`] drops the
 /// text.
 pub async fn capture_text_and_sole_terminal(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
 ) -> Result<(), ProviderError> {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_text_and_sole_terminal(model.stream(request)?).await);
     Ok(())
 }

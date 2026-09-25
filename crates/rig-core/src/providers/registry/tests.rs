@@ -8,8 +8,8 @@ use crate::test_utils::RecordingHttpClient;
 
 /// A transport that sends nothing: every assertion here is about what is
 /// built, never about a reply.
-fn transport() -> crate::http_client::BoxedHttpClient {
-    crate::http_client::BoxedHttpClient::new(RecordingHttpClient::new("{}"))
+fn transport() -> crate::http_client::DynHttpClient {
+    crate::http_client::DynHttpClient::new(RecordingHttpClient::new("{}"))
 }
 
 /// Every registered selection has a qualified spelling that parses back to

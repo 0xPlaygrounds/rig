@@ -92,7 +92,7 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 /// `frames`, then EOF.
 fn scripted_stream(frames: &[String]) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     let client = OpenAI::new(SCRIPTED_KEY);
-    let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
+    let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: rig::Model::new(client.chat(GPT_5_MINI), http.clone()),

@@ -694,13 +694,13 @@ impl NativeRun {
 /// with an agent-level budget of two turns; `configure` shapes the agent
 /// before the run is spawned.
 pub async fn native_run(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     preamble: &str,
     prompt: &str,
     witness: bool,
     configure: impl FnOnce(&mut EcsAgent),
 ) -> NativeRun {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     native_run_serving(
         |label| rig_core::serve::adapters::ModelAdapter::new(label, model),
         preamble,

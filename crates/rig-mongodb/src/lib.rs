@@ -117,7 +117,7 @@ where
     C: Send + Sync,
 {
     collection: mongodb::Collection<C>,
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     index_name: String,
     embedded_field: String,
     search_params: SearchParams,
@@ -243,7 +243,7 @@ where
     /// on creating vector indexes.
     pub async fn new(
         collection: mongodb::Collection<C>,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {

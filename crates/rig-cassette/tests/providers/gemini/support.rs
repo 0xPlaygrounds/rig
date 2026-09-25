@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::http_client::BoxedHttpClient;
+use rig::http_client::DynHttpClient;
 use rig::providers::gemini::Gemini;
 use serde::Deserialize;
 use std::future::Future;
@@ -299,7 +299,7 @@ async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Ge
 }
 
 /// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
-/// through a [`rig::http_client::BoxedHttpClient`] carrying the supplied
+/// through a [`rig::http_client::DynHttpClient`] carrying the supplied
 /// [`rig::http_client::HttpMiddleware`], so the same recorded exchange
 /// exercises the transport middleware seam and the run lifecycle hooks
 /// together (see `crates/rig-cassette/fixtures/cassettes/gemini/lifecycle_matrix/`).
@@ -309,7 +309,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     test_body: F,
 ) where
     M: rig::http_client::HttpMiddleware + 'static,
-    F: FnOnce(Gemini, BoxedHttpClient) -> Fut,
+    F: FnOnce(Gemini, DynHttpClient) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -322,7 +322,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     let provider =
         Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
     let http = rig::http_client::ReqwestClient::default()
-        .boxed()
+        .erase()
         .with_middleware(middleware);
     let result = AssertUnwindSafe(test_body(provider, http))
         .catch_unwind()

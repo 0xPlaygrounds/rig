@@ -1,7 +1,7 @@
 //! ChatGPT OAuth device flow and refresh smoke tests.
 
 use assert_fs::TempDir;
-use rig::http_client::BoxedHttpClient;
+use rig::http_client::DynHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
 use serde_json::json;
@@ -20,7 +20,7 @@ use crate::support::{
 /// The exchange is not a wire: `OpenAI` stores an access token, so the
 /// conversation that produces one runs first, on the transport the completion
 /// then speaks over.
-async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> OpenAI {
+async fn oauth_provider_with_auth_file(path: &Path, http: &DynHttpClient) -> OpenAI {
     let context = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(path.to_path_buf()),

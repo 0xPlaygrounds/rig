@@ -96,7 +96,7 @@ fn direct_and_declarative_host_assembly_send_identical_requests() {
     let declarative = config.with_credential("host-token").completion_handler(
         "saved",
         "model-x",
-        rig_core::http_client::BoxedHttpClient::new(declarative_http.clone()),
+        rig_core::http_client::DynHttpClient::new(declarative_http.clone()),
     );
     for handler in [direct, declarative] {
         let mut app = bus_support::app();

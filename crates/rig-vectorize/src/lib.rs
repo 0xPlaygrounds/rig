@@ -53,7 +53,7 @@ impl From<VectorizeError> for VectorStoreError {
 /// results are meaningless under another model.
 #[derive(Debug, Clone)]
 pub struct VectorizeVectorStore {
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     client: VectorizeClient,
 }
 
@@ -61,7 +61,7 @@ impl VectorizeVectorStore {
     /// Creates a store over the named index, authenticating with a Cloudflare API
     /// token. Inserting documents additionally requires write permission.
     pub fn new(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         account_id: impl Into<String>,
         index_name: impl Into<String>,
         api_token: impl Into<String>,

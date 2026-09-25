@@ -24,7 +24,7 @@ use uuid::Uuid;
 /// Vector store over a Postgres table. Queries are embedded with the same model
 /// that populated the table, so results are meaningless under another model.
 pub struct PostgresVectorStore {
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     pg_pool: PgPool,
     documents_table: String,
     distance_function: PgVectorDistanceFunction,
@@ -223,7 +223,7 @@ impl SearchResult {
 
 impl PostgresVectorStore {
     pub fn new(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         pg_pool: PgPool,
         documents_table: Option<String>,
         distance_function: PgVectorDistanceFunction,
@@ -237,7 +237,7 @@ impl PostgresVectorStore {
     }
 
     pub fn with_defaults(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         pg_pool: PgPool,
     ) -> Self {
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)

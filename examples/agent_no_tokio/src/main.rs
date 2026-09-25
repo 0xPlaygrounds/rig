@@ -7,7 +7,7 @@
 //! `try_next` and never blocks on the run. The HTTP transport (`rig-reqwest`)
 //! brings its own private tokio runtime for the wire; this crate's manifest
 //! depends on neither tokio nor reqwest. The transport is held erased
-//! ([`rig::http_client::BoxedHttpClient`]), the way a host runtime keeps one
+//! ([`rig::http_client::DynHttpClient`]), the way a host runtime keeps one
 //! transport for every provider without naming it in its own types.
 //!
 //! Requires `OPENAI_API_KEY`.
@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
     // model is `Model<OpenAiWire>`, so no transport type
     // reaches this crate's signatures.
-    let transport = ReqwestClient::default().boxed();
+    let transport = ReqwestClient::default().erase();
     let agent = AgentBuilder::new(Model::new(
         OpenAI::from_env()?.completion(openai::GPT_4O),
         transport,

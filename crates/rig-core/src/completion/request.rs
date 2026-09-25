@@ -617,7 +617,7 @@ fn merge_provider_tools_into_additional_params(
 /// ```no_run
 /// use rig_core::{Model, completion::CompletionRequestBuilder, providers::openai::OpenAI};
 ///
-/// # async fn run(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 /// let model = Model::new(OpenAI::from_env()?.completion("gpt-4o"), http);
 /// let request = CompletionRequestBuilder::new("Who are you?")
 ///     .temperature(0.5)

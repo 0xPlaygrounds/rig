@@ -302,7 +302,7 @@ fn prompts(with_image: bool) -> [String; 3] {
 
 /// Drive the three-prompt run and return what happened.
 pub async fn run(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     cell: Cell,
 ) -> Observation {
     let journal = Arc::new(Mutex::new(Journal::default()));

@@ -67,12 +67,12 @@ fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
 /// the call, and continue on `second` (the same model, or another model of
 /// the same provider).
 pub async fn run(
-    first: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
-    second: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    first: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    second: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     cell: Cell,
 ) {
-    let first: rig_core::BoxedModel<rig_core::operation::Completion> = first.into();
-    let second: rig_core::BoxedModel<rig_core::operation::Completion> = second.into();
+    let first: rig_core::DynModel<rig_core::operation::Completion> = first.into();
+    let second: rig_core::DynModel<rig_core::operation::Completion> = second.into();
     let loaded = turn_one(&first, cell).await;
     let answer = second
         .call(request(cell, loaded))
@@ -90,12 +90,12 @@ pub async fn run(
 /// continuation, restore it into a fresh world whose model handler is
 /// `second`, and let the restored world send it.
 pub async fn run_checkpoint(
-    first: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
-    second: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    first: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    second: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     cell: Cell,
 ) {
-    let first: rig_core::BoxedModel<rig_core::operation::Completion> = first.into();
-    let second: rig_core::BoxedModel<rig_core::operation::Completion> = second.into();
+    let first: rig_core::DynModel<rig_core::operation::Completion> = first.into();
+    let second: rig_core::DynModel<rig_core::operation::Completion> = second.into();
     use bevy_app::App;
     use rig_core::effect::{EffectKind, Outcome};
     use rig_core::serve::{ErasedHandler, adapters::ModelAdapter};
@@ -110,7 +110,7 @@ pub async fn run_checkpoint(
         app.cleanup();
         app
     }
-    let handler = |model: rig_core::BoxedModel<rig_core::operation::Completion>| {
+    let handler = |model: rig_core::DynModel<rig_core::operation::Completion>| {
         ErasedHandler::new(crate::ecs_agent::RuntimeHandler {
             inner: std::sync::Arc::new(ModelAdapter::new("session", model)),
             runtime: crate::ecs_agent::io_runtime(),
@@ -170,7 +170,7 @@ pub async fn run_checkpoint(
 /// Run turn one and return its history (prompt, reply, tool result) after a
 /// JSON persistence round trip that must preserve it exactly.
 async fn turn_one(
-    first: &rig_core::BoxedModel<rig_core::operation::Completion>,
+    first: &rig_core::DynModel<rig_core::operation::Completion>,
     cell: Cell,
 ) -> Vec<Message> {
     let prompt = Message::user(
@@ -282,7 +282,7 @@ fn assert_answer(cell: Cell, choice: &[AssistantContent]) {
 /// second prompt in the same conversation, streamed or not. The second
 /// prompt's request is built from what the agent wrote to memory.
 pub async fn run_memory(
-    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     cell: Cell,
     streamed: bool,
 ) {

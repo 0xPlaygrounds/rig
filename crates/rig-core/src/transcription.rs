@@ -1,11 +1,11 @@
 //! Audio transcription requests, normalized responses, and model interfaces.
 //!
 //! ```no_run
-//! use rig_core::BoxedModel;
+//! use rig_core::DynModel;
 //! use rig_core::operation::Transcription;
 //! use rig_core::transcription::TranscriptionRequestBuilder;
 //!
-//! # async fn example(model: BoxedModel<Transcription>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(model: DynModel<Transcription>) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = TranscriptionRequestBuilder::from_file("audio.wav")?.build();
 //! let response = model.call(request).await?;
 //! # let _ = response;

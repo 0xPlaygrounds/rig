@@ -1,11 +1,11 @@
 //! Text-to-speech requests and normalized audio responses.
 //!
 //! ```no_run
-//! use rig_core::BoxedModel;
+//! use rig_core::DynModel;
 //! use rig_core::audio_generation::AudioGenerationRequestBuilder;
 //! use rig_core::operation::AudioGeneration;
 //!
-//! # async fn example(model: BoxedModel<AudioGeneration>, voice: &str) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(model: DynModel<AudioGeneration>, voice: &str) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = AudioGenerationRequestBuilder::new("Hello", voice).build();
 //! let response = model.call(request).await?;
 //! # let _ = response;

@@ -30,7 +30,7 @@ use uuid::Uuid;
 /// Queries are embedded with the same model that populated the collection,
 /// so results are meaningless under another model.
 pub struct QdrantVectorStore {
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     client: Qdrant,
     query_params: QueryPoints,
 }
@@ -40,7 +40,7 @@ impl QdrantVectorStore {
     /// clones `query_params` and overrides its query, limit, threshold, and filter.
     pub fn new(
         client: Qdrant,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         query_params: QueryPoints,
     ) -> Self {
         Self {

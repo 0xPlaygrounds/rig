@@ -1,4 +1,4 @@
-//! A boxed model and the model it was made from are one code path: the same
+//! An erased model and the model it was made from are one code path: the same
 //! response, the same stream items (including `BlockEnd.block`), the same
 //! span fields.
 
@@ -13,7 +13,7 @@ use tracing::span::{Attributes, Id, Record};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
-use super::BoxedModel;
+use super::DynModel;
 use crate::completion::{CompletionRequest, CompletionRequestBuilder, Usage};
 use crate::message::AssistantContent;
 use crate::operation::Completion;
@@ -124,42 +124,42 @@ fn stream_turn() -> Vec<MockStreamEvent> {
 }
 
 /// The two models share one script with two identical turns: the direct
-/// call takes the first, the boxed call the second.
+/// call takes the first, the erased call the second.
 #[test]
-fn a_boxed_unary_call_matches_the_direct_call_and_its_span() {
+fn an_erased_unary_call_matches_the_direct_call_and_its_span() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     let model = MockCompletionModel::from_turns([unary_turn(), unary_turn()]);
-    let boxed: BoxedModel<Completion> = model.clone().boxed();
+    let dyn_model: DynModel<Completion> = model.clone().erase();
 
     let mut direct = None;
     let direct_spans = spans_of(|| {
         direct = Some(futures::executor::block_on(model.call(request())));
     });
     let mut erased = None;
-    let boxed_spans = spans_of(|| {
-        erased = Some(futures::executor::block_on(boxed.call(request())));
+    let erased_spans = spans_of(|| {
+        erased = Some(futures::executor::block_on(dyn_model.call(request())));
     });
 
     let direct = direct.expect("ran").expect("the direct call succeeds");
-    let erased = erased.expect("ran").expect("the boxed call succeeds");
+    let erased = erased.expect("ran").expect("the erased call succeeds");
     assert_eq!(
         serde_json::to_value(&direct).expect("json"),
         serde_json::to_value(&erased).expect("json"),
-        "the boxed call folds the same response"
+        "the erased call folds the same response"
     );
     assert_eq!(direct.provider_request_id.as_deref(), Some("req_1"));
     assert!(!direct_spans.is_empty(), "the direct call opened a span");
     assert_eq!(
-        direct_spans, boxed_spans,
-        "the boxed call records the same span"
+        direct_spans, erased_spans,
+        "the erased call records the same span"
     );
 }
 
 #[test]
-fn a_boxed_stream_yields_the_direct_stream_item_for_item() {
+fn an_erased_stream_yields_the_direct_stream_item_for_item() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     let model = MockCompletionModel::from_stream_turns([stream_turn(), stream_turn()]);
-    let boxed = BoxedModel::from(model.clone());
+    let dyn_model = DynModel::from(model.clone());
 
     let mut direct = Vec::new();
     let direct_spans = spans_of(|| {
@@ -167,8 +167,10 @@ fn a_boxed_stream_yields_the_direct_stream_item_for_item() {
         direct = futures::executor::block_on(stream.collect::<Vec<_>>());
     });
     let mut erased = Vec::new();
-    let boxed_spans = spans_of(|| {
-        let stream = boxed.stream(request()).expect("the boxed stream opens");
+    let erased_spans = spans_of(|| {
+        let stream = dyn_model
+            .stream(request())
+            .expect("the erased stream opens");
         erased = futures::executor::block_on(stream.collect::<Vec<_>>());
     });
 
@@ -184,22 +186,22 @@ fn a_boxed_stream_yields_the_direct_stream_item_for_item() {
     );
     let direct = serde_json::to_value(&direct).expect("json");
     let erased = serde_json::to_value(&erased).expect("json");
-    assert_eq!(direct, erased, "the boxed stream yields the same items");
+    assert_eq!(direct, erased, "the erased stream yields the same items");
     assert_eq!(
-        direct_spans, boxed_spans,
-        "the boxed stream records the same span"
+        direct_spans, erased_spans,
+        "the erased stream records the same span"
     );
 }
 
 #[test]
-fn a_boxed_model_names_its_wire() {
-    let boxed = MockCompletionModel::text("x").boxed();
-    assert_eq!(boxed.name(), crate::test_utils::MOCK_PROVIDER);
-    assert_eq!(boxed.model(), None);
+fn an_erased_model_names_its_wire() {
+    let erased = MockCompletionModel::text("x").erase();
+    assert_eq!(erased.name(), crate::test_utils::MOCK_PROVIDER);
+    assert_eq!(erased.model(), None);
     assert_eq!(
-        format!("{boxed:?}"),
-        r#"BoxedModel { name: "mock", model: None }"#
+        format!("{erased:?}"),
+        r#"DynModel { name: "mock", model: None }"#
     );
-    let clone = boxed.clone();
-    assert_eq!(clone.name(), boxed.name());
+    let clone = erased.clone();
+    assert_eq!(clone.name(), erased.name());
 }

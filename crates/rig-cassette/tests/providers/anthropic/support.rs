@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::http_client::{BoxedHttpClient, ReqwestClient};
+use rig::http_client::{DynHttpClient, ReqwestClient};
 use rig::providers::anthropic::wire::Anthropic;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -27,7 +27,7 @@ async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
 }
 
 /// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
-/// through a [`BoxedHttpClient`] carrying the supplied [`HttpMiddleware`], so
+/// through a [`DynHttpClient`] carrying the supplied [`HttpMiddleware`], so
 /// the same recorded exchange exercises the transport middleware seam and the
 /// run lifecycle hooks together (see
 /// `crates/rig-cassette/fixtures/cassettes/anthropic/lifecycle_matrix/`).
@@ -37,7 +37,7 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     test_body: F,
 ) where
     M: rig::http_client::HttpMiddleware + 'static,
-    F: FnOnce(Anthropic, BoxedHttpClient) -> Fut,
+    F: FnOnce(Anthropic, DynHttpClient) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -49,7 +49,7 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     .await;
     let provider =
         Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url());
-    let http = ReqwestClient::default().boxed().with_middleware(middleware);
+    let http = ReqwestClient::default().erase().with_middleware(middleware);
     let result = AssertUnwindSafe(test_body(provider, http))
         .catch_unwind()
         .await;

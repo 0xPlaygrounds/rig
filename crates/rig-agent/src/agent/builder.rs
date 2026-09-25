@@ -2,9 +2,9 @@
 //! builder-supplied tools or a shared tool server, not both.
 //!
 //! ```
-//! use rig_agent::core::{BoxedModel, operation::Completion};
+//! use rig_agent::core::{DynModel, operation::Completion};
 //! use rig_agent::{Agent, AgentBuilder};
-//! fn assistant(model: impl Into<BoxedModel<Completion>>) -> Agent {
+//! fn assistant(model: impl Into<DynModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```
@@ -320,7 +320,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     pub fn model_route(
         mut self,
         label: impl Into<ModelRef>,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         let label = label.into();
         self.routes.push(label.as_str().to_owned());
@@ -526,7 +526,7 @@ impl<ToolState> AgentBuilder<ToolState> {
 impl AgentBuilder<NoToolConfig> {
     /// An agent over its own bus, with `model` registered as the default
     /// model (label `default`).
-    pub fn new(model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>) -> Self {
+    pub fn new(model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>) -> Self {
         Self::named_model("default", model)
     }
 
@@ -534,7 +534,7 @@ impl AgentBuilder<NoToolConfig> {
     /// Size the bus with [`configure_bus`](Self::configure_bus).
     pub fn named_model(
         label: impl Into<ModelRef>,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         let label = label.into();
         let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model));

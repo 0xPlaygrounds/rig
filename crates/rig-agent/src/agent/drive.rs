@@ -226,7 +226,7 @@ impl AgentBus {
     pub(crate) fn register_model(
         &self,
         label: &ModelRef,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Key<family::Completion> {
         let key = self.model_key(label.as_str());
         register_generated(
@@ -245,7 +245,7 @@ impl AgentBus {
     /// guard drops.
     pub(crate) fn register_anonymous_model(
         &self,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Arc<AnonymousModel> {
         let n = self.anonymous_models.fetch_add(1, Ordering::SeqCst);
         let key = self.register_model(&ModelRef::new(format!("anonymous#{n}")), model);

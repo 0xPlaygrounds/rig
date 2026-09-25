@@ -128,7 +128,7 @@ impl S3SearchFilter {
 /// Queries are embedded with the same model that populated the index, so
 /// results are meaningless under another model.
 pub struct S3VectorsVectorStore {
-    embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    embedding_model: rig_core::DynModel<rig_core::operation::Embedding>,
     client: Client,
     bucket_name: String,
     index_name: String,
@@ -136,7 +136,7 @@ pub struct S3VectorsVectorStore {
 
 impl S3VectorsVectorStore {
     pub fn new(
-        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         client: aws_sdk_s3vectors::Client,
         bucket_name: &str,
         index_name: &str,

@@ -40,7 +40,7 @@ mod utils;
 /// results are meaningless under another model. See [`LanceDbVectorIndex::top_n`]
 /// for a worked example.
 pub struct LanceDbVectorIndex {
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     table: lancedb::Table,
     /// Column holding each record's id.
     id_field: String,
@@ -52,7 +52,7 @@ impl LanceDbVectorIndex {
     /// The table is not inspected, so a wrong column surfaces at query time.
     pub async fn new(
         table: lancedb::Table,
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         id_field: &str,
         search_params: SearchParams,
     ) -> Result<Self, lancedb::Error> {

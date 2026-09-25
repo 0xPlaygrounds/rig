@@ -35,7 +35,7 @@ use uuid::Uuid;
 /// results are meaningless under another model. Every search reads the matching
 /// rows and ranks them client-side.
 pub struct ScyllaDbVectorStore {
-    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     pub session: Arc<Session>,
     keyspace: String,
     table: String,
@@ -186,7 +186,7 @@ impl ScyllaDbVectorStore {
     /// `keyspace` and `table` are spliced into every statement verbatim.
     /// `dimensions` is the vector width insertion enforces.
     pub async fn new(
-        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         session: Session,
         keyspace: &str,
         table: &str,
