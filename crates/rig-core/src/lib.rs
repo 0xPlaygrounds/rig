@@ -24,7 +24,7 @@
 //!
 //! async fn ask<W, T>(model: &Model<W, T>) -> Result<CompletionResponse, ProviderError>
 //! where
-//!     W: Wire<Op = Completion> + Clone,
+//!     W: Wire<Op = Completion>,
 //!     T: Transport<W>,
 //! {
 //!     let request = CompletionRequestBuilder::new("Who are you?").build();

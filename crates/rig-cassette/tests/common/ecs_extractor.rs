@@ -36,7 +36,7 @@ pub(crate) struct EcsExtractor<T> {
 
 impl<T: JsonSchema + DeserializeOwned> EcsExtractor<T> {
     pub fn new<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         Tr: rig_core::driver::Transport<W>,
     >(
         model: rig_core::driver::Model<W, Tr>,

@@ -112,7 +112,7 @@ pub struct EcsAgent {
 impl EcsAgent {
     /// Create a native agent with the supplied model, preamble, and turn budget.
     pub fn new<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     >(
         model: rig_core::driver::Model<W, T>,
@@ -124,7 +124,7 @@ impl EcsAgent {
 
     /// Create a one-turn parity agent, optionally retaining recorded stream events.
     pub fn for_golden<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     >(
         model: rig_core::driver::Model<W, T>,
@@ -137,7 +137,7 @@ impl EcsAgent {
     /// Register application-owned handlers before the model, preserving the
     /// producer's handler registration order in the complete recorder header.
     pub fn for_golden_with_setup<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     >(
         model: rig_core::driver::Model<W, T>,
@@ -169,7 +169,7 @@ impl EcsAgent {
     }
 
     fn configured<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
         T: rig_core::driver::Transport<W>,
     >(
         model: rig_core::driver::Model<W, T>,

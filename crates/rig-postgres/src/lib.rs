@@ -223,7 +223,7 @@ impl SearchResult {
 
 impl<W, Tr> PostgresVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     pub fn new(
@@ -363,7 +363,7 @@ fn render_search_query(
 
 impl<W, Tr> InsertDocuments for PostgresVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
@@ -398,7 +398,7 @@ where
 
 impl<W, Tr> VectorStoreIndex for PostgresVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = PgSearchFilter;

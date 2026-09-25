@@ -81,9 +81,9 @@ pub async fn run<W, T, Wm, Tr>(
     params: Option<Value>,
     reject: impl FnOnce(CompletionRequestBuilder) -> CompletionRequestBuilder,
 ) where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
-    Wm: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    Wm: rig::wire::Wire<Op = rig::operation::Completion>,
     Tr: rig::driver::Transport<Wm>,
 {
     let recorded = Recorded::default();

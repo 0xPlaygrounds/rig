@@ -69,7 +69,7 @@ fn history(own: &str) -> CompletionRequest {
 /// provider's, and unattributed reasoning.
 async fn sent<W>(wire: W) -> String
 where
-    W: Wire<Op = super::Completion> + Clone,
+    W: Wire<Op = super::Completion>,
     RecordingHttpClient: crate::driver::Transport<W>,
 {
     let own = wire.name().to_owned();
@@ -325,7 +325,7 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
     // `completion` returns, which must delegate its issuers.
     async fn send<W>(wire: W, content: Vec<AssistantContent>) -> String
     where
-        W: Wire<Op = super::Completion> + Clone,
+        W: Wire<Op = super::Completion>,
         RecordingHttpClient: crate::driver::Transport<W>,
     {
         let mut request = history("unused");

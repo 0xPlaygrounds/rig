@@ -78,13 +78,13 @@ pub trait ServeOperation: Operation {
         dispatch: Dispatch,
     ) -> impl Future<Output = Reply> + WasmCompatSend
     where
-        W: Wire<Op = Self> + Clone,
+        W: Wire<Op = Self>,
         T: Transport<W>;
 }
 
 impl<W, T> Serve for ModelAdapter<W, T>
 where
-    W: Wire + Clone,
+    W: Wire,
     W::Op: ServeOperation,
     T: Transport<W>,
 {
@@ -117,7 +117,7 @@ impl ServeOperation for Completion {
 
     async fn serve<W, T>(model: &Model<W, T>, kind: EffectKind, dispatch: Dispatch) -> Reply
     where
-        W: Wire<Op = Self> + Clone,
+        W: Wire<Op = Self>,
         T: Transport<W>,
     {
         let context = dispatch.adapter_context();
@@ -176,7 +176,7 @@ impl ServeOperation for Embedding {
 
     async fn serve<W, T>(model: &Model<W, T>, kind: EffectKind, _dispatch: Dispatch) -> Reply
     where
-        W: Wire<Op = Self> + Clone,
+        W: Wire<Op = Self>,
         T: Transport<W>,
     {
         match kind {
@@ -223,7 +223,7 @@ impl ServeOperation for Rerank {
 
     async fn serve<W, T>(model: &Model<W, T>, kind: EffectKind, _dispatch: Dispatch) -> Reply
     where
-        W: Wire<Op = Self> + Clone,
+        W: Wire<Op = Self>,
         T: Transport<W>,
     {
         match kind {

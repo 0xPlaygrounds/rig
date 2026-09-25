@@ -38,7 +38,7 @@ pub(crate) async fn call<W, H>(
     context: Option<AdapterContext>,
 ) -> Result<crate::wire::Response<W>, ProviderError>
 where
-    W: Wire + Clone,
+    W: Wire,
     H: Transport<W>,
 {
     let model = Model::new(wire.clone(), http.clone());
@@ -60,7 +60,7 @@ pub(crate) fn stream<W, H>(
     ProviderError,
 >
 where
-    W: Wire + Clone,
+    W: Wire,
     H: Transport<W>,
 {
     let steps = Model::new(wire.clone(), http.clone()).run(

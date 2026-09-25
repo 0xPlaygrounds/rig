@@ -180,7 +180,7 @@ impl DynamicSearchFilter for ScyllaSearchFilter {
 
 impl<W, Tr> ScyllaDbVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Creates a store, creating the keyspace and table when absent and
@@ -420,7 +420,7 @@ where
 
 impl<W, Tr> InsertDocuments for ScyllaDbVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
@@ -460,7 +460,7 @@ where
 
 impl<W, Tr> VectorStoreIndex for ScyllaDbVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = ScyllaSearchFilter;

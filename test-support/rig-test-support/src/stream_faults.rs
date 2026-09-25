@@ -694,7 +694,7 @@ impl NativeRun {
 /// with an agent-level budget of two turns; `configure` shapes the agent
 /// before the run is spawned.
 pub async fn native_run<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: rig_core::driver::Model<W, T>,

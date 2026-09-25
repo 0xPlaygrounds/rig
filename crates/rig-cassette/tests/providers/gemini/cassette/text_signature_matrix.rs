@@ -74,7 +74,7 @@ async fn turn<W, T>(
     history: Vec<Message>,
 ) -> Vec<AssistantContent>
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let request = request(cell, history);
@@ -105,7 +105,7 @@ fn answer(choice: &[AssistantContent]) -> String {
 
 async fn conversation<W, T>(model: rig::driver::Model<W, T>, cell: Cell)
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let first = turn(&model, cell, vec![Message::user(QUESTION)]).await;

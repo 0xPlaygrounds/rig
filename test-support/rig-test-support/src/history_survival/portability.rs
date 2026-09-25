@@ -213,7 +213,7 @@ pub type Observed = Arc<std::sync::Mutex<Option<Observation>>>;
 /// Continue the ported history on the target wire.
 pub async fn run<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell) -> Observation
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let calls = Arc::new(AtomicUsize::new(0));

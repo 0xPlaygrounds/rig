@@ -117,7 +117,7 @@ const BASE_VECTOR_SEARCH_QUERY: &str = "
 
 impl<W, Tr> Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     pub fn new(
@@ -207,7 +207,7 @@ struct RowResult {
 
 impl<W, Tr> VectorStoreIndex for Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = Neo4jSearchFilter;
@@ -251,7 +251,7 @@ fn insert_documents_query(node_label: &str) -> String {
 
 impl<W, Tr> InsertDocuments for Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Inserts one node per embedding, flattening the document's JSON fields

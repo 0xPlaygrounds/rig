@@ -7,7 +7,7 @@ use crate::wire::Wire;
 
 impl<W, T> Model<W, T>
 where
-    W: Wire<Op = crate::operation::Verify> + Clone,
+    W: Wire<Op = crate::operation::Verify>,
     T: Transport<W>,
 {
     /// Check that the provider accepts the configured credentials. A 401 or

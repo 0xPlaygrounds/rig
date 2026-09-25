@@ -433,7 +433,7 @@ pub async fn run_cache_probe<W, T>(
     probe: &CacheProbe,
 ) -> CacheObservation
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let opening = Message::User {
@@ -470,7 +470,7 @@ async fn send<W, T>(
     label: &str,
 ) -> CompletionResponse
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     model
@@ -494,7 +494,7 @@ pub async fn run_cache_probe_streaming<W, T>(
     probe: &CacheProbe,
 ) -> CacheObservation
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let opening = Message::User {
@@ -546,7 +546,7 @@ async fn stream_turn<W, T>(
     label: &str,
 ) -> (Usage, String, Option<String>)
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     use futures::StreamExt;

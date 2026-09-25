@@ -59,7 +59,7 @@ pub struct VectorizeVectorStore<M> {
 
 impl<W, Tr> VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Creates a store over the named index, authenticating with a Cloudflare API
@@ -79,7 +79,7 @@ where
 
 impl<W, Tr> VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Embeds the query and returns matches at or above any request threshold.
@@ -115,7 +115,7 @@ where
 
 impl<W, Tr> VectorStoreIndex for VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = VectorizeFilter;
@@ -153,7 +153,7 @@ where
 
 impl<W, Tr> InsertDocuments for VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Upserts one vector per embedding, storing the document as metadata under a

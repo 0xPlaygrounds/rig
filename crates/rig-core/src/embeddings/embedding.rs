@@ -6,7 +6,7 @@
 //! use rig_core::wire::Wire;
 //!
 //! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = Embedding> + Clone, T: Transport<W> {
+//! # where W: Wire<Op = Embedding>, T: Transport<W> {
 //! let embedding = model.embed_text("A document").await?;
 //! # let _ = embedding;
 //! # Ok(())
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 impl<W, T> crate::driver::Model<W, T>
 where
-    W: crate::wire::Wire<Op = crate::operation::Embedding> + Clone,
+    W: crate::wire::Wire<Op = crate::operation::Embedding>,
     T: crate::driver::Transport<W>,
 {
     /// Embed one text, returning the last vector or an error if none is returned.

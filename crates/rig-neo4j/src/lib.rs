@@ -298,7 +298,7 @@ impl Neo4jClient {
         index_name: &str,
     ) -> Result<Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>, VectorStoreError>
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
         Tr: rig_core::driver::Transport<W>,
     {
         #[derive(Deserialize)]
@@ -390,7 +390,7 @@ impl Neo4jClient {
         model: &rig_core::driver::Model<W, Tr>,
     ) -> Result<(), VectorStoreError>
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
         Tr: rig_core::driver::Transport<W>,
     {
         tracing::info!("Creating vector index {} ...", index_config.index_name);

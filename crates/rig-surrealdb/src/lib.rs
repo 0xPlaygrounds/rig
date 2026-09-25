@@ -105,7 +105,7 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
 
 impl<C, W, Tr> InsertDocuments for SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
@@ -260,7 +260,7 @@ impl SurrealSearchFilter {
 
 impl<C, W, Tr> SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
@@ -333,7 +333,7 @@ where
 
 impl<C, W, Tr> VectorStoreIndex for SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {

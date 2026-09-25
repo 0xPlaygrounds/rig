@@ -140,7 +140,7 @@ pub async fn run_reasoning_delta_hook_streaming<W, T>(
     additional_params: serde_json::Value,
     provider: &str,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let hook = ReasoningDeltaHookRecorder::default();
@@ -269,7 +269,7 @@ pub struct ReasoningRoundtripAgent<M> {
 
 impl<W, Tr> ReasoningRoundtripAgent<rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     Tr: rig_core::driver::Transport<W>,
 {
     /// Configure the roundtrip with the shared preamble and unsigned-reasoning default.
@@ -296,7 +296,7 @@ where
 pub async fn run_reasoning_roundtrip_streaming<W, T>(
     agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
@@ -307,7 +307,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<W, T, F>(
     agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
     mut inspect_final: F,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
     F: FnMut(&rig_core::streaming::StreamFinal),
 {
@@ -463,7 +463,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<W, T, F>(
 pub async fn run_reasoning_roundtrip_nonstreaming<W, T>(
     agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
 ) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
     let turn1_prompt = Message::User {

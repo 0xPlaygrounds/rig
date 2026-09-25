@@ -190,7 +190,7 @@ fn finish<S, W, T>(
 ) -> rig_agent::agent::Agent
 where
     AgentBuilder<S>: Buildable,
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let memory_layered = program.layers.iter().any(|spec| spec.at == LayerAt::Memory);
@@ -251,7 +251,7 @@ fn grant<W, T>(
     program: &Program,
 ) -> rig_agent::agent::Agent
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let layered_tool = program.layers.iter().any(|spec| spec.at == LayerAt::Tool);
@@ -388,7 +388,7 @@ pub(crate) async fn run_agent<W, T>(
     golden: impl FnOnce(&rig_cassette::effect_log::EffectLog),
 ) -> rig_cassette::effect_log::EffectLog
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let program = wire.program(cell);

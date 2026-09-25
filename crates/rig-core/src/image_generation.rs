@@ -7,7 +7,7 @@
 //! use rig_core::wire::Wire;
 //!
 //! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = ImageGeneration> + Clone, T: Transport<W> {
+//! # where W: Wire<Op = ImageGeneration>, T: Transport<W> {
 //! let request = ImageGenerationRequestBuilder::new("A mountain lake")
 //!     .width(1024)
 //!     .height(1024)

@@ -105,7 +105,7 @@ fn body(path: &str) -> Bytes {
 }
 async fn adapted<W, T>(model: rig::Model<W, T>, direct: bool) -> StreamEvents
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let request = CompletionRequestBuilder::new("response parsing probe")

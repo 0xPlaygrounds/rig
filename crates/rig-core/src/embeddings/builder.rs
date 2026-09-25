@@ -7,7 +7,7 @@
 //! use rig_core::wire::Wire;
 //!
 //! # async fn example<W, T>(model: Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
-//! # where W: Wire<Op = Embedding> + Clone, T: Transport<W> {
+//! # where W: Wire<Op = Embedding>, T: Transport<W> {
 //! let documents = EmbeddingsBuilder::new(model)
 //!     .documents(["first document", "second document"])?
 //!     .build().await?;
@@ -38,7 +38,7 @@ pub struct EmbeddingsBuilder<M, T> {
 
 impl<W, Tr, T> EmbeddingsBuilder<Model<W, Tr>, T>
 where
-    W: Wire<Op = crate::operation::Embedding> + Clone,
+    W: Wire<Op = crate::operation::Embedding>,
     Tr: Transport<W>,
     T: Embed,
 {
@@ -73,7 +73,7 @@ where
 
 impl<W, Tr, T> EmbeddingsBuilder<Model<W, Tr>, T>
 where
-    W: Wire<Op = crate::operation::Embedding> + Clone,
+    W: Wire<Op = crate::operation::Embedding>,
     Tr: Transport<W>,
     T: Embed + crate::wasm_compat::WasmCompatSend,
 {

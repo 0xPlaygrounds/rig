@@ -415,7 +415,7 @@ where
         embedding_model: &rig_core::driver::Model<W, Tr>,
     ) -> Result<Self, VectorStoreError>
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
         Tr: rig_core::driver::Transport<W>,
     {
         Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
@@ -432,7 +432,7 @@ where
         distance_metric: SqliteDistanceMetric,
     ) -> Result<Self, VectorStoreError>
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
         Tr: rig_core::driver::Transport<W>,
     {
         let dims = embedding_model.wire.capabilities().ndims;
@@ -560,7 +560,7 @@ where
         model: rig_core::driver::Model<W, Tr>,
     ) -> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
     where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
         Tr: rig_core::driver::Transport<W>,
     {
         SqliteVectorIndex::new(model, self)
@@ -1557,7 +1557,7 @@ pub struct SqliteVectorIndex<T, M> {
 
 impl<T, W, Tr> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     T: SqliteVectorStoreTable,
 {
@@ -1574,7 +1574,7 @@ where
 
 impl<T, W, Tr> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
     T: SqliteVectorStoreTable,
 {
@@ -1940,7 +1940,7 @@ fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Res
 impl<T: SqliteVectorStoreTable, W, Tr> VectorStoreIndex
     for SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
     Tr: rig_core::driver::Transport<W>,
 {
     type Filter = SqliteSearchFilter;

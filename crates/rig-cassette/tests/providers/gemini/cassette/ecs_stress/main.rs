@@ -29,7 +29,7 @@ pub(super) struct Observation {
     pub(super) trace: RunTrace,
 }
 pub(super) fn agent<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 >(
     model: rig_core::driver::Model<W, T>,

@@ -16,7 +16,7 @@ pub(crate) async fn run_world<W, T>(
     golden: impl FnOnce(&EffectLog),
 ) -> EffectLog
 where
-    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let mut cell = *cell;
