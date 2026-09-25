@@ -175,7 +175,7 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
         },
     );
     assert_eq!(request.chat_history.len(), 4);
-    super::Completion::scope_to_wire(&mut request, &["anthropic"]);
+    super::Completion::scope_to_wire(&mut request, &Anthropic::new("key").completion("claude"));
     assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
     assert!(request.chat_history.iter().all(|message| match message {
         Message::Assistant { content, .. } => !content.is_empty(),

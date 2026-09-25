@@ -70,7 +70,7 @@ where
     Ok(steps.filter_map(|step| {
         futures::future::ready(match step {
             Ok(Step::Event(event)) => Some(Ok(event)),
-            Ok(Step::Done(_)) => None,
+            Ok(Step::Opened(_) | Step::Done(_)) => None,
             Err(error) => Some(Err(error)),
         })
     }))

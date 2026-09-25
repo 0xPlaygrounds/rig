@@ -13,13 +13,19 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 use super::*;
-use crate::completion::{CompletionRequestBuilder, CompletionResponse};
+use crate::completion::{CompletionRequest, CompletionRequestBuilder, CompletionResponse};
+use crate::driver::{Model, Observation, Opened, Transport};
 use crate::embeddings::EmbeddingResponse;
+use crate::error::{EncodeError, ProviderError};
+use crate::operation::AdapterOutput;
 use crate::operation::{Completion, Embedding, Rerank, RerankRequest, Transcription};
 use crate::rerank::RerankResponse;
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::transcription::{TranscriptionRequest, TranscriptionResponse};
+use crate::wasm_compat::WasmCompatSend;
 use crate::wire::Operation;
+use crate::wire::{Decoder, Mode, Wire, WireEvent};
+use futures::StreamExt;
 
 /// One JSON line per case, in the order [`cases`] runs them.
 const EXPECTED: &str = r#"{"case":"fresh completion chat","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
@@ -243,13 +249,15 @@ fn cases() -> Vec<Value> {
             let request = CompletionRequestBuilder::unbound("hi")
                 .model("override")
                 .build();
-            let span =
-                Completion::span("prov", Some("model"), Completion::telemetry(true), &request);
             let terminal = StreamFinal::new("prov", usage(), Value::Null)
                 .with_response_id("resp_1")
                 .with_message_id("msg_1")
                 .with_model("m2");
-            Completion::record_event(&span, &StreamEvent::Final(terminal));
+            // The streamed call's span records the terminal as it passes.
+            let stream = Model::new(Scripted(terminal.clone()), Scripted(terminal))
+                .stream(request, None)
+                .expect("a scripted stream opens");
+            futures::executor::block_on(stream.collect::<Vec<_>>());
         },
     );
     run("embedding operation span+record", &mut out, || {
@@ -335,4 +343,64 @@ fn modality_spans_ignore_system_instructions() {
         SpanBuilder::new("prov", "model", GenAiOperation::Rerank).build();
     });
     assert_eq!(with, without);
+}
+
+/// A completion wire named `prov` for `model`, whose transport answers with
+/// one scripted terminal record.
+#[derive(Clone)]
+struct Scripted(StreamFinal);
+
+impl Wire for Scripted {
+    type Op = Completion;
+    type Payload = ();
+    type Frame = StreamEvent;
+    type Decoder = Relay;
+
+    fn name(&self) -> &str {
+        "prov"
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some("model")
+    }
+
+    fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<(), EncodeError> {
+        Ok(())
+    }
+
+    fn decoder(&self, _mode: Mode) -> Relay {
+        Relay
+    }
+}
+
+impl Transport<Scripted> for Scripted {
+    fn send(
+        &self,
+        _payload: (),
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<(), StreamEvent>> + WasmCompatSend + 'static + use<>,
+        ProviderError,
+    > {
+        let terminal = self.0.clone();
+        Ok(std::future::ready(Opened::new(futures::stream::iter([
+            Ok(StreamEvent::Final(terminal)),
+        ]))))
+    }
+}
+
+/// Forwards each scripted event as is.
+struct Relay;
+
+impl Decoder<Completion, StreamEvent> for Relay {
+    type Event = StreamEvent;
+
+    fn classify(&self, frame: StreamEvent) -> WireEvent<StreamEvent> {
+        WireEvent::Known(frame)
+    }
+
+    fn interpret(&mut self, event: StreamEvent, out: &mut AdapterOutput) {
+        out.push(Ok(event));
+    }
 }

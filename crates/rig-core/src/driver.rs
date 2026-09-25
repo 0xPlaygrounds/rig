@@ -26,6 +26,7 @@ use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
 use crate::operation::{Completion, CompletionFold};
 use crate::providers::internal::wire::WireEvent;
 use crate::streaming::{CompletionStream, StreamEvent};
+use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
     Capabilities, Decoder, Event, Fold, Mode, ObservationSink, Operation, Reply, Request, Response,
@@ -147,8 +148,11 @@ impl Observation {
     }
 }
 
-/// One step of a reply: an event, or the folded response of a unary call.
+/// One step of a reply: the opened reply's transport request id, an event,
+/// or the folded response of a unary call.
 enum Step<W: Wire> {
+    /// Exactly once, first, and only for a streamed call.
+    Opened(Option<String>),
     Event(Event<W>),
     /// Exactly once, last, and only for a unary call.
     Done(Response<W>),
@@ -259,7 +263,7 @@ where
         let transport = self.transport.clone();
         let mut fold = <W::Op as Operation>::fold(&request);
         let mut request = request;
-        scope_to_wire(&wire, &mut request);
+        <W::Op as Operation>::scope_to_wire(&mut request, &wire);
         let payload = wire.encode(request, mode)?;
         let first = Self::open(&wire, &transport, payload, mode, observation.as_ref())?;
 
@@ -301,14 +305,14 @@ where
                 let mut frames = frames;
 
                 if mode == Mode::Streaming {
-                    record_request_id(&span, page_request_id.as_deref());
+                    yield Ok(Step::Opened(page_request_id));
                     while let Some(frame) = frames.next().await {
                         match frame {
                             Ok(frame) => driver.push(frame),
                             Err(error) => driver.fail(error),
                         }
                         for item in driver.drain() {
-                            yield stamped::<W>(item, &page_request_id, &span).map(Step::Event);
+                            yield item.map(Step::Event);
                         }
                         if driver.done() {
                             return;
@@ -316,7 +320,7 @@ where
                     }
                     driver.finish();
                     for item in driver.drain() {
-                        yield stamped::<W>(item, &page_request_id, &span).map(Step::Event);
+                        yield item.map(Step::Event);
                     }
                     return;
                 }
@@ -450,11 +454,40 @@ where
             .reasoning_issuer(model.as_deref().or(self.wire.model()))
             .map(str::to_owned);
         let steps = self.run(request, Mode::Streaming, observation, span.clone())?;
-        let events = tracing_futures::Instrument::instrument(steps, span).filter_map(|step| {
+        // The transport request id read off the reply's headers is stamped
+        // onto the terminal record and onto errors; an id an upstream
+        // constructor already attached wins, since it saw the reply.
+        let mut request_id: Option<String> = None;
+        let recorder = span.clone();
+        let events = tracing_futures::Instrument::instrument(steps, span).filter_map(move |step| {
             futures::future::ready(match step {
-                Ok(Step::Event(event)) => Some(Ok::<StreamEvent, _>(event)),
+                Ok(Step::Opened(id)) => {
+                    record_request_id(&recorder, id.as_deref());
+                    request_id = id;
+                    None
+                }
+                Ok(Step::Event(mut event)) => {
+                    if let StreamEvent::Final(terminal) = &mut event {
+                        if terminal.provider_request_id.is_none() {
+                            terminal.provider_request_id = request_id.clone();
+                        }
+                        recorder.record_response(
+                            terminal
+                                .response_id
+                                .as_deref()
+                                .or(terminal.message_id.as_deref()),
+                            terminal.model.as_deref(),
+                            &terminal.usage,
+                        );
+                    }
+                    Some(Ok::<StreamEvent, _>(event))
+                }
                 Ok(Step::Done(_)) => None,
-                Err(error) => Some(Err(crate::error::ErrorReport::from(&error))),
+                Err(error) => {
+                    let error = error.with_provider_request_id(request_id.clone());
+                    record_request_id(&recorder, error.provider_request_id());
+                    Some(Err(crate::error::ErrorReport::from(&error)))
+                }
             })
         });
         let fold = CompletionFold::opened(self.wire.name(), issuer);
@@ -528,9 +561,7 @@ where
             // folds it into the answer.
             WireEvent::Unknown { event_type, value } => {
                 warn_unmodeled(&event_type, &value);
-                if let Some(event) = Op::unknown(value) {
-                    self.out.push(Ok(event));
-                }
+                self.out.unknown(value);
             }
             WireEvent::Corrupt(error) => {
                 if let Some(observation) = &self.observation {
@@ -677,39 +708,6 @@ fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
 /// Page count after which a paged reply's cursors are ignored, preventing
 /// infinite cursor cycles.
 const MAX_CONTINUATION_PAGES: usize = 1000;
-
-/// Stamp the transport request id captured off the reply onto a terminal
-/// event or a preserved provider error. An id an upstream constructor
-/// already attached is never replaced: it saw the reply that carried it.
-fn stamped<W: Wire>(
-    item: Result<Event<W>, ProviderError>,
-    request_id: &Option<String>,
-    span: &tracing::Span,
-) -> Result<Event<W>, ProviderError> {
-    match item {
-        Ok(mut event) => {
-            <W::Op as Operation>::stamp_request_id(&mut event, request_id);
-            <W::Op as Operation>::record_event(span, &event);
-            Ok(event)
-        }
-        Err(error) => {
-            let error = error.with_provider_request_id(request_id.clone());
-            record_request_id(span, error.provider_request_id());
-            Err(error)
-        }
-    }
-}
-
-/// Drop request content no issuer this wire accepts for the request's model
-/// can interpret.
-fn scope_to_wire<W: Wire>(wire: &W, request: &mut Request<W>) {
-    let model = <W::Op as Operation>::request_model(request).or(wire.model());
-    let Some(issuers) = wire.replay_issuers(model) else {
-        return;
-    };
-    let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
-    <W::Op as Operation>::scope_to_wire(request, &issuers);
-}
 
 /// Record the transport request id on the call's span, success or failure.
 fn record_request_id(span: &tracing::Span, request_id: Option<&str>) {

@@ -50,28 +50,16 @@ impl Operation for Completion {
         }
     }
 
-    /// Forwards unmodeled payloads without adding them to aggregated content.
-    fn unknown(payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
-        Some(StreamEvent::Unknown(payload))
-    }
-
     /// Reasoning another wire issued is omitted; see
-    /// [`crate::message::retain_replayable_reasoning`].
-    fn scope_to_wire(request: &mut Self::Request, issuers: &[&str]) {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, issuers);
-    }
-
-    fn request_model(request: &Self::Request) -> Option<&str> {
-        request.model.as_deref()
-    }
-
-    fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {
-        // The terminal's own id wins: it saw the reply that carried it.
-        if let StreamEvent::Final(terminal) = event
-            && terminal.provider_request_id.is_none()
-        {
-            terminal.provider_request_id = request_id.clone();
-        }
+    /// [`crate::message::retain_replayable_reasoning`]. The request's model
+    /// override, when it names one, is the model the wire replays for.
+    fn scope_to_wire<W: crate::wire::Wire<Op = Self>>(request: &mut Self::Request, wire: &W) {
+        let model = request.model.as_deref().or(wire.model());
+        let Some(issuers) = wire.replay_issuers(model) else {
+            return;
+        };
+        let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
     }
 
     fn span(
@@ -103,19 +91,6 @@ impl Operation for Completion {
             &response.usage,
         );
     }
-
-    fn record_event(span: &tracing::Span, event: &Self::Event) {
-        if let StreamEvent::Final(terminal) = event {
-            span.record_response(
-                terminal
-                    .response_id
-                    .as_deref()
-                    .or(terminal.message_id.as_deref()),
-                terminal.model.as_deref(),
-                &terminal.usage,
-            );
-        }
-    }
 }
 
 impl Sink<Completion> for AdapterOutput {
@@ -131,6 +106,11 @@ impl Sink<Completion> for AdapterOutput {
 
     fn items(&self) -> &[Result<StreamEvent, ProviderError>] {
         AdapterOutput::items(self)
+    }
+
+    /// Forwarded on the passthrough channel, never folded into the choice.
+    fn unknown(&mut self, payload: UnknownPayload) {
+        AdapterOutput::unknown(self, payload);
     }
 
     fn check_laws(&self, laws: &mut Self::Laws) {

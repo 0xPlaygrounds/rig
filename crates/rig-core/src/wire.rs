@@ -208,29 +208,12 @@ pub trait Operation: Sized + 'static {
     }
 
     /// Scope a request to the wire about to encode it: drop request content
-    /// that only a provider other than `issuers` can interpret. Operations
-    /// with no such content do nothing.
-    fn scope_to_wire(_request: &mut Self::Request, _issuers: &[&str]) {}
-
-    /// The model `request` names over the wire's own, when the operation's
-    /// requests can name one.
-    fn request_model(_request: &Self::Request) -> Option<&str> {
-        None
-    }
-
-    /// Stamp the transport request id read off the reply's headers onto a
-    /// terminal event. Operations whose events carry no transport id do
-    /// nothing.
-    fn stamp_request_id(_event: &mut Self::Event, _request_id: &Option<String>) {}
+    /// that no issuer the wire replays for the request's model can
+    /// interpret. Operations with no such content do nothing.
+    fn scope_to_wire<W: Wire<Op = Self>>(_request: &mut Self::Request, _wire: &W) {}
 
     /// Stamp what the driver learned about a unary reply beyond its events.
     fn stamp_reply(_response: &mut Self::Response, _reply: Reply) {}
-
-    /// Converts an unmodeled payload to a passthrough event, or skips it with
-    /// `None` by default.
-    fn unknown(_payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
-        None
-    }
 
     /// The canonical telemetry operation for a unary (`false`) or streaming
     /// (`true`) call. A wire whose endpoint has its own canonical name
@@ -250,9 +233,6 @@ pub trait Operation: Sized + 'static {
 
     /// Record the folded response onto the operation's span.
     fn record(_span: &tracing::Span, _response: &Self::Response) {}
-
-    /// Records streamed event metadata on the operation span. Defaults to no action.
-    fn record_event(_span: &tracing::Span, _event: &Self::Event) {}
 
     /// Adds the provider and request path to a failed reply's error. The
     /// default adds nothing.
@@ -300,6 +280,10 @@ pub trait Sink<Op: Operation>: Default {
 
     /// What this sink holds, without taking it.
     fn items(&self) -> &[Result<Op::Event, ProviderError>];
+
+    /// An unmodeled payload the decoder classified but cannot interpret.
+    /// The default skips it; a sink with a passthrough channel forwards it.
+    fn unknown(&mut self, _payload: crate::streaming::UnknownPayload) {}
 
     /// Check the operation's sequence laws over this batch.
     fn check_laws(&self, _laws: &mut Self::Laws) {}
