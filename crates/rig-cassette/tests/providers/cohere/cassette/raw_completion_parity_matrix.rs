@@ -42,18 +42,13 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::capture_completion_pair;
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: parity";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -67,7 +62,7 @@ async fn raw_try_into_matches_completion() {
     with_cohere_cassette(
         "raw_completion_parity_matrix/raw_try_into_matches_completion",
         |client| async move {
-            capture_completion_pair(client.completion(CASSETTE_MODEL), request, sink)
+            capture_completion_pair(client.completion(CASSETTE_MODEL), request(), sink)
                 .await
                 .expect("the same request should succeed twice");
         },

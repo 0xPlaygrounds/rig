@@ -44,11 +44,9 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_completion_parity_matrix/`.
 
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
-use rig::driver::Model;
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::wire::OpenAiWire;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -56,6 +54,7 @@ use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
 use crate::raw_capture::{assert_no_request_id, capture_completion, responses};
 use crate::support::{Observed, assert_matches_recorded_token};
+use rig::completion::CompletionRequestBuilder;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
@@ -74,15 +73,12 @@ fn weather_tool() -> ToolDefinition {
     }
 }
 
-type ChatGptModel = Model<OpenAiWire, rig::http_client::BoxedHttpClient>;
-
-fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(64).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
 }
 
-fn tool_request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .tool(weather_tool())
         .max_tokens(128)
         .build()
@@ -159,7 +155,7 @@ async fn raw_normalize_reproduces_completion() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
+            capture_completion(client.completion(MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -216,7 +212,7 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call",
         |client| async move {
-            capture_completion(client.completion(MODEL), tool_request, sink)
+            capture_completion(client.completion(MODEL), tool_request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -316,7 +312,7 @@ async fn empty_output_fallback_still_carries_raw() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/empty_output_fallback_still_carries_raw",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
+            capture_completion(client.completion(MODEL), request(), sink)
                 .await
                 .expect("the fallback rebuilds the response from the event stream");
         },

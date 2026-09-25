@@ -9,6 +9,7 @@ use serde_json::json;
 use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::completion::CompletionRequestBuilder;
 
 /// The text Anthropic's own reply carried, read back out of
 /// [`rig::completion::CompletionResponse::raw`].
@@ -179,8 +180,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
-            let first_request = model
-                .completion_request(prompt.clone())
+            let first_request = CompletionRequestBuilder::new(prompt.clone())
                 .preamble(
                     "Answer using the supplied document and preserve citation metadata."
                         .to_string(),
@@ -222,19 +222,22 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             }));
 
             let followup = model
-                .completion_request("Reply exactly: citations follow-up ok")
-                .preamble(
-                    "Answer using the supplied document and preserve citation metadata."
-                        .to_string(),
+                .call(
+                    CompletionRequestBuilder::new("Reply exactly: citations follow-up ok")
+                        .preamble(
+                            "Answer using the supplied document and preserve citation metadata."
+                                .to_string(),
+                        )
+                        .max_tokens(64)
+                        .temperature(0.0)
+                        .message(prompt)
+                        .message(Message::Assistant {
+                            id: first_turn.message_id.clone(),
+                            content: first_turn.choice.clone(),
+                        })
+                        .build(),
+                    None,
                 )
-                .max_tokens(64)
-                .temperature(0.0)
-                .message(prompt)
-                .message(Message::Assistant {
-                    id: first_turn.message_id.clone(),
-                    content: first_turn.choice.clone(),
-                })
-                .send()
                 .await
                 .expect("follow-up citation history turn should succeed");
 

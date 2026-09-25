@@ -36,6 +36,7 @@ use crate::support::{
 };
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// The caller carries the `/v1` the `LLAMACPP` dialect's default base URL
 /// carries for them.
@@ -147,8 +148,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             let model = client.chat(CASSETTE_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request("Reply with the single word: ok")
+                    CompletionRequestBuilder::new("Reply with the single word: ok")
                         .max_tokens(256)
                         .build(),
                     None,
@@ -286,8 +286,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
             let model = client.chat(CASSETTE_MODEL);
-            let request = model
-                .completion_request(RAW_TEXT_RESPONSE_PROMPT)
+            let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .build();
             // One request, two views of the one reply: `raw` holds the

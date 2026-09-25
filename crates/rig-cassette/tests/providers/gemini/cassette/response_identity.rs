@@ -9,6 +9,7 @@ use rig::providers::gemini;
 use rig::streaming::StreamEvent;
 
 use super::super::support::with_gemini_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
@@ -17,8 +18,10 @@ async fn nonstreaming_request_id_is_none_by_design() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
+                    None,
+                )
                 .await
                 .expect("completion should succeed");
 
@@ -38,8 +41,11 @@ async fn streaming_request_id_is_none_by_design() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .build(),
+                    None,
+                )
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -135,8 +141,10 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
         |client| async move {
             let model = client.completion("gemini-nonexistent-model-for-identity-edge");
             let error = model
-                .completion_request("Never answered")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never answered").build(),
+                    None,
+                )
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
@@ -160,8 +168,10 @@ async fn auth_rejection_keeps_transport_shape() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let error = model
-                .completion_request("Never authenticated")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never authenticated").build(),
+                    None,
+                )
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(

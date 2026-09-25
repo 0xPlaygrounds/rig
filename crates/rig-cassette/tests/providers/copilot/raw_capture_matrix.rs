@@ -47,9 +47,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_capture_matrix/`.
 
-use rig::driver::Model;
 use rig::providers::copilot;
-use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
@@ -60,16 +58,15 @@ use crate::cassettes::recorded_json_turn;
 use crate::copilot::with_copilot_cassette_result;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion, chat, responses};
 use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
 const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &Model<CopilotWire, rig::http_client::BoxedHttpClient>,
-) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(64).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
 }
 
 /// Chat-route premise: the recorded body is a chat-completions response with
@@ -162,7 +159,7 @@ async fn chat_raw_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
-            capture_completion(model, request, sink).await
+            capture_completion(model, request(), sink).await
         },
     )
     .await
@@ -206,7 +203,7 @@ async fn chat_raw_exposes_system_fingerprint() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_raw_exposes_system_fingerprint",
         |client| async move {
-            capture_completion(client.completion(CHAT_MODEL), request, sink).await
+            capture_completion(client.completion(CHAT_MODEL), request(), sink).await
         },
     )
     .await
@@ -243,7 +240,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(CHAT_MODEL), request, sink).await
+            capture_completion(client.completion(CHAT_MODEL), request(), sink).await
         },
     )
     .await
@@ -292,7 +289,7 @@ async fn responses_raw_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
-            capture_completion(model, request, sink).await
+            capture_completion(model, request(), sink).await
         },
     )
     .await
@@ -329,7 +326,7 @@ async fn responses_raw_exposes_envelope() {
     with_copilot_cassette_result(
         "raw_capture_matrix/responses_raw_exposes_envelope",
         |client| async move {
-            capture_completion(client.completion(RESPONSES_MODEL), request, sink).await
+            capture_completion(client.completion(RESPONSES_MODEL), request(), sink).await
         },
     )
     .await
@@ -365,7 +362,7 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
     with_copilot_cassette_result(
         "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(RESPONSES_MODEL), request, sink).await
+            capture_completion(client.completion(RESPONSES_MODEL), request(), sink).await
         },
     )
     .await

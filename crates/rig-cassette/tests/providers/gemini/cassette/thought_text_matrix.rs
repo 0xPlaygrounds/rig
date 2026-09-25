@@ -112,6 +112,7 @@ use super::super::support::{
     with_gemini_thought_text_cassette,
 };
 use crate::support::AUDIO_FIXTURE_PATH;
+use rig::completion::CompletionRequestBuilder;
 
 /// The sentence spoken in `tests/data/en-us-natural-speech.mp3`, as recorded
 /// by this matrix's own fixtures.
@@ -222,7 +223,7 @@ async fn transcription_body(
     expected_words: Option<&'static str>,
 ) {
     let model = client.transcription(model_id);
-    let mut request = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
+    let mut request = TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)
         .expect("audio fixture should load");
     if let Some(params) = params {
         request = request.additional_params(params);
@@ -231,7 +232,10 @@ async fn transcription_body(
         request = request.temperature(temperature);
     }
 
-    let response = request.send().await.expect("transcription should succeed");
+    let response = model
+        .call(request.build(), None)
+        .await
+        .expect("transcription should succeed");
     let raw: GenerateContentResponse = serde_json::from_value(response.raw.clone())
         .expect("raw payload should round-trip to Gemini's own response type");
     let (visible, thoughts) = split_parts(&raw);
@@ -448,7 +452,7 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
     } = cell;
 
     let model = client.completion(model_id);
-    let mut request = model.completion_request(prompt).temperature(0.0);
+    let mut request = CompletionRequestBuilder::new(prompt).temperature(0.0);
     if let Some(preamble) = preamble {
         request = request.preamble(preamble.to_string());
     }
@@ -726,8 +730,7 @@ async fn text_response_on_a_tool_call_turn() {
         "thought_text_matrix/text_response_on_a_tool_call_turn",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("What is 41 plus 1? Use the add tool.")
+            let request = CompletionRequestBuilder::new("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
                 .max_tokens(2000)
                 .tools(vec![rig::completion::ToolDefinition {
@@ -829,17 +832,18 @@ async fn text_response_across_two_candidates() {
         "thought_text_matrix/text_response_across_two_candidates",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Name one primary colour. Answer with the single word.")
-                .temperature(0.0)
-                .max_tokens(400)
-                .additional_params(json!({
-                    "generationConfig": {
-                        "candidateCount": 2,
-                        "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
-                    }
-                }))
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Name one primary colour. Answer with the single word.",
+            )
+            .temperature(0.0)
+            .max_tokens(400)
+            .additional_params(json!({
+                "generationConfig": {
+                    "candidateCount": 2,
+                    "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
+                }
+            }))
+            .build();
 
             let response = model
                 .call(request, None)
@@ -920,14 +924,13 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             // A budget large enough to start thinking and far too small to answer:
             // the turn truncates with reasoning and no visible text.
-            let request = model
-                .completion_request(
-                    "Prove rigorously, with full detail, that there are infinitely many primes.",
-                )
-                .temperature(0.0)
-                .max_tokens(64)
-                .additional_params(completion_thinking(512, true))
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Prove rigorously, with full detail, that there are infinitely many primes.",
+            )
+            .temperature(0.0)
+            .max_tokens(64)
+            .additional_params(completion_thinking(512, true))
+            .build();
 
             let response = model
                 .call(request, None)
@@ -972,8 +975,7 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
         "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
                 .additional_params(completion_thinking(512, true))
@@ -1046,8 +1048,7 @@ async fn blocking_keeps_a_trailing_thought_signature() {
         "thought_text_matrix/blocking_keeps_a_trailing_thought_signature",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = model
-                .completion_request(SIGNATURE_PROMPT)
+            let request = CompletionRequestBuilder::new(SIGNATURE_PROMPT)
                 .temperature(0.0)
                 .max_tokens(1000)
                 .build();
@@ -1098,8 +1099,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
         "thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = model
-                .completion_request(SIGNATURE_PROMPT)
+            let request = CompletionRequestBuilder::new(SIGNATURE_PROMPT)
                 .temperature(0.0)
                 .max_tokens(1000)
                 .build();
@@ -1174,7 +1174,7 @@ mod unit {
             RecordingHttpClient::new(reply_with(parts, role).to_string()),
         )
         .completion("gemini-2.5-flash");
-        let request = model.completion_request("unit").build();
+        let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model
             .call(request, None)
             .await

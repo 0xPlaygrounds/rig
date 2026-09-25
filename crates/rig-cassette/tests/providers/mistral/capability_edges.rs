@@ -19,6 +19,7 @@ use futures::StreamExt;
 use rig::providers::mistral;
 
 use super::support::with_mistral_capability_cassette;
+use rig::completion::CompletionRequestBuilder;
 use rig::wire::Wire;
 
 /// One more than Mistral's real per-request cap, so a single un-chunked
@@ -130,12 +131,14 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
         "capability_edges/streaming_with_two_candidates_answers_from_the_first",
         |client| async move {
             let model = client.completion(mistral::MISTRAL_SMALL);
-            let mut stream: rig::streaming::CompletionStream = model
-                .completion_request("Say one random word.")
-                .temperature(1.0)
-                .max_tokens(8)
-                .additional_params(serde_json::json!({"n": 2}))
-                .stream()?;
+            let mut stream: rig::streaming::CompletionStream = model.stream(
+                CompletionRequestBuilder::new("Say one random word.")
+                    .temperature(1.0)
+                    .max_tokens(8)
+                    .additional_params(serde_json::json!({"n": 2}))
+                    .build(),
+                None,
+            )?;
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
@@ -238,8 +241,7 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
             let model = client.completion(mistral::MISTRAL_SMALL);
             let response = model
                 .call(
-                    model
-                        .completion_request("Add 2 and 3, then report the total.")
+                    CompletionRequestBuilder::new("Add 2 and 3, then report the total.")
                         .preamble("Use the add tool, then report the total.".to_string())
                         .messages(turn_one_history())
                         .tools(vec![add_tool_definition()])

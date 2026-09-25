@@ -44,11 +44,9 @@
 use rig::completion::{
     CompletionResponse as RigCompletionResponse, FinishReason, ResponseIdentity, Usage,
 };
-use rig::driver::Model;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
-use rig::providers::anthropic::wire::Messages;
 use rig::streaming::StreamFinal;
 use rig::tool::Tool;
 use rig_test_support::endpoint::Endpoint;
@@ -60,22 +58,22 @@ use super::super::support::{
 };
 use crate::raw_capture::capture_completion_pair;
 use crate::support::{Adder, Observed, TOOLS_PREAMBLE, collect_required_terminal};
+use rig::completion::CompletionRequestBuilder;
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: parity probe";
 const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool.";
 
-type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
-
-fn text_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model.completion_request(TEXT_PROMPT).max_tokens(32).build()
+fn text_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TEXT_PROMPT)
+        .max_tokens(32)
+        .build()
 }
 
 /// `tool_choice: required` (Anthropic `any`) so the turn is a `tool_use`
 /// terminal by construction, not by the model's mood.
-fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .preamble(TOOLS_PREAMBLE.to_string())
         .max_tokens(256)
         .tool(rig::tool::tool_definition(&Adder))
@@ -322,14 +320,14 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
 /// [`collect_required_terminal`].
 async fn capture_terminal_pair(
     client: Endpoint<Anthropic>,
-    build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
+    request: rig::completion::CompletionRequest,
     sink: Observed<(StreamFinal, StreamFinal)>,
 ) {
     let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
     let normalized = collect_required_terminal(
         model
-            .stream(build(&model), None)
+            .stream(request.clone(), None)
             .expect("`stream` should open"),
     )
     .await;
@@ -337,7 +335,7 @@ async fn capture_terminal_pair(
     // terminal record's `raw` — the provider's own record, serialized.
     let second_record = collect_required_terminal(
         model
-            .stream(build(&model), None)
+            .stream(request, None)
             .expect("second `stream` should open"),
     )
     .await;
@@ -383,7 +381,7 @@ async fn text_turn_parity() {
         move |client| async move {
             capture_completion_pair(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                text_request,
+                text_request(),
                 sink,
             )
             .await
@@ -407,7 +405,7 @@ async fn tool_call_turn_parity() {
         move |client| async move {
             capture_completion_pair(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                tool_request,
+                tool_request(),
                 sink,
             )
             .await
@@ -428,7 +426,7 @@ async fn streamed_text_turn_parity() {
     let sink = Observed::default();
     with_anthropic_cassette("raw_completion_parity_matrix/streamed_text_turn_parity", {
         let sink = sink.clone();
-        move |client| capture_terminal_pair(client, text_request, sink)
+        move |client| capture_terminal_pair(client, text_request(), sink)
     })
     .await;
     assert_streamed_parity(
@@ -446,7 +444,7 @@ async fn streamed_tool_call_turn_parity() {
         "raw_completion_parity_matrix/streamed_tool_call_turn_parity",
         {
             let sink = sink.clone();
-            move |client| capture_terminal_pair(client, tool_request, sink)
+            move |client| capture_terminal_pair(client, tool_request(), sink)
         },
     )
     .await;

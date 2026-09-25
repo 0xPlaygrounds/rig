@@ -65,6 +65,7 @@ use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 use crate::support::{Adder, EmptyArgs, OperationArgs, Subtract, zero_arg_tool_definition};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 const NO_THINK: &str = "/no_think ";
 
@@ -135,8 +136,7 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(format!("{NO_THINK}Ping the service."))
+                CompletionRequestBuilder::new(format!("{NO_THINK}Ping the service."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
                     .max_tokens(256)
@@ -261,8 +261,7 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
+                CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool(zero_arg_tool_definition("ping"))
@@ -309,14 +308,13 @@ async fn two_independent_calls_arrive_in_one_turn() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(format!(
-                        "{NO_THINK}Compute 2 + 3 and 10 - 4. Call both tools in this one turn."
-                    ))
-                    .tool(rig::tool::tool_definition(&Adder))
-                    .tool(rig::tool::tool_definition(&Subtract))
-                    .max_tokens(512)
-                    .build(),
+                CompletionRequestBuilder::new(format!(
+                    "{NO_THINK}Compute 2 + 3 and 10 - 4. Call both tools in this one turn."
+                ))
+                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Subtract))
+                .max_tokens(512)
+                .build(),
                 None,
             )
             .await
@@ -443,8 +441,7 @@ async fn tool_choice_auto_lets_the_model_decide() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
+                CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool_choice(ToolChoice::Auto)
@@ -485,8 +482,7 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
+                CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool_choice(ToolChoice::None)
@@ -567,8 +563,7 @@ async fn tool_choice_required_forces_a_call() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(format!("{NO_THINK}Hello there."))
+                CompletionRequestBuilder::new(format!("{NO_THINK}Hello there."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
                     .max_tokens(256)
@@ -625,8 +620,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 
     let error = model
         .call(
-            model
-                .completion_request(format!("{NO_THINK}Compute 2 + 3."))
+            CompletionRequestBuilder::new(format!("{NO_THINK}Compute 2 + 3."))
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
@@ -679,8 +673,7 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
 
     let error = model
         .stream(
-            model
-                .completion_request(format!("{NO_THINK}Compute 2 + 3."))
+            CompletionRequestBuilder::new(format!("{NO_THINK}Compute 2 + 3."))
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
@@ -712,32 +705,31 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(Message::User {
-                        content: vec![UserContent::ToolResult(ToolResult {
-                            call: ToolCallId::new_or_minted("call_text", 0),
-                            provider: ProviderCallId::new("call_text"),
-                            name: "lookup".to_string(),
-                            content: vec![ToolResultContent::text("the codeword is heliotrope")],
-                        })],
-                    })
-                    .preamble(
-                        "Answer using only the tool result you were given. \
+                CompletionRequestBuilder::new(Message::User {
+                    content: vec![UserContent::ToolResult(ToolResult {
+                        call: ToolCallId::new_or_minted("call_text", 0),
+                        provider: ProviderCallId::new("call_text"),
+                        name: "lookup".to_string(),
+                        content: vec![ToolResultContent::text("the codeword is heliotrope")],
+                    })],
+                })
+                .preamble(
+                    "Answer using only the tool result you were given. \
                          Repeat the codeword verbatim."
-                            .to_string(),
-                    )
-                    // A tool result answers a tool *call*: the history has to
-                    // carry the assistant turn that asked for it, or the chat
-                    // template renders an orphan tool message and the model
-                    // has nothing to answer.
-                    .messages(vec![
-                        Message::User {
-                            content: vec![UserContent::text("What is the codeword?")],
-                        },
-                        lookup_call_turn("call_text"),
-                    ])
-                    .max_tokens(512)
-                    .build(),
+                        .to_string(),
+                )
+                // A tool result answers a tool *call*: the history has to
+                // carry the assistant turn that asked for it, or the chat
+                // template renders an orphan tool message and the model
+                // has nothing to answer.
+                .messages(vec![
+                    Message::User {
+                        content: vec![UserContent::text("What is the codeword?")],
+                    },
+                    lookup_call_turn("call_text"),
+                ])
+                .max_tokens(512)
+                .build(),
                 None,
             )
             .await
@@ -775,30 +767,29 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(Message::User {
-                        content: vec![UserContent::ToolResult(ToolResult {
-                            call: ToolCallId::new_or_minted("call_json", 0),
-                            provider: ProviderCallId::new("call_json"),
-                            name: "lookup".to_string(),
-                            content: vec![ToolResultContent::text(
-                                json!({ "codeword": "heliotrope", "confidence": 0.99 }).to_string(),
-                            )],
-                        })],
-                    })
-                    .preamble(
-                        "Answer using only the JSON tool result you were given. \
+                CompletionRequestBuilder::new(Message::User {
+                    content: vec![UserContent::ToolResult(ToolResult {
+                        call: ToolCallId::new_or_minted("call_json", 0),
+                        provider: ProviderCallId::new("call_json"),
+                        name: "lookup".to_string(),
+                        content: vec![ToolResultContent::text(
+                            json!({ "codeword": "heliotrope", "confidence": 0.99 }).to_string(),
+                        )],
+                    })],
+                })
+                .preamble(
+                    "Answer using only the JSON tool result you were given. \
                          Report the codeword verbatim."
-                            .to_string(),
-                    )
-                    .messages(vec![
-                        Message::User {
-                            content: vec![UserContent::text("What is the codeword?")],
-                        },
-                        lookup_call_turn("call_json"),
-                    ])
-                    .max_tokens(512)
-                    .build(),
+                        .to_string(),
+                )
+                .messages(vec![
+                    Message::User {
+                        content: vec![UserContent::text("What is the codeword?")],
+                    },
+                    lookup_call_turn("call_json"),
+                ])
+                .max_tokens(512)
+                .build(),
                 None,
             )
             .await

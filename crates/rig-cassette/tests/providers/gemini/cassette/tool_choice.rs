@@ -9,6 +9,7 @@ use crate::support::{
     Adder, Subtract, assert_mentions_expected_number, collect_raw_stream_observation,
     collect_stream_observation,
 };
+use rig::completion::CompletionRequestBuilder;
 
 fn specific_add_choice() -> ToolChoice {
     ToolChoice::Specific {
@@ -51,15 +52,14 @@ async fn specific_add_raw_streaming_allows_only_add() {
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-                )
-                .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
-                .tool_choice(specific_add_choice())
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+            )
+            .temperature(0.0)
+            .tool(rig::tool::tool_definition(&Adder))
+            .tool(rig::tool::tool_definition(&Subtract))
+            .tool_choice(specific_add_choice())
+            .build();
             let stream = model.stream(request, None).expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 
@@ -105,14 +105,17 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let response = model
-                .completion_request(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+                .call(
+                    CompletionRequestBuilder::new(
+                        "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+                    )
+                    .temperature(0.0)
+                    .tool(rig::tool::tool_definition(&Adder))
+                    .tool(rig::tool::tool_definition(&Subtract))
+                    .tool_choice(specific_add_choice())
+                    .build(),
+                    None,
                 )
-                .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
-                .tool_choice(specific_add_choice())
-                .send()
                 .await
                 .expect("specific add raw completion should succeed");
 

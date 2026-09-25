@@ -33,6 +33,7 @@ use super::support::{
     BoundDeepSeek, recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_stream_logprobs_cassette_result,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -121,8 +122,7 @@ fn max_tokens(cell: Cell) -> u64 {
 
 async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.completion(MODEL);
-    let request = model
-        .completion_request(prompt(cell))
+    let request = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell))
         .build();

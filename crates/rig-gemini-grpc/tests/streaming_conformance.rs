@@ -68,7 +68,7 @@ fn driver() -> WireDriver {
                     Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
-            let request: CompletionRequest = CompletionRequestBuilder::unbound("hello").build();
+            let request: CompletionRequest = CompletionRequestBuilder::new("hello").build();
             let stream = Model::new(
                 GenerateContent::new("gemini-2.5-pro"),
                 Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),

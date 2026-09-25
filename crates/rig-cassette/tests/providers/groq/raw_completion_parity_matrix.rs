@@ -51,18 +51,14 @@ use super::support::with_groq_cassette_result;
 use crate::cassettes::{recorded_json_turns, recorded_response_header};
 use crate::raw_capture::{capture_completion, capture_completion_pair, chat};
 use crate::support::{Observed, assert_matches_recorded_token};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
 }
 
 /// The `x-request-id` the recorded interaction at `index` carried — the
@@ -140,7 +136,11 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
     with_groq_cassette_result(
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
         |client| {
-            capture_completion_pair(client.completion(RAW_CAPTURE_MODEL), request, sink.clone())
+            capture_completion_pair(
+                client.completion(RAW_CAPTURE_MODEL),
+                request(),
+                sink.clone(),
+            )
         },
     )
     .await
@@ -193,7 +193,13 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
     let sink = Observed::default();
     with_groq_cassette_result(
         "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id",
-        |client| capture_completion(client.completion(RAW_CAPTURE_MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                client.completion(RAW_CAPTURE_MODEL),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("plain_raw_completion_lacks_request_id should replay from its cassette");

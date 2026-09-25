@@ -14,6 +14,7 @@ use crate::support::{
     assistant_text_response, collect_raw_stream_observation, collect_stream_observation,
     zero_arg_tool_definition,
 };
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn completions_api_agent_prompt() {
@@ -43,8 +44,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request(RAW_TEXT_RESPONSE_PROMPT)
+            let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .build();
 
@@ -117,8 +117,7 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
         "completions_api/completions_api_raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .build();
@@ -136,9 +135,9 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
         "completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request("Reply with exactly: cassette null tool calls ok")
-                .build();
+            let request =
+                CompletionRequestBuilder::new("Reply with exactly: cassette null tool calls ok")
+                    .build();
 
             let observation = collect_raw_stream_observation(
                 model
@@ -164,8 +163,7 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
         "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
@@ -220,11 +218,9 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
         "completions_api/completions_api_raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&AlphaSignal)).build();
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -254,14 +250,12 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-            let followup_request = model
-                .completion_request(
+            let followup_request = CompletionRequestBuilder::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
                 )
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+                .message(tool_result_message).build();
 
             let second_turn = collect_raw_stream_observation(
                 model

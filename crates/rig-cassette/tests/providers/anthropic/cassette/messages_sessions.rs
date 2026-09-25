@@ -11,7 +11,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{FinishReason, Message};
+use rig::completion::{CompletionRequestBuilder, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -270,12 +270,12 @@ async fn long_history_replay_nonstreaming() {
 
             // First turn: obtain a real tool_use so the follow-up can echo its
             // id back, the way a caller-owned history would.
-            let first_request = model
-                .completion_request("Look up the harbor label with the tool.")
-                .preamble(preamble.to_string())
-                .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let first_request =
+                CompletionRequestBuilder::new("Look up the harbor label with the tool.")
+                    .preamble(preamble.to_string())
+                    .max_tokens(1024)
+                    .tool(rig::tool::tool_definition(&AlphaSignal))
+                    .build();
             let first_response = model
                 .call(first_request, None)
                 .await
@@ -297,34 +297,33 @@ async fn long_history_replay_nonstreaming() {
             // Follow-up: replay a long client-owned history around that tool
             // roundtrip, including assistant text before the tool_use (in the
             // same assistant message) and assistant text after the result.
-            let request = model
-                .completion_request(
-                    "In one short sentence: what is my favorite color, and what was the \
+            let request = CompletionRequestBuilder::new(
+                "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
-                )
-                .preamble(preamble.to_string())
-                .max_tokens(1024)
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: vec![
-                        AssistantContent::text("Checking the harbor label now."),
-                        AssistantContent::ToolCall(tool_call.clone()),
-                    ],
-                })
-                .message(Message::from(UserContent::tool_result_for(
-                    tool_call.id.clone(),
-                    tool_call.provider.clone(),
-                    tool_call.function.name.clone(),
-                    vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-                )))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            )
+            .preamble(preamble.to_string())
+            .max_tokens(1024)
+            .message(Message::user(
+                "My favorite color is teal. Please remember it.",
+            ))
+            .message(Message::assistant("Noted - your favorite color is teal."))
+            .message(Message::user("Now look up the harbor label with the tool."))
+            .message(Message::Assistant {
+                id: None,
+                content: vec![
+                    AssistantContent::text("Checking the harbor label now."),
+                    AssistantContent::ToolCall(tool_call.clone()),
+                ],
+            })
+            .message(Message::from(UserContent::tool_result_for(
+                tool_call.id.clone(),
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
+                vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+            )))
+            .message(Message::assistant("The harbor label is crimson-harbor."))
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .build();
 
             let response = model
                 .call(request, None)

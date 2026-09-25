@@ -34,8 +34,6 @@
 
 use futures::StreamExt;
 use rig::completion::FinishReason;
-use rig::http_client::BoxedHttpClient;
-use rig::providers::gemini::interactions_api::Interactions;
 use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
@@ -43,23 +41,23 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 use super::super::support::with_gemini_interactions_cassette;
+use rig::completion::CompletionRequestBuilder;
+use rig::http_client::BoxedHttpClient;
+use rig::providers::gemini::interactions_api::Interactions;
 
 const PROVIDER: &str = "gemini";
 const MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
-/// The Interactions wire bound to the bundled cassette transport. One Gemini
-/// config serves both surfaces, so the wrapper hands out the config and each
-/// cell names the surface it is about.
-type Model = rig::driver::Model<Interactions, BoxedHttpClient>;
-
-fn request(model: &Model) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).temperature(0.0).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .temperature(0.0)
+        .build()
 }
 
 /// Drain a model stream and return its single terminal record.
 async fn stream_to_terminal(
-    model: &Model,
+    model: &rig::driver::Model<Interactions, BoxedHttpClient>,
     request: rig::completion::CompletionRequest,
 ) -> StreamFinal {
     let mut stream = model.stream(request, None).expect("stream should open");
@@ -140,7 +138,7 @@ async fn raw_roundtrips_streaming_completion_response() {
         "interactions_raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
             let model = client.model(|config| config.interactions(MODEL));
-            let terminal = stream_to_terminal(&model, request(&model)).await;
+            let terminal = stream_to_terminal(&model, request()).await;
 
             let raw = &terminal.raw;
 
@@ -197,7 +195,7 @@ async fn raw_exposes_terminal_only_fields() {
         "interactions_raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
             let model = client.model(|config| config.interactions(MODEL));
-            let terminal = stream_to_terminal(&model, request(&model)).await;
+            let terminal = stream_to_terminal(&model, request()).await;
 
             let raw = &terminal.raw;
             *sink.lock().expect("observation lock") = Some(raw.clone());

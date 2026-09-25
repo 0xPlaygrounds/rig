@@ -19,6 +19,7 @@ use crate::support::{
 };
 
 use super::super::{TOOL_MODEL, support::with_openrouter_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
@@ -137,16 +138,14 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
             let model = client.completion(ENCRYPTED_REASONING_MODEL);
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
-            let request = model
-                .completion_request(crate::reasoning::TOOL_USER_PROMPT)
+            let request = CompletionRequestBuilder::new(crate::reasoning::TOOL_USER_PROMPT)
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition)
                 .additional_params(serde_json::json!({
                     "reasoning": { "effort": "high" },
                     "include_reasoning": true
-                }))
-                .build();
+                })).build();
 
             let mut stream = model.stream(request, None).expect("stream should start");
             let observation = observe_stream(&mut stream).await;
@@ -213,13 +212,11 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 "include_reasoning": true
             });
 
-            let request = model
-                .completion_request(crate::reasoning::TOOL_USER_PROMPT)
+            let request = CompletionRequestBuilder::new(crate::reasoning::TOOL_USER_PROMPT)
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition.clone())
-                .additional_params(reasoning_params.clone())
-                .build();
+                .additional_params(reasoning_params.clone()).build();
 
             let mut stream = model.stream(request, None).expect("stream should start");
             let first_turn = observe_stream(&mut stream).await;
@@ -257,15 +254,13 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
         )],
     };
 
-            let followup = model
-                .completion_request("Summarize the weather using the tool result.")
+            let followup = CompletionRequestBuilder::new("Summarize the weather using the tool result.")
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition)
                 .additional_params(reasoning_params)
                 .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+                .message(tool_result_message).build();
 
             let mut followup_stream = model
                 .stream(followup, None)
@@ -292,8 +287,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
             let model = client.completion(TOOL_MODEL);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
@@ -321,11 +315,9 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
             let model = client.completion(TOOL_MODEL);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&AlphaSignal)).build();
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -354,14 +346,12 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-            let followup_request = model
-                .completion_request(
+            let followup_request = CompletionRequestBuilder::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
                 )
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+                .message(tool_result_message).build();
 
             let second_turn = collect_raw_stream_observation(
                 model

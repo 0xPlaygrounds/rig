@@ -7,6 +7,7 @@ use rig::providers::openai;
 use rig::streaming::StreamEvent;
 
 use super::super::support::{with_openai_cassette, with_openai_completions_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 fn assert_request_id(id: Option<&str>, context: &str) {
     assert!(
@@ -23,8 +24,10 @@ async fn responses_nonstreaming_carries_identity() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
+                    None,
+                )
                 .await
                 .expect("completion should succeed");
 
@@ -52,8 +55,11 @@ async fn responses_streaming_carries_identity() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .build(),
+                    None,
+                )
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -80,8 +86,10 @@ async fn chat_completions_nonstreaming_carries_identity() {
         |client| async move {
             let model = client.chat(openai::GPT_4O);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
+                    None,
+                )
                 .await
                 .expect("completion should succeed");
 
@@ -106,8 +114,11 @@ async fn chat_completions_streaming_carries_identity() {
         |client| async move {
             let model = client.chat(openai::GPT_4O);
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .build(),
+                    None,
+                )
                 .expect("stream should open");
 
             let mut terminal = None;

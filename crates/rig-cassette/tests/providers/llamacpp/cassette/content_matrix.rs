@@ -40,6 +40,7 @@ use crate::cassettes::{
 use crate::support::{assistant_text_response, collect_stream_final_response};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 const NO_THINK: &str = "/no_think ";
 
@@ -65,16 +66,17 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
             let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .call(
-                    model
-                        .completion_request("Reply with exactly this and nothing else: STOPWORD")
-                        .max_tokens(64)
-                        // Qwen3 opens every turn with a `<think>` block, so
-                        // this matches the model's very first emitted token
-                        // and the whole answer is consumed before a character
-                        // of it exists. A stop sequence matching the *answer*
-                        // would still leave the reasoning preamble behind.
-                        .additional_params(json!({ "stop": ["<think>"] }))
-                        .build(),
+                    CompletionRequestBuilder::new(
+                        "Reply with exactly this and nothing else: STOPWORD",
+                    )
+                    .max_tokens(64)
+                    // Qwen3 opens every turn with a `<think>` block, so
+                    // this matches the model's very first emitted token
+                    // and the whole answer is consumed before a character
+                    // of it exists. A stop sequence matching the *answer*
+                    // would still leave the reasoning preamble behind.
+                    .additional_params(json!({ "stop": ["<think>"] }))
+                    .build(),
                     None,
                 )
                 .await
@@ -138,18 +140,19 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request(format!("{NO_THINK}What was the second word I said?"))
-                        .messages(vec![
-                            Message::User {
-                                content: vec![UserContent::text("First word: heliotrope.")],
-                            },
-                            Message::User {
-                                content: vec![UserContent::text("Second word: quicksilver.")],
-                            },
-                        ])
-                        .max_tokens(256)
-                        .build(),
+                    CompletionRequestBuilder::new(format!(
+                        "{NO_THINK}What was the second word I said?"
+                    ))
+                    .messages(vec![
+                        Message::User {
+                            content: vec![UserContent::text("First word: heliotrope.")],
+                        },
+                        Message::User {
+                            content: vec![UserContent::text("Second word: quicksilver.")],
+                        },
+                    ])
+                    .max_tokens(256)
+                    .build(),
                     None,
                 )
                 .await
@@ -271,36 +274,32 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![UserContent::ToolResult(ToolResult {
-                                call: ToolCallId::new_or_minted("call_long", 0),
-                                provider: ProviderCallId::new("call_long"),
-                                name: "dump".to_string(),
-                                content: vec![ToolResultContent::text(long_output)],
-                            })],
-                        })
-                        .preamble(
-                            "The tool result ends with a code. Reply with only that code."
-                                .to_string(),
-                        )
-                        .messages(vec![
-                            Message::User {
-                                content: vec![UserContent::text(
-                                    "What code does the dump end with?",
-                                )],
-                            },
-                            Message::Assistant {
-                                id: None,
-                                content: vec![AssistantContent::tool_call(
-                                    "call_long",
-                                    "dump",
-                                    json!({}),
-                                )],
-                            },
-                        ])
-                        .max_tokens(256)
-                        .build(),
+                    CompletionRequestBuilder::new(Message::User {
+                        content: vec![UserContent::ToolResult(ToolResult {
+                            call: ToolCallId::new_or_minted("call_long", 0),
+                            provider: ProviderCallId::new("call_long"),
+                            name: "dump".to_string(),
+                            content: vec![ToolResultContent::text(long_output)],
+                        })],
+                    })
+                    .preamble(
+                        "The tool result ends with a code. Reply with only that code.".to_string(),
+                    )
+                    .messages(vec![
+                        Message::User {
+                            content: vec![UserContent::text("What code does the dump end with?")],
+                        },
+                        Message::Assistant {
+                            id: None,
+                            content: vec![AssistantContent::tool_call(
+                                "call_long",
+                                "dump",
+                                json!({}),
+                            )],
+                        },
+                    ])
+                    .max_tokens(256)
+                    .build(),
                     None,
                 )
                 .await
@@ -335,8 +334,7 @@ async fn a_system_message_plus_history_keeps_its_order() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(format!("{NO_THINK}And what was the first one?"))
+                CompletionRequestBuilder::new(format!("{NO_THINK}And what was the first one?"))
                     .preamble(
                         "You are a ledger. Answer with the requested codeword only.".to_string(),
                     )

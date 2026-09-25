@@ -16,6 +16,7 @@ use serde::Deserialize;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn strict_tools_opt_in_roundtrip() {
@@ -29,8 +30,7 @@ async fn strict_tools_opt_in_roundtrip() {
                 client.openai.completion(openai::GPT_4O),
                 |wire| wire.with_strict_tools(),
             );
-            let request = model
-                .completion_request("Use the add tool to add 7 and 5.")
+            let request = CompletionRequestBuilder::new("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
                 .build();
@@ -80,13 +80,12 @@ async fn incomplete_response_surfaces_partial_output() {
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
-            let request = model
-                .completion_request(
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-                .preamble("You are a storyteller.".to_string())
-                .max_tokens(16)
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.".to_string())
+            .max_tokens(16)
+            .build();
 
             // The cassette records a single interaction, and one call yields
             // both views of it: the normalized response, and the provider's

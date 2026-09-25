@@ -1,6 +1,7 @@
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::image::{AMAZON_NOVA_CANVAS, Images};
 use rig_core::Model;
+use rig_core::image_generation::ImageGenerationRequestBuilder;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -12,10 +13,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let image_generation_model =
         Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env()?);
     let response = image_generation_model
-        .image_generation_request("A castle sitting upon a large mountain, overlooking the water.")
-        .width(512)
-        .height(512)
-        .send()
+        .call(
+            ImageGenerationRequestBuilder::new(
+                "A castle sitting upon a large mountain, overlooking the water.",
+            )
+            .width(512)
+            .height(512)
+            .build(),
+            None,
+        )
         .await?;
 
     // save image

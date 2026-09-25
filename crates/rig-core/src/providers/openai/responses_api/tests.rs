@@ -267,7 +267,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
         MockStreamEvent::text("answer"),
         MockStreamEvent::final_response_with_default_usage(),
     ]]);
-    let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
+    let request = CompletionRequestBuilder::new("hi").build();
     let mut stream = model.stream(request, None).expect("mock stream");
     while stream.next().await.is_some() {}
     let choice = stream.folded().snapshot();
@@ -803,7 +803,7 @@ fn responses_request_drops_whitespace_only_preamble() {
 
 #[test]
 fn responses_request_lifts_system_messages_to_top_level_instructions_by_default() {
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello")
+    let request = CompletionRequestBuilder::new("Hello")
         .preamble("System one".to_string())
         .message(completion::Message::system("System two"))
         .build();
@@ -866,7 +866,7 @@ fn responses_wire_can_lift_all_system_messages_via_placement() {
     let wire = openai_wire("gpt-4o-mini")
         .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "again")
+    let request = CompletionRequestBuilder::new("again")
         .preamble("System one".to_string())
         .message(completion::Message::user("hi"))
         .message(completion::Message::system("Mid-conversation instruction"))
@@ -1166,7 +1166,7 @@ fn completion_response_round_trips_echoed_metadata() {
 
 #[test]
 fn responses_request_keeps_documents_after_lifted_system_messages() {
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
+    let request = CompletionRequestBuilder::new("Prompt")
         .message(completion::Message::system("System prompt"))
         .message(completion::Message::user("Earlier user turn"))
         .message(completion::Message::assistant("Earlier assistant turn"))
@@ -2271,7 +2271,7 @@ async fn responses_completion_http_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
     let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
     let model = crate::driver::Model::new(openai_wire("gpt-4o-mini"), http_client);
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
         .call(request, None)
@@ -2762,7 +2762,7 @@ mod raw_capture {
         );
 
         let response = model
-            .call(model.completion_request("hello").build(), None)
+            .call(CompletionRequestBuilder::new("hello").build(), None)
             .await
             .expect("completion");
 

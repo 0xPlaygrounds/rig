@@ -48,6 +48,7 @@ use crate::cache_conformance::{
 use crate::cassettes::recorded_statuses_and_bodies;
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// llama.cpp's cache, as a descriptor.
 ///
@@ -197,8 +198,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
             // Warm the slot.
             let warm = model
                 .call(
-                    model
-                        .completion_request(probe.prompt)
+                    CompletionRequestBuilder::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
@@ -211,8 +211,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 
             let second = model
                 .call(
-                    model
-                        .completion_request(probe.prompt)
+                    CompletionRequestBuilder::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
@@ -229,8 +228,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 
             let disabled = model
                 .call(
-                    model
-                        .completion_request(probe.prompt)
+                    CompletionRequestBuilder::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
@@ -249,8 +247,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 
             let after = model
                 .call(
-                    model
-                        .completion_request(probe.prompt)
+                    CompletionRequestBuilder::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)

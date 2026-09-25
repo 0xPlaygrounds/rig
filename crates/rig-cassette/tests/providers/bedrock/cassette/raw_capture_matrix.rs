@@ -66,16 +66,14 @@ use super::super::support::with_bedrock_cassette;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request<T: Transport<Converse>>(
-    model: &Model<Converse, T>,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -142,7 +140,7 @@ async fn raw_round_trips_provider_type() {
     with_bedrock_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
+            capture_completion(client.completion(MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -177,7 +175,7 @@ async fn raw_exposes_latency_metrics() {
     with_bedrock_cassette(
         "raw_capture_matrix/raw_exposes_latency_metrics",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
+            capture_completion(client.completion(MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -232,7 +230,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_bedrock_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
+            capture_completion(client.completion(MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -247,7 +245,7 @@ async fn normalized_fields_equal_raw_renormalized() {
         .expect("raw must deserialize into InternalConverseOutput");
     let replay = Model::new(Converse::new(MODEL), Reply(stored));
     let from_raw: RigCompletionResponse = replay
-        .call(request(&replay), None)
+        .call(request(), None)
         .await
         .expect("raw must normalize");
     let from_raw = from_raw.with_optional_provider_request_id(response.provider_request_id.clone());

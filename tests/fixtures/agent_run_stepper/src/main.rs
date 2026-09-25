@@ -216,7 +216,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let executable = prepared.executable_tool_names.clone();
                 let allowed = prepared.allowed_tool_names.clone();
                 let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
+                    .apply(CompletionRequestBuilder::new(prompt))
                     .build();
                 let response = drive(model.complete(request, None), &mut driver)?;
                 model_calls += 1;

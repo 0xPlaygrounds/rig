@@ -67,6 +67,7 @@ use crate::support::{
     Adder, Observed, STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assistant_text,
     json_contains_key, normalized_without_raw,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "gemini";
 
@@ -78,26 +79,17 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: capture
 /// A prompt the forced-tool cell can only satisfy by calling `add`.
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).temperature(0.0).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .temperature(0.0)
+        .build()
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded turn is a `functionCall` part.
-fn forced_tool_request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn forced_tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .temperature(0.0)
         .tool(rig::tool::tool_definition(&Adder))
         .tool_choice(ToolChoice::Specific {
@@ -109,14 +101,8 @@ fn forced_tool_request<
 /// The structured-output request: rig maps `output_schema` onto
 /// `generationConfig.responseMimeType: application/json` +
 /// `responseJsonSchema`, Gemini's native structured-output controls.
-fn structured_output_request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(STRUCTURED_OUTPUT_PROMPT)
+fn structured_output_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(STRUCTURED_OUTPUT_PROMPT)
         .temperature(0.0)
         .output_schema(schemars::schema_for!(SmokeStructuredOutput))
         .build()
@@ -241,7 +227,7 @@ async fn raw_roundtrips_generate_content_response() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_roundtrips_generate_content_response",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
+            capture_completion(client.completion(MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -315,7 +301,7 @@ async fn raw_exposes_prompt_tokens_details() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_prompt_tokens_details",
         |client| async move {
-            capture_completion(client.completion(MODEL), request, sink)
+            capture_completion(client.completion(MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -366,7 +352,7 @@ async fn raw_exposes_forced_function_call() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_forced_function_call",
         |client| async move {
-            capture_completion(client.completion(MODEL), forced_tool_request, sink)
+            capture_completion(client.completion(MODEL), forced_tool_request(), sink)
                 .await
                 .expect("forced tool completion should succeed");
         },
@@ -477,7 +463,7 @@ async fn raw_exposes_structured_output_turn() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_structured_output_turn",
         |client| async move {
-            capture_completion(client.completion(MODEL), structured_output_request, sink)
+            capture_completion(client.completion(MODEL), structured_output_request(), sink)
                 .await
                 .expect("structured output completion should succeed");
         },

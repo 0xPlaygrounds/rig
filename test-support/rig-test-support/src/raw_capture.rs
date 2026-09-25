@@ -39,18 +39,17 @@ use crate::support::{
 
 /// Run one recorded blocking turn and park the response it produced.
 ///
-/// `build` is the cell's own request builder, so the prompt, the model and
-/// every parameter stay visible at the call site.
+/// `request` is built at the call site, so the prompt and every parameter
+/// stay visible there.
 pub async fn capture_completion<W, T>(
     model: rig_core::driver::Model<W, T>,
-    build: impl FnOnce(&rig_core::driver::Model<W, T>) -> CompletionRequest,
+    request: CompletionRequest,
     sink: Observed<CompletionResponse>,
 ) -> Result<(), ProviderError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let request = build(&model);
     sink.put(model.call(request, None).await?);
     Ok(())
 }
@@ -64,15 +63,15 @@ where
 /// compared with interaction 0 and interaction 1 respectively.
 pub async fn capture_completion_pair<W, T>(
     model: rig_core::driver::Model<W, T>,
-    build: impl Fn(&rig_core::driver::Model<W, T>) -> CompletionRequest,
+    request: CompletionRequest,
     sink: Observed<(CompletionResponse, CompletionResponse)>,
 ) -> Result<(), ProviderError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let first = model.call(build(&model), None).await?;
-    let second = model.call(build(&model), None).await?;
+    let first = model.call(request.clone(), None).await?;
+    let second = model.call(request, None).await?;
     sink.put((first, second));
     Ok(())
 }
@@ -81,14 +80,13 @@ where
 /// record the stream must have ended with.
 pub async fn capture_text_and_terminal<W, T>(
     model: rig_core::driver::Model<W, T>,
-    build: impl FnOnce(&rig_core::driver::Model<W, T>) -> CompletionRequest,
+    request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
 ) -> Result<(), ProviderError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let request = build(&model);
     let (text, terminal) = collect_text_and_terminal(model.stream(request, None)?).await;
     sink.put((
         text,
@@ -105,14 +103,13 @@ where
 /// terminal record uses [`capture_sole_terminal`] instead.
 pub async fn capture_terminal<W, T>(
     model: rig_core::driver::Model<W, T>,
-    build: impl FnOnce(&rig_core::driver::Model<W, T>) -> CompletionRequest,
+    request: CompletionRequest,
     sink: Observed<StreamFinal>,
 ) -> Result<(), ProviderError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let request = build(&model);
     sink.put(collect_required_terminal(model.stream(request, None)?).await);
     Ok(())
 }
@@ -121,14 +118,13 @@ where
 /// the stream emitted none or more than one.
 pub async fn capture_sole_terminal<W, T>(
     model: rig_core::driver::Model<W, T>,
-    build: impl FnOnce(&rig_core::driver::Model<W, T>) -> CompletionRequest,
+    request: CompletionRequest,
     sink: Observed<StreamFinal>,
 ) -> Result<(), ProviderError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let request = build(&model);
     sink.put(collect_sole_terminal(model.stream(request, None)?).await);
     Ok(())
 }
@@ -142,14 +138,13 @@ where
 /// text.
 pub async fn capture_text_and_sole_terminal<W, T>(
     model: rig_core::driver::Model<W, T>,
-    build: impl FnOnce(&rig_core::driver::Model<W, T>) -> CompletionRequest,
+    request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
 ) -> Result<(), ProviderError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
     T: rig_core::driver::Transport<W>,
 {
-    let request = build(&model);
     sink.put(collect_text_and_sole_terminal(model.stream(request, None)?).await);
     Ok(())
 }

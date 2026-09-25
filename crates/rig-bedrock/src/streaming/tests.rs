@@ -40,7 +40,7 @@ impl Transport<Converse> for Scripted {
 
 /// The stream `model`'s Converse endpoint yields for scripted `events`.
 fn stream_of(model: &str, events: Vec<aws_bedrock::ConverseStreamOutput>) -> CompletionStream {
-    let request = rig_core::completion::CompletionRequestBuilder::unbound("hi").build();
+    let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
     Model::new(
         Converse::new(model),
         Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
@@ -949,7 +949,7 @@ async fn a_converse_stream_whose_send_fails_reports_it_in_band() {
         .build();
     let runtime =
         crate::client::BedrockRuntime::from(aws_sdk_bedrockruntime::Client::from_conf(config));
-    let request = rig_core::completion::CompletionRequestBuilder::unbound("hi").build();
+    let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
     let mut stream = Model::new(Converse::new("amazon.nova-lite-v1:0"), runtime)
         .stream(request, None)
         .expect("opening a stream sends nothing");

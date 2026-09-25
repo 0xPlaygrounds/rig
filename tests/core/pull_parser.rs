@@ -1,6 +1,7 @@
 //! Migrated completion adapters preserve recorded parser output under direct polling.
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
+use rig::completion::CompletionRequestBuilder;
 use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
     http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
@@ -108,8 +109,7 @@ where
     W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
     T: rig::driver::Transport<W>,
 {
-    let request = model
-        .completion_request("response parsing probe")
+    let request = CompletionRequestBuilder::new("response parsing probe")
         .max_tokens(1024)
         .build();
     if direct {

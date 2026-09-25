@@ -29,7 +29,7 @@ impl Transport<GenerateContent> for Stored {
 fn complete(reply: GenerateContentResponse) -> Result<CompletionResponse, ProviderError> {
     futures::executor::block_on(
         Model::new(GenerateContent::new(GEMINI_2_5_FLASH), Stored(reply))
-            .call(CompletionRequestBuilder::unbound("hello").build(), None),
+            .call(CompletionRequestBuilder::new("hello").build(), None),
     )
 }
 

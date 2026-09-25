@@ -30,6 +30,7 @@
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+use rig::completion::CompletionRequestBuilder;
 use rig::message::{ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -176,11 +177,14 @@ async fn main() -> Result<()> {
             } => {
                 println!("\n→ model call #{turn}");
                 let response = model
-                    .completion_request(prompt)
-                    .messages(history)
-                    .preamble(preamble.to_string())
-                    .tools(tool_definitions.clone())
-                    .send()
+                    .call(
+                        CompletionRequestBuilder::new(prompt)
+                            .messages(history)
+                            .preamble(preamble.to_string())
+                            .tools(tool_definitions.clone())
+                            .build(),
+                        None,
+                    )
                     .await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()

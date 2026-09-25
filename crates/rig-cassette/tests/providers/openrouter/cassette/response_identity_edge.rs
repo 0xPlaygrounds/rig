@@ -9,6 +9,7 @@
 //! raised in PR #2313.
 
 use super::super::support::with_openrouter_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = "openai/gpt-5.2";
 
@@ -19,8 +20,10 @@ async fn blocking_contract_and_gateway_both_report_none() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
+                    None,
+                )
                 .await
                 .expect("completion should succeed");
             assert_eq!(
@@ -43,8 +46,11 @@ async fn streaming_contract_and_gateway_both_report_none() {
         |client| async move {
             let model = client.completion(MODEL);
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .build(),
+                    None,
+                )
                 .expect("stream should open");
             let mut terminal = None;
             while let Some(item) = stream.next().await {
@@ -70,8 +76,7 @@ async fn routed_failure_error_shape() {
         |client| async move {
             let model = client.completion("openai/gpt-nonexistent-routed-model");
             let error = model
-                .completion_request("Never routed")
-                .send()
+                .call(CompletionRequestBuilder::new("Never routed").build(), None)
                 .await
                 .expect_err("an unroutable model must fail");
             // Derived from the recording: OpenRouter answers a body-ful 4xx,

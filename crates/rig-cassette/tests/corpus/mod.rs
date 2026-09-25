@@ -1584,7 +1584,7 @@ impl Lookup {
         match self.nesting.child {
             NestedChild::Completion => {
                 let model: ModelHandle = dispatcher.handle(&self.model_key).expect("the model");
-                let mut request = CompletionRequestBuilder::unbound(args.q.as_str())
+                let mut request = CompletionRequestBuilder::new(args.q.as_str())
                     .preamble(NESTED_PREAMBLE.to_owned());
                 if !self.nesting.no_temperature {
                     request = request.temperature(0.0);
@@ -3711,7 +3711,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                     let executable = prepared.executable_tool_names.clone();
                     let allowed = prepared.allowed_tool_names.clone();
                     let request = prepared
-                        .apply(CompletionRequestBuilder::unbound(prompt))
+                        .apply(CompletionRequestBuilder::new(prompt))
                         .build();
                     // The completion-call hook's dispatch, before the completion.
                     if program.hooks.contains(&Hook::NoteAtCompletionCall) {

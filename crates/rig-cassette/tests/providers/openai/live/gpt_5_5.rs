@@ -21,6 +21,7 @@ use crate::support::{
     assert_contains_any_case_insensitive, assert_mentions_expected_number,
     assert_nonempty_response, assert_smoke_structured_output, collect_stream_final_response,
 };
+use rig::completion::CompletionRequestBuilder;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Gpt55Event {
@@ -492,9 +493,9 @@ async fn responses_websocket_smoke() -> anyhow::Result<()> {
     let model = client.responses(openai::GPT_5_5);
     let mut session = model.responses_websocket().await?;
 
-    let request = model
-        .completion_request("Explain one benefit of websocket mode in one sentence.")
-        .build();
+    let request =
+        CompletionRequestBuilder::new("Explain one benefit of websocket mode in one sentence.")
+            .build();
     session.send(request).await?;
 
     let mut streamed_text = String::new();

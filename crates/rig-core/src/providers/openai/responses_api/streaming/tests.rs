@@ -3,6 +3,7 @@ use super::{
     ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
     reasoning_from_done_item,
 };
+use crate::completion::CompletionRequestBuilder;
 use crate::driver::WireDriver;
 use crate::error::ProviderError;
 use crate::error::{ErrorKind, ErrorReport};
@@ -246,7 +247,7 @@ where
     H: crate::driver::Transport<crate::providers::openai::responses_api::wire::Responses>,
 {
     let model = crate::driver::Model::new(OpenAI::new("test-key").responses("gpt-5.4"), http);
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
     model.stream(request, None).expect("stream should start")
 }
 

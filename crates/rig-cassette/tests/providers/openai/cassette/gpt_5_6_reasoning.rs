@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Reply with exactly: OK";
 const FIVE_TURN_PROMPTS: [(&str, &str); 5] = [
@@ -69,8 +70,7 @@ async fn prompt_with_reasoning(
     CompletionResponse,
     openai::responses_api::CompletionResponse,
 ) {
-    let request = model
-        .completion_request(PROMPT)
+    let request = CompletionRequestBuilder::new(PROMPT)
         .additional_params(json!({ "reasoning": reasoning }))
         .build();
 
@@ -213,8 +213,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
-                let request = model
-                    .completion_request(user_message.clone())
+                let request = CompletionRequestBuilder::new(user_message.clone())
                     .messages(history)
                     .additional_params(json!({
                         "reasoning": {
@@ -325,8 +324,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
-                let request = model
-                    .completion_request(user_message.clone())
+                let request = CompletionRequestBuilder::new(user_message.clone())
                     .messages(history)
                     .additional_params(json!({
                         "reasoning": {
@@ -473,8 +471,7 @@ async fn streaming_reasoning_metadata() {
         "gpt_5_6_reasoning/streaming_metadata",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
-            let request = model
-                .completion_request(PROMPT)
+            let request = CompletionRequestBuilder::new(PROMPT)
                 .additional_params(json!({
                     "reasoning": {
                         "effort": "low",

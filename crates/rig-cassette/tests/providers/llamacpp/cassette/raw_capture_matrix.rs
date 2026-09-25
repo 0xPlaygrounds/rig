@@ -74,6 +74,7 @@ use super::super::cassette_support::*;
 use crate::cassettes::{CassetteMode, recorded_json_turn};
 use crate::raw_capture::{assert_no_request_id, assert_normalized_lacks, capture_completion, chat};
 use crate::support::{Observed, assert_wire_value_matches, assistant_text, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
@@ -81,13 +82,10 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 /// Qwen3 spends tokens on a reasoning trace before the one-word answer and the
 /// chat-completions route has no `think` switch, so the cap is generous
 /// enough that the turn stops on its own (`finish_reason: "stop"`).
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(1024).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .max_tokens(1024)
+        .build()
 }
 
 /// The premise every envelope cell rests on: the recorded body is a
@@ -125,7 +123,7 @@ async fn raw_reads_back_as_the_provider_type() {
     let sink = Observed::default();
     with_llamacpp_cassette_result(
         "raw_capture_matrix/raw_round_trips_provider_type",
-        |client| capture_completion(client.completion(CASSETTE_MODEL), request, sink.clone()),
+        |client| capture_completion(client.completion(CASSETTE_MODEL), request(), sink.clone()),
     )
     .await
     .expect("raw_round_trips_provider_type should replay from its cassette");
@@ -178,7 +176,7 @@ async fn raw_exposes_envelope_fields() {
     let scenario = "raw_capture_matrix/raw_exposes_envelope_fields";
     let sink = Observed::default();
     with_llamacpp_cassette_result("raw_capture_matrix/raw_exposes_envelope_fields", |client| {
-        capture_completion(client.completion(CASSETTE_MODEL), request, sink.clone())
+        capture_completion(client.completion(CASSETTE_MODEL), request(), sink.clone())
     })
     .await
     .expect("raw_exposes_envelope_fields should replay from its cassette");
@@ -231,7 +229,7 @@ async fn normalized_fields_match_the_typed_raw() {
     let sink = Observed::default();
     with_llamacpp_cassette_result(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
-        |client| capture_completion(client.completion(CASSETTE_MODEL), request, sink.clone()),
+        |client| capture_completion(client.completion(CASSETTE_MODEL), request(), sink.clone()),
     )
     .await
     .expect("normalized_fields_equal_raw_renormalized should replay from its cassette");
@@ -295,7 +293,7 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
     let scenario = "raw_capture_matrix/raw_preserves_timings";
     let sink = Observed::default();
     with_llamacpp_cassette_result("raw_capture_matrix/raw_preserves_timings", |client| {
-        capture_completion(client.completion(CASSETTE_MODEL), request, sink.clone())
+        capture_completion(client.completion(CASSETTE_MODEL), request(), sink.clone())
     })
     .await
     .expect("raw_preserves_timings should replay from its cassette");

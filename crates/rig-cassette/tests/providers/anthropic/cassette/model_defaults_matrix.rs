@@ -45,6 +45,7 @@ use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{assert_contains_any_case_insensitive, assistant_text_response};
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Reply with the single word OK.";
 const SYSTEM_ROLE_INSTRUCTION: &str = "For the rest of this conversation, answer in Spanish only.";
@@ -130,7 +131,7 @@ fn assert_recorded_system_role_hoisted(scenario: &str) {
 
 async fn assert_uncapped_turn(client: Endpoint<Anthropic>, model_id: &str) {
     let model = client.completion(model_id);
-    let request = model.completion_request(PROMPT).build();
+    let request = CompletionRequestBuilder::new(PROMPT).build();
     let response = model
         .call(request, None)
         .await
@@ -141,8 +142,7 @@ async fn assert_uncapped_turn(client: Endpoint<Anthropic>, model_id: &str) {
 
 async fn assert_mid_conversation_system_turn(client: Endpoint<Anthropic>, model_id: &str) {
     let model = client.completion(model_id);
-    let request = model
-        .completion_request(SKY_PROMPT)
+    let request = CompletionRequestBuilder::new(SKY_PROMPT)
         .messages([
             Message::user("Start a short language compliance check."),
             Message::system(SYSTEM_ROLE_INSTRUCTION),

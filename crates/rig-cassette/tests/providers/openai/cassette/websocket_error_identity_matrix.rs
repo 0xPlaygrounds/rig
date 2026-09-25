@@ -80,6 +80,7 @@ use rig::error::ProviderError;
 use rig::prelude::DefaultWebSocketClient as _;
 
 use super::super::support::with_openai_websocket_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 /// What a caller can actually learn from a failed connection — the three
 /// accessors the rig#2314/#2315 contract is written in terms of.
@@ -151,7 +152,7 @@ async fn handshake_rejection_matches_the_http_twin() {
 
             let http_error = model
                 .call(
-                    model.completion_request("Never authenticated").build(),
+                    CompletionRequestBuilder::new("Never authenticated").build(),
                     None,
                 )
                 .await

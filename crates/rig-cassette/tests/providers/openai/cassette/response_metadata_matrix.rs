@@ -48,6 +48,7 @@ use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::support::{
     REQUIRED_ZERO_ARG_TOOL_PROMPT, collect_raw_stream_observation, zero_arg_tool_definition,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const TOOL: &str = "ping";
 const PREAMBLE: &str = "Follow the tool-calling instructions exactly.";
@@ -100,8 +101,7 @@ fn assert_recorded_top_p_is_number(scenario: &str) {
 
 async fn assert_blocking_tool_call(client: OpenAiCassette) {
     let model = client.openai.completion(openai::GPT_4O_MINI);
-    let request = model
-        .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+    let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .preamble(PREAMBLE.to_string())
         .tool(zero_arg_tool_definition(TOOL))
         .build();
@@ -127,8 +127,7 @@ async fn assert_blocking_tool_call(client: OpenAiCassette) {
 
 async fn assert_streaming_terminal_usage(client: OpenAiCassette) {
     let model = client.openai.completion(openai::GPT_4O_MINI);
-    let request = model
-        .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+    let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .preamble(PREAMBLE.to_string())
         .tool(zero_arg_tool_definition(TOOL))
         .build();

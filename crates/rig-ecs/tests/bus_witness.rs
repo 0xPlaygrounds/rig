@@ -24,6 +24,7 @@ use bevy_ecs::prelude::*;
 use bus_support::*;
 use rig_cassette::ecs::EffectLogResource;
 use rig_cassette::effect_log::EffectLogRecorder;
+use rig_core::completion::CompletionRequestBuilder;
 use rig_core::test_utils::observations::{Comparison, compare};
 use rig_core::{
     effect::{EffectFamily, EffectId, EffectKind, Outcome},
@@ -139,7 +140,7 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
         rig_core::providers::gemini::Gemini::new("test-key").completion("test-model"),
         http.clone(),
     );
-    let request = model.completion_request("identical call").build();
+    let request = CompletionRequestBuilder::new("identical call").build();
     register(&mut app, "model", ModelAdapter::new("test-model", model));
     let operation = AdapterContext::new(log.clone(), Subject::default(), "logical-call");
     let mut entities = Vec::new();
@@ -1352,7 +1353,7 @@ fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
         rig_core::providers::gemini::Gemini::new("test-key").completion("test-model"),
         http,
     );
-    let request = model.completion_request("same pass").build();
+    let request = CompletionRequestBuilder::new("same pass").build();
     register(
         &mut app,
         "parent",

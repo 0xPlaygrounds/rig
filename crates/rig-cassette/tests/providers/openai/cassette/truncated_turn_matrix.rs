@@ -78,6 +78,7 @@ use serde_json::{Value, json};
 use super::super::support::with_openai_truncation_cassette;
 use crate::cassettes;
 use crate::support::{Adder, assistant_text_response, collect_text_and_terminal};
+use rig::completion::CompletionRequestBuilder;
 
 /// OpenAI's documented floor for the field, and far below what any reasoning
 /// model needs to say anything — so the whole budget goes to hidden reasoning
@@ -114,8 +115,7 @@ async fn chat_blocking_reasoning_budget_exhausted() {
         "truncated_turn_matrix/chat_blocking_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -141,8 +141,7 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
         "truncated_turn_matrix/chat_blocking_o4_mini_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("o4-mini");
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -168,8 +167,7 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
             // default effort this prompt yields partial *text* under the same
             // cap (cell 8's shape). Asking for high effort makes the reasoning
             // consume the whole budget, which is the shape this cell is about.
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .additional_params(json!({ "reasoning_effort": "high" }))
                 .build();
@@ -194,8 +192,7 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
         "truncated_turn_matrix/chat_blocking_usage_survives_the_empty_turn",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -223,8 +220,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
         "truncated_turn_matrix/chat_blocking_raw_and_normalized_agree",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -261,8 +257,7 @@ async fn chat_blocking_tools_present_budget_exhausted() {
         "truncated_turn_matrix/chat_blocking_tools_present_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request("What is 3 + 4? Use the add tool.")
+            let request = CompletionRequestBuilder::new("What is 3 + 4? Use the add tool.")
                 .max_tokens(TINY_CAP)
                 .tool(rig::tool::tool_definition(&Adder))
                 .build();
@@ -324,8 +319,7 @@ async fn chat_blocking_partial_text_truncation() {
         "truncated_turn_matrix/chat_blocking_partial_text_truncation",
         |client| async move {
             let model = client.openai.chat(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -355,8 +349,7 @@ async fn chat_streaming_reasoning_budget_exhausted() {
         "truncated_turn_matrix/chat_streaming_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -383,8 +376,7 @@ async fn chat_streaming_partial_text_truncation() {
         "truncated_turn_matrix/chat_streaming_partial_text_truncation",
         |client| async move {
             let model = client.openai.chat(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -416,8 +408,7 @@ async fn chat_transports_agree_on_truncation() {
 
             let blocking = model
                 .call(
-                    model
-                        .completion_request(LONG_PROMPT)
+                    CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
                     None,
@@ -427,8 +418,7 @@ async fn chat_transports_agree_on_truncation() {
 
             let stream = model
                 .stream(
-                    model
-                        .completion_request(LONG_PROMPT)
+                    CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
                     None,
@@ -461,7 +451,7 @@ async fn chat_blocking_completed_turn_is_unaffected() {
         "truncated_turn_matrix/chat_blocking_completed_turn_is_unaffected",
         |client| async move {
             let model = client.openai.chat(openai::GPT_4O_MINI);
-            let request = model.completion_request("Reply with the word OK.").build();
+            let request = CompletionRequestBuilder::new("Reply with the word OK.").build();
 
             let response = model.call(request, None).await.expect("completed turn");
 
@@ -486,8 +476,7 @@ async fn responses_blocking_reasoning_budget_exhausted() {
         "truncated_turn_matrix/responses_blocking_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.completion("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -509,8 +498,7 @@ async fn responses_streaming_reasoning_budget_exhausted() {
         "truncated_turn_matrix/responses_streaming_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.completion("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -536,8 +524,7 @@ async fn responses_blocking_partial_text_truncation() {
         "truncated_turn_matrix/responses_blocking_partial_text_truncation",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
 
@@ -567,8 +554,7 @@ async fn cross_surface_truncation_parity() {
             let responses_model = client.openai.completion("gpt-5-nano");
             let responses = responses_model
                 .call(
-                    responses_model
-                        .completion_request(LONG_PROMPT)
+                    CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
                     None,
@@ -579,8 +565,7 @@ async fn cross_surface_truncation_parity() {
             let chat_model = client.openai.chat("gpt-5-nano");
             let chat = chat_model
                 .call(
-                    chat_model
-                        .completion_request(LONG_PROMPT)
+                    CompletionRequestBuilder::new(LONG_PROMPT)
                         .max_tokens(TINY_CAP)
                         .build(),
                     None,

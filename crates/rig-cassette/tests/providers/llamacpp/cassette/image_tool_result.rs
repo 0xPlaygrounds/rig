@@ -19,6 +19,7 @@
 use rig::message::{ImageMediaType, ProviderCallId, ToolCallId, ToolResult, ToolResultContent};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// 16x16 solid magenta. Distinctive on purpose: "red" and "blue" are plausible
 /// blind guesses for "what colour is this image", so a cell using them could
@@ -77,19 +78,18 @@ async fn a_tool_result_image_is_read_by_the_model() {
         "image_tool_result/a_tool_result_image_is_read_by_the_model",
         |client| async move {
             let model = client.completion(VISION_MODEL);
-            let request = model
-                .completion_request(
-                    "Call view_file, then reply with ONLY the dominant colour name.",
-                )
-                .max_tokens(30)
-                .temperature(0.0)
-                .messages(vec![
-                    tool_call_turn(),
-                    rig::message::Message::User {
-                        content: vec![rig::message::UserContent::ToolResult(image_tool_result())],
-                    },
-                ])
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Call view_file, then reply with ONLY the dominant colour name.",
+            )
+            .max_tokens(30)
+            .temperature(0.0)
+            .messages(vec![
+                tool_call_turn(),
+                rig::message::Message::User {
+                    content: vec![rig::message::UserContent::ToolResult(image_tool_result())],
+                },
+            ])
+            .build();
 
             let response = model
                 .call(request, None)
@@ -117,22 +117,19 @@ async fn the_same_image_in_a_user_message_is_read_too() {
         "image_tool_result/the_same_image_in_a_user_message_is_read_too",
         |client| async move {
             let model = client.completion(VISION_MODEL);
-            let request = model
-                .completion_request(rig::message::Message::User {
-                    content: vec![
-                        rig::message::UserContent::text(
-                            "Reply with ONLY the dominant colour name.",
-                        ),
-                        rig::message::UserContent::image_base64(
-                            MAGENTA_PNG_BASE64,
-                            Some(ImageMediaType::PNG),
-                            None,
-                        ),
-                    ],
-                })
-                .max_tokens(30)
-                .temperature(0.0)
-                .build();
+            let request = CompletionRequestBuilder::new(rig::message::Message::User {
+                content: vec![
+                    rig::message::UserContent::text("Reply with ONLY the dominant colour name."),
+                    rig::message::UserContent::image_base64(
+                        MAGENTA_PNG_BASE64,
+                        Some(ImageMediaType::PNG),
+                        None,
+                    ),
+                ],
+            })
+            .max_tokens(30)
+            .temperature(0.0)
+            .build();
 
             let response = model
                 .call(request, None)

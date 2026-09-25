@@ -23,6 +23,7 @@ use rig::providers::mistral;
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response, collect_stream_final_response};
 
 use super::support::with_mistral_multimodal_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 /// Vision-capable and the model every other Mistral fixture already uses.
 const VISION_MODEL: &str = mistral::MISTRAL_SMALL;
@@ -178,14 +179,13 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
             let model = client.completion(VISION_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request(user_message(vec![
-                            UserContent::text(COLOUR_PROMPT),
-                            red_png(),
-                        ]))
-                        .temperature(0.0)
-                        .max_tokens(12)
-                        .build(),
+                    CompletionRequestBuilder::new(user_message(vec![
+                        UserContent::text(COLOUR_PROMPT),
+                        red_png(),
+                    ]))
+                    .temperature(0.0)
+                    .max_tokens(12)
+                    .build(),
                     None,
                 )
                 .await?;
@@ -499,14 +499,13 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
             let model = client.completion(VISION_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request(user_message(vec![
-                            UserContent::text(DOCUMENT_PROMPT),
-                            pdf_document(),
-                        ]))
-                        .temperature(0.0)
-                        .max_tokens(24)
-                        .build(),
+                    CompletionRequestBuilder::new(user_message(vec![
+                        UserContent::text(DOCUMENT_PROMPT),
+                        pdf_document(),
+                    ]))
+                    .temperature(0.0)
+                    .max_tokens(24)
+                    .build(),
                     None,
                 )
                 .await?;
@@ -687,14 +686,13 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
             let model = client.completion(AUDIO_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request(user_message(vec![
-                            UserContent::text(AUDIO_PROMPT),
-                            speech_audio(),
-                        ]))
-                        .temperature(0.0)
-                        .max_tokens(48)
-                        .build(),
+                    CompletionRequestBuilder::new(user_message(vec![
+                        UserContent::text(AUDIO_PROMPT),
+                        speech_audio(),
+                    ]))
+                    .temperature(0.0)
+                    .max_tokens(48)
+                    .build(),
                     None,
                 )
                 .await?;

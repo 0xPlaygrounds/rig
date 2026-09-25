@@ -11,6 +11,7 @@ use rig_test_support::endpoint::Endpoint;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 pub(super) async fn assert_strict_tool_call(
     client: Endpoint<Anthropic>,
@@ -33,8 +34,7 @@ pub(super) async fn strict_tool_call_arguments(
         client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
         |wire| wire.with_strict_tools(),
     );
-    let request = model
-        .completion_request(prompt)
+    let request = CompletionRequestBuilder::new(prompt)
         .preamble(
             "Call the supplied tool exactly once and follow the requested argument shape."
                 .to_string(),
@@ -79,30 +79,29 @@ async fn strict_tools_opt_in_roundtrip() {
                 client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
                 |wire| wire.with_strict_tools(),
             );
-            let request = model
-                .completion_request(
-                    "Call record_booking exactly once with passengers = 2 and cabin = economy.",
-                )
-                .preamble("Follow the tool-calling instruction exactly.".to_string())
-                .max_tokens(1024)
-                .tool_choice(ToolChoice::Required)
-                .tool(ToolDefinition {
-                    name: "record_booking".to_string(),
-                    description: "Record a passenger count and cabin class.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "passengers": { "type": "integer" },
-                            "cabin": {
-                                "type": "string",
-                                "enum": ["economy", "business"]
-                            }
-                        },
-                        "required": ["passengers", "cabin"],
-                        "additionalProperties": false
-                    }),
-                })
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Call record_booking exactly once with passengers = 2 and cabin = economy.",
+            )
+            .preamble("Follow the tool-calling instruction exactly.".to_string())
+            .max_tokens(1024)
+            .tool_choice(ToolChoice::Required)
+            .tool(ToolDefinition {
+                name: "record_booking".to_string(),
+                description: "Record a passenger count and cabin class.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "passengers": { "type": "integer" },
+                        "cabin": {
+                            "type": "string",
+                            "enum": ["economy", "business"]
+                        }
+                    },
+                    "required": ["passengers", "cabin"],
+                    "additionalProperties": false
+                }),
+            })
+            .build();
 
             let response = model
                 .call(request, None)

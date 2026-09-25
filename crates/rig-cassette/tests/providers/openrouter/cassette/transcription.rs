@@ -11,9 +11,13 @@ use super::super::support::with_openrouter_cassette;
 async fn transcription_smoke() {
     with_openrouter_cassette("transcription/transcription_smoke", |client| async move {
         let model = client.transcription(openrouter::WHISPER_1);
-        let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
-            .expect("should be able to load audio fixture")
-            .send()
+        let response = model
+            .call(
+                TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)
+                    .expect("should be able to load audio fixture")
+                    .build(),
+                None,
+            )
             .await
             .expect("transcription should succeed");
 

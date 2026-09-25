@@ -31,6 +31,7 @@ use futures::StreamExt as _;
 use serde_json::{Value, json};
 
 use super::support::{BoundMistral, with_mistral_logprobs_rejection_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -61,8 +62,7 @@ fn model_name(model: Model) -> &'static str {
 
 async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Result<()> {
     let model = client.completion(model_name(cell.model));
-    let request = model
-        .completion_request("Reply with exactly: cobalt")
+    let request = CompletionRequestBuilder::new("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
         .max_tokens(8)
         .build();

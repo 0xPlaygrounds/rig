@@ -8,6 +8,7 @@
 use anyhow::Result;
 
 use super::support::with_groq_cassette_result;
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = "openai/gpt-oss-120b";
 
@@ -18,8 +19,10 @@ async fn blocking_response_carries_identity() -> Result<()> {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
+                    None,
+                )
                 .await?;
             anyhow::ensure!(
                 response
@@ -44,9 +47,10 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
         "response_identity_edge/streaming_terminal_carries_identity",
         |client| async move {
             let model = client.completion(MODEL);
-            let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()?;
+            let mut stream = model.stream(
+                CompletionRequestBuilder::new("Reply with exactly: stream identity probe").build(),
+                None,
+            )?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(final_record) = item? {
@@ -77,8 +81,10 @@ async fn provider_error_response_carries_request_id() -> Result<()> {
         |client| async move {
             let model = client.completion("groq-nonexistent-model-for-identity-edge");
             let error = model
-                .completion_request("Never answered")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never answered").build(),
+                    None,
+                )
                 .await
                 .expect_err("a nonexistent model must fail");
             anyhow::ensure!(
@@ -104,8 +110,10 @@ async fn auth_rejection_classifies_with_contract() -> Result<()> {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion_request("Never authenticated")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never authenticated").build(),
+                    None,
+                )
                 .await
                 .expect_err("a bogus key must be rejected");
             anyhow::ensure!(

@@ -45,18 +45,13 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::capture_completion;
 use crate::support::{Observed, json_contains_key, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -99,7 +94,7 @@ async fn raw_roundtrips_cohere_completion_response() {
     with_cohere_cassette(
         "raw_capture_matrix/raw_roundtrips_cohere_completion_response",
         |client| async move {
-            capture_completion(client.completion(CASSETTE_MODEL), request, sink)
+            capture_completion(client.completion(CASSETTE_MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -165,7 +160,7 @@ async fn raw_exposes_billing_metadata() {
     with_cohere_cassette(
         "raw_capture_matrix/raw_exposes_billing_metadata",
         |client| async move {
-            capture_completion(client.completion(CASSETTE_MODEL), request, sink)
+            capture_completion(client.completion(CASSETTE_MODEL), request(), sink)
                 .await
                 .expect("completion should succeed");
         },

@@ -54,8 +54,8 @@ async fn run_streamed_turn(
     collected_text: &mut String,
 ) -> Result<TurnEnd, PromptError> {
     let mut stream = agent
-        .request(prompt, history)
-        .stream()
+        .model
+        .stream(agent.request(prompt, history).build(), None)
         .expect("gemini stream should open");
     let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
     let mut recorded = false;

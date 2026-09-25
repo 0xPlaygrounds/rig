@@ -56,16 +56,14 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
 };
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &rig::Model<bedrock::completion::Converse, bedrock::client::BedrockRuntime>,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -138,7 +136,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request, sink)
+            capture_sole_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -183,7 +181,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request, sink)
+            capture_sole_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },

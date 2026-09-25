@@ -10,9 +10,13 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 async fn transcription_smoke() {
     with_gemini_cassette("transcription/transcription_smoke", |client| async move {
         let model = client.transcription(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-        let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
-            .expect("should be able to load audio fixture")
-            .send()
+        let response = model
+            .call(
+                TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)
+                    .expect("should be able to load audio fixture")
+                    .build(),
+                None,
+            )
             .await
             .expect("transcription should succeed");
 

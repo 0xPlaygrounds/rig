@@ -26,6 +26,7 @@ use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
     ORDERED_TOOL_STREAM_PROMPT, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT,
 };
+use rig::completion::CompletionRequestBuilder;
 
 /// Everything observed while draining a normalized stream, alongside the
 /// aggregated stream state itself.
@@ -167,18 +168,17 @@ async fn reasoning_summary_stream_aggregates_each_part_once() {
         "streaming_grammar/reasoning_summary_stream",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                // Low-effort turns skip the reasoning item entirely on the
-                // wire; a multi-step problem at high effort reliably yields
-                // summary parts.
-                .completion_request(
-                    "How many positive integers n < 1000 are divisible by 7 but not by 5? \
+            // Low-effort turns skip the reasoning item entirely on the
+            // wire; a multi-step problem at high effort reliably yields
+            // summary parts.
+            let request = CompletionRequestBuilder::new(
+                "How many positive integers n < 1000 are divisible by 7 but not by 5? \
                      Work it out carefully, then answer with just the number.",
-                )
-                .additional_params(json!({
-                    "reasoning": { "effort": "high", "summary": "detailed" }
-                }))
-                .build();
+            )
+            .additional_params(json!({
+                "reasoning": { "effort": "high", "summary": "detailed" }
+            }))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -261,11 +261,10 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
         "streaming_grammar/encrypted_reasoning_multi_part",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                // Well-known riddles are answered without reasoning; a
-                // multi-step count at high effort reliably yields a reasoning
-                // item with summary and encrypted parts.
-                .completion_request(
+            // Well-known riddles are answered without reasoning; a
+            // multi-step count at high effort reliably yields a reasoning
+            // item with summary and encrypted parts.
+            let request = CompletionRequestBuilder::new(
                     "How many positive integers n < 500 are divisible by 3 but not by 4? \
                      Work it out carefully, then answer with just the number.",
                 )
@@ -273,8 +272,7 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
                     "reasoning": { "effort": "high", "summary": "detailed" },
                     "include": ["reasoning.encrypted_content"],
                     "store": false
-                }))
-                .build();
+                })).build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -345,8 +343,7 @@ async fn parallel_tool_calls_both_survive_aggregation() {
         "streaming_grammar/parallel_tool_calls",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
@@ -403,8 +400,7 @@ async fn tool_call_then_followup_text_across_turns() {
         "streaming_grammar/tool_then_followup_text",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
@@ -436,19 +432,18 @@ async fn tool_call_then_followup_text_across_turns() {
                 tool_call.function.name.clone(),
                 vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             ));
-            let followup_request = model
-                .completion_request(
-                    "Now reply in one short sentence using the provided tool result. \
+            let followup_request = CompletionRequestBuilder::new(
+                "Now reply in one short sentence using the provided tool result. \
                      Do not call any tools.",
-                )
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .messages(vec![
-                    Message::user(ORDERED_TOOL_STREAM_PROMPT),
-                    assistant_message,
-                    tool_result,
-                ])
-                .additional_params(json!({ "reasoning": { "effort": "low" } }))
-                .build();
+            )
+            .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
+            .messages(vec![
+                Message::user(ORDERED_TOOL_STREAM_PROMPT),
+                assistant_message,
+                tool_result,
+            ])
+            .additional_params(json!({ "reasoning": { "effort": "low" } }))
+            .build();
             let second = drain_stream(
                 model
                     .stream(followup_request, None)
@@ -497,12 +492,10 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             });
 
             // Turn 1: forced tool work with encrypted reasoning.
-            let request = model
-                .completion_request(FIRST_TURN_PROMPT)
+            let request = CompletionRequestBuilder::new(FIRST_TURN_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .additional_params(params.clone())
-                .build();
+                .additional_params(params.clone()).build();
             let first =
                 drain_stream(model.stream(request, None).expect("stream should start")).await;
             assert_terminal(&first, FinishReason::ToolCalls);
@@ -554,8 +547,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 tool_call.function.name.clone(),
                 vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             ));
-            let second_request = model
-                .completion_request(
+            let second_request = CompletionRequestBuilder::new(
                     "Answer in one short sentence that includes the exact tool output. \
                      Do not call any tools.",
                 )
@@ -565,8 +557,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                     first_assistant.clone(),
                     tool_result.clone(),
                 ])
-                .additional_params(params.clone())
-                .build();
+                .additional_params(params.clone()).build();
             let second = drain_stream(
                 model
                     .stream(second_request, None)
@@ -585,8 +576,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 id: second.message_id.clone(),
                 content: second.choice.clone(),
             };
-            let third_request = model
-                .completion_request(
+            let third_request = CompletionRequestBuilder::new(
                     "Repeat the exact tool output one more time, alone on a single line.",
                 )
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
@@ -600,8 +590,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                     ),
                     second_assistant,
                 ])
-                .additional_params(params)
-                .build();
+                .additional_params(params).build();
             let third = drain_stream(
                 model
                     .stream(third_request, None)
@@ -641,15 +630,14 @@ async fn incomplete_mid_tool_call_normalizes_to_length() {
         "streaming_grammar/incomplete_mid_tool_call",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                .completion_request(
-                    "Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.",
-                )
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool_choice(rig::message::ToolChoice::Required)
-                .max_tokens(16)
-                .additional_params(json!({ "reasoning": { "effort": "low" } }))
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.",
+            )
+            .tool(rig::tool::tool_definition(&Adder))
+            .tool_choice(rig::message::ToolChoice::Required)
+            .max_tokens(16)
+            .additional_params(json!({ "reasoning": { "effort": "low" } }))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -684,31 +672,30 @@ async fn structured_output_stream_yields_schema_conformant_text() {
         "streaming_grammar/structured_output_stream",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                .completion_request(
-                    "Return a concise event object for a local Rust meetup in Seattle.",
-                )
-                .additional_params(json!({
-                    "reasoning": { "effort": "low" },
-                    "text": {
-                        "format": {
-                            "type": "json_schema",
-                            "name": "smoke_event",
-                            "strict": true,
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": { "type": "string" },
-                                    "category": { "type": "string" },
-                                    "summary": { "type": "string" }
-                                },
-                                "required": ["title", "category", "summary"],
-                                "additionalProperties": false
-                            }
+            let request = CompletionRequestBuilder::new(
+                "Return a concise event object for a local Rust meetup in Seattle.",
+            )
+            .additional_params(json!({
+                "reasoning": { "effort": "low" },
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "smoke_event",
+                        "strict": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "title": { "type": "string" },
+                                "category": { "type": "string" },
+                                "summary": { "type": "string" }
+                            },
+                            "required": ["title", "category", "summary"],
+                            "additionalProperties": false
                         }
                     }
-                }))
-                .build();
+                }
+            }))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -752,8 +739,7 @@ async fn previous_response_id_chains_server_side_state() {
         "streaming_grammar/previous_response_id_chain",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                .completion_request("Reply with exactly one word: quartz")
+            let request = CompletionRequestBuilder::new("Reply with exactly one word: quartz")
                 .additional_params(json!({
                     "reasoning": { "effort": "low" },
                     "store": true
@@ -773,16 +759,15 @@ async fn previous_response_id_chains_server_side_state() {
                 .and_then(|terminal| terminal.response_id.clone())
                 .expect("stored turn should report a resp_* id");
 
-            let second_request = model
-                .completion_request(
-                    "What exact word did you reply with just now? Reply with only that word.",
-                )
-                .additional_params(json!({
-                    "reasoning": { "effort": "low" },
-                    "store": true,
-                    "previous_response_id": previous_response_id
-                }))
-                .build();
+            let second_request = CompletionRequestBuilder::new(
+                "What exact word did you reply with just now? Reply with only that word.",
+            )
+            .additional_params(json!({
+                "reasoning": { "effort": "low" },
+                "store": true,
+                "previous_response_id": previous_response_id
+            }))
+            .build();
             let second = drain_stream(
                 model
                     .stream(second_request, None)
@@ -823,11 +808,12 @@ async fn incomplete_max_output_tokens_normalizes_to_length() {
         "streaming_grammar/incomplete_max_output_tokens",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                .completion_request("Write a 300-word essay about the history of lighthouses.")
-                .max_tokens(32)
-                .additional_params(json!({ "reasoning": { "effort": "low" } }))
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Write a 300-word essay about the history of lighthouses.",
+            )
+            .max_tokens(32)
+            .additional_params(json!({ "reasoning": { "effort": "low" } }))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -870,15 +856,14 @@ async fn reasoning_and_answer_text_aggregate_as_discrete_parts() {
         "streaming_grammar/reasoning_then_text",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
-            let request = model
-                .completion_request(
-                    "How many positive integers n < 200 are divisible by 6 but not by 4? \
+            let request = CompletionRequestBuilder::new(
+                "How many positive integers n < 200 are divisible by 6 but not by 4? \
                      Work it out, then answer with just the number.",
-                )
-                .additional_params(json!({
-                    "reasoning": { "effort": "high", "summary": "detailed" }
-                }))
-                .build();
+            )
+            .additional_params(json!({
+                "reasoning": { "effort": "high", "summary": "detailed" }
+            }))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);

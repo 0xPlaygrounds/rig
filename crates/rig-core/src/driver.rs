@@ -10,7 +10,7 @@
 //!
 //! # async fn example(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let model = Model::new(OpenAI::from_env()?.responses(openai::GPT_5_2), http);
-//! let response = model.completion_request("Hello").send().await?;
+//! let response = model.call(CompletionRequestBuilder::new("Hello").build(), None).await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }

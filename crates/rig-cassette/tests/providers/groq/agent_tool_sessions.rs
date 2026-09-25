@@ -26,6 +26,7 @@ use crate::support::{
 };
 
 use super::support::with_groq_cassette_result;
+use rig::completion::CompletionRequestBuilder;
 
 const SESSION_MODEL: &str = "qwen/qwen3.8-27b";
 /// Groq rejects `qwen/qwen3.8-27b` requests whose output cap exceeds its
@@ -565,8 +566,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-groq with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
@@ -574,8 +574,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
-                .max_tokens(SESSION_MAX_TOKENS)
-                .build();
+                .max_tokens(SESSION_MAX_TOKENS).build();
 
             let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
 
@@ -612,12 +611,10 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
             let model = client.completion(SESSION_MODEL);
 
             let auto = model
-                .call(model
-                        .completion_request("Call lookup_harbor_label exactly once with an empty object.")
+                .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Auto)
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
                 .await?;
             anyhow::ensure!(
                 auto.choice.iter().any(|content| matches!(
@@ -630,12 +627,10 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
             );
 
             let required = model
-                .call(model
-                        .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
+                .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -648,15 +643,13 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .call(model
-                        .completion_request("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
+                .call(CompletionRequestBuilder::new("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
                 .await?;
             let specific_calls = specific
                 .choice
@@ -673,12 +666,10 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
 
             let none_model = client.completion(TOOL_CHOICE_NONE_MODEL);
             let none = none_model
-                .call(none_model
-                        .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
+                .call(CompletionRequestBuilder::new("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .max_tokens(SESSION_MAX_TOKENS)
-                        .build(), None)
+                        .max_tokens(SESSION_MAX_TOKENS).build(), None)
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -702,14 +693,12 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
             let model = client.completion(JSON_OBJECT_MODEL);
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
                 .preamble("Return only valid JSON. No markdown.".to_string())
                 .additional_params(json!({"response_format": { "type": "json_object" }}))
-                .max_tokens(128)
-                .build();
+                .max_tokens(128).build();
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -748,14 +737,13 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
             let model = client.completion(JSON_SCHEMA_MODEL);
-            let request = model
-                .completion_request(
-                    "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
-                )
-                .preamble("Return only the requested structured object.".to_string())
-                .output_schema(schemars::schema_for!(StructuredReleasePlan))
-                .max_tokens(128)
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
+            )
+            .preamble("Return only the requested structured object.".to_string())
+            .output_schema(schemars::schema_for!(StructuredReleasePlan))
+            .max_tokens(128)
+            .build();
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -782,13 +770,11 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
             let model = client.completion(SESSION_MODEL);
             let mut stream = model
                 .stream(
-                    model
-                        .completion_request(
+                    CompletionRequestBuilder::new(
                             "Reply with exactly this comma-separated sequence and no extra words: alpha,beta,gamma,delta,epsilon,zeta,eta,theta",
                         )
                         .preamble("Stream the requested short sequence exactly.".to_string())
-                        .max_tokens(64)
-                        .build(),
+                        .max_tokens(64).build(),
                 None)
                 ?;
 

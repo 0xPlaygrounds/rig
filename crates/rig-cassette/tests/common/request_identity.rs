@@ -79,9 +79,7 @@ pub async fn run<W, T, Wm, Tr>(
     model: rig::driver::Model<W, T>,
     rejected: rig::driver::Model<Wm, Tr>,
     params: Option<Value>,
-    reject: impl FnOnce(
-        CompletionRequestBuilder<rig::driver::Model<Wm, Tr>>,
-    ) -> CompletionRequestBuilder<rig::driver::Model<Wm, Tr>>,
+    reject: impl FnOnce(CompletionRequestBuilder) -> CompletionRequestBuilder,
 ) where
     W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
     T: rig::driver::Transport<W>,
@@ -93,17 +91,23 @@ pub async fn run<W, T, Wm, Tr>(
     let _guard = tracing::subscriber::set_default(subscriber);
 
     let unary = model
-        .completion_request("Reply with exactly: identity probe")
-        .max_tokens(64)
-        .additional_params(params.clone())
-        .send()
+        .call(
+            CompletionRequestBuilder::new("Reply with exactly: identity probe")
+                .max_tokens(64)
+                .additional_params(params.clone())
+                .build(),
+            None,
+        )
         .await
         .expect("unary call");
     let mut stream = model
-        .completion_request("Reply with exactly: stream identity probe")
-        .max_tokens(64)
-        .additional_params(params.clone())
-        .stream()
+        .stream(
+            CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                .max_tokens(64)
+                .additional_params(params.clone())
+                .build(),
+            None,
+        )
         .expect("stream opens");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -112,15 +116,18 @@ pub async fn run<W, T, Wm, Tr>(
         }
     }
     let terminal = terminal.expect("the stream ends with a final record");
-    let error: ProviderError = reject(
-        rejected
-            .completion_request("Reply with exactly: rejected")
-            .max_tokens(64)
-            .additional_params(params.clone()),
-    )
-    .send()
-    .await
-    .expect_err("the provider rejects the model");
+    let error: ProviderError = rejected
+        .call(
+            reject(
+                CompletionRequestBuilder::new("Reply with exactly: rejected")
+                    .max_tokens(64)
+                    .additional_params(params.clone()),
+            )
+            .build(),
+            None,
+        )
+        .await
+        .expect_err("the provider rejects the model");
 
     let spans = recorded
         .0

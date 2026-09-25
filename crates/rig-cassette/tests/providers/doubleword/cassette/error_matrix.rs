@@ -30,6 +30,7 @@ use super::super::support::{
     BoundDoubleword, recorded_chat_calls, with_doubleword_bogus_key_cassette,
     with_doubleword_cassette,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Reply with error-probe.";
 const UNKNOWN_MODEL: &str = "rig/definitely-not-a-doubleword-model";
@@ -100,7 +101,10 @@ fn assert_recorded_transport_parity(blocking_scenario: &str, streaming_scenario:
 async fn unknown_model_blocking_body(client: BoundDoubleword) {
     let model = client.completion(UNKNOWN_MODEL);
     let error = model
-        .call(model.completion_request(PROMPT).max_tokens(8).build(), None)
+        .call(
+            CompletionRequestBuilder::new(PROMPT).max_tokens(8).build(),
+            None,
+        )
         .await
         .expect_err("an unknown model should be rejected");
     assert_preserved_client_error(&error, 404);
@@ -108,7 +112,10 @@ async fn unknown_model_blocking_body(client: BoundDoubleword) {
 
 async fn unknown_model_streaming_body(client: BoundDoubleword) {
     let model = client.completion(UNKNOWN_MODEL);
-    let result = model.stream(model.completion_request(PROMPT).max_tokens(8).build(), None);
+    let result = model.stream(
+        CompletionRequestBuilder::new(PROMPT).max_tokens(8).build(),
+        None,
+    );
     let mut stream = result.expect("streaming HTTP failures are delivered in-band");
     let error = loop {
         match stream.next().await {
@@ -123,7 +130,10 @@ async fn unknown_model_streaming_body(client: BoundDoubleword) {
 async fn invalid_key_blocking_body(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let error = model
-        .call(model.completion_request(PROMPT).max_tokens(8).build(), None)
+        .call(
+            CompletionRequestBuilder::new(PROMPT).max_tokens(8).build(),
+            None,
+        )
         .await
         .expect_err("invalid credentials should be rejected");
     assert_preserved_client_error(&error, 403);
@@ -131,7 +141,10 @@ async fn invalid_key_blocking_body(client: BoundDoubleword) {
 
 async fn invalid_key_streaming_body(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
-    let result = model.stream(model.completion_request(PROMPT).max_tokens(8).build(), None);
+    let result = model.stream(
+        CompletionRequestBuilder::new(PROMPT).max_tokens(8).build(),
+        None,
+    );
     let mut stream = result.expect("streaming HTTP failures are delivered in-band");
     let error = loop {
         match stream.next().await {
@@ -147,8 +160,7 @@ async fn invalid_temperature_blocking_body(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let error = model
         .call(
-            model
-                .completion_request(PROMPT)
+            CompletionRequestBuilder::new(PROMPT)
                 .additional_params(json!({ "temperature": 100 }))
                 .max_tokens(8)
                 .build(),
@@ -162,8 +174,7 @@ async fn invalid_temperature_blocking_body(client: BoundDoubleword) {
 async fn invalid_temperature_streaming_body(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let result = model.stream(
-        model
-            .completion_request(PROMPT)
+        CompletionRequestBuilder::new(PROMPT)
             .additional_params(json!({ "temperature": 100 }))
             .max_tokens(8)
             .build(),

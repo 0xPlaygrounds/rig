@@ -45,13 +45,13 @@ use std::sync::{
 use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::{AssistantContent, FinishReason};
-use rig::providers::openai::wire::Chat;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_tool_truncation_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
 const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
@@ -135,12 +135,8 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(
-    model: &rig::driver::Model<Chat, rig::http_client::BoxedHttpClient>,
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .preamble(PREAMBLE.to_owned())
         .tool(tool_definition())
         .additional_params(json!({ "tool_choice": "required" }))
@@ -201,7 +197,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
         // normalization, keeping the native value on `CompletionResponse::raw`.
-        Transport::Blocking => match model.call(request(&model, cell), None).await {
+        Transport::Blocking => match model.call(request(cell), None).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -213,7 +209,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let mut stream = match model.stream(request(&model, cell), None) {
+            let mut stream = match model.stream(request(cell), None) {
                 Ok(stream) => stream,
                 Err(error) => {
                     return Observation {

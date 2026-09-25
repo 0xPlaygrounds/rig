@@ -50,6 +50,7 @@ use crate::raw_capture::{
 use crate::support::{
     Observed, assert_matches_recorded_token, assistant_text, normalized_without_raw,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -61,13 +62,8 @@ const TOOL_PREAMBLE: &str =
 const TOOL_PROMPT: &str = "Call lookup_city exactly once with city Paris.";
 const TOOL_NAME: &str = "lookup_city";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
 }
 
 fn lookup_city_tool() -> ToolDefinition {
@@ -82,14 +78,8 @@ fn lookup_city_tool() -> ToolDefinition {
     }
 }
 
-fn tool_request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .preamble(TOOL_PREAMBLE.to_owned())
         .tool(lookup_city_tool())
         .additional_params(json!({ "tool_choice": "any", "parallel_tool_calls": false }))
@@ -120,7 +110,13 @@ async fn raw_round_trips_mistral_type() {
     let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_capture_matrix/raw_round_trips_mistral_type",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.completion(DEFAULT_MODEL),
+                request(),
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("raw_round_trips_mistral_type should replay from its cassette");
@@ -157,7 +153,13 @@ async fn raw_exposes_object_and_service_tier() {
     let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_capture_matrix/raw_exposes_object_and_service_tier",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.completion(DEFAULT_MODEL),
+                request(),
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("raw_exposes_object_and_service_tier should replay from its cassette");
@@ -192,7 +194,13 @@ async fn normalized_fields_match_raw_renormalized() {
     let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
+        |client| {
+            capture_completion(
+                client.completion(DEFAULT_MODEL),
+                request(),
+                observed.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
@@ -267,7 +275,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
         |client| {
             capture_completion(
                 client.completion(DEFAULT_MODEL),
-                tool_request,
+                tool_request(),
                 observed.clone(),
             )
         },

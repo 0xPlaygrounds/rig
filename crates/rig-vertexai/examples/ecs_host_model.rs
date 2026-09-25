@@ -64,7 +64,7 @@ fn main() -> anyhow::Result<()> {
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::unbound("Say hello briefly.").build(),
+                request: CompletionRequestBuilder::new("Say hello briefly.").build(),
                 stream: false, // Vertex streaming is explicitly unsupported.
             },
         ))

@@ -93,7 +93,7 @@ async fn real_vertex_requests_run_on_ecs_workers_and_strictly_resume_with_new_cr
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::unbound("hello").build(),
+                request: CompletionRequestBuilder::new("hello").build(),
                 stream: false,
             },
         ))
@@ -125,7 +125,7 @@ async fn real_vertex_requests_run_on_ecs_workers_and_strictly_resume_with_new_cr
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::unbound("again").build(),
+                request: CompletionRequestBuilder::new("again").build(),
                 stream: false,
             },
         ))
@@ -179,7 +179,7 @@ async fn dropping_the_world_cancels_the_real_sdk_rpc() {
     live.world_mut().spawn(PendingEffect::new(
         "model",
         EffectKind::Completion {
-            request: CompletionRequestBuilder::unbound("held").build(),
+            request: CompletionRequestBuilder::new("held").build(),
             stream: false,
         },
     ));

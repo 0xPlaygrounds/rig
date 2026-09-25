@@ -22,6 +22,7 @@
 
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
+use rig_core::completion::CompletionRequestBuilder;
 use rig_core::driver::Model;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAI;
@@ -192,7 +193,7 @@ fn driver() -> conformance::WireDriver {
             let bound = Model::new(wire, RecordingHttpClient::new("{}"));
             let mut session = bound.responses_websocket().await?;
             session
-                .send(bound.completion_request("hello").build())
+                .send(CompletionRequestBuilder::new("hello").build())
                 .await?;
 
             // Collect the turn exactly as the production session loop does:

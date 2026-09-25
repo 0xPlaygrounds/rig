@@ -59,7 +59,7 @@ fn complete_as(
     model: &str,
     output: InternalConverseOutput,
 ) -> Result<completion::CompletionResponse, ProviderError> {
-    let request = rig_core::completion::CompletionRequestBuilder::unbound("hi").build();
+    let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
     futures::executor::block_on(Model::new(Converse::new(model), Reply(output)).call(request, None))
 }
 

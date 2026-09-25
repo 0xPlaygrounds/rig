@@ -516,7 +516,7 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
     use crate::wire::{Mode, Wire};
 
     let request = || {
-        CompletionRequestBuilder::unbound("hello")
+        CompletionRequestBuilder::new("hello")
             .preamble("be brief".to_owned())
             .build()
     };
@@ -588,10 +588,7 @@ fn the_configured_version_and_betas_reach_the_request_headers() {
     };
     let mut encoded = config
         .completion(reference.model())
-        .encode(
-            CompletionRequestBuilder::unbound("hello").build(),
-            Mode::Unary,
-        )
+        .encode(CompletionRequestBuilder::new("hello").build(), Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.pop().expect("one request");
     let header = |name: &str| {

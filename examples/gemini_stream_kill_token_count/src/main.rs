@@ -49,6 +49,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
+use rig::completion::CompletionRequestBuilder;
 use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
@@ -357,12 +358,14 @@ async fn run_scenario(
         rig::rig_reqwest::bundled()?,
     );
 
-    let stream = model
-        .completion_request(prompt)
-        .temperature(0.7)
-        .max_tokens(2000)
-        .additional_params(no_thinking_params()?)
-        .stream()?;
+    let stream = model.stream(
+        CompletionRequestBuilder::new(prompt)
+            .temperature(0.7)
+            .max_tokens(2000)
+            .additional_params(no_thinking_params()?)
+            .build(),
+        None,
+    )?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

@@ -46,6 +46,7 @@ use serde_json::Value;
 use super::super::support::{with_gemini_cassette, with_gemini_interactions_cassette};
 use crate::raw_capture::{assert_no_request_id, capture_completion_pair};
 use crate::support::{Observed, assistant_text};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "gemini";
 const REST_MODEL: &str = "gemini-2.5-flash-lite";
@@ -55,13 +56,10 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: parity"
 /// The one request both cells send, twice: the same built request through one
 /// seam is what makes "the same bytes went out twice" a claim about `encode`
 /// rather than about the cell.
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).temperature(0.0).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .temperature(0.0)
+        .build()
 }
 
 /// The parity a caller can rely on across two turns of identical bytes:
@@ -151,7 +149,7 @@ async fn rest_raw_try_into_matches_completion() {
     with_gemini_cassette(
         "raw_completion_parity_matrix/rest_raw_try_into_matches_completion",
         |client| async move {
-            capture_completion_pair(client.completion(REST_MODEL), request, sink)
+            capture_completion_pair(client.completion(REST_MODEL), request(), sink)
                 .await
                 .expect("both turns of the same request should succeed");
         },
@@ -213,7 +211,7 @@ async fn interactions_raw_try_into_matches_completion() {
         |client| async move {
             capture_completion_pair(
                 client.model(|config| config.interactions(INTERACTIONS_MODEL)),
-                request,
+                request(),
                 sink,
             )
             .await

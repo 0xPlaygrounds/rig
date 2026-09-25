@@ -44,6 +44,7 @@ use crate::raw_capture::{
     chat, stream_normalized_without_raw,
 };
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -56,13 +57,10 @@ const UNMODELLED_USAGE: [&str; 3] = [
     "cache_read_input_tokens",
 ];
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(256).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .max_tokens(256)
+        .build()
 }
 
 // ================================================================
@@ -75,7 +73,9 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_doubleword_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -103,7 +103,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     let sink = Observed::default();
     with_doubleword_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
-        |client| capture_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| capture_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone()),
     )
     .await
     .expect("stream_raw_exposes_terminal_usage_and_object should replay from its cassette");

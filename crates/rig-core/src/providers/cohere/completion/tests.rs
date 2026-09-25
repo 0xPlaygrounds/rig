@@ -1,4 +1,5 @@
 use super::*;
+use crate::completion::CompletionRequestBuilder;
 use serde_path_to_error::deserialize;
 
 #[test]
@@ -122,7 +123,7 @@ async fn unary(body: &'static str) -> completion::CompletionResponse {
         crate::test_utils::RecordingHttpClient::new(body),
     );
     model
-        .call(model.completion_request("hello").build(), None)
+        .call(CompletionRequestBuilder::new("hello").build(), None)
         .await
         .expect("the reply decodes")
 }
@@ -264,16 +265,13 @@ fn tool_result_content_is_type_tagged() {
 
 #[test]
 fn cohere_builder_request_serializes_documents_in_cohere_shape() {
-    let request = crate::completion::CompletionRequestBuilder::new(
-        crate::test_utils::MockCompletionModel::default(),
-        "What is glarb-glarb?",
-    )
-    .document(crate::completion::request::Document {
-        id: "doc_1".to_string(),
-        text: "Definition of glarb-glarb: an ancient tool.".to_string(),
-        additional_props: HashMap::from([("source".to_string(), "field-notes".to_string())]),
-    })
-    .build();
+    let request = crate::completion::CompletionRequestBuilder::new("What is glarb-glarb?")
+        .document(crate::completion::request::Document {
+            id: "doc_1".to_string(),
+            text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+            additional_props: HashMap::from([("source".to_string(), "field-notes".to_string())]),
+        })
+        .build();
 
     let request = CohereCompletionRequest::try_from(("command-a-03-2025", request))
         .expect("request conversion should succeed");
@@ -350,8 +348,7 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
             .completion(crate::providers::cohere::COMMAND_A_03_2025),
         http_client.clone(),
     );
-    let request = model
-        .completion_request("hello")
+    let request = CompletionRequestBuilder::new("hello")
         .tool_choice(ToolChoice::Required)
         .build();
 
@@ -376,22 +373,19 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
 /// cassette coverage exercises the public typed-tool path instead.
 #[test]
 fn required_tool_choice_accepts_raw_tools_from_additional_params() {
-    let request = crate::completion::CompletionRequestBuilder::new(
-        crate::test_utils::MockCompletionModel::default(),
-        "hello",
-    )
-    .tool_choice(ToolChoice::Required)
-    .additional_params(serde_json::json!({
-        "tools": [{
-            "type": "function",
-            "function": {
-                "name": "ping",
-                "description": "Return pong",
-                "parameters": {"type": "object", "properties": {}}
-            }
-        }]
-    }))
-    .build();
+    let request = crate::completion::CompletionRequestBuilder::new("hello")
+        .tool_choice(ToolChoice::Required)
+        .additional_params(serde_json::json!({
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "ping",
+                    "description": "Return pong",
+                    "parameters": {"type": "object", "properties": {}}
+                }
+            }]
+        }))
+        .build();
 
     let request = CohereCompletionRequest::try_from(("command-a-03-2025", request))
         .expect("raw Cohere tools should satisfy REQUIRED");
@@ -403,22 +397,15 @@ fn required_tool_choice_accepts_raw_tools_from_additional_params() {
 
 #[test]
 fn max_tokens_is_forwarded_and_omitted_when_unset() {
-    let capped = crate::completion::CompletionRequestBuilder::new(
-        crate::test_utils::MockCompletionModel::default(),
-        "hello",
-    )
-    .max_tokens(64)
-    .build();
+    let capped = crate::completion::CompletionRequestBuilder::new("hello")
+        .max_tokens(64)
+        .build();
     let capped = CohereCompletionRequest::try_from(("command-a-03-2025", capped))
         .expect("request conversion should succeed");
     let body = serde_json::to_value(&capped).expect("request should serialize");
     assert_eq!(body["max_tokens"], serde_json::json!(64));
 
-    let uncapped = crate::completion::CompletionRequestBuilder::new(
-        crate::test_utils::MockCompletionModel::default(),
-        "hello",
-    )
-    .build();
+    let uncapped = crate::completion::CompletionRequestBuilder::new("hello").build();
     let uncapped = CohereCompletionRequest::try_from(("command-a-03-2025", uncapped))
         .expect("request conversion should succeed");
     let body = serde_json::to_value(&uncapped).expect("request should serialize");
@@ -427,11 +414,7 @@ fn max_tokens_is_forwarded_and_omitted_when_unset() {
 
 #[test]
 fn tool_choice_is_omitted_when_unset() {
-    let request = crate::completion::CompletionRequestBuilder::new(
-        crate::test_utils::MockCompletionModel::default(),
-        "hello",
-    )
-    .build();
+    let request = crate::completion::CompletionRequestBuilder::new("hello").build();
 
     let request = CohereCompletionRequest::try_from(("command-a-03-2025", request))
         .expect("request conversion should succeed");
@@ -452,7 +435,7 @@ async fn completion_non_success_preserves_status_and_body() {
             .completion(crate::providers::cohere::COMMAND_A_03_2025),
         http_client,
     );
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
         .call(request, None)

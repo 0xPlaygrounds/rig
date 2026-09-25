@@ -15,9 +15,13 @@ async fn transcription_smoke() {
         rig::rig_reqwest::bundled().expect("transport should build"),
     );
     let model = bound.transcription(groq::WHISPER_LARGE_V3);
-    let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
-        .expect("should be able to load audio fixture")
-        .send()
+    let response = model
+        .call(
+            TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)
+                .expect("should be able to load audio fixture")
+                .build(),
+            None,
+        )
         .await
         .expect("transcription should succeed");
 

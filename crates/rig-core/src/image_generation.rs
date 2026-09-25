@@ -82,20 +82,6 @@ pub trait NormalizeImageGenerationResponse {
     fn normalize(self, provider: &str) -> Result<ImageGenerationResponse, ProviderError>;
 }
 
-impl<W, T> crate::driver::Model<W, T>
-where
-    W: crate::wire::Wire<Op = crate::operation::ImageGeneration> + Clone,
-    T: crate::driver::Transport<W>,
-{
-    /// A request builder for `prompt` that sends through this model.
-    pub fn image_generation_request(
-        &self,
-        prompt: impl Into<String>,
-    ) -> ImageGenerationRequestBuilder<Self> {
-        ImageGenerationRequestBuilder::new(self.clone(), prompt)
-    }
-}
-
 pub struct ImageGenerationRequest {
     pub prompt: String,
     pub width: u32,
@@ -105,16 +91,14 @@ pub struct ImageGenerationRequest {
 
 /// Builds an image request for a prompt. Defaults to 256 by 256 pixels;
 /// supported dimensions depend on the provider.
-pub struct ImageGenerationRequestBuilder<M> {
-    model: M,
+pub struct ImageGenerationRequestBuilder {
     request: ImageGenerationRequest,
 }
 
-impl<M> ImageGenerationRequestBuilder<M> {
+impl ImageGenerationRequestBuilder {
     /// A request for `prompt`.
-    pub fn new(model: M, prompt: impl Into<String>) -> Self {
+    pub fn new(prompt: impl Into<String>) -> Self {
         Self {
-            model,
             request: ImageGenerationRequest {
                 prompt: prompt.into(),
                 width: 256,
@@ -147,17 +131,6 @@ impl<M> ImageGenerationRequestBuilder<M> {
     /// Builds the image generation request.
     pub fn build(self) -> ImageGenerationRequest {
         self.request
-    }
-}
-
-impl<W, T> ImageGenerationRequestBuilder<crate::driver::Model<W, T>>
-where
-    W: crate::wire::Wire<Op = crate::operation::ImageGeneration> + Clone,
-    T: crate::driver::Transport<W>,
-{
-    /// Sends the request through the model.
-    pub async fn send(self) -> Result<ImageGenerationResponse, ProviderError> {
-        self.model.call(self.request, None).await
     }
 }
 

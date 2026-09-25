@@ -56,6 +56,7 @@ use rig::providers::openai;
 use serde_json::json;
 
 use super::super::support::with_openai_audio_cassette;
+use rig::audio_generation::AudioGenerationRequestBuilder;
 
 const TEXT: &str = "hello";
 const VOICE: &str = "alloy";
@@ -80,8 +81,10 @@ async fn default_body_returns_mp3() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new(TEXT, VOICE).build(),
+                    None,
+                )
                 .await
                 .expect("speech synthesis should succeed");
 
@@ -99,9 +102,12 @@ async fn response_format_wav_changes_the_container() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "response_format": "wav" }))
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                        .additional_params(json!({ "response_format": "wav" }))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("speech synthesis should succeed");
 
@@ -123,9 +129,12 @@ async fn response_format_flac_changes_the_container() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "response_format": "flac" }))
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                        .additional_params(json!({ "response_format": "flac" }))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("speech synthesis should succeed");
 
@@ -146,9 +155,12 @@ async fn instructions_reach_the_tts_model() {
             let response = client
                 .openai
                 .audio_generation("gpt-4o-mini-tts")
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                        .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("speech synthesis should succeed");
 
@@ -172,9 +184,12 @@ async fn completions_client_shares_the_fixed_body() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "response_format": "wav" }))
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                        .additional_params(json!({ "response_format": "wav" }))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("speech synthesis should succeed");
 
@@ -193,9 +208,12 @@ async fn additional_params_can_override_voice() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "voice": "nova" }))
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                        .additional_params(json!({ "voice": "nova" }))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("speech synthesis should succeed");
 
@@ -214,9 +232,12 @@ async fn non_object_additional_params_are_a_no_op() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!("not-an-object"))
-                .send()
+                .call(
+                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                        .additional_params(json!("not-an-object"))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("speech synthesis should succeed");
 

@@ -24,6 +24,7 @@ use crate::support::{
 };
 
 use super::super::{TOOL_MODEL, support::with_openrouter_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 pub(super) const SESSION_MODEL: &str = TOOL_MODEL;
 const SESSION_MAX_TOKENS: Option<u64> = None;
@@ -547,16 +548,14 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-openrouter with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
                 )
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required).build();
 
             let observation = collect_raw_stream_observation(model.stream(request, None)?).await;
 
@@ -587,8 +586,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
             let model = client.completion(SESSION_MODEL);
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
                      and which release lane did I choose? Do not call any tools.",
                 )
@@ -613,8 +611,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool_choice(ToolChoice::None)
-                .build();
+                .tool_choice(ToolChoice::None).build();
 
             // One seam: `completion` folds the reply and the driver keeps the
             // gateway's own document on `raw`, so the per-choice finish

@@ -25,6 +25,7 @@ use crate::support::{
     Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
     TWO_TOOL_STREAM_PREAMBLE,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = "qwen3:4b";
 
@@ -117,8 +118,7 @@ async fn thinking_and_tool_call_in_one_stream() {
         "streaming_grammar/thinking_and_tool_call",
         |client| async move {
             let model = client.completion(MODEL);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(serde_json::json!({ "think": true }))
@@ -182,17 +182,16 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
         "streaming_grammar/parallel_tool_calls",
         |client| async move {
             let model = client.completion(MODEL);
-            let request = model
-                .completion_request(
-                    "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
+            let request = CompletionRequestBuilder::new(
+                "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
                      together in this single reply, before writing any text. Emit the two tool \
                      calls in one turn — do not wait for results between them.",
-                )
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .additional_params(serde_json::json!({ "think": false }))
-                .build();
+            )
+            .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .tool(rig::tool::tool_definition(&BetaSignal))
+            .additional_params(serde_json::json!({ "think": false }))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -266,8 +265,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
 async fn same_tool_called_twice_in_one_turn_stays_distinct() {
     with_ollama_cassette("streaming_grammar/same_tool_twice", |client| async move {
         let model = client.completion(MODEL);
-        let request = model
-            .completion_request(
+        let request = CompletionRequestBuilder::new(
                 "/no_think Use the `add` tool twice in this single reply, before any text: \
                  first add 2 and 3, then add 10 and 20. Emit both tool calls together in \
                  this one turn — do not wait for results between them, and do not compute \
@@ -279,8 +277,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
                     .to_string(),
             )
             .tool(rig::tool::tool_definition(&Adder))
-            .additional_params(serde_json::json!({ "think": false }))
-            .build();
+            .additional_params(serde_json::json!({ "think": false })).build();
         let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
@@ -384,15 +381,14 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     )],
                 },
             ];
-            let request = model
-                .completion_request("/no_think State the final result in one short sentence.")
-                .preamble(
-                    "You are a calculator assistant. Report tool results faithfully.".to_string(),
-                )
-                .tool(rig::tool::tool_definition(&Adder))
-                .messages(history)
-                .additional_params(serde_json::json!({ "think": false }))
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "/no_think State the final result in one short sentence.",
+            )
+            .preamble("You are a calculator assistant. Report tool results faithfully.".to_string())
+            .tool(rig::tool::tool_definition(&Adder))
+            .messages(history)
+            .additional_params(serde_json::json!({ "think": false }))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),

@@ -47,6 +47,7 @@ use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 use crate::support::{IMAGE_FIXTURE_PATH, VIDEO_FIXTURE_PATH, assistant_text_response};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// A 256x256 solid magenta PNG.
 ///
@@ -92,8 +93,7 @@ async fn two_images_in_one_turn_keep_their_order() {
                 async move {
                     let response = model
                         .call(
-                            model
-                                .completion_request(Message::User { content })
+                            CompletionRequestBuilder::new(Message::User { content })
                                 .max_tokens(64)
                                 .temperature(0.0)
                                 .build(),
@@ -167,28 +167,27 @@ async fn an_image_and_a_tool_reach_the_model_together() {
         let model = client.completion(CASSETTE_VISION_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request(Message::User {
-                        content: vec![
-                            UserContent::text(
-                                "Look at the image and call record_subject with what it shows.",
-                            ),
-                            ant_photo(),
-                        ],
-                    })
-                    .tool(rig::completion::ToolDefinition {
-                        name: "record_subject".to_string(),
-                        description: "Record what the image shows.".to_string(),
-                        parameters: serde_json::json!({
-                            "type": "object",
-                            "properties": { "subject": { "type": "string" } },
-                            "required": ["subject"],
-                        }),
-                    })
-                    .tool_choice(rig::message::ToolChoice::Required)
-                    .max_tokens(256)
-                    .temperature(0.0)
-                    .build(),
+                CompletionRequestBuilder::new(Message::User {
+                    content: vec![
+                        UserContent::text(
+                            "Look at the image and call record_subject with what it shows.",
+                        ),
+                        ant_photo(),
+                    ],
+                })
+                .tool(rig::completion::ToolDefinition {
+                    name: "record_subject".to_string(),
+                    description: "Record what the image shows.".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": { "subject": { "type": "string" } },
+                        "required": ["subject"],
+                    }),
+                })
+                .tool_choice(rig::message::ToolChoice::Required)
+                .max_tokens(256)
+                .temperature(0.0)
+                .build(),
                 None,
             )
             .await
@@ -239,19 +238,18 @@ async fn a_malformed_data_uri_is_a_400() {
             let model = client.completion(CASSETTE_VISION_MODEL);
             let error = model
                 .call(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![
-                                UserContent::text("What colour is this?"),
-                                UserContent::image_base64(
-                                    "!!!!not-base64!!!!",
-                                    Some(ImageMediaType::PNG),
-                                    None,
-                                ),
-                            ],
-                        })
-                        .max_tokens(32)
-                        .build(),
+                    CompletionRequestBuilder::new(Message::User {
+                        content: vec![
+                            UserContent::text("What colour is this?"),
+                            UserContent::image_base64(
+                                "!!!!not-base64!!!!",
+                                Some(ImageMediaType::PNG),
+                                None,
+                            ),
+                        ],
+                    })
+                    .max_tokens(32)
+                    .build(),
                     None,
                 )
                 .await
@@ -301,21 +299,20 @@ async fn a_url_the_server_cannot_fetch_is_a_500() {
             let model = client.completion(CASSETTE_VISION_MODEL);
             let error = model
                 .call(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![
-                                UserContent::text("What colour is this?"),
-                                // Port 1 on the loopback interface: reserved,
-                                // and nothing binds it.
-                                UserContent::image_url(
-                                    "http://127.0.0.1:1/nope.png",
-                                    Some(ImageMediaType::PNG),
-                                    None,
-                                ),
-                            ],
-                        })
-                        .max_tokens(32)
-                        .build(),
+                    CompletionRequestBuilder::new(Message::User {
+                        content: vec![
+                            UserContent::text("What colour is this?"),
+                            // Port 1 on the loopback interface: reserved,
+                            // and nothing binds it.
+                            UserContent::image_url(
+                                "http://127.0.0.1:1/nope.png",
+                                Some(ImageMediaType::PNG),
+                                None,
+                            ),
+                        ],
+                    })
+                    .max_tokens(32)
+                    .build(),
                     None,
                 )
                 .await
@@ -350,15 +347,11 @@ async fn an_image_to_a_text_only_server_names_the_missing_mmproj() {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .call(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![
-                                UserContent::text("What colour is this?"),
-                                magenta_square(),
-                            ],
-                        })
-                        .max_tokens(32)
-                        .build(),
+                    CompletionRequestBuilder::new(Message::User {
+                        content: vec![UserContent::text("What colour is this?"), magenta_square()],
+                    })
+                    .max_tokens(32)
+                    .build(),
                     None,
                 )
                 .await
@@ -395,18 +388,14 @@ async fn a_video_part_is_refused_even_though_props_advertises_video() {
             let model = client.completion(CASSETTE_VISION_MODEL);
             let error = model
                 .call(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![
-                                UserContent::text("Describe this video in one sentence."),
-                                UserContent::video(
-                                    base64_encode(&bytes),
-                                    Some(VideoMediaType::MP4),
-                                ),
-                            ],
-                        })
-                        .max_tokens(64)
-                        .build(),
+                    CompletionRequestBuilder::new(Message::User {
+                        content: vec![
+                            UserContent::text("Describe this video in one sentence."),
+                            UserContent::video(base64_encode(&bytes), Some(VideoMediaType::MP4)),
+                        ],
+                    })
+                    .max_tokens(64)
+                    .build(),
                     None,
                 )
                 .await

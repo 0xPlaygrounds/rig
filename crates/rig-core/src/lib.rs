@@ -15,7 +15,7 @@
 //! agent runtimes, and external storage integrations.
 //!
 //! ```no_run
-//! use rig_core::completion::CompletionResponse;
+//! use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
 //! use rig_core::driver::Transport;
 //! use rig_core::error::ProviderError;
 //! use rig_core::operation::Completion;
@@ -27,7 +27,7 @@
 //!     W: Wire<Op = Completion> + Clone,
 //!     T: Transport<W>,
 //! {
-//!     let request = model.completion_request("Who are you?").build();
+//!     let request = CompletionRequestBuilder::new("Who are you?").build();
 //!     model.call(request, None).await
 //! }
 //! ```

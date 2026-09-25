@@ -1,4 +1,5 @@
 use super::*;
+use crate::completion::CompletionRequestBuilder;
 use crate::error::ProviderError;
 use serde_json::json;
 
@@ -70,7 +71,7 @@ async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse
         body.to_string(),
     ));
     model
-        .call(model.completion_request("hello").build(), None)
+        .call(CompletionRequestBuilder::new("hello").build(), None)
         .await
 }
 
@@ -1145,7 +1146,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let mut stream = model.stream(request, None).expect("stream should open");
 
@@ -1191,7 +1192,7 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let mut stream = model.stream(request, None).expect("stream should open");
 
@@ -1239,7 +1240,7 @@ async fn content_after_the_done_record_is_not_yielded() {
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let mut stream = model.stream(request, None).expect("stream should open");
 
@@ -1285,7 +1286,7 @@ async fn completion_non_success_preserves_status_and_body() {
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
     let model = ollama_model(http_client);
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
         .call(request, None)
@@ -1378,7 +1379,7 @@ mod raw_capture {
         let model = model();
 
         let response = model
-            .call(model.completion_request("hello").build(), None)
+            .call(CompletionRequestBuilder::new("hello").build(), None)
             .await
             .expect("completion");
 

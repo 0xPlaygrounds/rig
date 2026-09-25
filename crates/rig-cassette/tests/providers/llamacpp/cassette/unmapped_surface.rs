@@ -53,6 +53,7 @@ use serde_json::Value;
 use crate::cassettes::{recorded_request_paths, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// `GET /v1/models` returns a **hybrid** body, and rig reads the right half.
 ///
@@ -213,8 +214,7 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
         let model = client.responses(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request("/no_think Reply with the single word: ok")
+                CompletionRequestBuilder::new("/no_think Reply with the single word: ok")
                     .max_tokens(256)
                     .build(),
                 None,

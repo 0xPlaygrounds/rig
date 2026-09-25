@@ -71,10 +71,7 @@ fn message_contains_base64_document(message: &RigMessage) -> bool {
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
     let encoded = OpenAI::with_key(&OPENROUTER, "k")
         .chat(DOCUMENT_MODEL)
-        .encode(
-            CompletionRequestBuilder::unbound(message).build(),
-            Mode::Unary,
-        )
+        .encode(CompletionRequestBuilder::new(message).build(), Mode::Unary)
         .expect("a history message should encode");
     let Body::Bytes(bytes) = encoded.requests[0].body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")

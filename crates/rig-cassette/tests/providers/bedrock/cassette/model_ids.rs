@@ -11,6 +11,7 @@ use rig::bedrock;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::assert_nonempty_response;
+use rig::completion::CompletionRequestBuilder;
 
 /// A retired identifier — every `anthropic.claude-*` constant the crate used
 /// to ship was one of these — answers `ResourceNotFoundException`, and the
@@ -21,7 +22,9 @@ async fn retired_model_id_preserves_provider_error() {
         "model_ids/retired_model_id_preserves_provider_error",
         |client| async move {
             let model = client.completion("anthropic.claude-3-5-sonnet-20240620-v1:0");
-            let request = model.completion_request("Say hi.").max_tokens(8).build();
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(8)
+                .build();
 
             let error = model
                 .call(request, None)
@@ -60,7 +63,9 @@ async fn bare_profile_only_model_id_is_rejected() {
         "model_ids/bare_profile_only_model_id_is_rejected",
         |client| async move {
             let model = client.completion("deepseek.r1-v1:0");
-            let request = model.completion_request("Say hi.").max_tokens(8).build();
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(8)
+                .build();
 
             let error = model
                 .call(request, None)
@@ -101,8 +106,7 @@ async fn cross_region_profile_id_completes() {
             // DeepSeek R1 reasons before answering: recorded at 64 tokens the
             // whole budget went to `reasoningContent` and the turn stopped at
             // `max_tokens` with no text block at all.
-            let request = model
-                .completion_request("Reply with the single word: ready.")
+            let request = CompletionRequestBuilder::new("Reply with the single word: ready.")
                 .max_tokens(512)
                 .build();
 

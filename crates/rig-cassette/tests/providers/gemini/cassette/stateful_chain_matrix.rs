@@ -26,6 +26,7 @@ use super::super::support::{
     BoundGemini, always_deleting_cached_contents, with_gemini_interactions_cassette,
     with_gemini_prompt_caching_cassette,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
@@ -355,13 +356,12 @@ async fn interactions_chain_with_tool_call() {
 
                 let first = model
                     .call(
-                        model
-                            .completion_request(
-                                "Use lookup_code to get the code of record alpha. Do not guess.",
-                            )
-                            .tool(lookup_tool())
-                            .additional_params(params(None))
-                            .build(),
+                        CompletionRequestBuilder::new(
+                            "Use lookup_code to get the code of record alpha. Do not guess.",
+                        )
+                        .tool(lookup_tool())
+                        .additional_params(params(None))
+                        .build(),
                         None,
                     )
                     .await
@@ -372,17 +372,16 @@ async fn interactions_chain_with_tool_call() {
 
                 let second = model
                     .call(
-                        model
-                            .completion_request(Message::from(UserContent::tool_result_for(
-                                call.id.clone(),
-                                call.provider.clone(),
-                                call.function.name.clone(),
-                                vec![ToolResultContent::text(format!(
-                                    "record alpha: code {CODE}"
-                                ))],
-                            )))
-                            .additional_params(params(Some(first_id)))
-                            .build(),
+                        CompletionRequestBuilder::new(Message::from(UserContent::tool_result_for(
+                            call.id.clone(),
+                            call.provider.clone(),
+                            call.function.name.clone(),
+                            vec![ToolResultContent::text(format!(
+                                "record alpha: code {CODE}"
+                            ))],
+                        )))
+                        .additional_params(params(Some(first_id)))
+                        .build(),
                         None,
                     )
                     .await
@@ -392,12 +391,11 @@ async fn interactions_chain_with_tool_call() {
 
                 let third = model
                     .call(
-                        model
-                            .completion_request(
-                                "Repeat the code you reported, exactly, and nothing else.",
-                            )
-                            .additional_params(params(Some(second_id)))
-                            .build(),
+                        CompletionRequestBuilder::new(
+                            "Repeat the code you reported, exactly, and nothing else.",
+                        )
+                        .additional_params(params(Some(second_id)))
+                        .build(),
                         None,
                     )
                     .await

@@ -53,6 +53,7 @@ use serde_json::Value;
 use super::super::support::with_gemini_cassette;
 use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
 use crate::support::{Adder, Observed, json_contains_key};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "gemini";
 
@@ -64,26 +65,17 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: streame
 /// A prompt the forced-tool cell can only satisfy by calling `add`.
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).temperature(0.0).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .temperature(0.0)
+        .build()
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded stream carries a `functionCall`.
-fn forced_tool_request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn forced_tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .temperature(0.0)
         .tool(rig::tool::tool_definition(&Adder))
         .tool_choice(ToolChoice::Specific {
@@ -217,7 +209,7 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(MODEL), request, sink)
+            capture_text_and_sole_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -266,7 +258,7 @@ async fn raw_exposes_terminal_only_fields() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(MODEL), request, sink)
+            capture_text_and_sole_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -321,7 +313,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call",
         |client| async move {
             let model = client.completion(MODEL);
-            sink.put(drain_stream(&model, forced_tool_request(&model)).await);
+            sink.put(drain_stream(&model, forced_tool_request()).await);
         },
     )
     .await;

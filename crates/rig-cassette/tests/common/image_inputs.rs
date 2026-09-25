@@ -11,6 +11,7 @@ use rig::message::{AssistantContent, ImageMediaType, Message, ToolResultContent,
 use serde_json::Value;
 
 use crate::support::{ImageContainer, assert_image_bytes};
+use rig::image_generation::ImageGenerationRequestBuilder;
 
 /// The prompt every generation cell uses.
 pub const PROMPT: &str = "A flat square filled edge to edge with one solid, saturated pure red colour. No objects, no text, no texture, no gradient.";
@@ -65,14 +66,17 @@ where
     W: rig::wire::Wire<Op = rig::operation::ImageGeneration> + Clone,
     T: rig::driver::Transport<W>,
 {
-    let mut builder = generator.image_generation_request(PROMPT);
+    let mut builder = ImageGenerationRequestBuilder::new(PROMPT);
     if let Some(side) = side {
         builder = builder.width(side).height(side);
     }
     if let Some(params) = params {
         builder = builder.additional_params(params);
     }
-    let response = builder.send().await.expect("image generation");
+    let response = generator
+        .call(builder.build(), None)
+        .await
+        .expect("image generation");
     assert_image_bytes(&response.image);
     response.image
 }

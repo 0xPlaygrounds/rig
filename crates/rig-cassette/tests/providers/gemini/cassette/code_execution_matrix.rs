@@ -74,6 +74,7 @@ use serde_json::{Value, json};
 use super::super::support::{
     BoundGemini, assert_recorded_response_contains, with_gemini_code_execution_cassette,
 };
+use rig::completion::CompletionRequestBuilder;
 
 /// Wire markers of the two code-execution part kinds, as Gemini spells them.
 pub(super) const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
@@ -183,8 +184,7 @@ async fn blocking_body(
     expected_substring: &'static str,
 ) {
     let model = client.completion(model_id);
-    let mut request = model
-        .completion_request(prompt)
+    let mut request = CompletionRequestBuilder::new(prompt)
         .temperature(0.0)
         .additional_params(params);
     if let Some(max_tokens) = max_tokens {
@@ -215,8 +215,7 @@ async fn streaming_body(
     expected_substring: &'static str,
 ) {
     let model = client.completion(model_id);
-    let mut request = model
-        .completion_request(prompt)
+    let mut request = CompletionRequestBuilder::new(prompt)
         .temperature(0.0)
         .additional_params(params);
     if let Some(max_tokens) = max_tokens {
@@ -376,15 +375,14 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
             use rig::providers::gemini::completion::gemini_api_types::PartKind;
 
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "Use the code execution tool to sum the integers from 1 to 100. \
+            let request = CompletionRequestBuilder::new(
+                "Use the code execution tool to sum the integers from 1 to 100. \
                  State the number in your answer.",
-                )
-                .temperature(0.0)
-                .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+            )
+            .temperature(0.0)
+            .max_tokens(2000)
+            .additional_params(code_execution_params())
+            .build();
 
             let response = model
                 .call(request, None)
@@ -548,8 +546,7 @@ async fn blocking_code_execution_with_visible_thoughts() {
         "code_execution_matrix/blocking_code_execution_with_visible_thoughts",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2500)
                 .additional_params(code_execution_params_with_thoughts())
@@ -589,8 +586,7 @@ async fn streaming_code_execution_with_visible_thoughts() {
         "code_execution_matrix/streaming_code_execution_with_visible_thoughts",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2500)
                 .additional_params(code_execution_params_with_thoughts())
@@ -632,8 +628,7 @@ async fn blocking_code_execution_with_preamble() {
         "code_execution_matrix/blocking_code_execution_with_preamble",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(PREAMBLE_PROMPT)
+            let request = CompletionRequestBuilder::new(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -664,8 +659,7 @@ async fn streaming_code_execution_with_preamble() {
         "code_execution_matrix/streaming_code_execution_with_preamble",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(PREAMBLE_PROMPT)
+            let request = CompletionRequestBuilder::new(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -1018,7 +1012,7 @@ mod unit {
             RecordingHttpClient::new(reply_with(parts)),
         )
         .completion("gemini-2.5-flash");
-        let request = model.completion_request("unit").build();
+        let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model.call(request, None).await
     }
 

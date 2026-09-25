@@ -5,6 +5,7 @@ use futures::StreamExt;
 use rig::Model;
 use rig::candle::CandleCompletionResponse;
 use rig::candle::{CandleModel, Generation, ModelData};
+use rig::completion::CompletionRequestBuilder;
 use rig::streaming::{Delta, StreamEvent};
 
 #[tokio::main]
@@ -27,8 +28,7 @@ async fn main() -> anyhow::Result<()> {
         weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
     let model = Model::new(Generation, candle);
-    let request = model
-        .completion_request(prompt)
+    let request = CompletionRequestBuilder::new(prompt)
         .preamble("You are a concise and helpful assistant.".to_string())
         .temperature(0.0)
         .max_tokens(64)

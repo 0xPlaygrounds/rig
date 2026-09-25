@@ -49,6 +49,7 @@ use serde_json::{Value, json};
 use super::super::support::{
     BoundOpenRouter, with_openrouter_reasoning_tool_order_cassette_result,
 };
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
 
@@ -142,15 +143,8 @@ fn prompt(shape: Shape) -> &'static str {
     }
 }
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    let mut builder = model
-        .completion_request(prompt(cell.shape))
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape))
         .preamble("Reason first, then obey the requested tool calls exactly.".to_owned())
         .additional_params(json!({
             "reasoning": { "max_tokens": 1024 },
@@ -167,9 +161,9 @@ fn request<
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedChoice) -> Result<()> {
     let model = client.completion(MODEL);
     let choice = match cell.transport {
-        Transport::Blocking => model.call(request(&model, cell), None).await?.choice,
+        Transport::Blocking => model.call(request(cell), None).await?.choice,
         Transport::Streaming => {
-            let raw = model.stream(request(&model, cell), None)?;
+            let raw = model.stream(request(cell), None)?;
             let mut stream = raw;
             while let Some(item) = stream.next().await {
                 item?;

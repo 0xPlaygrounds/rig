@@ -13,6 +13,7 @@ use crate::support::{
     assert_raw_stream_tool_call_precedes_text, assert_tool_call_precedes_later_text,
     collect_raw_stream_observation, collect_stream_final_response, collect_stream_observation,
 };
+use rig::completion::CompletionRequestBuilder;
 
 #[derive(Debug, Deserialize)]
 struct CassetteInteraction {
@@ -164,11 +165,9 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&AlphaSignal)).build();
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -198,14 +197,12 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-            let followup_request = model
-                .completion_request(
+            let followup_request = CompletionRequestBuilder::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
                 )
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+                .message(tool_result_message).build();
 
             let second_turn = collect_raw_stream_observation(
                 model

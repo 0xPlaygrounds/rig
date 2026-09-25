@@ -43,6 +43,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::{BoundOpenRouter, with_openrouter_tool_lifecycle_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -151,15 +152,8 @@ fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     }
 }
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    let mut builder = model
-        .completion_request(prompt(cell.shape))
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
         .additional_params(json!({
             "tool_choice": "required",
@@ -266,7 +260,7 @@ impl_matrix_tool!(Beta, "beta", ValueArgs);
 async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
     let model = client.completion(model_name(cell.model));
     match cell.transport {
-        Transport::Blocking => match model.call(request(&model, cell), None).await {
+        Transport::Blocking => match model.call(request(cell), None).await {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
@@ -283,7 +277,7 @@ async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(&model, cell), None) {
+            let raw = match model.stream(request(cell), None) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {

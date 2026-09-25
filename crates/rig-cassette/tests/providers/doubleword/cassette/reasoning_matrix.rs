@@ -19,6 +19,7 @@ use serde::Deserialize as _;
 
 use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_raw_stream_observation;
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Compute 17 * 23. Give the number only after thinking.";
 const CAP: u64 = 128;
@@ -27,7 +28,9 @@ async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
     let model = client.completion(model_name);
     let response = model
         .call(
-            model.completion_request(PROMPT).max_tokens(CAP).build(),
+            CompletionRequestBuilder::new(PROMPT)
+                .max_tokens(CAP)
+                .build(),
             None,
         )
         .await
@@ -62,7 +65,9 @@ async fn exercise_streaming(client: BoundDoubleword, model_name: &'static str) {
     let model = client.completion(model_name);
     let stream = model
         .stream(
-            model.completion_request(PROMPT).max_tokens(CAP).build(),
+            CompletionRequestBuilder::new(PROMPT)
+                .max_tokens(CAP)
+                .build(),
             None,
         )
         .expect("reasoning stream should connect");

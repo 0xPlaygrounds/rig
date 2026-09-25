@@ -27,6 +27,7 @@ use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
     ORDERED_TOOL_STREAM_PROMPT, TWO_TOOL_STREAM_PREAMBLE,
 };
+use rig::completion::CompletionRequestBuilder;
 
 /// Everything observed while draining a normalized stream, alongside the
 /// aggregated stream state itself.
@@ -172,11 +173,13 @@ async fn max_tokens_truncation_normalizes_to_length() {
         "streaming_grammar/max_tokens_truncation",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Write a 200-word story about a lighthouse keeper.")
-                .max_tokens(24)
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+            let request =
+                CompletionRequestBuilder::new("Write a 200-word story about a lighthouse keeper.")
+                    .max_tokens(24)
+                    .additional_params(
+                        serde_json::to_value(params).expect("params should serialize"),
+                    )
+                    .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -202,8 +205,7 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
         "streaming_grammar/streaming_tool_call",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
@@ -264,15 +266,13 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
         "streaming_grammar/thinking_stream",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "How many positive integers n < 400 are divisible by 6 but not by 9? \
                      Think it through carefully step by step, then answer with just the number.",
                 )
                 .additional_params(
                     serde_json::to_value(params).expect("params should serialize"),
-                )
-                .build();
+                ).build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -367,18 +367,17 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
         "streaming_grammar/thinking_then_tool_call",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = model
-                // A trivial tool turn yields no thought parts on this wire; a
-                // math sub-task reliably interleaves thinking with the call.
-                .completion_request(
-                    "First work out how many positive integers n < 60 are divisible by 8 \
+            // A trivial tool turn yields no thought parts on this wire; a
+            // math sub-task reliably interleaves thinking with the call.
+            let request = CompletionRequestBuilder::new(
+                "First work out how many positive integers n < 60 are divisible by 8 \
                      (carefully). Then call `lookup_harbor_label` exactly once. After the \
                      tool result arrives, answer with the count and the exact tool output.",
-                )
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+            )
+            .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .additional_params(serde_json::to_value(params).expect("params should serialize"))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -444,17 +443,16 @@ async fn parallel_function_calls_stay_distinct() {
         "streaming_grammar/parallel_function_calls",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
+            let request = CompletionRequestBuilder::new(
+                "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
                      together in this single reply, before writing any text. Emit the two \
                      tool calls in one turn - do not wait for results between them.",
-                )
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+            )
+            .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .tool(rig::tool::tool_definition(&BetaSignal))
+            .additional_params(serde_json::to_value(params).expect("params should serialize"))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -527,10 +525,12 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
         "streaming_grammar/stop_finish_reason",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with one short sentence about volcanoes.")
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+            let request =
+                CompletionRequestBuilder::new("Reply with one short sentence about volcanoes.")
+                    .additional_params(
+                        serde_json::to_value(params).expect("params should serialize"),
+                    )
+                    .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -554,8 +554,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
         "streaming_grammar/interactions_thinking_stream",
         |client| async move {
             let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "How many positive integers n < 200 are divisible by 4 but not by 10? \
                      Think it through, then answer with just the number.",
                 )
@@ -570,8 +569,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                         ..Default::default()
                     })
                     .expect("params should serialize"),
-                )
-                .build();
+                ).build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -706,8 +704,7 @@ async fn interactions_requires_action_roundtrip() {
 
             let raw = model
                 .call(
-                    model
-                        .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+                    CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
@@ -771,21 +768,20 @@ async fn interactions_requires_action_roundtrip() {
 
             let followup = model
                 .call(
-                    model
-                        .completion_request(Message::from(UserContent::tool_result_for(
-                            tool_call.id.clone(),
-                            tool_call.provider.clone(),
-                            tool_call.function.name.clone(),
-                            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-                        )))
-                        .additional_params(
-                            serde_json::to_value(interactions_api::AdditionalParameters {
-                                previous_interaction_id: Some(interaction_id),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        )
-                        .build(),
+                    CompletionRequestBuilder::new(Message::from(UserContent::tool_result_for(
+                        tool_call.id.clone(),
+                        tool_call.provider.clone(),
+                        tool_call.function.name.clone(),
+                        vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                    )))
+                    .additional_params(
+                        serde_json::to_value(interactions_api::AdditionalParameters {
+                            previous_interaction_id: Some(interaction_id),
+                            ..Default::default()
+                        })
+                        .expect("params should serialize"),
+                    )
+                    .build(),
                     None,
                 )
                 .await
@@ -821,8 +817,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
         "streaming_grammar/interactions_same_tool_twice",
         |client| async move {
             let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Use the `add` tool twice in this single reply, before any text: first \
                      add 2 and 3, then add 10 and 20. Emit both tool calls together in this \
                      one turn — do not wait for results between them, and do not compute the \
@@ -841,8 +836,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                         ..Default::default()
                     })
                     .expect("params should serialize"),
-                )
-                .build();
+                ).build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -929,8 +923,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
         "streaming_grammar/interactions_signature_without_summaries",
         |client| async move {
             let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "How many positive integers n < 100 are divisible by 6 but not by 9? \
                      Think it through, then answer with just the number.",
                 )
@@ -945,8 +938,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                         ..Default::default()
                     })
                     .expect("params should serialize"),
-                )
-                .build();
+                ).build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -1045,14 +1037,15 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     })],
                 },
             ];
-            let request = model
-                .completion_request("State the final result in one short sentence.")
-                .preamble(
-                    "You are a calculator assistant. Report tool results faithfully.".to_string(),
-                )
-                .tool(rig::tool::tool_definition(&crate::support::Adder))
-                .messages(history)
-                .build();
+            let request =
+                CompletionRequestBuilder::new("State the final result in one short sentence.")
+                    .preamble(
+                        "You are a calculator assistant. Report tool results faithfully."
+                            .to_string(),
+                    )
+                    .tool(rig::tool::tool_definition(&crate::support::Adder))
+                    .messages(history)
+                    .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),

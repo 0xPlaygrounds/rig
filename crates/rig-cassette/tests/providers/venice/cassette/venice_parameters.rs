@@ -15,6 +15,7 @@ use rig::providers::venice::{self, VeniceParameters, WebSearchMode};
 use serde::Deserialize as _;
 
 use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 /// Venice's own reply, read back out of the captured document.
 fn venice_reply(raw: &serde_json::Value) -> venice::CompletionResponse {
@@ -25,17 +26,18 @@ fn venice_reply(raw: &serde_json::Value) -> venice::CompletionResponse {
 async fn web_search_on_returns_citations() {
     with_venice_cassette("venice_parameters/web_search_on", |client| async move {
         let model = client.completion(DEFAULT_MODEL);
-        let request = model
-            .completion_request("In one sentence, what is the Rust programming language?")
-            .max_tokens(64)
-            .additional_params(
-                VeniceParameters::new()
-                    .enable_web_search(WebSearchMode::On)
-                    .enable_web_citations(true)
-                    .disable_thinking(true)
-                    .into_additional_params(),
-            )
-            .build();
+        let request = CompletionRequestBuilder::new(
+            "In one sentence, what is the Rust programming language?",
+        )
+        .max_tokens(64)
+        .additional_params(
+            VeniceParameters::new()
+                .enable_web_search(WebSearchMode::On)
+                .enable_web_citations(true)
+                .disable_thinking(true)
+                .into_additional_params(),
+        )
+        .build();
 
         let response = model
             .call(request, None)
@@ -70,8 +72,7 @@ async fn web_search_on_returns_citations() {
 async fn web_search_auto_is_echoed() {
     with_venice_cassette("venice_parameters/web_search_auto", |client| async move {
         let model = client.completion(DEFAULT_MODEL);
-        let request = model
-            .completion_request("What is 2 + 2? Answer with the number only.")
+        let request = CompletionRequestBuilder::new("What is 2 + 2? Answer with the number only.")
             .max_tokens(16)
             .additional_params(
                 VeniceParameters::new()
@@ -104,16 +105,16 @@ async fn web_search_auto_is_echoed() {
 async fn disable_thinking_is_applied() {
     with_venice_cassette("venice_parameters/disable_thinking", |client| async move {
         let model = client.completion(DEFAULT_MODEL);
-        let request = model
-            .completion_request("Name one primary color. Answer with one word.")
-            .max_tokens(16)
-            .additional_params(
-                VeniceParameters::new()
-                    .disable_thinking(true)
-                    .strip_thinking_response(true)
-                    .into_additional_params(),
-            )
-            .build();
+        let request =
+            CompletionRequestBuilder::new("Name one primary color. Answer with one word.")
+                .max_tokens(16)
+                .additional_params(
+                    VeniceParameters::new()
+                        .disable_thinking(true)
+                        .strip_thinking_response(true)
+                        .into_additional_params(),
+                )
+                .build();
 
         let response = model
             .call(request, None)
@@ -138,8 +139,7 @@ async fn venice_system_prompt_can_be_disabled() {
         "venice_parameters/include_venice_system_prompt_false",
         |client| async move {
             let model = client.completion(DEFAULT_MODEL);
-            let request = model
-                .completion_request("Say hi in three words.")
+            let request = CompletionRequestBuilder::new("Say hi in three words.")
                 .max_tokens(24)
                 .additional_params(
                     VeniceParameters::new()
@@ -178,8 +178,7 @@ async fn venice_system_prompt_can_be_disabled() {
 async fn character_slug_selects_a_persona() {
     with_venice_cassette("venice_parameters/character_slug", |client| async move {
         let model = client.completion(DEFAULT_MODEL);
-        let request = model
-            .completion_request("Introduce yourself in one sentence.")
+        let request = CompletionRequestBuilder::new("Introduce yourself in one sentence.")
             .max_tokens(64)
             .additional_params(
                 VeniceParameters::new()

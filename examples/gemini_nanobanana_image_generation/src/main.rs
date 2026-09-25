@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::image_generation::ImageGenerationRequestBuilder;
 use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 
@@ -12,12 +13,15 @@ async fn main() -> Result<()> {
     );
 
     let response = model
-        .image_generation_request(
-            "Generate a simple flat icon of a yellow banana on a white background.",
+        .call(
+            ImageGenerationRequestBuilder::new(
+                "Generate a simple flat icon of a yellow banana on a white background.",
+            )
+            .width(512)
+            .height(512)
+            .build(),
+            None,
         )
-        .width(512)
-        .height(512)
-        .send()
         .await?;
 
     let output_path = "/tmp/rig-nanobanana.png";

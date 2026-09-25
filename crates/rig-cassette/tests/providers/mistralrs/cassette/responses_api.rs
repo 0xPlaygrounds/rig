@@ -9,6 +9,7 @@ use serde::Deserialize;
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn responses_api_no_think_returns_text() {
@@ -45,13 +46,11 @@ async fn responses_api_reasoning_plus_answer_completes() {
         |client| async move {
             let model = rig_test_support::endpoint::map_wire(client
                 .responses(model_name()), Responses::with_system_instructions_as_messages);
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
                 )
                 .preamble(SYSTEM_PROMPT.to_owned())
-                .max_tokens(512)
-                .build();
+                .max_tokens(512).build();
             // One cassette interaction, two views of it: the normalized
             // response the decoder folded, and — through the typed escape
             // hatch over its captured `raw` — the Responses reply document

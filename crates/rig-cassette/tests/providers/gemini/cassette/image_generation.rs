@@ -1,5 +1,6 @@
 //! Gemini image generation cassette tests.
 
+use rig::image_generation::ImageGenerationRequestBuilder;
 use rig::providers::gemini;
 
 #[tokio::test]
@@ -9,12 +10,15 @@ async fn nano_banana_image_generation_smoke() {
         |client| async move {
             let model = client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE);
             let response = model
-                .image_generation_request(
-                    "Generate a simple flat icon of a yellow banana on a white background.",
+                .call(
+                    ImageGenerationRequestBuilder::new(
+                        "Generate a simple flat icon of a yellow banana on a white background.",
+                    )
+                    .width(256)
+                    .height(256)
+                    .build(),
+                    None,
                 )
-                .width(256)
-                .height(256)
-                .send()
                 .await
                 .expect("Nano Banana image generation should succeed");
 

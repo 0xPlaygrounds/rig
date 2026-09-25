@@ -9,6 +9,7 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
 use crate::support::assert_transport_request_id;
+use rig::completion::CompletionRequestBuilder;
 
 /// 401 auth rejection: the auth tier answers before the API proper — the
 /// recorded fixture documents whether the id header still rides it.
@@ -19,9 +20,12 @@ async fn auth_rejection_carries_identity() {
         |client| async move {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let error = model
-                .completion_request("Never authenticated")
-                .max_tokens(16)
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never authenticated")
+                        .max_tokens(16)
+                        .build(),
+                    None,
+                )
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
@@ -53,10 +57,13 @@ async fn validation_error_carries_identity() {
         |client| async move {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let error = model
-                .completion_request("Never validated")
-                .max_tokens(1)
-                .additional_params(serde_json::json!({"temperature": -5.0}))
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never validated")
+                        .max_tokens(1)
+                        .additional_params(serde_json::json!({"temperature": -5.0}))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect_err("an impossible temperature must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -96,10 +103,12 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
         "error_identity_edge/streaming_connect_4xx_matches_blocking_richness",
         |client| async move {
             let model = client.completion("claude-nonexistent-model-for-error-edge");
-            let result = model
-                .completion_request("Never streamed")
-                .max_tokens(16)
-                .stream();
+            let result = model.stream(
+                CompletionRequestBuilder::new("Never streamed")
+                    .max_tokens(16)
+                    .build(),
+                None,
+            );
             let error = match result {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => {
@@ -144,10 +153,12 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
         "error_identity_edge/streaming_connect_auth_rejection_classifies_with_contract",
         |client| async move {
             let model = client.completion(CLAUDE_SONNET_4_6);
-            let result = model
-                .completion_request("Never streamed")
-                .max_tokens(16)
-                .stream();
+            let result = model.stream(
+                CompletionRequestBuilder::new("Never streamed")
+                    .max_tokens(16)
+                    .build(),
+                None,
+            );
             let error = match result {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => {

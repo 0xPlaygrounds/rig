@@ -10,6 +10,7 @@
 //! 5. repeats until the model returns a final text answer.
 
 use anyhow::{Result, bail};
+use rig::completion::CompletionRequestBuilder;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -152,8 +153,7 @@ async fn main() -> Result<()> {
     for round in 1..=MAX_ROUNDS {
         // This example intentionally operates below the Agent abstraction. Raw
         // model requests have no agent lifecycle or hooks.
-        let mut request = model
-            .completion_request(current_prompt.clone())
+        let mut request = CompletionRequestBuilder::new(current_prompt.clone())
             .preamble(preamble.to_string())
             .messages(history.clone())
             .tools(local_tools.tool_definitions());
@@ -162,7 +162,7 @@ async fn main() -> Result<()> {
             request = request.tool_choice(ToolChoice::Required);
         }
 
-        let response = request.send().await?;
+        let response = model.call(request.build(), None).await?;
         let tool_calls = collect_tool_calls(&response.choice);
 
         history.push(current_prompt.clone());

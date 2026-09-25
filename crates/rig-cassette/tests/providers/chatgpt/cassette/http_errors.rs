@@ -7,6 +7,7 @@ use rig::providers::openai::OpenAI;
 use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_chatgpt_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn nonstreaming_unauthorized_preserves_status_and_body() {
@@ -33,7 +34,7 @@ async fn assert_nonstreaming_http_error(
     expected_message: &str,
 ) {
     let model = client.completion(chatgpt::GPT_5_4);
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
         .call(request, None)

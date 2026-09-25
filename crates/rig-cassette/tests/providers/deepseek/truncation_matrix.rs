@@ -43,6 +43,7 @@ use super::support::{
     BoundDeepSeek, collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
     with_deepseek_truncation_cassette_result,
 };
+use rig::completion::CompletionRequestBuilder;
 
 pub(super) const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -96,32 +97,23 @@ fn page_oncall_tool() -> ToolDefinition {
     }
 }
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
+fn request(
     preamble: &str,
     tools: Vec<ToolDefinition>,
     params: Value,
     max_tokens: u64,
 ) -> rig::completion::CompletionRequest {
-    request_for(model, INCIDENT_PROMPT, preamble, tools, params, max_tokens)
+    request_for(INCIDENT_PROMPT, preamble, tools, params, max_tokens)
 }
 
-fn request_for<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
+fn request_for(
     prompt: &str,
     preamble: &str,
     tools: Vec<ToolDefinition>,
     params: Value,
     max_tokens: u64,
 ) -> rig::completion::CompletionRequest {
-    let mut builder = model
-        .completion_request(prompt)
+    let mut builder = CompletionRequestBuilder::new(prompt)
         .preamble(preamble.to_owned())
         .additional_params(params)
         .max_tokens(max_tokens);
@@ -248,7 +240,6 @@ async fn assert_blocking_truncation_survives(
     let response = model
         .call(
             request(
-                &model,
                 TOOL_PREAMBLE,
                 vec![file_report_tool()],
                 non_thinking_params(),
@@ -312,7 +303,6 @@ async fn assert_streaming_truncation_survives(
     let model = client.completion(MODEL);
     let outcome = collect_raw_stream_outcome(model.stream(
         request(
-            &model,
             TOOL_PREAMBLE,
             vec![file_report_tool()],
             non_thinking_params(),
@@ -363,7 +353,6 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
             let normalized = model
                 .call(
                     request(
-                        &model,
                         TOOL_PREAMBLE,
                         vec![file_report_tool()],
                         non_thinking_params(),
@@ -405,7 +394,6 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
             let normalized = model
                 .call(
                     request(
-                        &model,
                         TOOL_PREAMBLE,
                         vec![file_report_tool()],
                         non_thinking_params(),
@@ -447,7 +435,6 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
             let normalized = model
                 .call(
                     request(
-                        &model,
                         TOOL_PREAMBLE,
                         vec![file_report_tool()],
                         non_thinking_params(),
@@ -537,7 +524,6 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
             let normalized = model
                 .call(
                     request(
-                        &model,
                         TOOL_PREAMBLE,
                         vec![file_report_tool()],
                         non_thinking_params(),
@@ -580,7 +566,6 @@ async fn streaming_budget_12_truncates_before_any_tool_call() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(model.stream(
                 request(
-                    &model,
                     TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
@@ -614,7 +599,6 @@ async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(model.stream(
                 request(
-                    &model,
                     TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
@@ -716,7 +700,6 @@ async fn streaming_budget_96_complete_arguments_are_untouched() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(model.stream(
                 request(
-                    &model,
                     TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
@@ -750,7 +733,6 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
             let normalized = model
                 .call(
                     request(
-                        &model,
                         PARALLEL_PREAMBLE,
                         vec![page_oncall_tool(), file_report_tool()],
                         json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
@@ -796,7 +778,6 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(model.stream(
                 request(
-                    &model,
                     PARALLEL_PREAMBLE,
                     vec![page_oncall_tool(), file_report_tool()],
                     json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
@@ -836,7 +817,6 @@ async fn blocking_text_before_a_truncated_call_survives() {
             let normalized = model
                 .call(
                     request(
-                        &model,
                         TEXT_FIRST_PREAMBLE,
                         vec![file_report_tool()],
                         non_thinking_params(),
@@ -883,7 +863,6 @@ async fn streaming_text_before_a_truncated_call_survives() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(model.stream(
                 request(
-                    &model,
                     TEXT_FIRST_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
@@ -920,9 +899,7 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .call(request_for(
-                    &model,
-                    REASONER_INCIDENT_PROMPT,
+                .call(request_for(REASONER_INCIDENT_PROMPT,
                     REASONER_TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     thinking_params(),
@@ -964,9 +941,7 @@ async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
-                    .stream(request_for(
-                        &model,
-                        REASONER_INCIDENT_PROMPT,
+                    .stream(request_for(REASONER_INCIDENT_PROMPT,
                         REASONER_TOOL_PREAMBLE,
                         vec![file_report_tool()],
                         thinking_params(),

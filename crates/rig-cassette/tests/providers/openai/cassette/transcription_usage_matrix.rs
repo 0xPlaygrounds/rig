@@ -72,6 +72,7 @@ use serde_json::json;
 
 use super::super::support::with_openai_transcription_cassette;
 use crate::support::AUDIO_FIXTURE_PATH;
+use rig::transcription::TranscriptionRequestBuilder;
 
 fn audio() -> Vec<u8> {
     std::fs::read(AUDIO_FIXTURE_PATH).expect("audio fixture should be readable")
@@ -105,9 +106,12 @@ async fn whisper_reports_duration_usage() {
             let response = client
                 .openai
                 .transcription(openai::WHISPER_1)
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("transcription should succeed");
 
@@ -129,9 +133,12 @@ async fn gpt_4o_transcribe_reports_token_usage() {
             let response = client
                 .openai
                 .transcription("gpt-4o-transcribe")
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("transcription should succeed");
 
@@ -166,9 +173,12 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
             let response = client
                 .openai
                 .transcription("gpt-4o-mini-transcribe")
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("transcription should succeed");
 
@@ -192,9 +202,12 @@ async fn completions_client_reports_duration_usage() {
             let response = client
                 .openai
                 .transcription(openai::WHISPER_1)
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("transcription should succeed");
 
@@ -216,9 +229,12 @@ async fn completions_client_reports_token_usage() {
             let response = client
                 .openai
                 .transcription("gpt-4o-transcribe")
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("transcription should succeed");
 
@@ -244,10 +260,13 @@ async fn verbose_json_still_reports_duration_usage() {
             let response = client
                 .openai
                 .transcription(openai::WHISPER_1)
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .additional_params(json!({ "response_format": "verbose_json" }))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .additional_params(json!({ "response_format": "verbose_json" }))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("transcription should succeed");
 
@@ -278,9 +297,12 @@ async fn transcript_still_reaches_the_normalized_response() {
             let response = client
                 .openai
                 .transcription(openai::WHISPER_1)
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("transcription should succeed");
 
@@ -304,10 +326,13 @@ async fn rejected_request_surfaces_the_provider_body() {
             let Err(error) = client
                 .openai
                 .transcription(openai::WHISPER_1)
-                .transcription_request(audio())
-                .filename(Some("audio.mp3".to_owned()))
-                .additional_params(json!({ "response_format": "rig-invalid" }))
-                .send()
+                .call(
+                    TranscriptionRequestBuilder::new(audio())
+                        .filename(Some("audio.mp3".to_owned()))
+                        .additional_params(json!({ "response_format": "rig-invalid" }))
+                        .build(),
+                    None,
+                )
                 .await
             else {
                 panic!("an invalid response_format must be rejected")

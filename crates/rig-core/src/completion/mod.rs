@@ -3,11 +3,11 @@
 //! reply as [`CompletionResponse`]; a [`Model`](crate::Model) sends it.
 //!
 //! ```no_run
-//! use rig_core::{Model, providers::openai::OpenAI};
+//! use rig_core::{Model, completion::CompletionRequestBuilder, providers::openai::OpenAI};
 //!
 //! # async fn run(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let model = Model::new(OpenAI::from_env()?.completion("gpt-4o"), http);
-//! let request = model.completion_request("What is Rig?").build();
+//! let request = CompletionRequestBuilder::new("What is Rig?").build();
 //! let response = model.call(request, None).await?;
 //! println!("{:?}", response.choice);
 //! # Ok(())

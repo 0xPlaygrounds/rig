@@ -32,6 +32,7 @@ use rig::providers::groq;
 
 use super::support::{BoundGroq, with_groq_cassette_result};
 use crate::support::{assert_nonempty_response, assistant_text_response};
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Reply with the single word OK.";
 
@@ -69,7 +70,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
 
 async fn assert_completion_smoke(client: BoundGroq, model_id: &str) -> Result<()> {
     let model = client.completion(model_id);
-    let request = model.completion_request(PROMPT).max_tokens(64).build();
+    let request = CompletionRequestBuilder::new(PROMPT).max_tokens(64).build();
     let response = model.call(request, None).await?;
     let text = assistant_text_response(&response.choice)
         .ok_or_else(|| anyhow::anyhow!("{model_id} should answer with text"))?;

@@ -40,7 +40,7 @@ Node.js 19 or later do. WASI targets are not supported.
 ```rust
 use rig_core::{
     Model,
-    completion::AssistantContent,
+    completion::{AssistantContent, CompletionRequestBuilder},
     providers::openai::{self, OpenAI},
 };
 
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         rig_reqwest::bundled()?,
     );
 
-    let request = model.completion_request("Who are you?").build();
+    let request = CompletionRequestBuilder::new("Who are you?").build();
     let response = model.call(request, None).await?;
     for item in response.choice {
         if let AssistantContent::Text(text) = item {

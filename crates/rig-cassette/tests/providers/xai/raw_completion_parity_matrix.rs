@@ -32,9 +32,7 @@
 //! per-interaction bookkeeping and the header premise.
 
 use rig::completion::CompletionRequest;
-use rig::driver::Model;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
 use serde::Deserialize;
 
@@ -44,14 +42,15 @@ use crate::raw_capture::{
     assert_contracted_request_id, capture_completion, capture_completion_pair, responses,
 };
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Model<OpenAiWire, rig::http_client::BoxedHttpClient>) -> CompletionRequest {
-    model.completion_request(PROMPT).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).build()
 }
 
 /// The `x-request-id` the recorded interaction at `index` carried — the
@@ -84,7 +83,7 @@ async fn raw_normalize_reproduces_completion() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
-        |client| capture_completion_pair(client.completion(MODEL), request, sink.clone()),
+        |client| capture_completion_pair(client.completion(MODEL), request(), sink.clone()),
     )
     .await
     .expect("raw_normalize_reproduces_completion should replay from its cassette");
@@ -134,7 +133,7 @@ async fn raw_completion_carries_request_id_on_the_type() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
     )
     .await
     .expect("raw_completion_carries_request_id_on_the_type should replay from its cassette");

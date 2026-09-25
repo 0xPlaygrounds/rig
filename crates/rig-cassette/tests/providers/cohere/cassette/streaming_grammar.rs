@@ -12,6 +12,7 @@ use super::super::{
     CASSETTE_MODEL,
     support::{IntegerSubtract, with_cohere_cassette},
 };
+use rig::completion::CompletionRequestBuilder;
 
 /// Cohere's reasoning-capable Command model, which streams `thinking`-bearing
 /// content deltas before the answer text (the F8 cohere variant).
@@ -85,13 +86,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
 async fn thinking_stream_keeps_reasoning_and_text_discrete() {
     with_cohere_cassette("streaming_grammar/thinking_stream", |client| async move {
         let model = client.completion(REASONING_MODEL);
-        let request = model
-            .completion_request(
-                "How many positive integers n < 100 are divisible by 6? \
+        let request = CompletionRequestBuilder::new(
+            "How many positive integers n < 100 are divisible by 6? \
                  Think it through, then answer with just the number.",
-            )
-            .max_tokens(1024)
-            .build();
+        )
+        .max_tokens(1024)
+        .build();
         let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
         assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -166,14 +166,13 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
         "streaming_grammar/reasoning_then_tool_call",
         |client| async move {
             let model = client.completion(REASONING_MODEL);
-            let request = model
-                .completion_request(
-                    "Think it through, then call the subtract tool to compute 2 - 5. \
+            let request = CompletionRequestBuilder::new(
+                "Think it through, then call the subtract tool to compute 2 - 5. \
                      Do not answer with normal text before the tool call.",
-                )
-                .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .build();
+            )
+            .max_tokens(1024)
+            .tool(rig::tool::tool_definition(&IntegerSubtract))
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_eq!(
@@ -229,12 +228,12 @@ async fn required_tool_choice_streams_tool_call() {
         "streaming_grammar/required_tool_choice_streams_tool_call",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Use the subtract tool to calculate 8 - 3.")
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .tool_choice(ToolChoice::Required)
-                .max_tokens(128)
-                .build();
+            let request =
+                CompletionRequestBuilder::new("Use the subtract tool to calculate 8 - 3.")
+                    .tool(rig::tool::tool_definition(&IntegerSubtract))
+                    .tool_choice(ToolChoice::Required)
+                    .max_tokens(128)
+                    .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(run.text.is_empty(), "tool-only turn should not emit text");
@@ -261,12 +260,13 @@ async fn none_tool_choice_streams_text() {
         "streaming_grammar/none_tool_choice_streams_text",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Calculate 8 - 3. Answer directly without calling a tool.")
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .tool_choice(ToolChoice::None)
-                .max_tokens(32)
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Calculate 8 - 3. Answer directly without calling a tool.",
+            )
+            .tool(rig::tool::tool_definition(&IntegerSubtract))
+            .tool_choice(ToolChoice::None)
+            .max_tokens(32)
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "NONE should stream text");

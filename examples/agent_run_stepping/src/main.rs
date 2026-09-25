@@ -22,6 +22,7 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
+use rig::completion::CompletionRequestBuilder;
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -115,14 +116,13 @@ async fn main() -> Result<()> {
                 // execution of the configured `Agent`. Its transport is an
                 // explicit raw model request and therefore has no agent hooks.
                 let response = model
-                    .completion_request(prompt)
+                    .call(CompletionRequestBuilder::new(prompt)
                     .messages(history)
                     .preamble(
                         "You are a calculator. Always use the provided tools to compute results."
                             .to_string(),
                     )
-                    .tools(tool_definitions.clone())
-                    .send()
+                    .tools(tool_definitions.clone()).build(), None)
                     .await?;
 
                 // The tools advertised to the provider for this turn. With

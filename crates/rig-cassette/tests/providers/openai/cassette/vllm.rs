@@ -9,6 +9,7 @@ use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::ProviderCassette;
 use futures::FutureExt;
+use rig::completion::CompletionRequestBuilder;
 
 async fn with_openai_vllm_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
@@ -39,10 +40,8 @@ async fn responses_api_accepts_null_metadata() {
         "vllm/responses_api_accepts_null_metadata",
         |client| async move {
             let model = client.completion("Qwen/Qwen3-0.6B");
-            let request = model
-                .completion_request("Reply with a short acknowledgement.")
-                .max_tokens(8)
-                .build();
+            let request = CompletionRequestBuilder::new("Reply with a short acknowledgement.")
+                .max_tokens(8).build();
 
             // `metadata` is a provider-native wire field, so it is read off the
             // Responses API's own response type, deserialized from

@@ -1,4 +1,5 @@
 use super::*;
+use crate::completion::CompletionRequestBuilder;
 use crate::observe::ObservationLog;
 
 #[test]
@@ -54,7 +55,7 @@ async fn streamed_body_failure_preserves_boundary_through_provider_error_convers
             http,
         );
         let log = Arc::new(ObservationLog::default());
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequestBuilder::new("hello").build();
         let context = enabled.then(|| AdapterContext::new(log.clone(), Subject::default(), "call"));
         let mut stream = model.stream(request, context).unwrap();
         let error = loop {
@@ -198,7 +199,7 @@ fn cloned_context_numbers_attempts_and_closes_once_without_payloads() {
 
 #[test]
 fn context_is_not_part_of_serialized_completion_requests() {
-    let request = crate::completion::CompletionRequestBuilder::unbound("hello").build();
+    let request = crate::completion::CompletionRequestBuilder::new("hello").build();
     let encoded = serde_json::to_string(&request).unwrap();
     assert!(!encoded.contains("local-only-secret"));
     assert!(!encoded.contains("observation"));
@@ -218,7 +219,7 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
         crate::providers::gemini::Gemini::new("synthetic-secret-key").completion("gemini-test"),
         http.clone(),
     );
-    let plain = model.completion_request("hello").build();
+    let plain = CompletionRequestBuilder::new("hello").build();
     model.call(plain.clone(), None).await.unwrap();
     let log = Arc::new(ObservationLog::default());
     let observed = plain;
@@ -311,7 +312,7 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
     for _ in 0..2 {
         let error = model
             .call(
-                model.completion_request("hello").build(),
+                CompletionRequestBuilder::new("hello").build(),
                 Some(context.clone()),
             )
             .await
@@ -439,7 +440,7 @@ async fn dropping_pending_transport_or_body_closes_the_attempt_once() {
             PendingHttp { body_pending },
         );
         let log = Arc::new(ObservationLog::default());
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequestBuilder::new("hello").build();
         let context = Some(AdapterContext::new(
             log.clone(),
             Subject::default(),
@@ -465,7 +466,7 @@ async fn shared_arc_model_keeps_mixed_invocations_distinct_after_context_scope_e
         PendingHttp { body_pending: true },
     ));
     let sink = Arc::new(ObservationLog::default());
-    let request = model.completion_request("same request").build();
+    let request = CompletionRequestBuilder::new("same request").build();
     let mut stream = {
         let context = AdapterContext::new(sink.clone(), Subject::default(), "stream");
         model.stream(request.clone(), Some(context)).unwrap()
@@ -521,7 +522,7 @@ async fn dropping_stream_pending_on_connection_or_body_closes_once() {
             PendingHttp { body_pending },
         );
         let log = Arc::new(ObservationLog::default());
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequestBuilder::new("hello").build();
         let context = Some(AdapterContext::new(
             log.clone(),
             Subject::default(),
@@ -549,7 +550,7 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
         },
     );
     let log = Arc::new(ObservationLog::default());
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
     let mut plain_stream = model.stream(request.clone(), None).unwrap();
     let mut plain_items = Vec::new();
     while let Some(item) = plain_stream.next().await {
@@ -748,7 +749,7 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
             crate::providers::gemini::Gemini::new("test-key").completion("gemini-test"),
             http.clone(),
         );
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequestBuilder::new("hello").build();
         let plain_error = model.call(request.clone(), None).await.unwrap_err();
         let log = Arc::new(ObservationLog::default());
         let context = Some(AdapterContext::new(
@@ -833,7 +834,7 @@ async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
             r#"{"error":{"message":"synthetic-sensitive-body"},"usageMetadata":{"promptTokenCount":3}}"#,
         ),
     );
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
     let mut plain = model.stream(request.clone(), None).unwrap();
     let plain_error = plain.next().await.unwrap().unwrap_err();
     assert!(plain.next().await.is_none());
@@ -902,7 +903,7 @@ async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
             http,
         );
         let log = Arc::new(ObservationLog::default());
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequestBuilder::new("hello").build();
         let context = Some(AdapterContext::new(
             log.clone(),
             Subject::default(),
@@ -1150,13 +1151,12 @@ async fn optional_response_ids_do_not_create_semantic_stream_events() {
 /// call carries a context.
 #[tokio::test]
 async fn a_transport_that_records_nothing_writes_no_facts() {
-    use crate::completion::CompletionRequestBuilder;
     use crate::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
     use futures::StreamExt;
 
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "ordinary-call");
-    let request = CompletionRequestBuilder::unbound("hello").build();
+    let request = CompletionRequestBuilder::new("hello").build();
     let response = MockCompletionModel::from_turns([MockTurn::text("ordinary")])
         .call(request.clone(), Some(context.clone()))
         .await

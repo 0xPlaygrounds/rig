@@ -59,7 +59,7 @@ fn deep_research_request(
         );
     }
 
-    Ok(CompletionRequestBuilder::unbound(prompt.into())
+    Ok(CompletionRequestBuilder::new(prompt.into())
         .additional_params(serde_json::Value::Object(params))
         .build())
 }

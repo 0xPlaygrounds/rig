@@ -8,6 +8,7 @@
 use rig::providers::venice;
 
 use super::super::support::with_venice_cassette;
+use rig::image_generation::ImageGenerationRequestBuilder;
 
 #[tokio::test]
 async fn image_generation_smoke() {
@@ -16,19 +17,22 @@ async fn image_generation_smoke() {
         |client| async move {
             let model = client.image_generation(venice::VENICE_SD35);
             let response = model
-                .image_generation_request(
-                    "A lighthouse on a rocky cliff at sunrise, clean illustrative style.",
+                .call(
+                    ImageGenerationRequestBuilder::new(
+                        "A lighthouse on a rocky cliff at sunrise, clean illustrative style.",
+                    )
+                    .width(256)
+                    .height(256)
+                    .additional_params(serde_json::json!({
+                        "format": "webp",
+                        "seed": 42,
+                        "steps": 4,
+                        "safe_mode": true,
+                        "embed_exif_metadata": false,
+                    }))
+                    .build(),
+                    None,
                 )
-                .width(256)
-                .height(256)
-                .additional_params(serde_json::json!({
-                    "format": "webp",
-                    "seed": 42,
-                    "steps": 4,
-                    "safe_mode": true,
-                    "embed_exif_metadata": false,
-                }))
-                .send()
                 .await
                 .expect("Venice image generation should succeed");
 

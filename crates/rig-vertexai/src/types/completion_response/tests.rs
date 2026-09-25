@@ -42,7 +42,7 @@ impl Complete for vertexai::model::GenerateContentResponse {
             Reply(self),
         );
         futures::executor::block_on(
-            model.call(CompletionRequestBuilder::unbound("hello").build(), None),
+            model.call(CompletionRequestBuilder::new("hello").build(), None),
         )
     }
 }

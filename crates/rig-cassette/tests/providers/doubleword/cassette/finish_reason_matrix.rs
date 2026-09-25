@@ -22,6 +22,7 @@ use serde_json::json;
 
 use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
 use crate::support::{collect_text_and_terminal, zero_arg_tool_definition};
+use rig::completion::CompletionRequestBuilder;
 
 const STOP_PROMPT: &str = "Reply with exactly: done";
 const LENGTH_PROMPT: &str = "Explain every step of how a compiler optimizes a large program.";
@@ -52,8 +53,7 @@ async fn blocking_stop(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
         .call(
-            model
-                .completion_request(STOP_PROMPT)
+            CompletionRequestBuilder::new(STOP_PROMPT)
                 .additional_params(json!({ "reasoning_effort": "none" }))
                 .max_tokens(64)
                 .build(),
@@ -68,8 +68,7 @@ async fn blocking_length(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
         .call(
-            model
-                .completion_request(LENGTH_PROMPT)
+            CompletionRequestBuilder::new(LENGTH_PROMPT)
                 .max_tokens(1)
                 .build(),
             None,
@@ -83,8 +82,7 @@ async fn blocking_tool_calls_body(client: BoundDoubleword) {
     let model = client.completion(doubleword::QWEN3_5_397B_A17B);
     let response = model
         .call(
-            model
-                .completion_request(TOOL_PROMPT)
+            CompletionRequestBuilder::new(TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .max_tokens(256)
@@ -109,7 +107,7 @@ async fn streaming_reason(
     stop_probe: bool,
 ) -> FinishReason {
     let model = client.completion(doubleword::QWEN3_5_9B);
-    let mut builder = model.completion_request(prompt).max_tokens(max_tokens);
+    let mut builder = CompletionRequestBuilder::new(prompt).max_tokens(max_tokens);
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
     }
@@ -187,8 +185,7 @@ async fn streaming_tool_calls() {
             let model = client.completion(doubleword::QWEN3_5_397B_A17B);
             let stream = model
                 .stream(
-                    model
-                        .completion_request(TOOL_PROMPT)
+                    CompletionRequestBuilder::new(TOOL_PROMPT)
                         .tool(zero_arg_tool_definition("ping"))
                         .tool_choice(ToolChoice::Required)
                         .max_tokens(256)

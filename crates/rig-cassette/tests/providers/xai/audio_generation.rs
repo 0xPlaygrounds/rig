@@ -6,6 +6,7 @@ use rig_test_support::endpoint::Endpoint;
 use serde_json::json;
 
 use crate::support::{AUDIO_TEXT, assert_nonempty_bytes};
+use rig::audio_generation::AudioGenerationRequestBuilder;
 
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
@@ -19,11 +20,14 @@ async fn audio_generation_smoke() {
     let model = client.audio_generation(xai::TTS_1);
 
     let response = model
-        .audio_generation_request(AUDIO_TEXT, "eve")
-        .additional_params(json!({
-            "language": "en",
-        }))
-        .send()
+        .call(
+            AudioGenerationRequestBuilder::new(AUDIO_TEXT, "eve")
+                .additional_params(json!({
+                    "language": "en",
+                }))
+                .build(),
+            None,
+        )
         .await
         .expect("audio generation should succeed");
 

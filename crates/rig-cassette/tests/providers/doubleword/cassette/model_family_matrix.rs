@@ -27,6 +27,7 @@ use serde::Deserialize as _;
 
 use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_text_and_terminal;
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Reply with the single word: family-ok";
 const CAP: u64 = 96;
@@ -35,7 +36,9 @@ async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
     let model = client.completion(model_name);
     let response = model
         .call(
-            model.completion_request(PROMPT).max_tokens(CAP).build(),
+            CompletionRequestBuilder::new(PROMPT)
+                .max_tokens(CAP)
+                .build(),
             None,
         )
         .await
@@ -186,7 +189,9 @@ async fn default_qwen_family_streaming() {
             let model = client.completion(doubleword::QWEN3_5_9B);
             let stream = model
                 .stream(
-                    model.completion_request(PROMPT).max_tokens(CAP).build(),
+                    CompletionRequestBuilder::new(PROMPT)
+                        .max_tokens(CAP)
+                        .build(),
                     None,
                 )
                 .expect("the default model stream should connect");

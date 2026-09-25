@@ -10,6 +10,7 @@
 use futures::StreamExt;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn nonexistent_model_error_preserves_status_and_body() {
@@ -17,7 +18,9 @@ async fn nonexistent_model_error_preserves_status_and_body() {
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
             let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             let error = model
                 .call(request, None)
@@ -62,7 +65,9 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.
@@ -127,7 +132,9 @@ async fn nonexistent_model_error_preserves_response_headers() {
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
             let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             let error = model
                 .call(request, None)
@@ -155,7 +162,9 @@ async fn nonexistent_model_streaming_error_preserves_response_headers() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             let error = match model.stream(request, None) {
                 Err(error) => rig::ErrorReport::from(&error),

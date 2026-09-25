@@ -44,6 +44,7 @@ use crate::cassettes::{
 use crate::support::assistant_text_response;
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequestBuilder;
 
 /// A prompt Qwen3 answers with a visible `<think>` pass, so
 /// `reasoning_content` is populated.
@@ -75,8 +76,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request(REASONING_PROMPT)
+                    CompletionRequestBuilder::new(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
                     None,
@@ -131,8 +131,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(
-                    model
-                        .completion_request(REASONING_PROMPT)
+                    CompletionRequestBuilder::new(REASONING_PROMPT)
                         .max_tokens(512)
                         .build(),
                     None,
@@ -238,8 +237,7 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .call(
-                    model
-                        .completion_request(TWO_CANDIDATE_PROMPT)
+                    CompletionRequestBuilder::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
@@ -262,8 +260,7 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(
-                    model
-                        .completion_request(TWO_CANDIDATE_PROMPT)
+                    CompletionRequestBuilder::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
                         .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
@@ -364,8 +361,7 @@ async fn logprobs_survive_into_the_raw_response() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                model
-                    .completion_request("/no_think Say ok.")
+                CompletionRequestBuilder::new("/no_think Say ok.")
                     .max_tokens(16)
                     .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
                     .build(),

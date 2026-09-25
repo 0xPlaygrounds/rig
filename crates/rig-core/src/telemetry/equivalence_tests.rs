@@ -226,7 +226,7 @@ fn cases() -> Vec<Value> {
         "completion operation span+record (message id fallback)",
         &mut out,
         || {
-            let request = CompletionRequestBuilder::unbound("hi")
+            let request = CompletionRequestBuilder::new("hi")
                 .preamble("sys".into())
                 .record_content_telemetry(true)
                 .build();
@@ -246,7 +246,7 @@ fn cases() -> Vec<Value> {
         "completion operation streaming span+record_event",
         &mut out,
         || {
-            let request = CompletionRequestBuilder::unbound("hi")
+            let request = CompletionRequestBuilder::new("hi")
                 .model("override")
                 .build();
             let terminal = StreamFinal::new("prov", usage(), Value::Null)

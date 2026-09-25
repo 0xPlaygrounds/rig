@@ -5,6 +5,7 @@ use rig::providers::openai::wire::{self as openai_wire, OpenAI};
 use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
+use rig::completion::CompletionRequestBuilder;
 
 fn response_text(choice: &[AssistantContent]) -> String {
     choice
@@ -34,11 +35,12 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
 
     let response = model
         .call(
-            model
-                .completion_request("What color was I asked to remember? Reply with one word.")
-                .message(Message::user("Remember the secret color is teal."))
-                .message(assistant)
-                .build(),
+            CompletionRequestBuilder::new(
+                "What color was I asked to remember? Reply with one word.",
+            )
+            .message(Message::user("Remember the secret color is teal."))
+            .message(assistant)
+            .build(),
             None,
         )
         .await

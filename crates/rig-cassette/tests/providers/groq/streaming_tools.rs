@@ -16,6 +16,7 @@ use crate::support::{
 use super::{
     STREAMING_TOOLS_MULTI_MODEL, STREAMING_TOOLS_ORDERED_MODEL, STREAMING_TOOLS_RAW_MODEL,
 };
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
@@ -25,8 +26,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         rig::rig_reqwest::bundled().expect("transport should build"),
     );
     let model = groq.completion(STREAMING_TOOLS_RAW_MODEL);
-    let request = model
-        .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+    let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .tool(zero_arg_tool_definition("ping"))
         .tool_choice(ToolChoice::Required)
         .build();
@@ -43,8 +43,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         rig::rig_reqwest::bundled().expect("transport should build"),
     );
     let model = groq.completion(STREAMING_TOOLS_RAW_MODEL);
-    let request = model
-        .completion_request(TWO_TOOL_STREAM_PROMPT)
+    let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
         .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
         .tool(rig::tool::tool_definition(&AlphaSignal))
         .tool(rig::tool::tool_definition(&BetaSignal))
@@ -121,8 +120,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         rig::rig_reqwest::bundled().expect("transport should build"),
     );
     let model = groq.completion(STREAMING_TOOLS_RAW_MODEL);
-    let request = model
-        .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+    let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
         .tool(rig::tool::tool_definition(&AlphaSignal))
         .build();
@@ -154,14 +152,13 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-    let followup_request = model
-        .completion_request(
-            "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-        )
-        .preamble("Use the provided tool result and answer directly.".to_string())
-        .message(assistant_message)
-        .message(tool_result_message)
-        .build();
+    let followup_request = CompletionRequestBuilder::new(
+        "Now reply in one short sentence using the provided tool result. Do not call any tools.",
+    )
+    .preamble("Use the provided tool result and answer directly.".to_string())
+    .message(assistant_message)
+    .message(tool_result_message)
+    .build();
 
     let second_turn = collect_raw_stream_observation(
         model

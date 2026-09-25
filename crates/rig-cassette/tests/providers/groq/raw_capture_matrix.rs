@@ -46,18 +46,14 @@ use super::support::with_groq_cassette_result;
 use crate::cassettes::{recorded_json_turn, recorded_response_header};
 use crate::raw_capture::{assert_contracted_request_id, capture_completion, chat};
 use crate::support::{Observed, assert_matches_recorded_document, assert_matches_recorded_token};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
 }
 
 /// The `x-request-id` the single recorded interaction carried.
@@ -76,7 +72,7 @@ async fn raw_is_the_verbatim_response_body() {
     with_groq_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
         capture_completion(
             client.completion(RAW_CAPTURE_MATRIX_MODEL),
-            request,
+            request(),
             sink.clone(),
         )
     })
@@ -140,7 +136,7 @@ async fn raw_exposes_queue_time() {
     with_groq_cassette_result("raw_capture_matrix/raw_exposes_queue_time", |client| {
         capture_completion(
             client.completion(RAW_CAPTURE_MATRIX_MODEL),
-            request,
+            request(),
             sink.clone(),
         )
     })
@@ -198,7 +194,7 @@ async fn normalized_fields_match_raw_renormalized() {
         |client| {
             capture_completion(
                 client.completion(RAW_CAPTURE_MATRIX_MODEL),
-                request,
+                request(),
                 sink.clone(),
             )
         },

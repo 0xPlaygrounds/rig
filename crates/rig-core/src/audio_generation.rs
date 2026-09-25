@@ -15,7 +15,6 @@
 //! # }
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
-use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -75,21 +74,6 @@ impl AudioGenerationResponse {
 
 crate::provider_response::modality_response_metadata_setters!(AudioGenerationResponse);
 
-impl<W, T> crate::driver::Model<W, T>
-where
-    W: crate::wire::Wire<Op = crate::operation::AudioGeneration> + Clone,
-    T: crate::driver::Transport<W>,
-{
-    /// A request builder to speak `text` in `voice` through this model.
-    pub fn audio_generation_request(
-        &self,
-        text: impl Into<String>,
-        voice: impl Into<String>,
-    ) -> AudioGenerationRequestBuilder<Self> {
-        AudioGenerationRequestBuilder::new(self.clone(), text, voice)
-    }
-}
-
 pub struct AudioGenerationRequest {
     pub text: String,
     pub voice: String,
@@ -98,16 +82,14 @@ pub struct AudioGenerationRequest {
 }
 
 /// Builds a speech request for a text and voice. The speed defaults to 1.0.
-pub struct AudioGenerationRequestBuilder<M> {
-    model: M,
+pub struct AudioGenerationRequestBuilder {
     request: AudioGenerationRequest,
 }
 
-impl<M> AudioGenerationRequestBuilder<M> {
+impl AudioGenerationRequestBuilder {
     /// A request to speak `text` in `voice`.
-    pub fn new(model: M, text: impl Into<String>, voice: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<String>, voice: impl Into<String>) -> Self {
         Self {
-            model,
             request: AudioGenerationRequest {
                 text: text.into(),
                 voice: voice.into(),
@@ -134,17 +116,6 @@ impl<M> AudioGenerationRequestBuilder<M> {
     /// Builds the audio generation request.
     pub fn build(self) -> AudioGenerationRequest {
         self.request
-    }
-}
-
-impl<W, T> AudioGenerationRequestBuilder<crate::driver::Model<W, T>>
-where
-    W: crate::wire::Wire<Op = crate::operation::AudioGeneration> + Clone,
-    T: crate::driver::Transport<W>,
-{
-    /// Sends the request through the model.
-    pub async fn send(self) -> Result<AudioGenerationResponse, ProviderError> {
-        self.model.call(self.request, None).await
     }
 }
 

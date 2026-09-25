@@ -5,6 +5,7 @@ use rig::providers::openai::wire::{HYPERBOLIC, OpenAI};
 use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
+use rig::image_generation::ImageGenerationRequestBuilder;
 
 #[tokio::test]
 #[ignore = "requires HYPERBOLIC_API_KEY"]
@@ -16,10 +17,13 @@ async fn image_generation_smoke() {
     let model = provider.image_generation(hyperbolic::SDXL_TURBO);
 
     let response = model
-        .image_generation_request(IMAGE_PROMPT)
-        .width(1024)
-        .height(1024)
-        .send()
+        .call(
+            ImageGenerationRequestBuilder::new(IMAGE_PROMPT)
+                .width(1024)
+                .height(1024)
+                .build(),
+            None,
+        )
         .await
         .expect("image generation should succeed");
 

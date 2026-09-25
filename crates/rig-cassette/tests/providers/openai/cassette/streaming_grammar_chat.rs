@@ -20,6 +20,7 @@ use serde_json::json;
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::{AlphaSignal, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT};
+use rig::completion::CompletionRequestBuilder;
 
 /// Everything observed while draining a normalized stream, alongside the
 /// aggregated stream state itself.
@@ -123,8 +124,7 @@ async fn parallel_tool_calls_stay_distinct() {
         "streaming_grammar_chat/parallel_tool_calls",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
+            let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
@@ -181,8 +181,7 @@ async fn tool_call_and_content_in_same_turn() {
         "streaming_grammar_chat/tool_call_with_content",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request("Look up the harbor label for me.")
+            let request = CompletionRequestBuilder::new("Look up the harbor label for me.")
                 .preamble(
                     "Before every tool call, first narrate what you are about to do in one \
                      short sentence of normal assistant text in the same reply, then emit \
@@ -232,10 +231,10 @@ async fn logprobs_chunks_are_forward_compatible() {
         "streaming_grammar_chat/logprobs_chunks",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request("Reply with one short sentence about tides.")
-                .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
-                .build();
+            let request =
+                CompletionRequestBuilder::new("Reply with one short sentence about tides.")
+                    .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
+                    .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -258,13 +257,12 @@ async fn long_text_stream_preserves_order() {
         "streaming_grammar_chat/long_text_stream",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = model
-                .completion_request(
-                    "Write a numbered list of exactly 12 one-line facts about rivers. \
+            let request = CompletionRequestBuilder::new(
+                "Write a numbered list of exactly 12 one-line facts about rivers. \
                      Number them 1. through 12.",
-                )
-                .max_tokens(400)
-                .build();
+            )
+            .max_tokens(400)
+            .build();
             let run = drain_stream(model.stream(request, None).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);

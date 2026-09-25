@@ -22,7 +22,7 @@ use serde_json::json;
 pub(crate) type BoundGenerateContent = Model<gemini::completion::GenerateContent, BoxedHttpClient>;
 
 pub(crate) struct GeminiAgent {
-    model: BoundGenerateContent,
+    pub(super) model: BoundGenerateContent,
     preamble: String,
     tools: Vec<ToolDefinition>,
     tool_choice: Option<ToolChoice>,
@@ -57,10 +57,8 @@ impl GeminiAgent {
         &self,
         prompt: Message,
         history: Vec<Message>,
-    ) -> CompletionRequestBuilder<BoundGenerateContent> {
-        let mut request = self
-            .model
-            .completion_request(prompt)
+    ) -> CompletionRequestBuilder {
+        let mut request = CompletionRequestBuilder::new(prompt)
             .messages(history)
             .preamble(self.preamble.clone())
             .tools(self.tools.clone());
@@ -230,8 +228,8 @@ pub(crate) async fn call_model(
     allowed: &BTreeSet<String>,
 ) -> ModelTurn {
     let response = agent
-        .request(prompt, history)
-        .send()
+        .model
+        .call(agent.request(prompt, history).build(), None)
         .await
         .expect("gemini completion should succeed");
     ModelTurn::new(

@@ -60,14 +60,13 @@
 //! behaviour end to end on recorded turns.
 
 use rig::completion::{FinishReason, ToolDefinition};
-use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CompletionResponse;
-use rig::providers::anthropic::wire::Messages;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_empty_stop_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 /// Asks for exactly one word so a stop sequence naming that word matches
 /// before the model emits anything else.
@@ -78,16 +77,12 @@ const IMMEDIATE_PHRASE_PROMPT: &str =
     "Reply with exactly this phrase and nothing else: alpha bravo charlie";
 const IMMEDIATE_PUNCTUATION_PROMPT: &str = "Reply with exactly this and nothing else: ###";
 
-type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
-
 fn request(
-    model: &AnthropicModel,
     prompt: &str,
     stop_sequences: &[&str],
     max_tokens: u64,
 ) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(prompt)
+    CompletionRequestBuilder::new(prompt)
         .max_tokens(max_tokens)
         .additional_params(json!({ "stop_sequences": stop_sequences }))
         .build()
@@ -152,7 +147,7 @@ async fn raw_normalize_empty_stop_sequence() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .await
                 .expect("empty stop-sequence request should succeed");
             let raw = CompletionResponse::deserialize(&response.raw)
@@ -179,7 +174,7 @@ async fn completion_empty_stop_sequence() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .await
                 .expect("`completion` must not turn a completed turn into an error");
 
@@ -226,7 +221,7 @@ async fn streaming_empty_stop_sequence() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let mut stream = model
-                .stream(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .stream(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .expect("stream should open");
 
             let mut errors = Vec::new();
@@ -317,10 +312,7 @@ async fn nonempty_stop_sequence_control() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(
-                    request(&model, IMMEDIATE_PHRASE_PROMPT, &["charlie"], 64),
-                    None,
-                )
+                .call(request(IMMEDIATE_PHRASE_PROMPT, &["charlie"], 64), None)
                 .await
                 .expect("stop-sequence turn with content should succeed");
 
@@ -358,7 +350,7 @@ async fn unicode_empty_stop_sequence() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(request(&model, IMMEDIATE_UNICODE_PROMPT, &["🌊"], 32), None)
+                .call(request(IMMEDIATE_UNICODE_PROMPT, &["🌊"], 32), None)
                 .await
                 .expect("unicode empty stop-sequence turn should succeed");
             assert!(response.choice.is_empty());
@@ -376,10 +368,7 @@ async fn whitespace_empty_stop_sequence() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(
-                    request(&model, IMMEDIATE_PHRASE_PROMPT, &["alpha bravo"], 32),
-                    None,
-                )
+                .call(request(IMMEDIATE_PHRASE_PROMPT, &["alpha bravo"], 32), None)
                 .await
                 .expect("whitespace empty stop-sequence turn should succeed");
             assert!(response.choice.is_empty());
@@ -397,10 +386,7 @@ async fn punctuation_empty_stop_sequence() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(
-                    request(&model, IMMEDIATE_PUNCTUATION_PROMPT, &["###"], 32),
-                    None,
-                )
+                .call(request(IMMEDIATE_PUNCTUATION_PROMPT, &["###"], 32), None)
                 .await
                 .expect("punctuation empty stop-sequence turn should succeed");
             assert!(response.choice.is_empty());
@@ -418,10 +404,7 @@ async fn two_sequences_empty_stop() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(
-                    request(&model, IMMEDIATE_PROMPT, &["zulu", "alpha"], 32),
-                    None,
-                )
+                .call(request(IMMEDIATE_PROMPT, &["zulu", "alpha"], 32), None)
                 .await
                 .expect("multi-sequence empty stop turn should succeed");
             assert!(response.choice.is_empty());
@@ -442,8 +425,7 @@ async fn with_preamble_empty_stop() {
         "empty_stop_sequence_matrix/with_preamble_empty_stop",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = model
-                .completion_request(IMMEDIATE_PROMPT)
+            let request = CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
                 .preamble("You follow formatting instructions exactly.".to_string())
                 .max_tokens(32)
                 .additional_params(json!({ "stop_sequences": ["alpha"] }))
@@ -466,8 +448,7 @@ async fn with_tools_empty_stop() {
         "empty_stop_sequence_matrix/with_tools_empty_stop",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = model
-                .completion_request(IMMEDIATE_PROMPT)
+            let request = CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
                 .max_tokens(32)
                 .tool(weather_tool())
                 .additional_params(json!({ "stop_sequences": ["alpha"] }))
@@ -494,7 +475,7 @@ async fn with_prompt_caching_empty_stop() {
                 |wire| wire.with_prompt_caching(),
             );
             let response = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .await
                 .expect("empty stop turn with prompt caching should succeed");
             assert!(response.choice.is_empty());
@@ -512,7 +493,7 @@ async fn sonnet_empty_stop_sequence() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let response = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .await
                 .expect("empty stop turn on a second model should succeed");
             assert!(response.choice.is_empty());
@@ -537,7 +518,7 @@ async fn identity_survives_empty_stop() {
         move |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .await
                 .expect("empty stop turn should succeed");
 
@@ -587,7 +568,7 @@ async fn finish_reason_is_stop_on_empty_stop() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .await
                 .expect("empty stop turn should succeed");
 
@@ -611,13 +592,13 @@ async fn followup_after_empty_stop_turn() {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
             let first = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["alpha"], 32), None)
                 .await
                 .expect("first (empty) turn should succeed");
             assert!(first.choice.is_empty());
 
             let second = model
-                .call(request(&model, IMMEDIATE_PROMPT, &["zulu"], 32), None)
+                .call(request(IMMEDIATE_PROMPT, &["zulu"], 32), None)
                 .await
                 .expect("second turn should succeed");
             assert!(
@@ -640,12 +621,7 @@ async fn long_sequence_empty_stop() {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(
-                    request(
-                        &model,
-                        IMMEDIATE_PHRASE_PROMPT,
-                        &["alpha bravo charlie"],
-                        32,
-                    ),
+                    request(IMMEDIATE_PHRASE_PROMPT, &["alpha bravo charlie"], 32),
                     None,
                 )
                 .await

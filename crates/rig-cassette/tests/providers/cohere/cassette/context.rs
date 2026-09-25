@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn context_documents_are_accepted() {
@@ -42,26 +43,26 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
         "context/document_metadata_and_multiple_documents_are_accepted",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Which dock is assigned beacon code amber-73?")
-                .document(Document {
-                    id: "harbor-record-1".to_string(),
-                    text: "Beacon code amber-73 is assigned to Dock Seven.".to_string(),
-                    additional_props: HashMap::from([
-                        ("source".to_string(), "harbor-registry".to_string()),
-                        ("region".to_string(), "north-bay".to_string()),
-                    ]),
-                })
-                .document(Document {
-                    id: "harbor-record-2".to_string(),
-                    text: "Beacon code violet-19 is assigned to Dock Three.".to_string(),
-                    additional_props: HashMap::from([(
-                        "source".to_string(),
-                        "harbor-registry".to_string(),
-                    )]),
-                })
-                .max_tokens(32)
-                .build();
+            let request =
+                CompletionRequestBuilder::new("Which dock is assigned beacon code amber-73?")
+                    .document(Document {
+                        id: "harbor-record-1".to_string(),
+                        text: "Beacon code amber-73 is assigned to Dock Seven.".to_string(),
+                        additional_props: HashMap::from([
+                            ("source".to_string(), "harbor-registry".to_string()),
+                            ("region".to_string(), "north-bay".to_string()),
+                        ]),
+                    })
+                    .document(Document {
+                        id: "harbor-record-2".to_string(),
+                        text: "Beacon code violet-19 is assigned to Dock Three.".to_string(),
+                        additional_props: HashMap::from([(
+                            "source".to_string(),
+                            "harbor-registry".to_string(),
+                        )]),
+                    })
+                    .max_tokens(32)
+                    .build();
 
             let response = model
                 .call(request, None)

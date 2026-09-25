@@ -37,18 +37,13 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::with_venice_cassette_result;
 use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal, chat};
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "venice";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .max_tokens(16)
         .additional_params(
             VeniceParameters::new()
@@ -68,7 +63,9 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -99,7 +96,9 @@ async fn stream_raw_exposes_terminal_cost() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_cost should replay from its cassette");

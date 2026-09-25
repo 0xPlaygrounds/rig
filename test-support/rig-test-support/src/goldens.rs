@@ -1745,7 +1745,7 @@ impl Lookup {
                 let model: rig_agent::bus::ModelHandle =
                     dispatcher.handle(&self.model_key).expect("the model");
                 let mut request =
-                    rig_core::completion::CompletionRequestBuilder::unbound(args.q.as_str())
+                    rig_core::completion::CompletionRequestBuilder::new(args.q.as_str())
                         .preamble(NESTED_PREAMBLE.to_owned());
                 if !self.nesting.no_temperature {
                     request = request.temperature(0.0);

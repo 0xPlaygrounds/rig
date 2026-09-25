@@ -6,6 +6,7 @@ use serde_json::json;
 
 use super::support::with_xai_cassette;
 use crate::support::{IMAGE_PROMPT, assert_image_bytes};
+use rig::image_generation::ImageGenerationRequestBuilder;
 
 #[tokio::test]
 async fn image_generation_smoke() {
@@ -23,12 +24,15 @@ async fn image_generation_smoke() {
                 .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE_PRO);
 
             let response = model
-                .image_generation_request(IMAGE_PROMPT)
-                .additional_params(json!({
-                    "resolution": "2k",
-                    "aspect_ratio": "4:3",
-                }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(IMAGE_PROMPT)
+                        .additional_params(json!({
+                            "resolution": "2k",
+                            "aspect_ratio": "4:3",
+                        }))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect("image generation should succeed");
 

@@ -9,6 +9,7 @@ use serde_json::json;
 use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::cassette_path;
 use crate::support::zero_arg_tool_definition;
+use rig::completion::CompletionRequestBuilder;
 
 /// Assert that the recorded terminal `response.completed` event carries no
 /// output items, which is the precondition this whole scenario exercises.
@@ -37,13 +38,11 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
             let model = client.completion(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
                 )
                 .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required).build();
 
             // The premise of the scenario: the terminal `response.completed`
             // event carries no output items, so the non-streaming path has to
@@ -87,13 +86,11 @@ async fn stream_tool_call_completed_response_without_output() {
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
             let model = client.completion(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(
+            let request = CompletionRequestBuilder::new(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
                 )
                 .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required).build();
 
             let mut stream = model.stream(request, None).expect("stream should start");
             let mut saw_ping_tool_call = false;

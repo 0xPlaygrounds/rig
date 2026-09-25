@@ -74,7 +74,7 @@ fn main() -> Result<(), ErrorReport> {
     live.world_mut().spawn(PendingEffect::new(
         KEY,
         EffectKind::Completion {
-            request: CompletionRequestBuilder::unbound("hello").build(),
+            request: CompletionRequestBuilder::new("hello").build(),
             stream: false,
         },
     ));

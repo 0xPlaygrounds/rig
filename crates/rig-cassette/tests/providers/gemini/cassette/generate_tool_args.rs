@@ -17,6 +17,7 @@ use serde_json::json;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::collect_raw_stream_observation;
+use rig::completion::CompletionRequestBuilder;
 
 const NESTED_ARGS_PREAMBLE: &str = "\
 You are a travel booking assistant. Use the plan_trip tool for every booking request \
@@ -201,8 +202,7 @@ async fn nested_arguments_streaming() {
         "generate_tool_args/nested_arguments_streaming",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(NESTED_ARGS_PROMPT)
+            let request = CompletionRequestBuilder::new(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .temperature(0.0)
                 .tool(rig::tool::tool_definition(&PlanTrip))
@@ -237,29 +237,28 @@ async fn unicode_arguments_streaming() {
         "generate_tool_args/unicode_arguments_streaming",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "Call the echo tool exactly once with the message argument set to \
+            let request = CompletionRequestBuilder::new(
+                "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",
-                )
-                .preamble(
-                    "You must call the echo tool with the exact text the user provides. \
+            )
+            .preamble(
+                "You must call the echo tool with the exact text the user provides. \
                      Do not translate, reword, or drop any characters."
-                        .to_string(),
-                )
-                .temperature(0.0)
-                .tool(ToolDefinition {
-                    name: "echo".to_string(),
-                    description: "Echo a message back to the user.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "message": { "type": "string" }
-                        },
-                        "required": ["message"]
-                    }),
-                })
-                .build();
+                    .to_string(),
+            )
+            .temperature(0.0)
+            .tool(ToolDefinition {
+                name: "echo".to_string(),
+                description: "Echo a message back to the user.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string" }
+                    },
+                    "required": ["message"]
+                }),
+            })
+            .build();
 
             let observation = collect_raw_stream_observation(
                 model
@@ -301,34 +300,33 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
         "generate_tool_args/optional_nullable_argument_omitted_when_not_requested",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "Log an event named \"deploy\" using the log_event tool. \
+            let request = CompletionRequestBuilder::new(
+                "Log an event named \"deploy\" using the log_event tool. \
                      Do not attach a note.",
-                )
-                .preamble(
-                    "Use the log_event tool for every logging request. Only fill optional \
+            )
+            .preamble(
+                "Use the log_event tool for every logging request. Only fill optional \
                      arguments when the user explicitly provides them."
-                        .to_string(),
-                )
-                .temperature(0.0)
-                .tool(ToolDefinition {
-                    name: "log_event".to_string(),
-                    description: "Record an event with an optional free-form note.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string" },
-                            "note": {
-                                "type": "string",
-                                "nullable": true,
-                                "description": "Optional note; omit when the user gives none."
-                            }
-                        },
-                        "required": ["name"]
-                    }),
-                })
-                .build();
+                    .to_string(),
+            )
+            .temperature(0.0)
+            .tool(ToolDefinition {
+                name: "log_event".to_string(),
+                description: "Record an event with an optional free-form note.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "note": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Optional note; omit when the user gives none."
+                        }
+                    },
+                    "required": ["name"]
+                }),
+            })
+            .build();
 
             let response = model
                 .call(request, None)

@@ -49,11 +49,9 @@
 //! `tool_use` block.
 
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
-use rig::driver::Model;
 use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{CompletionResponse, Content};
-use rig::providers::anthropic::wire::Messages;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -64,6 +62,7 @@ use super::super::support::{
 
 use crate::raw_capture::capture_completion;
 use crate::support::{Observed, assistant_text, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Reply with exactly: raw capture probe";
 /// From `empty_stop_sequence_matrix.rs`: one word, so the `alpha` sequence
@@ -82,17 +81,14 @@ const RENORMALIZED_SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_
 const THINKING_SCENARIO: &str = "raw_capture_matrix/raw_exposes_thinking_block_and_signature";
 const TOOL_USE_SCENARIO: &str = "raw_capture_matrix/raw_exposes_tool_use_block";
 
-type AnthropicModel = Model<Messages, rig::http_client::BoxedHttpClient>;
-
-fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(32).build()
+fn probe_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(32).build()
 }
 
 /// From `reasoning_usage_matrix.rs`: extended thinking on, minimum budget,
 /// `max_tokens` above it as Anthropic requires.
-fn thinking_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(THINKING_PROMPT)
+fn thinking_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(THINKING_PROMPT)
         .max_tokens(2048)
         .additional_params(json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }))
         .build()
@@ -113,9 +109,8 @@ fn weather_tool() -> ToolDefinition {
 
 /// `tool_choice: required` (Anthropic `any`) so the turn is a `tool_use`
 /// terminal by construction, not by the model's mood.
-fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .max_tokens(256)
         .tool(weather_tool())
         .tool_choice(ToolChoice::Required)
@@ -235,7 +230,7 @@ async fn raw_round_trips_into_provider_type() {
         move |client| async move {
             capture_completion(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                probe_request,
+                probe_request(),
                 sink,
             )
             .await
@@ -298,13 +293,10 @@ async fn raw_exposes_stop_sequence() {
         move |client| async move {
             capture_completion(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                |model| {
-                    model
-                        .completion_request(IMMEDIATE_PROMPT)
-                        .max_tokens(32)
-                        .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                        .build()
-                },
+                CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
+                    .max_tokens(32)
+                    .additional_params(json!({ "stop_sequences": ["alpha"] }))
+                    .build(),
                 sink,
             )
             .await
@@ -373,7 +365,7 @@ async fn normalized_fields_match_raw_renormalized() {
             move |client| async move {
                 capture_completion(
                     client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                    probe_request,
+                    probe_request(),
                     sink,
                 )
                 .await
@@ -452,7 +444,7 @@ async fn raw_exposes_thinking_block_and_signature() {
             move |client| async move {
                 capture_completion(
                     client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-                    thinking_request,
+                    thinking_request(),
                     sink,
                 )
                 .await
@@ -590,7 +582,7 @@ async fn raw_exposes_tool_use_block() {
         move |client| async move {
             capture_completion(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                tool_request,
+                tool_request(),
                 sink,
             )
             .await

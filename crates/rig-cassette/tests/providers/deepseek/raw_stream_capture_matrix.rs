@@ -48,6 +48,7 @@ use serde_json::json;
 use super::support::with_deepseek_cassette_result;
 use crate::raw_capture::{assert_no_request_id, capture_terminal, capture_text_and_terminal, chat};
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -59,28 +60,16 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 /// it answers, so the reasoning cell needs real headroom.
 const REASONING_BUDGET: u64 = 640;
 
-fn request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
         .max_tokens(16)
         .build()
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
-fn reasoning_request<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
-    T: rig_core::driver::Transport<W>,
->(
-    model: &rig_core::driver::Model<W, T>,
-) -> CompletionRequest {
-    model
-        .completion_request(REASONING_PROMPT)
+fn reasoning_request() -> CompletionRequest {
+    CompletionRequestBuilder::new(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))
         .max_tokens(REASONING_BUDGET)
         .build()
@@ -159,7 +148,7 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(MODEL), request, sink.clone()),
+        |client| capture_text_and_terminal(client.completion(MODEL), request(), sink.clone()),
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -186,7 +175,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
-        |client| capture_terminal(client.completion(MODEL), request, sink.clone()),
+        |client| capture_terminal(client.completion(MODEL), request(), sink.clone()),
     )
     .await
     .expect("stream_raw_exposes_terminal_cache_miss_tokens should replay from its cassette");
@@ -245,7 +234,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
         |client| async move {
             let model = client.completion(MODEL);
-            let stream = model.stream(reasoning_request(&model), None)?;
+            let stream = model.stream(reasoning_request(), None)?;
             sink.put(collect_reasoning_text_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())
         },

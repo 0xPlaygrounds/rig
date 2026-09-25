@@ -49,6 +49,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const TURN_ONE: &str = "Remember the codeword ALPHA-17. Reply exactly: ACK-1";
 const TURN_TWO: &str = "Reply with exactly the remembered codeword.";
@@ -97,7 +98,7 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 async fn two_turn_conversation(client: Endpoint<OpenAI>) -> (ProviderResponse, ProviderResponse) {
     let model = client.completion(openai::GPT_5_6_SOL);
     let first = model
-        .call(model.completion_request(TURN_ONE).build(), None)
+        .call(CompletionRequestBuilder::new(TURN_ONE).build(), None)
         .await
         .expect("turn 1 should succeed");
     let assistant = Message::Assistant {
@@ -106,8 +107,7 @@ async fn two_turn_conversation(client: Endpoint<OpenAI>) -> (ProviderResponse, P
     };
     let second = model
         .call(
-            model
-                .completion_request(TURN_TWO)
+            CompletionRequestBuilder::new(TURN_TWO)
                 .messages([Message::user(TURN_ONE), assistant])
                 .build(),
             None,
@@ -170,7 +170,7 @@ async fn compaction_item_decodes_on_the_response() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
             let response = model
-                .call(model.completion_request(TURN_ONE).build(), None)
+                .call(CompletionRequestBuilder::new(TURN_ONE).build(), None)
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);

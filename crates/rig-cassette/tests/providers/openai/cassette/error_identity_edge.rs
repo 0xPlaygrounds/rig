@@ -11,6 +11,7 @@ use super::super::support::{
     with_openai_cassette, with_openai_cassette_bogus_key, with_openai_completions_cassette,
 };
 use crate::support::assert_transport_request_id;
+use rig::completion::CompletionRequestBuilder;
 
 /// 401 auth rejection — the fixture documents whether OpenAI's auth tier
 /// sends `x-request-id` (assertion derived from the recording).
@@ -21,8 +22,10 @@ async fn auth_rejection_carries_identity() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let error = model
-                .completion_request("Never authenticated")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never authenticated").build(),
+                    None,
+                )
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -48,11 +51,10 @@ async fn nonexistent_previous_response_reference_carries_identity() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let error = model
-                .completion_request("Continue the conversation")
+                .call(CompletionRequestBuilder::new("Continue the conversation")
                 .additional_params(serde_json::json!({
                     "previous_response_id": "resp_000000000000000000000000000000000000000000000000",
-                }))
-                .send()
+                })).build(), None)
                 .await
                 .expect_err("a nonexistent previous_response_id must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -79,9 +81,12 @@ async fn chat_completions_validation_error_carries_identity() {
         |client| async move {
             let model = client.chat(openai::GPT_4O);
             let error = model
-                .completion_request("Never validated")
-                .additional_params(serde_json::json!({"temperature": 99.0}))
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Never validated")
+                        .additional_params(serde_json::json!({"temperature": 99.0}))
+                        .build(),
+                    None,
+                )
                 .await
                 .expect_err("an impossible temperature must be rejected");
             assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -107,7 +112,10 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
             let model = client
                 .openai
                 .completion("gpt-nonexistent-model-for-error-edge");
-            let result = model.completion_request("Never streamed").stream();
+            let result = model.stream(
+                CompletionRequestBuilder::new("Never streamed").build(),
+                None,
+            );
             let error = match result {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {

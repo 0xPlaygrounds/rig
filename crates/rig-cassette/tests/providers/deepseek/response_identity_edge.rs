@@ -4,6 +4,7 @@
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn blocking_contract_captures_none() {
@@ -12,8 +13,10 @@ async fn blocking_contract_captures_none() {
         |client| async move {
             let model = client.completion(deepseek::DEEPSEEK_V4_FLASH);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
+                    None,
+                )
                 .await
                 .expect("completion should succeed");
             assert_eq!(response.provider_request_id, None);

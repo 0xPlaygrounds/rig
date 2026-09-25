@@ -8,6 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::completion::CompletionRequestBuilder;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -307,11 +308,11 @@ async fn long_history_replay_nonstreaming() {
 
             // First turn: obtain a real tool call so the follow-up can echo
             // its call_id back, the way a caller-owned history would.
-            let first_request = model
-                .completion_request("Look up the harbor label with the tool.")
-                .preamble(preamble.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let first_request =
+                CompletionRequestBuilder::new("Look up the harbor label with the tool.")
+                    .preamble(preamble.to_string())
+                    .tool(rig::tool::tool_definition(&AlphaSignal))
+                    .build();
             let first_response = model
                 .call(first_request, None)
                 .await
@@ -333,35 +334,34 @@ async fn long_history_replay_nonstreaming() {
             // roundtrip. The tool call is re-tagged with a local item ID (not
             // the provider's `fc_...` ID) — the request must still be accepted
             // because non-native IDs are omitted and calls pair by call_id.
-            let request = model
-                .completion_request(
-                    "In one short sentence: what is my favorite color, and what was the \
+            let request = CompletionRequestBuilder::new(
+                "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
-                )
-                .preamble(preamble.to_string())
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::tool_call_with_call_id(
-                        "history_tool_1",
-                        call_id.clone(),
-                        AlphaSignal::NAME,
-                        serde_json::json!({}),
-                    )],
-                })
-                .message(Message::from(UserContent::tool_result_with_call_id(
+            )
+            .preamble(preamble.to_string())
+            .message(Message::user(
+                "My favorite color is teal. Please remember it.",
+            ))
+            .message(Message::assistant("Noted - your favorite color is teal."))
+            .message(Message::user("Now look up the harbor label with the tool."))
+            .message(Message::Assistant {
+                id: None,
+                content: vec![AssistantContent::tool_call_with_call_id(
                     "history_tool_1",
-                    call_id,
+                    call_id.clone(),
                     AlphaSignal::NAME,
-                    vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-                )))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                    serde_json::json!({}),
+                )],
+            })
+            .message(Message::from(UserContent::tool_result_with_call_id(
+                "history_tool_1",
+                call_id,
+                AlphaSignal::NAME,
+                vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+            )))
+            .message(Message::assistant("The harbor label is crimson-harbor."))
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .build();
 
             let response = model
                 .call(request, None)

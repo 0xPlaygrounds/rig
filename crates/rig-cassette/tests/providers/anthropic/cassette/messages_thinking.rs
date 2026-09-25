@@ -15,6 +15,7 @@ use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent};
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 /// Anthropic's documented test string that forces the model to emit
 /// `redacted_thinking` blocks when extended thinking is enabled.
@@ -48,8 +49,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
 
-            let first_request = model
-                .completion_request(redacted_thinking_prompt())
+            let first_request = CompletionRequestBuilder::new(redacted_thinking_prompt())
                 .max_tokens(4096)
                 .additional_params(thinking_params())
                 .build();
@@ -66,16 +66,16 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
 
             // Replay the redacted thinking block back in a follow-up turn; the
             // API must accept the opaque data verbatim.
-            let second_request = model
-                .completion_request("Thanks. Now reply with the single word DONE.")
-                .max_tokens(4096)
-                .additional_params(thinking_params())
-                .message(Message::user(redacted_thinking_prompt()))
-                .message(Message::Assistant {
-                    id: first_response.message_id.clone(),
-                    content: first_response.choice.clone(),
-                })
-                .build();
+            let second_request =
+                CompletionRequestBuilder::new("Thanks. Now reply with the single word DONE.")
+                    .max_tokens(4096)
+                    .additional_params(thinking_params())
+                    .message(Message::user(redacted_thinking_prompt()))
+                    .message(Message::Assistant {
+                        id: first_response.message_id.clone(),
+                        content: first_response.choice.clone(),
+                    })
+                    .build();
 
             let second_response = model
                 .call(second_request, None)
@@ -122,8 +122,7 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
                            padding about request routing, tool schemas, system instructions, \
                            and deterministic replay behavior. "
                 .repeat(60);
-            let request = model
-                .completion_request(redacted_thinking_prompt())
+            let request = CompletionRequestBuilder::new(redacted_thinking_prompt())
                 .preamble(format!(
                     "You are a deterministic cassette test assistant for the \
                      static-prefix thinking scenario.\n{padding}"
@@ -152,8 +151,7 @@ async fn redacted_thinking_streaming() {
         "messages_thinking/redacted_thinking_streaming",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(redacted_thinking_prompt())
+            let request = CompletionRequestBuilder::new(redacted_thinking_prompt())
                 .max_tokens(4096)
                 .additional_params(thinking_params())
                 .build();

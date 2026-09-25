@@ -130,7 +130,7 @@ pub(crate) async fn build_prepared_completion_request(
     let output_tool_name = prepared.output_tool_name.clone();
     let max_tokens = prepared.max_tokens;
     let builder = prepared
-        .apply(CompletionRequestBuilder::unbound(prompt))
+        .apply(CompletionRequestBuilder::new(prompt))
         .record_content_telemetry(record_telemetry_content);
     let telemetry_messages = if record_telemetry_content {
         builder.messages_for_telemetry()

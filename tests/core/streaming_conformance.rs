@@ -8,6 +8,7 @@
 //! Run the suite with:
 //! `cargo test -p rig --test core core::streaming_conformance`
 
+use rig::completion::CompletionRequestBuilder;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance,
     fixtures::{
@@ -58,7 +59,7 @@ mod xai {
                     .completion(rig_core::providers::xai::GROK_4),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                 );
-                let request = model.completion_request("hello").build();
+                let request = CompletionRequestBuilder::new("hello").build();
                 let stream = model.stream(request, None)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
@@ -93,7 +94,7 @@ mod copilot {
                         .completion(model_name),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                 );
-                let request = model.completion_request("hello").build();
+                let request = CompletionRequestBuilder::new("hello").build();
                 let stream = model.stream(request, None)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
@@ -138,7 +139,7 @@ mod chatgpt {
                     .completion("gpt-5.4"),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                 );
-                let request = model.completion_request("hello").build();
+                let request = CompletionRequestBuilder::new("hello").build();
                 let stream = model.stream(request, None)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })

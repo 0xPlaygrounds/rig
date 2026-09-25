@@ -11,6 +11,7 @@ use super::{
     anthropic_adaptive_model, anthropic_signature_only_model, client,
     support::{ALPHA_SIGNAL_OUTPUT, AlphaSignal, assert_contains_all_case_insensitive},
 };
+use rig::completion::CompletionRequestBuilder;
 
 fn adaptive_thinking_params() -> serde_json::Value {
     json!({
@@ -50,8 +51,7 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
     let model = client().completion(anthropic_signature_only_model());
-    let request = model
-        .completion_request("What is 2 + 2? Answer with only the number.")
+    let request = CompletionRequestBuilder::new("What is 2 + 2? Answer with only the number.")
         .max_tokens(2048)
         .additional_params(adaptive_thinking_params())
         .build();
