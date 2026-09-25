@@ -638,15 +638,11 @@ impl From<http::Error> for ProviderError {
     }
 }
 
-/// A client that could not be built: transport-configuration failures keep
-/// their HTTP identity, anything else (a missing key, an unreadable
-/// environment variable) is reported as a provider error.
+/// A client that could not be built keeps its HTTP identity.
 impl From<crate::client::ProviderClientError> for ProviderError {
     fn from(error: crate::client::ProviderClientError) -> Self {
-        match error {
-            crate::client::ProviderClientError::Http(error) => Self::Http(error),
-            other => Self::Provider(other.to_string()),
-        }
+        let crate::client::ProviderClientError::Http(error) = error;
+        Self::Http(error)
     }
 }
 
